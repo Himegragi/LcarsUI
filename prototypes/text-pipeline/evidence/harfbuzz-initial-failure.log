@@ -1,0 +1,145 @@
+-- The C compiler identification is Clang 22.1.8 with MSVC-like command-line
+-- The CXX compiler identification is Clang 22.1.8 with MSVC-like command-line
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/LLVM/bin/clang-cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/LLVM/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+-- Found Python3: C:/Python314/python.exe (found version "3.14.6") found components: Interpreter
+-- Looking for atexit
+-- Looking for atexit - found
+-- Looking for mprotect
+-- Looking for mprotect - not found
+-- Looking for sysconf
+-- Looking for sysconf - not found
+-- Looking for getpagesize
+-- Looking for getpagesize - not found
+-- Looking for mmap
+-- Looking for mmap - not found
+-- Looking for isatty
+-- Looking for isatty - found
+-- Looking for unistd.h
+-- Looking for unistd.h - not found
+-- Looking for sys/mman.h
+-- Looking for sys/mman.h - not found
+-- Looking for stdbool.h
+-- Looking for stdbool.h - found
+-- Performing Test MSVC_UTF8_FLAG_SUPPORTED
+-- Performing Test MSVC_UTF8_FLAG_SUPPORTED - Success
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (8.4s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbdf.c.obj
+[2/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbbox.c.obj
+[3/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftcid.c.obj
+[4/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbitmap.c.obj
+[5/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftfstype.c.obj
+[6/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftgasp.c.obj
+[7/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftglyph.c.obj
+[8/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftgxval.c.obj
+[9/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftinit.c.obj
+[10/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftmm.c.obj
+[11/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftotval.c.obj
+[12/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftpatent.c.obj
+[13/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftpfr.c.obj
+[14/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftsynth.c.obj
+[15/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\fttype1.c.obj
+[16/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftstroke.c.obj
+[17/117] Building C object freetype\CMakeFiles\freetype.dir\src\autofit\autofit.c.obj
+[18/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftwinfnt.c.obj
+[19/117] Building C object freetype\CMakeFiles\freetype.dir\src\bzip2\ftbzip2.c.obj
+[20/117] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbase.c.obj
+[21/117] Building C object freetype\CMakeFiles\freetype.dir\src\bdf\bdf.c.obj
+[22/117] Building C object freetype\CMakeFiles\freetype.dir\src\cid\type1cid.c.obj
+[23/117] Building C object freetype\CMakeFiles\freetype.dir\src\cache\ftcache.c.obj
+[24/117] Building C object freetype\CMakeFiles\freetype.dir\src\lzw\ftlzw.c.obj
+[25/117] Building C object freetype\CMakeFiles\freetype.dir\src\cff\cff.c.obj
+[26/117] Building C object freetype\CMakeFiles\freetype.dir\src\pcf\pcf.c.obj
+[27/117] Building C object freetype\CMakeFiles\freetype.dir\src\gzip\ftgzip.c.obj
+[28/117] Building C object freetype\CMakeFiles\freetype.dir\src\pfr\pfr.c.obj
+[29/117] Building C object freetype\CMakeFiles\freetype.dir\src\psnames\psnames.c.obj
+[30/117] Building C object freetype\CMakeFiles\freetype.dir\src\pshinter\pshinter.c.obj
+[31/117] Building C object freetype\CMakeFiles\freetype.dir\src\raster\raster.c.obj
+[32/117] Building C object freetype\CMakeFiles\freetype.dir\src\sdf\sdf.c.obj
+[33/117] Building C object freetype\CMakeFiles\freetype.dir\src\smooth\smooth.c.obj
+[34/117] Building C object freetype\CMakeFiles\freetype.dir\src\svg\svg.c.obj
+[35/117] Building C object freetype\CMakeFiles\freetype.dir\src\psaux\psaux.c.obj
+[36/117] Building C object freetype\CMakeFiles\freetype.dir\src\type1\type1.c.obj
+[37/117] Building C object freetype\CMakeFiles\freetype.dir\src\type42\type42.c.obj
+[38/117] Building C object freetype\CMakeFiles\freetype.dir\src\winfonts\winfnt.c.obj
+[39/117] Building C object freetype\CMakeFiles\freetype.dir\builds\windows\ftsystem.c.obj
+[40/117] Building C object freetype\CMakeFiles\freetype.dir\builds\windows\ftdebug.c.obj
+[41/117] Building C object freetype\CMakeFiles\freetype.dir\src\sfnt\sfnt.c.obj
+[42/117] Building RC object freetype\CMakeFiles\freetype.dir\src\base\ftver.rc.res
+[43/117] Building C object freetype\CMakeFiles\freetype.dir\src\truetype\truetype.c.obj
+[44/117] Linking C static library freetype\freetype.lib
+[45/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-blob.cc.obj
+[46/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer-serialize.cc.obj
+[47/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-aat-map.cc.obj
+[48/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer-verify.cc.obj
+[49/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer.cc.obj
+[50/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\OT\Var\VARC\VARC.cc.obj
+[51/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext-font.cc.obj
+[52/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext-shape.cc.obj
+[53/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-common.cc.obj
+[54/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext.cc.obj
+[55/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite-font.cc.obj
+[56/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite-shape.cc.obj
+[57/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite.cc.obj
+[58/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-draw.cc.obj
+[59/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-aat-layout.cc.obj
+[60/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-fallback-shape.cc.obj
+[61/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-face-builder.cc.obj
+[62/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-gdi.cc.obj
+[63/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-face.cc.obj
+[64/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-font.cc.obj
+[65/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-glib.cc.obj
+[66/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ft.cc.obj
+[67/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-graphite2.cc.obj
+[68/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-map.cc.obj
+[69/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-number.cc.obj
+[70/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-cff2-table.cc.obj
+[71/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-cff1-table.cc.obj
+[72/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-color.cc.obj
+[73/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-fetch.cc.obj
+[74/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-face.cc.obj
+[75/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-map.cc.obj
+[76/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-meta.cc.obj
+[77/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-font.cc.obj
+[78/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-math.cc.obj
+[79/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-name.cc.obj
+[80/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-metrics.cc.obj
+[81/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-normalize.cc.obj
+[82/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj
+FAILED: [code=1] harfbuzz/CMakeFiles/harfbuzz.dir/src/hb-ot-shape-fallback.cc.obj
+C:\PROGRA~1\LLVM\bin\clang-cl.exe  /nologo -TP -DHAVE_ATEXIT -DHAVE_FREETYPE=1 -DHAVE_ISATTY -DHAVE_STDBOOL_H -D_CRT_NONSTDC_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\harfbuzz\src -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\freetype\include -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\freetype-526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b\include /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD /wd4244 /wd4267 /bigobj /utf-8 -clang:-MD -clang:-MTharfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj -clang:-MFharfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj.d /Foharfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj /Fdharfbuzz\CMakeFiles\harfbuzz.dir\harfbuzz.pdb -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\hb-ot-shape-fallback.cc
+In file included from C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\hb-ot-shape-fallback.cc:32:
+In file included from C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\hb-kern.hh:32:
+In file included from C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\hb-ot-layout-gpos-table.hh:32:
+In file included from C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\OT/Layout/GPOS/GPOS.hh:5:
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\clang\sources\harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7\src\OT/Layout/GPOS\../../../hb-ot-layout-gsubgpos.hh(2399,1): error: unused function 'context_depend_sets_are_cached' [-Werror,-Wunused-function]
+ 2399 | context_depend_sets_are_cached (hb_depend_context_t *c,
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+[83/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape.cc.obj
+[84/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-layout.cc.obj
+[85/117] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-arabic.cc.obj
+ninja: build stopped: subcommand failed.
+Build failed
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\run.ps1:15 char:19
++ if($LASTEXITCODE){throw 'Build failed'}
++                   ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Build failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : Build failed

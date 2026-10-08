@@ -1,0 +1,43 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/2] Building CXX object CMakeFiles\text_probe.dir\text_probe.cpp.obj
+[2/2] Linking CXX executable text_probe.exe
+HarfBuzz=14.6.0 FreeType=2.14.1
+PASS Traditional Chinese fallback and mixed text have no missing glyphs
+PASS Latin ligature/combining fixture shapes
+PASS combining mark is not exposed as separate caret stop
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS size change triggers new metrics
+PASS alternate Traditional Chinese font renders fixture
+PASS unsupported character produces explicit missing-glyph result
+PASS UTF16 surrogate pair is not split into caret stops
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS native selection replacement/undo harness (not custom text editing)
+PASS text shaping/rasterization/OpenGL preview. Native input is a harness, not proof of custom IME/UIA.

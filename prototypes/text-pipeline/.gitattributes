@@ -1,0 +1,3 @@
+third_party/*.tar.gz -text
+evidence/*.log text eol=lf
+evidence/*.tsv text eol=lf

@@ -1,0 +1,77 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj
+[2/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-face.cc.obj
+[3/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-default.cc.obj
+[4/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-aat-layout.cc.obj
+[5/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-hangul.cc.obj
+[6/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-hebrew.cc.obj
+[7/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-arabic.cc.obj
+[8/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-indic-table.cc.obj
+[9/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-indic.cc.obj
+[10/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-layout.cc.obj
+[11/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-khmer.cc.obj
+[12/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-myanmar.cc.obj
+[13/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-syllabic.cc.obj
+[14/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-thai.cc.obj
+[15/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-vowel-constraints.cc.obj
+[16/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-use.cc.obj
+[17/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-tag.cc.obj
+[18/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint-bounded.cc.obj
+[19/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-outline.cc.obj
+[20/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint-extents.cc.obj
+[21/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-var.cc.obj
+[22/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint.cc.obj
+[23/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-set.cc.obj
+[24/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shape-plan.cc.obj
+[25/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shape.cc.obj
+[26/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shaper.cc.obj
+[27/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ucd.cc.obj
+[28/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-unicode.cc.obj
+[29/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-uniscribe.cc.obj
+[30/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-style.cc.obj
+[31/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-wasm-api.cc.obj
+[32/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-static.cc.obj
+[33/37] Building CXX object CMakeFiles\text_probe.dir\C_\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core.cpp.obj
+[34/37] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-wasm-shape.cc.obj
+[35/37] Linking CXX static library harfbuzz\harfbuzz.lib
+[36/37] Building CXX object CMakeFiles\text_probe.dir\text_probe.cpp.obj
+[37/37] Linking CXX executable text_probe.exe
+HarfBuzz=14.6.0 FreeType=2.14.1
+PASS Traditional Chinese fallback and mixed text have no missing glyphs
+PASS Latin ligature/combining fixture shapes
+PASS combining mark is not exposed as separate caret stop
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS layout position/hit-test round trip
+PASS size change triggers new metrics
+PASS alternate Traditional Chinese font renders fixture
+PASS unsupported character produces explicit missing-glyph result
+PASS UTF16 surrogate pair is not split into caret stops
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS text shaping/rasterization/OpenGL preview. Native input is a harness, not proof of custom IME/UIA.
