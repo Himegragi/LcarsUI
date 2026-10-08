@@ -227,7 +227,20 @@ Codex 獨立重跑 `-CrossProcess`（未重建）在新測試之前就失敗：`
   - 子程序2 `--probe-root`：`GetRootElement hr=0`；exit 0。
   - 子程序3 `--probe-hwnd`（故意給錯的 PID）：回報身分不符，exit 5（預期中的受控失敗）。
   - 三個子程序都沒有逾時，handle 都已關閉；host 最後標記失敗、`cleanup_host_detached=1`、run.ps1 非零。
-  - **未驗證**：20秒逾時與終止子程序的路徑、子程序啟動失敗的路徑、自然失敗當下子程序的行為。
+  - （上述為第一版自我測試；逾時與啟動失敗已在下一版補測。）
+- 自我測試擴充（`evidence/uia-diagnose-selftest-cleanup.log`）。子程序結果現在由各 API 的實際回傳值組成，不再印固定的 `handles_closed=1`：
+  `TerminateProcess`、在關閉 handle 前的 `WaitForSingleObject`、`GetExitCodeProcess`、兩個 `CloseHandle`。
+  - 啟動失敗：先確認 host 旁邊不存在 `uia_selftest_missing_child.exe`（只檢查，不建立、不改名任何檔案），結果 `CreateProcess` 回 error 2（找不到檔案）、PID 0、沒有程序。
+  - 逾時：測試專用的 `--probe-hang` 子程序（隱藏、什麼都不做、不開其他程序、最多60秒），自我測試期限1.5秒（一般診斷仍是20秒）。
+    結果：`timed_out=1`、`TerminateProcess` 成功、關閉 handle 前等待結果為 signaled、exit 4（我們給的終止碼，不是 STILL_ACTIVE）、兩個 handle 都關閉成功。只對自己的子程序 handle 操作。
+  - 原本的 0／0／5 三個子程序維持通過；整次執行仍以標記為 `[SYNTHETIC]` 的失敗非零結束，不是自然重現。
+  - 未驗證：`TerminateProcess` 或等待本身失敗、忽略終止的子程序、自然失敗當下的行為。
+- 再跑一次 `-DiagnoseUiaFailure`：整批通過，沒有啟動子程序，沒有捕捉到自然失敗。
+- 審查修正（`evidence/uia-diagnose-selftest-corrected.log`）：
+  - 不存在的執行檔：**先**確認模組路徑取得成功，且 `GetFileAttributesW` 失敗原因正是 `ERROR_FILE_NOT_FOUND`，斷言通過後才嘗試啟動；檔案若存在或是其他錯誤，直接失敗、不執行。
+  - 輪詢等待、最後等待、`GetExitCodeProcess`、兩個 `CloseHandle` 失敗時，都立即記錄 `GetLastError`。本次這些錯誤欄位都是0（API 都成功），**API 失敗的路徑沒有實際觸發過**。
+  - 若輪詢本身失敗（不是逾時），不會終止子程序；最後仍只等5秒就關閉 handle，該子程序可能比 host 活得久（未測試）。
+  - 自我測試結果與前一版相同：0／0／5、找不到檔案（error 2、PID 0）、逾時終止後 exit 4；整次執行仍以 `[SYNTHETIC]` 失敗非零結束。
 
 ## 不穩定結果：尚未確定根因
 

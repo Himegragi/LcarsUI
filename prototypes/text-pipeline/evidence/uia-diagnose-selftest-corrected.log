@@ -1,0 +1,23 @@
+2026-10-09 corrected diagnostic self-test (synthetic, NOT a natural reproduction); run.ps1 -TestUiaFailureDiagnostics -> nonzero as expected
+Corrections: missing-exe absence is proven (GetModuleFileNameW length/error, GetFileAttributesW == INVALID with
+ERROR_FILE_NOT_FOUND) and asserted BEFORE any launch; every Wait/GetExitCode/CloseHandle failure now records GetLastError.
+Relevant lines, verbatim:
+
+UIA diagnose child pid=3884  poll_failed=0 ... final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=0 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0
+UIA diagnose child pid=41456 poll_failed=0 ... exit=0 signaled_before_close=1 thread_close_ok=1 process_close_ok=1
+UIA diagnose child pid=24896 poll_failed=0 ... exit=5 signaled_before_close=1 thread_close_ok=1 process_close_ok=1
+PASS [SYNTHETIC] diagnostic child path produced expected exits
+[SYNTHETIC] missing-exe module_path_length=119 error=0
+PASS [SYNTHETIC] host module path available before missing-exe check
+[SYNTHETIC] missing-exe attributes=0xffffffff error=2 absent=1
+PASS [SYNTHETIC] missing child executable verified absent (ERROR_FILE_NOT_FOUND) before launch
+UIA diagnose child phase=CreateProcess error=2 pid=0 handle_null=1
+PASS [SYNTHETIC] missing child executable fails to launch with not-found and no process
+UIA diagnose child pid=29616 poll_failed=0 poll_error=0 timed_out=1 terminate_called=1 terminate_ok=1 terminate_error=0 final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=4 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0
+PASS [SYNTHETIC] timed-out child terminated, signaled with exit 4 before its handle was closed
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+
+Not exercised: actual failure of WaitForSingleObject/GetExitCodeProcess/CloseHandle/TerminateProcess (their error
+fields are recorded but stayed 0 here). If polling fails without timeout, the child is not terminated; the final wait
+is still bounded to 5 s and the handle is then closed, so such a child could outlive the host (not tested).

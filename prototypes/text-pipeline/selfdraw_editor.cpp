@@ -476,10 +476,20 @@ static bool diagnose_uia_failure=false;
 // Bounded to 20 s; only this child is terminated on timeout; handles are always closed.
 // Diagnostic self-test only: injects a labelled synthetic failure after a successful roundtrip to exercise the child path.
 static bool test_uia_failure_diagnostics=false;
-static DWORD diagnose_with_child(EditorHost& e,const std::wstring& arguments){
+// Every API result is recorded; cleanup is reported from these results, not from flags.
+struct ChildRun {
+    bool launched=false;DWORD launch_error=0,pid=0;
+    bool timed_out=false,terminate_called=false,terminate_ok=false;DWORD terminate_error=0;
+    DWORD final_wait=WAIT_FAILED,final_wait_error=0;bool exit_ok=false;DWORD exit_code=STILL_ACTIVE,exit_error=0;
+    bool process_close_ok=false,thread_close_ok=false;DWORD process_close_error=0,thread_close_error=0;
+    bool poll_failed=false;DWORD poll_error=0;
+    bool exited() const{return launched&&final_wait==WAIT_OBJECT_0&&exit_ok&&exit_code!=STILL_ACTIVE;}
+};
+static ChildRun diagnose_with_child(EditorHost& e,const std::wstring& arguments,std::chrono::milliseconds limit=std::chrono::seconds(20),const wchar_t* executable_name=L"uia_external_client.exe"){
+    ChildRun run;
     wchar_t filename[32768]{};DWORD length=GetModuleFileNameW(nullptr,filename,32768);
-    if(!length||length>=32768){std::cout<<"UIA diagnose child: executable path unavailable\n";return 0xffffffff;}
-    std::wstring executable(filename,length);executable.resize(executable.find_last_of(L"\\/")+1);executable+=L"uia_external_client.exe";
+    if(!length||length>=32768){run.launch_error=GetLastError();std::cout<<"UIA diagnose child phase=module-path error="<<run.launch_error<<'\n';return run;}
+    std::wstring executable(filename,length);executable.resize(executable.find_last_of(L"\\/")+1);executable+=executable_name;
     std::wstring command=L"\""+executable+L"\" "+arguments;
     STARTUPINFOW startup{};startup.cb=sizeof(startup);startup.dwFlags=STARTF_USESTDHANDLES;
     startup.hStdInput=GetStdHandle(STD_INPUT_HANDLE);startup.hStdOutput=GetStdHandle(STD_OUTPUT_HANDLE);startup.hStdError=GetStdHandle(STD_ERROR_HANDLE);
@@ -487,18 +497,37 @@ static DWORD diagnose_with_child(EditorHost& e,const std::wstring& arguments){
     std::cout<<std::flush;
     const auto launch=wall_ms();
     if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process)){
-        std::cout<<"UIA diagnose child launch failed error="<<GetLastError()<<'\n';return 0xffffffff;}
-    CloseHandle(process.hThread);
-    std::cout<<"UIA diagnose child launched pid="<<process.dwProcessId<<" host_pid="<<GetCurrentProcessId()<<" launch_ms="<<launch<<'\n';
-    auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(20);bool timeout=false;
-    while(WaitForSingleObject(process.hProcess,0)==WAIT_TIMEOUT){
+        run.launch_error=GetLastError();
+        std::cout<<"UIA diagnose child phase=CreateProcess error="<<run.launch_error<<" pid="<<process.dwProcessId<<" handle_null="<<(process.hProcess==nullptr)<<'\n';
+        return run;
+    }
+    run.launched=true;run.pid=process.dwProcessId;
+    run.thread_close_ok=CloseHandle(process.hThread)!=FALSE;if(!run.thread_close_ok)run.thread_close_error=GetLastError();
+    std::cout<<"UIA diagnose child launched pid="<<run.pid<<" host_pid="<<GetCurrentProcessId()<<" launch_ms="<<launch<<'\n';
+    auto deadline=std::chrono::steady_clock::now()+limit;
+    for(;;){
+        const DWORD poll=WaitForSingleObject(process.hProcess,0);
+        if(poll==WAIT_OBJECT_0)break;
+        if(poll!=WAIT_TIMEOUT){run.poll_failed=true;run.poll_error=poll==WAIT_FAILED?GetLastError():poll;
+            std::cout<<"UIA diagnose child phase=poll-wait result="<<poll<<" error="<<run.poll_error<<'\n';break;}
         MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
-        if(std::chrono::steady_clock::now()>deadline){timeout=true;TerminateProcess(process.hProcess,4);WaitForSingleObject(process.hProcess,2000);break;}
+        if(std::chrono::steady_clock::now()>deadline){
+            // Only this child's own handle is targeted.
+            run.timed_out=true;run.terminate_called=true;
+            run.terminate_ok=TerminateProcess(process.hProcess,4)!=FALSE;if(!run.terminate_ok)run.terminate_error=GetLastError();
+            break;
+        }
         Sleep(1);
     }
-    DWORD code=0;GetExitCodeProcess(process.hProcess,&code);CloseHandle(process.hProcess);
-    std::cout<<"UIA diagnose child pid="<<process.dwProcessId<<" exit="<<code<<" timeout="<<timeout<<" handles_closed=1 end_ms="<<wall_ms()<<'\n';
-    (void)e;return code;
+    run.final_wait=WaitForSingleObject(process.hProcess,5000);if(run.final_wait==WAIT_FAILED)run.final_wait_error=GetLastError();
+    run.exit_ok=GetExitCodeProcess(process.hProcess,&run.exit_code)!=FALSE;if(!run.exit_ok)run.exit_error=GetLastError();
+    run.process_close_ok=CloseHandle(process.hProcess)!=FALSE;if(!run.process_close_ok)run.process_close_error=GetLastError();
+    std::cout<<"UIA diagnose child pid="<<run.pid<<" poll_failed="<<run.poll_failed<<" poll_error="<<run.poll_error<<" timed_out="<<run.timed_out
+        <<" terminate_called="<<run.terminate_called<<" terminate_ok="<<run.terminate_ok<<" terminate_error="<<run.terminate_error
+        <<" final_wait="<<run.final_wait<<" final_wait_error="<<run.final_wait_error<<" exit_ok="<<run.exit_ok<<" exit_error="<<run.exit_error<<" exit="<<run.exit_code
+        <<" signaled_before_close="<<(run.final_wait==WAIT_OBJECT_0)<<" thread_close_ok="<<run.thread_close_ok<<" thread_close_error="<<run.thread_close_error
+        <<" process_close_ok="<<run.process_close_ok<<" process_close_error="<<run.process_close_error<<" end_ms="<<wall_ms()<<'\n';
+    (void)e;return run;
 }
 static void uia_roundtrip(EditorHost& e){
     using Microsoft::WRL::ComPtr;
@@ -576,11 +605,32 @@ static void uia_roundtrip(EditorHost& e){
     if(test_uia_failure_diagnostics&&SUCCEEDED(result.load())){
         std::cout<<"[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)\n";
         const std::wstring hwnd=std::to_wstring(reinterpret_cast<uintptr_t>(e.context.window));
-        DWORD valid=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()));
-        DWORD root=diagnose_with_child(e,L"--probe-root");
-        DWORD wrong=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()+1));  // controlled failure: wrong expected PID
-        std::cout<<"[SYNTHETIC] child exits valid_hwnd="<<valid<<" (expect 0) root="<<root<<" (expect 0) wrong_pid="<<wrong<<" (expect 5)\n";
-        check_edit(valid==0&&root==0&&wrong==5,"[SYNTHETIC] diagnostic child path produced expected exits");
+        auto valid=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()));
+        auto root=diagnose_with_child(e,L"--probe-root");
+        auto wrong=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()+1));  // controlled failure: wrong expected PID
+        std::cout<<"[SYNTHETIC] child exits valid_hwnd="<<valid.exit_code<<" (expect 0) root="<<root.exit_code<<" (expect 0) wrong_pid="<<wrong.exit_code<<" (expect 5)\n";
+        check_edit(valid.exited()&&valid.exit_code==0&&root.exited()&&root.exit_code==0&&wrong.exited()&&wrong.exit_code==5&&!valid.timed_out&&!root.timed_out&&!wrong.timed_out,
+            "[SYNTHETIC] diagnostic child path produced expected exits");
+        // Controlled launch failure: a file name that must not exist next to the host (checked, never created/renamed).
+        const wchar_t* missing=L"uia_selftest_missing_child.exe";
+        wchar_t module[32768]{};DWORD n=GetModuleFileNameW(nullptr,module,32768);const DWORD module_error=GetLastError();
+        std::cout<<"[SYNTHETIC] missing-exe module_path_length="<<n<<" error="<<(n?0:module_error)<<'\n';
+        check_edit(n>0&&n<32768,"[SYNTHETIC] host module path available before missing-exe check");
+        std::wstring path(module,n);path.resize(path.find_last_of(L"\\/")+1);path+=missing;
+        const DWORD attributes=GetFileAttributesW(path.c_str());const DWORD attribute_error=attributes==INVALID_FILE_ATTRIBUTES?GetLastError():0;
+        const bool absent=attributes==INVALID_FILE_ATTRIBUTES&&attribute_error==ERROR_FILE_NOT_FOUND;
+        std::cout<<"[SYNTHETIC] missing-exe attributes=0x"<<std::hex<<attributes<<std::dec<<" error="<<attribute_error<<" absent="<<absent<<'\n';
+        // Must be proven absent BEFORE launching: an existing file (or any other error) fails without being executed.
+        check_edit(absent,"[SYNTHETIC] missing child executable verified absent (ERROR_FILE_NOT_FOUND) before launch");
+        auto launch_failure=diagnose_with_child(e,L"--probe-root",std::chrono::seconds(20),missing);
+        std::cout<<"[SYNTHETIC] launch-failure file_absent="<<absent<<" launched="<<launch_failure.launched<<" error="<<launch_failure.launch_error<<" pid="<<launch_failure.pid<<" (expect error 2, pid 0)\n";
+        check_edit(absent&&!launch_failure.launched&&launch_failure.launch_error==ERROR_FILE_NOT_FOUND&&launch_failure.pid==0,"[SYNTHETIC] missing child executable fails to launch with not-found and no process");
+        // Controlled timeout: test-only hanging child, short self-test deadline; normal 20 s deadline unchanged.
+        auto hang=diagnose_with_child(e,L"--probe-hang",std::chrono::milliseconds(1500));
+        std::cout<<"[SYNTHETIC] timeout child pid="<<hang.pid<<" timed_out="<<hang.timed_out<<" terminate_ok="<<hang.terminate_ok<<" final_wait="<<hang.final_wait
+            <<" exit="<<hang.exit_code<<" (expect timed_out 1, terminate_ok 1, final_wait 0, exit 4)\n";
+        check_edit(hang.launched&&hang.timed_out&&hang.terminate_ok&&hang.exited()&&hang.exit_code==4&&hang.process_close_ok&&hang.thread_close_ok,
+            "[SYNTHETIC] timed-out child terminated, signaled with exit 4 before its handle was closed");
         result=E_FAIL;  // the self-test always ends the run as a failure
     }
     check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");

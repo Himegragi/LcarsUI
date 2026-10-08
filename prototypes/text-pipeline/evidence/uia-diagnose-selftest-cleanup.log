@@ -1,0 +1,33 @@
+2026-10-09 extended diagnostic self-test (baseline 84f2532 + changes); synthetic, NOT a natural reproduction
+Command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/text-pipeline/run.ps1 -TestUiaFailureDiagnostics
+Executor: Claude Code Bash tool launching powershell.exe. Expected and observed: run.ps1 nonzero ("Text probe failed").
+Relevant lines, verbatim:
+
+UIA client HRESULT=0x0
+[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)
+UIA diagnose child pid=41504 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 exit_ok=1 exit=0 signaled_before_close=1 thread_close_ok=1 process_close_ok=1
+UIA diagnose child pid=2784 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 exit_ok=1 exit=0 signaled_before_close=1 thread_close_ok=1 process_close_ok=1
+UIA diagnose child pid=39112 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 exit_ok=1 exit=5 signaled_before_close=1 thread_close_ok=1 process_close_ok=1
+[SYNTHETIC] child exits valid_hwnd=0 (expect 0) root=0 (expect 0) wrong_pid=5 (expect 5)
+PASS [SYNTHETIC] diagnostic child path produced expected exits
+UIA diagnose child phase=CreateProcess error=2 pid=0 handle_null=1
+[SYNTHETIC] launch-failure file_absent=1 launched=0 error=2 pid=0 (expect error 2, pid 0)
+PASS [SYNTHETIC] missing child executable fails to launch with not-found and no process
+UIA diagnose child launched pid=42740 host_pid=29472 launch_ms=13435955730583
+[probe-hang] pid=42740
+UIA diagnose child pid=42740 timed_out=1 terminate_called=1 terminate_ok=1 terminate_error=0 final_wait=0 exit_ok=1 exit=4 signaled_before_close=1 thread_close_ok=1 process_close_ok=1 end_ms=13435955732100
+PASS [SYNTHETIC] timed-out child terminated, signaled with exit 4 before its handle was closed
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+
+Meaning of fields (from API results, not literals): terminate_ok = TerminateProcess return; final_wait 0 = WAIT_OBJECT_0
+from WaitForSingleObject(5 s) on the child's own handle, before CloseHandle; exit = GetExitCodeProcess (4 = our terminate
+code, not STILL_ACTIVE 259); *_close_ok = CloseHandle return. Launch failure used a checked-absent file name next to the
+host; no real executable was renamed or deleted.
+
+Natural attempt (once): run.ps1 -DiagnoseUiaFailure
+  UIA host ElementFromHandle pid=37856 ...; UIA client HRESULT=0x0; full batch PASS; no child launched, no [SYNTHETIC]
+  lines -> no natural failure captured; ordinary diagnosis flag behavior unchanged on success.
+
+Not verified: TerminateProcess or WaitForSingleObject failing; a child that ignores termination; behavior during a
+natural ElementFromHandle failure.

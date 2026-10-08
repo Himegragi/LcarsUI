@@ -933,6 +933,8 @@ static int probe_hwnd(HWND window,DWORD expected_pid){
 }
 int main(int argc,char** argv){
     if(argc==2&&std::string(argv[1])=="--probe-root")return probe_root();
+    // Diagnostic self-test only: a hidden child that does nothing and starts no processes; bounded to 60 s.
+    if(argc==2&&std::string(argv[1])=="--probe-hang"){std::printf("[probe-hang] pid=%lu\n",GetCurrentProcessId());std::fflush(stdout);Sleep(60000);return 7;}
     if(argc==4&&std::string(argv[1])=="--probe-hwnd")return probe_hwnd(reinterpret_cast<HWND>(static_cast<uintptr_t>(std::stoull(argv[2]))),std::stoul(argv[3]));
     log_file.open("uia-cross-process.log",std::ios::binary|std::ios::trunc);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);

@@ -1,0 +1,93 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+ninja: no work to do.
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS automated window does not take foreground focus
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=207,219
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA phase=CoInitializeEx hr=0x0 t=0ms
+UIA phase=CoCreateInstance(CUIAutomation) hr=0x0 t=3ms
+WM_GETOBJECT root wparam=0xe49a88c5 result=0x10000 lasterror=0 retired=0
+WM_GETOBJECT root wparam=0x0 result=0x10000 lasterror=0 retired=0
+UIA host ElementFromHandle pid=42872 start_ms=13435955921075 end_ms=13435955921130
+UIA ElementFromHandle window=00000000008C114E IsWindow=1 hung=0 getobject_during=2 last_id=-25 last_result=0x10000
+UIA phase=ElementFromHandle hr=0x0 t=59ms
+UIA role=50004 expected=50004
+UIA value length=10
+UIA bounds=76,76,1036,716 expected=76,76,1036,716
+UIA phase=role/value/bounds hr=0x0 t=75ms
+UIA client HRESULT=0x0
+[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)
+UIA diagnose child launched pid=36572 host_pid=42872 launch_ms=13435955921161
+WM_GETOBJECT root wparam=0xe4abe30e result=0x10000 lasterror=0 retired=0
+WM_GETOBJECT root wparam=0x0 result=0x10000 lasterror=0 retired=0
+[probe-hwnd] pid=36572 hwnd=00000000008C114E win32_owner=42872 expected_host=42872
+[probe-hwnd] CoCreateInstance hr=0x00000000
+[probe-hwnd] ElementFromHandle hr=0x00000000 start_ms=13435955921188 end_ms=13435955921253
+[probe-hwnd] UIA ProcessId hr=0x00000000 pid=42872
+[probe-hwnd] GetRootElement (after, separate) hr=0x00000000
+[probe-hwnd] exit=0
+UIA diagnose child pid=36572 poll_failed=0 poll_error=0 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=0 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0 end_ms=13435955921269
+UIA diagnose child launched pid=464 host_pid=42872 launch_ms=13435955921269
+[probe-root] pid=464
+[probe-root] CoInitializeEx hr=0x00000000
+[probe-root] CoCreateInstance(CUIAutomation) hr=0x00000000
+[probe-root] GetRootElement hr=0x00000000
+[probe-root] exit=0
+UIA diagnose child pid=464 poll_failed=0 poll_error=0 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=0 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0 end_ms=13435955921314
+UIA diagnose child launched pid=45744 host_pid=42872 launch_ms=13435955921314
+[probe-hwnd] pid=45744 hwnd=00000000008C114E win32_owner=42872 expected_host=42873
+[probe-hwnd] host identity mismatch
+UIA diagnose child pid=45744 poll_failed=0 poll_error=0 timed_out=0 terminate_called=0 terminate_ok=0 terminate_error=0 final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=5 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0 end_ms=13435955921346
+[SYNTHETIC] child exits valid_hwnd=0 (expect 0) root=0 (expect 0) wrong_pid=5 (expect 5)
+PASS [SYNTHETIC] diagnostic child path produced expected exits
+[SYNTHETIC] missing-exe module_path_length=119 error=0
+PASS [SYNTHETIC] host module path available before missing-exe check
+[SYNTHETIC] missing-exe attributes=0xffffffff error=2 absent=1
+PASS [SYNTHETIC] missing child executable verified absent (ERROR_FILE_NOT_FOUND) before launch
+UIA diagnose child phase=CreateProcess error=2 pid=0 handle_null=1
+[SYNTHETIC] launch-failure file_absent=1 launched=0 error=2 pid=0 (expect error 2, pid 0)
+PASS [SYNTHETIC] missing child executable fails to launch with not-found and no process
+UIA diagnose child launched pid=23800 host_pid=42872 launch_ms=13435955921346
+[probe-hang] pid=23800
+UIA diagnose child pid=23800 poll_failed=0 poll_error=0 timed_out=1 terminate_called=1 terminate_ok=1 terminate_error=0 final_wait=0 final_wait_error=0 exit_ok=1 exit_error=0 exit=4 signaled_before_close=1 thread_close_ok=1 thread_close_error=0 process_close_ok=1 process_close_error=0 end_ms=13435955922857
+[SYNTHETIC] timeout child pid=23800 timed_out=1 terminate_ok=1 final_wait=0 exit=4 (expect timed_out 1, terminate_ok 1, final_wait 0, exit 4)
+PASS [SYNTHETIC] timed-out child terminated, signaled with exit 4 before its handle was closed
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+Text probe failed
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\run.ps1:44 char:21
++   if($LASTEXITCODE){throw 'Text probe failed'}
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Text probe failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : Text probe failed
+ 
