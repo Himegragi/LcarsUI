@@ -182,7 +182,7 @@ int main(int argc,char** argv){
         TextEngine text;engine=&text;tests(text);
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&wc);
-        Context c;c.open();SetWindowLongPtrW(c.window,GWL_STYLE,GetWindowLongPtrW(c.window,GWL_STYLE)|WS_CLIPCHILDREN);
+        Context c;c.open(interactive);SetWindowLongPtrW(c.window,GWL_STYLE,GetWindowLongPtrW(c.window,GWL_STYLE)|WS_CLIPCHILDREN);
         SetWindowLongPtrW(c.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(text_proc));
         SetWindowTextW(c.window,L"LcarsUI TEXT PROTOTYPE | native input above / HarfBuzz + FreeType + OpenGL preview below");
         auto make=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int x,int y,int w,int h,int id){return CreateWindowW(cls,title,WS_CHILD|WS_VISIBLE|style,x,y,w,h,c.window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),wc.hInstance,nullptr);};
@@ -191,7 +191,7 @@ int main(int argc,char** argv){
         make(L"BUTTON",L"字級 -",BS_PUSHBUTTON,190,52,110,28,102);
         make(L"BUTTON",L"字級 +",BS_PUSHBUTTON,312,52,110,28,103);
         description=make(L"STATIC",L"",0,18,88,890,22,104);
-        SetFocus(editor);SendMessageW(editor,EM_SETSEL,0,4);
+        if(interactive)SetFocus(editor);SendMessageW(editor,EM_SETSEL,0,4);
         const std::wstring fixture=L"繁體中文，設定 ABC 123 office A\u0301";
         SendMessageW(editor,EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(L"測試"));
         require(edit_text().starts_with(L"測試"),"Native selection replacement failed");

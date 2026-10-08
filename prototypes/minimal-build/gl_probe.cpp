@@ -95,8 +95,8 @@ struct Context {
         if (window) { ok = (DestroyWindow(window) != FALSE) && ok; window = nullptr; }
         return ok;
     }
-    void open() {
-        window = CreateWindowExW(0, L"LcarsBuildProbe", L"LcarsUI PROTOTYPE | GL 3.3 core | clipped alpha texture | Esc closes",
+    void open(bool activate=true) {
+        window = CreateWindowExW(activate?0:WS_EX_NOACTIVATE, L"LcarsBuildProbe", L"LcarsUI PROTOTYPE | GL 3.3 core | clipped alpha texture | Esc closes",
             WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 960, 640,
             nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         require(window != nullptr, "CreateWindow failed");
@@ -130,7 +130,7 @@ struct Context {
                   << "GL_VERSION=" << gl.GetString(GL_VERSION) << '\n'
                   << "GLSL=" << gl.GetString(GL_SHADING_LANGUAGE_VERSION) << '\n'
                   << "profile=" << profile << " dpi=" << GetDpiForWindow(window) << '\n';
-        ShowWindow(window, SW_SHOWNORMAL);
+        ShowWindow(window, activate?SW_SHOWNORMAL:SW_SHOWNOACTIVATE);
     }
 };
 
@@ -218,7 +218,7 @@ int main(int argc,char** argv) {
         wc.lpszClassName=L"LcarsBuildProbe"; wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
         require(RegisterClassW(&wc)!=0,"RegisterClass failed");
         for(int cycle=0;cycle<(interactive?1:2);++cycle) {
-            Context c; c.open();
+            Context c; c.open(interactive);
             {
                 Scene scene(c.gl); scene.init();
                 for(int phase=0;phase<2;++phase) {

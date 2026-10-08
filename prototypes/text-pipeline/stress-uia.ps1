@@ -1,4 +1,4 @@
-param([ValidateRange(1,200)][int]$Trials=20,[ValidateSet('none','composition','selection')][string]$Fault='none')
+param([ValidateRange(1,200)][int]$Trials=20,[ValidateSet('none','composition','selection')][string]$Fault='none',[switch]$Concurrency,[switch]$Lifecycle)
 $ErrorActionPreference='Stop'
 & (Join-Path $PSScriptRoot 'run.ps1') -CrossProcess -BuildOnly
 $executable=Join-Path $PSScriptRoot 'build/clang/editor_cross_host.exe'
@@ -13,6 +13,8 @@ for($trial=1;$trial -le $Trials;$trial++){
   try {
     $arguments=@('--cross-process','--trace-state')
     if($Fault -ne 'none'){$arguments+="--inject-test-$Fault"}
+    if($Concurrency){$arguments+='--concurrent'}
+    if($Lifecycle){$arguments+='--lifecycle'}
     # Windows PowerShell treats native stderr as ErrorRecord. Capture it first,
     # then use the process exit code so failures still get a summary and path.
     $savedPreference=$ErrorActionPreference

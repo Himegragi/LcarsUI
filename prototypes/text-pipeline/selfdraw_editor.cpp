@@ -45,7 +45,7 @@ static std::wstring wide(const std::u16string& s){return {s.begin(),s.end()};}
 struct Bridge {
     std::mutex mutex;
     HWND window{};
-    bool alive=true,focused=false,composing=false;
+    bool alive=true,focused=false,composing=false,disconnecting=false;
     std::wstring value;
     std::wstring visible;
     std::map<unsigned,double> positions;
@@ -95,7 +95,10 @@ public:
     }
     HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(IRawElementProviderSimple** out) override {
         if(!out)return E_POINTER;HWND window;
-        {std::lock_guard lock(bridge->mutex);if(!bridge->alive){*out=nullptr;return UIA_E_ELEMENTNOTAVAILABLE;}window=bridge->window;}
+        // Identity must remain queryable while UiaDisconnectProvider resolves it.
+        // Operational Value/Text calls still reject bridge->alive == false.
+        {std::lock_guard lock(bridge->mutex);if(!bridge->alive&&!bridge->disconnecting){*out=nullptr;return UIA_E_ELEMENTNOTAVAILABLE;}window=bridge->window;}
+        if(!IsWindow(window)){*out=nullptr;return UIA_E_ELEMENTNOTAVAILABLE;}
         return UiaHostProviderFromHwnd(window,out);
     }
     HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
@@ -109,13 +112,13 @@ public:
         if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
         *out=SysAllocStringLen(bridge->value.data(),static_cast<UINT>(bridge->value.size()));return *out?S_OK:E_OUTOFMEMORY;
     }
-    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override{if(!out)return E_POINTER;*out=FALSE;return S_OK;}
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override{if(!out)return E_POINTER;*out=FALSE;std::lock_guard lock(bridge->mutex);return bridge->alive?S_OK:UIA_E_ELEMENTNOTAVAILABLE;}
     HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override;
     HRESULT STDMETHODCALLTYPE GetVisibleRanges(SAFEARRAY** out) override;
     HRESULT STDMETHODCALLTYPE RangeFromChild(IRawElementProviderSimple*,ITextRangeProvider** out) override{if(!out)return E_POINTER;*out=nullptr;return E_INVALIDARG;}
     HRESULT STDMETHODCALLTYPE RangeFromPoint(UiaPoint point,ITextRangeProvider** out) override;
     HRESULT STDMETHODCALLTYPE get_DocumentRange(ITextRangeProvider** out) override;
-    HRESULT STDMETHODCALLTYPE get_SupportedTextSelection(SupportedTextSelection* out) override{if(!out)return E_POINTER;*out=SupportedTextSelection_Single;return S_OK;}
+    HRESULT STDMETHODCALLTYPE get_SupportedTextSelection(SupportedTextSelection* out) override{if(!out)return E_POINTER;std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;*out=SupportedTextSelection_Single;return S_OK;}
 };
 #include "text_range_provider.hpp"
 struct EditorHost {
@@ -124,6 +127,8 @@ struct EditorHost {
     editing::Model model;
     std::shared_ptr<Bridge> bridge=std::make_shared<Bridge>();
     ValueProvider* provider{};
+    bool retired=false;
+    HRESULT disconnect_result=E_UNEXPECTED;
     bool dirty=true;
     int size_dip=24;
     float horizontal_scroll=0;
@@ -135,10 +140,13 @@ struct EditorHost {
         bridge->window=c.window;provider=new ValueProvider(bridge);
         model.state.text=u"自繪文字 ABC";model.select(0,(unsigned)model.state.text.size());
     }
-    ~EditorHost(){
-        {std::lock_guard lock(bridge->mutex);bridge->alive=false;}
-        UiaDisconnectProvider(provider);provider->Release();
+    void retire(){
+        if(retired)return;retired=true;
+        {std::lock_guard lock(bridge->mutex);bridge->alive=false;bridge->disconnecting=true;}
+        disconnect_result=UiaDisconnectProvider(provider);
+        {std::lock_guard lock(bridge->mutex);bridge->disconnecting=false;}
     }
+    ~EditorHost(){retire();provider->Release();}
     int pixels() const{return MulDiv(size_dip,static_cast<int>(GetDpiForWindow(context.window)),96);}
     Layout layout(){return engine.shape(wide(model.visible()),pixels());}
     float x_at(const Layout& l,unsigned offset){auto it=l.carets.upper_bound(offset);return it==l.carets.begin()?0:std::prev(it)->second;}
@@ -199,7 +207,7 @@ struct EditorHost {
         if(model.begin()==model.end()){auto anchor=model.state.caret;move(back?-1:1,true);model.state.anchor=anchor;}
         if(model.begin()!=model.end())model.replace(u"");
     }
-    void draw(Scene& scene){
+    void draw(Scene& scene,bool present=true){
         RECT r{};GetClientRect(context.window,&r);if(r.right<=0||r.bottom<=0)return;
         auto l=layout();for(auto& g:l.glyphs)g.x-=horizontal_scroll;for(auto& [offset,x]:l.carets)x-=horizontal_scroll;
         unsigned begin=model.begin(),end=model.composing?model.begin()+(unsigned)model.preedit.size():model.end();
@@ -210,20 +218,24 @@ struct EditorHost {
         gl.Viewport(0,0,r.right,r.bottom);gl.Disable(GL_SCISSOR_TEST);gl.Disable(GL_BLEND);
         gl.BindTexture(GL_TEXTURE_2D,scene.texture);gl.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,r.right,r.bottom,0,GL_RGBA,GL_UNSIGNED_BYTE,image.data());
         gl.UseProgram(scene.program);gl.BindVertexArray(scene.vao);gl.DrawArrays(GL_TRIANGLES,0,3);
-        require(gl.GetError()==GL_NO_ERROR,"Selfdraw GL error");SwapBuffers(context.dc);dirty=false;
+        require(gl.GetError()==GL_NO_ERROR,"Selfdraw GL error");if(present)SwapBuffers(context.dc);dirty=false;
     }
 };
 static EditorHost* host=nullptr;
 static bool allow_test_fixture=false;
+static bool test_close_requested=false;
 struct HostBinding {
     EditorHost& editor;
+    bool attached=true;
     explicit HostBinding(EditorHost& e):editor(e){host=&e;}
-    ~HostBinding(){
+    void detach(){
+        if(!attached)return;attached=false;
         // Runs before EditorHost destruction, including exception unwinding.
         // Context teardown may synchronously send focus/IME/window messages.
         host=nullptr;
         SetWindowLongPtrW(editor.context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(wnd_proc));
     }
+    ~HostBinding(){detach();}
 };
 static bool copy_selection(HWND window,const editing::Model& model){
     if(model.begin()==model.end()||!OpenClipboard(window))return false;
@@ -247,6 +259,7 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     struct ExitTrace{bool enabled;UINT message;const editing::Model& model;~ExitTrace(){if(enabled)trace_state("exit",message,0,model);}} exit_trace{relevant,message,e.model};
     if(relevant)trace_state("enter",message,message==WM_CHAR?0:static_cast<unsigned long long>(w),e.model);
     switch(message){
+    case WM_APP+26:if(!allow_test_fixture)return 0;test_close_requested=true;return 1;
     case select_range_message:{
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         auto range=reinterpret_cast<const RangeSelection*>(l);if(!range)return E_INVALIDARG;
@@ -265,7 +278,7 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
         if(w){e.model.start();e.model.update(u"測試",2);}else e.model.cancel();
         e.sync();return 1;
     case WM_PAINT:ValidateRect(h,nullptr);e.dirty=true;return 0;
-    case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return UiaReturnRawElementProvider(h,w,l,e.provider);break;
+    case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return e.retired?0:UiaReturnRawElementProvider(h,w,l,e.provider);break;
     case set_value_message:
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         if(std::wstring(reinterpret_cast<const wchar_t*>(l)).find_first_of(L"\r\n\t")!=std::wstring::npos)return E_INVALIDARG;
@@ -404,18 +417,29 @@ static void uia_roundtrip(EditorHost& e){
     check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");
     check_edit(e.model.state.text==u"UIA 設定 ABC","UIA mutation reaches common editing model");
 }
-static void cross_process_roundtrip(EditorHost& e){
+static void cross_process_roundtrip(EditorHost& e,bool concurrent=false,HostBinding* closing=nullptr){
+    const bool require_inactive=(GetWindowLongPtrW(e.context.window,GWL_EXSTYLE)&WS_EX_NOACTIVATE)!=0;
     wchar_t filename[32768]{};DWORD length=GetModuleFileNameW(nullptr,filename,32768);
     require(length>0&&length<32768,"Executable path unavailable");
     std::wstring executable(filename,length);executable.resize(executable.find_last_of(L"\\/")+1);executable+=L"uia_external_client.exe";
     std::wstring command=L"\""+executable+L"\" "+std::to_wstring(reinterpret_cast<uintptr_t>(e.context.window))+L" "+std::to_wstring(GetCurrentProcessId());
+    if(concurrent)command+=L" --concurrent";
+    if(closing)command+=L" --lifecycle";
     STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION process{};
     require(CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process),"Cannot launch independent UIA test client");
     CloseHandle(process.hThread);
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(40);
-    bool timeout=false;
+    bool timeout=false,release_ok=true,activated=false;
     while(WaitForSingleObject(process.hProcess,0)==WAIT_TIMEOUT){
         MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+        if(e.context.window&&GetForegroundWindow()==e.context.window)activated=true;
+        if(closing&&test_close_requested&&e.context.window){
+            closing->detach();e.retire();
+            BSTR retired_value{};HRESULT raw_value=e.provider->get_Value(&retired_value);SysFreeString(retired_value);
+            std::cout<<"disconnect_hresult=0x"<<std::hex<<(unsigned long)e.disconnect_result<<" raw_retired_value=0x"<<(unsigned long)raw_value<<std::dec<<'\n';
+            release_ok=raw_value==UIA_E_ELEMENTNOTAVAILABLE&&e.provider->SetValue(L"must not write after retirement")==UIA_E_ELEMENTNOTAVAILABLE;
+            DestroyCaret();release_ok=e.context.release()&&release_ok;
+        }
         if(std::chrono::steady_clock::now()>deadline){timeout=true;TerminateProcess(process.hProcess,3);WaitForSingleObject(process.hProcess,2000);break;}
         Sleep(1);
     }
@@ -423,28 +447,33 @@ static void cross_process_roundtrip(EditorHost& e){
     std::ifstream transcript("uia-cross-process.log");std::cout<<transcript.rdbuf();
     require(!timeout,"Cross-process UIA client timeout");
     check_edit(code==0,"independent process UIA tests");
+    if(require_inactive)check_edit(!activated,"automated test did not become foreground during UIA requests");
+    if(closing){check_edit(release_ok&&e.retired&&SUCCEEDED(e.disconnect_result)&&!e.context.window,"provider disconnected and HWND destroyed before client releases interfaces");return;}
     check_edit(e.model.state.text==u"跨程序 UIA 456"&&!e.model.composing,"cross-process writes and fixture cancellation reach model");
     check_edit(e.model.begin()==0&&e.model.end()==1,"external TextRange selection reaches renderer editing model");
 }
 int main(int argc,char** argv){
     try{
         std::cout<<std::unitbuf;
-        bool interactive=false;
+        bool interactive=false,concurrent=false,lifecycle=false;
         for(int i=1;i<argc;++i){
             const std::string arg=argv[i];
             if(arg=="--interactive")interactive=true;if(arg=="--cross-process")allow_test_fixture=true;if(arg=="--trace-state")save_success_trace=true;
             if(arg=="--inject-test-composition")inject_test_composition=true;if(arg=="--inject-test-selection")inject_test_selection=true;
+            if(arg=="--concurrent")concurrent=true;if(arg=="--lifecycle")lifecycle=true;
         }
         require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
+        require(!lifecycle||(!interactive&&allow_test_fixture),"Lifecycle test requires noninteractive cross-process mode");
         model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_IBEAM);RegisterClassW(&wc);
-        TextEngine text;Context context;context.open();
+        TextEngine text;Context context;context.open(interactive);
+        check_edit(interactive||GetForegroundWindow()!=context.window,"automated window does not take foreground focus");
         {
             EditorHost e(context,text);HostBinding binding(e);
             SetWindowLongPtrW(context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(edit_proc));
-            SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
+            if(interactive)SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
             check_edit(GetWindow(context.window,GW_CHILD)==nullptr,"custom HWND has no native Edit child");
             SendMessageW(context.window,WM_CHAR,L'A',0);
             check_edit(e.model.state.text==u"A","WM_CHAR edits selfdraw model");
@@ -469,34 +498,35 @@ int main(int argc,char** argv){
             uia_roundtrip(e);
             if(allow_test_fixture){
                 if(inject_test_composition){e.model.start();e.model.update(u"測",1);trace_state("injected-composition",WM_IME_STARTCOMPOSITION,0,e.model);e.sync();}
-                cross_process_roundtrip(e);
-                Scene witness(context.gl);witness.init();e.draw(witness);context.gl.Finish();
+                cross_process_roundtrip(e,concurrent);
+                Scene witness(context.gl);witness.init();e.draw(witness,false);context.gl.Finish();
                 double left{},top{},width{},height{};std::ifstream bounds("uia-text-rectangle.tsv");bounds>>left>>top>>width>>height;
                 require(bool(bounds)&&width>4&&height>4,"UIA witness rectangle unavailable");
                 POINT sample{(LONG)std::round(left+2),(LONG)std::round(top+height-3)};ScreenToClient(context.window,&sample);
                 RECT client{};GetClientRect(context.window,&client);
-                auto read_buffer=reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"));read_buffer(GL_FRONT);
+                auto read_buffer=reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"));read_buffer(GL_BACK);
                 std::array<unsigned char,4> pixel{};
                 context.gl.ReadPixels(sample.x,client.bottom-1-sample.y,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
                 std::cout<<"UIA rectangle render sample="<<int(pixel[0])<<','<<int(pixel[1])<<','<<int(pixel[2])<<'\n';
                 check_edit(pixel[0]==42&&pixel[1]==78&&pixel[2]==123,"external TextRange rectangle lands inside rendered selection highlight");
-                capture(context.gl,client.right,client.bottom,"textrange-selection.bmp");read_buffer(GL_BACK);
+                capture(context.gl,client.right,client.bottom,"textrange-selection.bmp");SwapBuffers(context.dc);
             }
             e.model.set(u"自繪輸入：繁體中文 ABC");e.model.select((unsigned)e.model.state.text.size(),(unsigned)e.model.state.text.size());e.size_dip=24;e.sync();
-            Scene scene(context.gl);scene.init();e.draw(scene);
-            // Draw once more to back buffer for evidence, without changing model.
-            e.dirty=true;e.draw(scene);
+            {
+            Scene scene(context.gl);scene.init();e.draw(scene,false);
             context.gl.Finish();
             auto read_buffer=reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"));
-            read_buffer(GL_FRONT);RECT r{};GetClientRect(context.window,&r);capture(context.gl,r.right,r.bottom,"selfdraw-editor.bmp");read_buffer(GL_BACK);
+            read_buffer(GL_BACK);RECT r{};GetClientRect(context.window,&r);capture(context.gl,r.right,r.bottom,"selfdraw-editor.bmp");SwapBuffers(context.dc);
             while(interactive&&!quitting){
                 MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
                 if(e.dirty)e.draw(scene);Sleep(10);
             }
+            }
+            if(lifecycle)cross_process_roundtrip(e,false,&binding);
             std::cout<<"Observed real WM_IME_COMPOSITION messages="<<e.composition_messages<<" result messages="<<e.composition_results<<'\n';
             host=nullptr;DestroyCaret();
         }
-        check_edit(host==nullptr&&GetWindowLongPtrW(context.window,GWLP_WNDPROC)==reinterpret_cast<LONG_PTR>(wnd_proc),"window callbacks detached before model teardown");
+        check_edit(host==nullptr&&(!context.window||GetWindowLongPtrW(context.window,GWLP_WNDPROC)==reinterpret_cast<LONG_PTR>(wnd_proc)),"window callbacks detached before model teardown");
         require(context.release(),"WGL cleanup failed");CoUninitialize();
         std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
         if(save_success_trace)save_state_trace();return 0;

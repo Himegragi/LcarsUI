@@ -1,0 +1,18 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/4] Building CXX object CMakeFiles\uia_external_client.dir\uia_external_client.cpp.obj
+[2/4] Linking CXX executable uia_external_client.exe
+[3/4] Building CXX object CMakeFiles\editor_cross_host.dir\selfdraw_editor.cpp.obj
+[4/4] Linking CXX executable editor_cross_host.exe
+trial=1 exit=0 artifacts=C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\stress\20261008-224532-0634f3df\trial-001
+trial=2 exit=0 artifacts=C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\stress\20261008-224532-0634f3df\trial-002
+trial=3 exit=0 artifacts=C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\stress\20261008-224532-0634f3df\trial-003
+PASS 3 runs. Artifacts: C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\stress\20261008-224532-0634f3df
