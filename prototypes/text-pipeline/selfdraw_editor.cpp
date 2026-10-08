@@ -298,7 +298,18 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     }
     case WM_APP+21:
         if(!allow_test_fixture)return 0;
-        if(w){e.model.start();e.model.update(u"測試",2);}else e.model.cancel();
+        // Test-only composition fixture; uses the same model calls as the IMM handlers, no OS IME.
+        // 0 cancel/end, 1 start+fixed preedit, 2 start empty, 3 update preedit table[l], 4 commit preedit, 5 undo, 6 redo.
+        switch(w){
+        case 0:e.model.cancel();break;
+        case 1:e.model.start();e.model.update(u"測試",2);break;
+        case 2:e.model.start();break;
+        case 3:{static const std::u16string table[]={u"ㄘ",u"測",u"測試"};if(l<0||l>2)return 0;e.model.update(table[l],(unsigned)table[l].size());break;}
+        case 4:if(!e.model.composing)return 0;e.model.commit(e.model.preedit);break;
+        case 5:if(!e.model.undo())return 0;break;
+        case 6:if(!e.model.redo())return 0;break;
+        default:return 0;
+        }
         e.sync();return 1;
     case WM_PAINT:ValidateRect(h,nullptr);e.dirty=true;return 0;
     case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return e.retired?0:UiaReturnRawElementProvider(h,w,l,e.provider);break;

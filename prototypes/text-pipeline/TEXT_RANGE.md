@@ -89,6 +89,30 @@ client 新增 `geometry_changes`：保留第一個字的範圍，依序做視窗
 
 尚未驗證：實際 IME、Narrator、跨螢幕 DPI 變更、Windows 10；互動視窗的窄寬度仍受原生最小尺寸限制。
 
+## 組字交易：測試用模型 fixture（不是 OS IME）
+
+`WM_APP+21` 擴充成只在測試模式可用的操作碼，呼叫與 IMM 處理函式相同的 `model.start/update/commit/cancel/undo/redo` 與 `sync`：
+0 取消／結束、1 原本的固定 preedit、2 開始空 preedit、3 換成固定表中的 preedit、4 提交目前 preedit、5 undo、6 redo。
+跨程序傳不了字串指標，所以 preedit 用固定表索引。**這不經過 IMM、候選窗或真實輸入法，不能證明真實 IME 整合。**
+
+client 新增 `composition_transaction`（文字「甲乙丙丁」，先選取 1:3），實測都通過：
+- 開始空 preedit：Value 不變；呈現的 DocumentRange 變成「甲丁」；選取收合在 1:1；舊範圍因呈現文字改變而過期。
+- 組字中外部 SetValue 與 TextRange Select 都回 `UIA_E_INVALIDOPERATION`，Value、呈現文字、選取與 revision 都不變。
+- preedit 更新：在空→「ㄘ」→「測試」每一步之前各抓一個範圍，每次可見文字改變都讓剛抓的範圍過期；Value 仍是原文，選取覆蓋 preedit 1:3。
+- 取消：取消前抓的範圍過期；還原原文與選取 1:3；重複取消沒有作用，且取消後抓的範圍仍有效。
+- 提交：`sync` 只在呈現文字改變時增加 revision。提交前（「甲測試丁」preedit）與提交後（「甲測試丁」已確定）的呈現文字相同，
+  所以**提交不會讓範圍過期**：提交前抓的範圍仍有效且文字相同；選取從 1:3 變成游標 3:3。Value 只取代一次。
+  沒有組字時 fixture 拒絕提交；提交後重複結束／取消不會重複提交、還原或改變 revision。
+- 一次 undo 還原整個交易（回到原文與選取 1:3，不是中間 preedit）；redo 重新套用；組字中 undo 只取消 preedit。
+- 事件：交易開始時另外訂閱一個只用於此交易的處理器，並記錄 Value 事件的內容。
+  - 有等到內容為已確定文字「甲測試丁」的 Value 事件。這個字串在測試中只會由提交產生，所以可歸因於提交。
+  - 提交前等待300毫秒，沒有看到內容為 preedit 呈現文字（「甲丁」「甲ㄘ丁」「甲測試丁」）的 Value 事件。這只是有時限的觀察，不能排除更晚送達的事件。
+  - TextChanged 與 TextSelectionChanged 只確認交易期間有收到（實測各6次），**不歸因到特定步驟**；尤其不宣稱提交本身發出 TextChanged。
+- 更正：上一版文件宣稱「提交收到 TextChanged」與「preedit／取消期間沒有 Value 事件」，所用的全域計數可能被較早的事件滿足，證據不足，已改為上述說法。
+
+沒有發現缺陷，所以沒有紅燈修正。證據：`evidence/composition-fixture-corrected-client.log`、`composition-fixture-verification.log`（舊的 `composition-fixture-client.log` 為更正前版本）。
+限制：沒有測真實 IME 的 GCS 旗標組合、重轉換、候選窗位置、焦點切換造成的取消，也沒有測 Narrator 對組字的朗讀。
+
 ## 不穩定結果：尚未確定根因
 
 後續已追加20次追蹤、受控故障與例外清理修正，見 [UIA 重跑與清理回歸](UIA_STRESS.md)；原偶發根因仍未定論。

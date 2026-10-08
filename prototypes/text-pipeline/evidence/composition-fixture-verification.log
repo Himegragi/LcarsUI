@@ -1,0 +1,23 @@
+2026-10-09 composition transaction via test-only model fixture (not OS IME / IMM / candidate window)
+Corrected version. Source: evidence/composition-fixture-corrected-client.log
+(evidence/composition-fixture-client.log is the earlier run whose event claims were overstated.)
+
+Fixture text 甲乙丙丁, selection 1:3:
+  state=before          value_length=4 presented_length=4 selection=1:3
+  state=empty           value_length=4 presented_length=2 selection=1:1   retained ranges stale
+  state=rejected        value_length=4 presented_length=2 selection=1:1   write/select 0x80131509, revision kept
+  empty -> ㄘ -> 測試: each range taken before a visible change is stale afterwards
+  state=update          value_length=4 presented_length=4 selection=1:3
+  cancel: range held over preedit stale; state=cancel selection=1:3; repeat cancel keeps revision
+  value_payloads_before_commit=0 presented_only_payload_seen=0   (bounded 300 ms observation only)
+  state=final-preedit   selection=1:3
+  commit: presented text identical, final-preedit range still valid with text 甲測試丁 (no revision bump)
+  state=commit          selection=3:3; Value event with payload 甲測試丁 received
+  state=end-after-commit selection=3:3; range still valid
+  transaction_text_events=6 transaction_selection_events=6   (transaction-wide; phase not attributed)
+  undo -> selection 1:3, redo -> 3:3, undo while composing cancels preedit only
+
+Commands (workspace root):
+  run.ps1 -CrossProcess   PASS, final witness 42,78,123
+Earlier this round (before correction, unchanged host code): -Concurrency -Lifecycle -TraceState PASS; verify-uia-faults.ps1 PASS.
+No red result: no product defect found.

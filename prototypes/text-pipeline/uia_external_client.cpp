@@ -14,6 +14,8 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <mutex>
+#include <algorithm>
 
 using Microsoft::WRL::ComPtr;
 static std::ofstream log_file;
@@ -312,6 +314,145 @@ static void range_contract_edges(IUIAutomation* automation,IUIAutomationElement*
     log_file<<"stale_edge_failures="<<failures<<std::endl;
     check(failures==0,"every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE");
 }
+// Selection offsets in UTF-16 units, measured with a fresh document range of the current revision.
+static std::pair<int,int> selection_offsets(IUIAutomationTextPattern* pattern){
+    ComPtr<IUIAutomationTextRangeArray> selection;success(pattern->GetSelection(&selection),"read composition selection");
+    int count{};success(selection->get_Length(&count),"count composition selection");check(count==1,"composition keeps one selection");
+    ComPtr<IUIAutomationTextRange> selected,document,head;success(selection->GetElement(0,&selected),"get composition selection");
+    success(pattern->get_DocumentRange(&document),"get composition document");success(document->Clone(&head),"clone composition head");
+    success(head->MoveEndpointByRange(TextPatternRangeEndpoint_End,selected.Get(),TextPatternRangeEndpoint_Start),"measure selection start");
+    int start=static_cast<int>(range_text(head.Get()).size());
+    return {start,start+static_cast<int>(range_text(selected.Get()).size())};
+}
+// Composition transaction through the host's test-only model fixture (WM_APP+21). This exercises
+// the editing model, sync and UIA snapshot; it is not an OS IME, candidate window or IMM test.
+// Handler subscribed only for the composition transaction. Value events keep their payloads so a
+// specific committed string can be recognized; Text/Selection events are only counted for the whole transaction.
+class TransactionEvents final:public IUIAutomationPropertyChangedEventHandler,public IUIAutomationEventHandler {
+    std::atomic<ULONG> references{1};
+    std::mutex mutex;std::vector<std::wstring> values;
+public:
+    std::atomic<unsigned> text_events{0},selection_events{0};
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id,void** out)override{
+        if(!out)return E_POINTER;*out=nullptr;
+        if(id==__uuidof(IUnknown)||id==__uuidof(IUIAutomationPropertyChangedEventHandler))*out=static_cast<IUIAutomationPropertyChangedEventHandler*>(this);
+        else if(id==__uuidof(IUIAutomationEventHandler))*out=static_cast<IUIAutomationEventHandler*>(this);
+        else return E_NOINTERFACE;
+        AddRef();return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef()override{return ++references;}
+    ULONG STDMETHODCALLTYPE Release()override{auto n=--references;if(!n)delete this;return n;}
+    HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*,PROPERTYID id,VARIANT v)override{
+        if(id==UIA_ValueValuePropertyId){std::lock_guard lock(mutex);values.push_back(v.vt==VT_BSTR&&v.bstrVal?std::wstring(v.bstrVal):L"<non-string>");}
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*,EVENTID id)override{
+        if(id==UIA_Text_TextChangedEventId)++text_events;
+        if(id==UIA_Text_TextSelectionChangedEventId)++selection_events;
+        return S_OK;
+    }
+    bool seen(const std::wstring& payload){std::lock_guard lock(mutex);return std::find(values.begin(),values.end(),payload)!=values.end();}
+    bool wait_for(const std::wstring& payload){
+        auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(!seen(payload)&&std::chrono::steady_clock::now()<deadline)Sleep(10);
+        return seen(payload);
+    }
+    std::vector<std::wstring> snapshot(){std::lock_guard lock(mutex);return values;}
+};
+static void composition_transaction(IUIAutomation* automation,IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for composition");success(raw.As(&pattern),"query Text pattern for composition");
+    auto fixture=[&](WPARAM op,LPARAM arg,const char* name){LRESULT r=SendMessageW(window,WM_APP+21,op,arg);log_file<<"composition op="<<op<<" arg="<<arg<<" result="<<r<<std::endl;check(r==1,name);};
+    auto document_text=[&]{ComPtr<IUIAutomationTextRange> d;success(pattern->get_DocumentRange(&d),"get presented document");return range_text(d.Get());};
+    auto stale=[&](IUIAutomationTextRange* r){BSTR s{};HRESULT hr=r->GetText(-1,&s);SysFreeString(s);return hr==UIA_E_ELEMENTNOTAVAILABLE;};
+    auto state=[&](const char* name){auto [a,z]=selection_offsets(pattern.Get());auto committed=current_value(value).size(),presented=document_text().size();
+        log_file<<"composition state="<<name<<" value_length="<<committed<<" presented_length="<<presented<<" selection="<<a<<':'<<z<<std::endl;return std::pair{a,z};};
+    const std::wstring original=L"甲乙丙丁";
+    success(write_value(value,original),"set composition fixture text");
+    ComPtr<IUIAutomationTextRange> document,middle;int moved{};
+    success(pattern->get_DocumentRange(&document),"get composition base document");success(document->Clone(&middle),"clone composition selection");
+    success(middle->Move(TextUnit_Character,1,&moved),"move to second character");
+    success(middle->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend over two characters");
+    success(middle->Select(),"select composition target");
+    check(state("before")==std::pair{1,3}&&range_text(middle.Get())==L"乙丙","composition target selection is 1:3");
+
+    // Transaction-scoped subscription, added after the fixture is set up.
+    ComPtr<TransactionEvents> events;events.Attach(new TransactionEvents);PROPERTYID property=UIA_ValueValuePropertyId;
+    success(automation->AddPropertyChangedEventHandlerNativeArray(element,TreeScope_Element,nullptr,events.Get(),&property,1),"subscribe transaction Value events");
+    success(automation->AddAutomationEventHandler(UIA_Text_TextChangedEventId,element,TreeScope_Element,nullptr,events.Get()),"subscribe transaction TextChanged");
+    success(automation->AddAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,TreeScope_Element,nullptr,events.Get()),"subscribe transaction TextSelectionChanged");
+    auto presented_range=[&]{ComPtr<IUIAutomationTextRange> d;success(pattern->get_DocumentRange(&d),"retain presented range");return d;};
+
+    // Start with an empty preedit: the selected text disappears from the presentation only.
+    fixture(2,0,"start empty composition fixture");
+    check(current_value(value)==original,"empty preedit keeps committed Value");
+    check(document_text()==L"甲丁","empty preedit removes selection from presented text");
+    check(state("empty")==std::pair{1,1},"empty preedit selection collapses at composition start");
+    check(stale(document.Get())&&stale(middle.Get()),"presented-text change invalidates retained ranges");
+
+    // External mutations are rejected without changing presentation or composition.
+    ComPtr<IUIAutomationTextRange> fresh,first;success(pattern->get_DocumentRange(&fresh),"get composing document");
+    success(fresh->Clone(&first),"clone composing range");success(first->MoveEndpointByRange(TextPatternRangeEndpoint_End,fresh.Get(),TextPatternRangeEndpoint_Start),"collapse composing range");
+    success(first->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend composing range");
+    HRESULT write=write_value(value,L"不可寫入"),select=first->Select();
+    log_file<<"composition write=0x"<<std::hex<<(unsigned long)write<<" select=0x"<<(unsigned long)select<<std::dec<<std::endl;
+    check(write==UIA_E_INVALIDOPERATION&&select==UIA_E_INVALIDOPERATION,"Value write and TextRange Select rejected while composing");
+    check(current_value(value)==original&&document_text()==L"甲丁"&&state("rejected")==std::pair{1,1},"rejected operations leave composition unchanged");
+    check(!stale(fresh.Get()),"rejected operations do not change presented revision");
+
+    // Each visible preedit change invalidates the range acquired just before it.
+    fixture(3,0,"update preedit to one character");
+    check(stale(fresh.Get()),"first preedit update invalidates the empty-preedit range");
+    auto after_one=presented_range();check(range_text(after_one.Get())==L"甲ㄘ丁","one-character preedit is presented");
+    fixture(3,2,"update preedit to two characters");
+    check(stale(after_one.Get()),"second preedit update invalidates the one-character range");
+    check(current_value(value)==original&&document_text()==L"甲測試丁","preedit update changes only presentation");
+    check(state("update")==std::pair{1,3},"selection covers preedit span");
+
+    // Cancel restores original content and selection; repeated cancel is harmless.
+    auto before_cancel=presented_range();
+    fixture(0,0,"cancel composition fixture");
+    check(stale(before_cancel.Get()),"cancel invalidates the range held over the preedit");
+    check(current_value(value)==original&&document_text()==original,"cancel restores presented text");
+    check(state("cancel")==std::pair{1,3},"cancel restores original selection");
+    auto after_cancel=presented_range();
+    fixture(0,0,"repeat cancel fixture");
+    check(!stale(after_cancel.Get())&&current_value(value)==original&&state("cancel-again")==std::pair{1,3},"repeated cancel is a no-op and keeps revision");
+
+    // Commit replaces the selection once. The presented text before and after commit is identical, so
+    // sync does not bump the revision: the range held over the final preedit stays valid.
+    fixture(2,0,"restart composition");fixture(3,2,"update restarted preedit");
+    const std::wstring committed=L"甲測試丁";
+    // Bounded observation only (late delivery cannot be excluded): no Value payload carried presented-only text.
+    Sleep(300);
+    bool leaked=events->seen(L"甲丁")||events->seen(L"甲ㄘ丁")||events->seen(committed);
+    log_file<<"composition value_payloads_before_commit="<<events->snapshot().size()<<" presented_only_payload_seen="<<leaked<<std::endl;
+    check(!leaked,"no preedit-only Value payload observed before commit (bounded 300 ms observation)");
+    auto final_preedit=presented_range();
+    check(state("final-preedit")==std::pair{1,3},"final preedit selection covers preedit");
+    fixture(4,0,"commit preedit");
+    check(current_value(value)==committed&&document_text()==committed,"commit replaces selection once");
+    check(!stale(final_preedit.Get())&&range_text(final_preedit.Get())==committed,"identical presentation keeps final preedit range valid after commit");
+    check(state("commit")==std::pair{3,3},"commit moves selection to caret after inserted text");
+    check(events->wait_for(committed),"Value event carrying the committed text is received");
+    check(SendMessageW(window,WM_APP+21,4,0)==0,"commit without composition is refused by fixture");
+    fixture(0,0,"end after commit");fixture(0,0,"repeat end after commit");
+    check(!stale(final_preedit.Get())&&current_value(value)==committed&&document_text()==committed&&state("end-after-commit")==std::pair{3,3},"end/cancel after commit does not duplicate, revert or change revision");
+    log_file<<"composition transaction_text_events="<<events->text_events<<" transaction_selection_events="<<events->selection_events<<std::endl;
+    check(events->text_events>0&&events->selection_events>0,"TextChanged and TextSelectionChanged received during the transaction (phase not attributed)");
+
+    // One undo reverts the whole transaction (not intermediate preedits); redo reapplies it.
+    fixture(5,0,"undo composition transaction");
+    check(current_value(value)==original&&state("undo")==std::pair{1,3},"undo restores text and selection before composition");
+    fixture(6,0,"redo composition transaction");
+    check(current_value(value)==committed&&state("redo")==std::pair{3,3},"redo reapplies committed composition");
+    // Undo while composing only cancels the preedit.
+    fixture(2,0,"start composition before undo");fixture(3,1,"preedit before undo");fixture(5,0,"undo during composition");
+    check(current_value(value)==committed&&document_text()==committed&&state("undo-composing")==std::pair{3,3},"undo during composition cancels preedit only");
+    success(automation->RemovePropertyChangedEventHandler(element,events.Get()),"unsubscribe transaction Value events");
+    success(automation->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId,element,events.Get()),"unsubscribe transaction TextChanged");
+    success(automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,events.Get()),"unsubscribe transaction TextSelectionChanged");
+}
 static std::vector<double> rects(IUIAutomationTextRange* range){
     SAFEARRAY* array{};success(range->GetBoundingRectangles(&array),"get bounding rectangles for geometry");
     LONG lower{},upper{};SafeArrayGetLBound(array,1,&lower);SafeArrayGetUBound(array,1,&upper);
@@ -570,6 +711,7 @@ int main(int argc,char** argv){
             if(concurrent)concurrent_reads(window,pattern.Get());
             text_ranges(element.Get(),pattern.Get(),window,changes.Get());
             range_contract_edges(automation.Get(),element.Get(),pattern.Get());
+            composition_transaction(automation.Get(),element.Get(),pattern.Get(),window);
             geometry_changes(element.Get(),pattern.Get(),window);
             final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");
