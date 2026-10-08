@@ -1,0 +1,11 @@
+2026-10-09 read-only monitor inventory
+Command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/text-pipeline/run.ps1 -DpiInventory
+(editor_cross_host --dpi-inventory: PMv2 process, one hidden never-shown WS_EX_NOACTIVATE probe per monitor, destroyed)
+
+dpi-inventory process_awareness_pmv2=1
+dpi-inventory monitor=0 device=\\.\DISPLAY2 bounds=1920,0,3840,1080 primary=0 probe_on_monitor=1 window_dpi=120
+dpi-inventory monitor=1 device=\\.\DISPLAY1 bounds=0,0,1920,1080 primary=1 probe_on_monitor=1 window_dpi=144
+dpi-inventory monitors=2 distinct_dpi=2 cross_dpi_transition_testable=1
+
+Bounds are physical pixels as seen by a PMv2 process. window_dpi is GetDpiForWindow on the probe; scale percentages
+were not inferred from resolution.

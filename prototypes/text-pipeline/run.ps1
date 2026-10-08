@@ -1,4 +1,7 @@
-param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot,[switch]$DiagnoseUiaFailure,[switch]$TestUiaFailureDiagnostics)
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot,[switch]$DiagnoseUiaFailure,[switch]$TestUiaFailureDiagnostics,[switch]$DpiInventory,[switch]$ManualDpi)
+# -DpiInventory: read-only monitor/DPI inventory (editor_cross_host --dpi-inventory); runs no GL/UIA tests.
+# -ManualDpi: manual cross-monitor DPI entry (editor_cross_host --interactive --manual-dpi); no scripted checks.
+if(($DpiInventory -or $ManualDpi) -and ($Interactive -or $SelfDraw -or $BuildOnly -or $CrossProcess -or $Concurrency -or $Lifecycle -or $TraceState -or $ProbeUiaRoot -or $DiagnoseUiaFailure -or $TestUiaFailureDiagnostics -or ($DpiInventory -and $ManualDpi))){throw '-DpiInventory/-ManualDpi cannot be combined with other options'}
 # -TestUiaFailureDiagnostics: diagnostic self-test only, implies -CrossProcess. Injects a labelled synthetic failure
 # after a successful roundtrip to exercise the child path; the run is expected to fail (nonzero).
 if($TestUiaFailureDiagnostics){$CrossProcess=$true}
@@ -25,7 +28,7 @@ if($ProbeUiaRoot){
   if($LASTEXITCODE){throw "UIA root probe failed (exit $LASTEXITCODE)"}
   return
 }
-$target=if($CrossProcess -or $Concurrency -or $Lifecycle){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
+$target=if($CrossProcess -or $Concurrency -or $Lifecycle -or $DpiInventory -or $ManualDpi){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
 & $cmake --build $buildDir --target $target --parallel 4
 if($LASTEXITCODE){throw 'Build failed'}
 if($BuildOnly){return}
@@ -33,7 +36,9 @@ Push-Location $buildDir
 try {
   $probeExe=".\$target.exe"
   $probeArgs=@()
-  if($Interactive){$probeArgs+='--interactive'}
+  if($DpiInventory){$probeArgs+='--dpi-inventory'}
+  if($Interactive -or $ManualDpi){$probeArgs+='--interactive'}
+  if($ManualDpi){$probeArgs+='--manual-dpi'}
   if($CrossProcess -or $Concurrency -or $Lifecycle){$probeArgs+='--cross-process'}
   if($TraceState){$probeArgs+='--trace-state'}
   if($Concurrency){$probeArgs+='--concurrent'}

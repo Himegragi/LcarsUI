@@ -17,6 +17,11 @@
 // the same cached layout; this is not a complete Unicode editor or TSF store.
 static constexpr UINT set_value_message=WM_APP+20;
 static constexpr UINT select_range_message=WM_APP+23,scroll_range_message=WM_APP+24;
+// Manual DPI entry (--interactive --manual-dpi): no scripted edits or UIA self-checks; real WM_DPICHANGED telemetry only.
+static bool manual_dpi=false;
+static unsigned dpi_changed_count=0;
+static std::wstring monitor_device(HWND window){MONITORINFOEXW info{};info.cbSize=sizeof(info);
+    return GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&info)?std::wstring(info.szDevice):L"?";}
 struct RangeSelection { unsigned begin,end; };
 struct StateTrace { unsigned long long sequence; DWORD thread; UINT message; unsigned long long detail; bool composing; unsigned anchor,caret; size_t length,preedit_length; const char* stage; };
 static std::mutex trace_mutex;
@@ -152,6 +157,24 @@ struct EditorHost {
     }
     ~EditorHost(){retire();provider->Release();}
     int pixels() const{return MulDiv(size_dip,static_cast<int>(GetDpiForWindow(context.window)),96);}
+    unsigned last_dpi=0;
+    // DPI-only telemetry for real WM_DPICHANGED (manual DPI mode). Records geometry and offsets, never text content.
+    void write_dpi_telemetry(unsigned old_dpi,unsigned message_dpi,const RECT& suggested,std::uint64_t revision_before){
+        if(dpi_changed_count>50)return;  // bounded
+        std::ofstream out("dpi-telemetry.tsv",std::ios::app|std::ios::binary);
+        if(dpi_changed_count==1)out<<"count\told_dpi\tmessage_dpi\twindow_dpi\tdevice\tsuggested\tapplied\tclient_w\tclient_h\tfont_dip\tfont_px\tcaret_rect\tcaret_expected_h\tselection\ttext_units\trevision_before\trevision_after\tcandidate\tline_bounds\n";
+        RECT applied{},client{};GetWindowRect(context.window,&applied);GetClientRect(context.window,&client);
+        GUITHREADINFO gui{};gui.cbSize=sizeof(gui);GetGUIThreadInfo(GetCurrentThreadId(),&gui);
+        RECT bounds{};std::uint64_t revision_after{};{std::lock_guard lock(bridge->mutex);bounds=bridge->bounds;revision_after=bridge->revision;}
+        auto rect=[](const RECT& v){std::ostringstream s;s<<v.left<<','<<v.top<<','<<v.right<<','<<v.bottom;return s.str();};
+        std::string device;for(wchar_t c:monitor_device(context.window))device.push_back(c<128?static_cast<char>(c):'?');
+        out<<dpi_changed_count<<'\t'<<old_dpi<<'\t'<<message_dpi<<'\t'<<GetDpiForWindow(context.window)<<'\t'<<device<<'\t'<<rect(suggested)<<'\t'<<rect(applied)
+           <<'\t'<<client.right<<'\t'<<client.bottom<<'\t'<<size_dip<<'\t'<<pixels()<<'\t'<<(gui.hwndCaret==context.window?rect(gui.rcCaret):std::string("none"))
+           <<'\t'<<pixels()+10<<'\t'<<model.begin()<<':'<<model.end()<<'\t'<<model.state.text.size()<<'\t'<<revision_before<<'\t'<<revision_after
+           <<'\t'<<candidate.x<<','<<candidate.y<<'\t'<<rect(bounds)<<'\n';
+    }
+    int caret_height=0;  // 0 = no system caret owned
+    void create_caret(){caret_height=CreateCaret(context.window,nullptr,2,pixels()+10)?pixels()+10:0;}
     Layout layout(){return engine.shape(wide(model.visible()),pixels());}
     float x_at(const Layout& l,unsigned offset){auto it=l.carets.upper_bound(offset);return it==l.carets.begin()?0:std::prev(it)->second;}
     void sync(bool keep_caret_visible=true) {
@@ -164,6 +187,8 @@ struct EditorHost {
         }
         horizontal_scroll=std::max(0.f,horizontal_scroll);
         candidate={24+static_cast<LONG>(std::round(x-horizontal_scroll)),40+pixels()+10};
+        // The hidden system caret (used for positioning) is recreated when its pixel height changes (DPI or font size).
+        if(caret_height&&caret_height!=pixels()+10){DestroyCaret();create_caret();}
         SetCaretPos(candidate.x,40);
         HIMC imc=ImmGetContext(context.window);candidate_positioned=false;
         if(imc){
@@ -202,6 +227,7 @@ struct EditorHost {
             VariantClear(&before);VariantClear(&after);
         }
         std::wostringstream title;title<<L"LcarsUI 自繪編輯原型 | F2 字型 / F3,F4 字級 | "<<size_dip<<L" DIP | composing="<<model.composing<<L" | IMM messages="<<composition_messages;
+        if(manual_dpi)title<<L" | DPI="<<GetDpiForWindow(context.window)<<L" font="<<size_dip<<L"DIP/"<<pixels()<<L"px | WM_DPICHANGED="<<dpi_changed_count<<L" | "<<monitor_device(context.window);
         SetWindowTextW(context.window,title.str().c_str());dirty=true;
     }
     bool dragging=false;
@@ -340,10 +366,18 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         if(std::wstring(reinterpret_cast<const wchar_t*>(l)).find_first_of(L"\r\n\t")!=std::wstring::npos)return E_INVALIDARG;
         e.pending_high=0;e.model.set(u16(reinterpret_cast<const wchar_t*>(l)));e.sync();return S_OK;
-    case WM_SETFOCUS:CreateCaret(h,nullptr,2,e.pixels()+10);e.sync();UiaRaiseAutomationEvent(e.provider,UIA_AutomationFocusChangedEventId);return 0;
-    case WM_KILLFOCUS:{e.end_drag();e.pending_high=0;auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
+    case WM_SETFOCUS:e.create_caret();e.sync();UiaRaiseAutomationEvent(e.provider,UIA_AutomationFocusChangedEventId);return 0;
+    case WM_KILLFOCUS:{e.end_drag();e.pending_high=0;auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.caret_height=0;e.sync();return 0;}
     case WM_SIZE:case WM_MOVE:e.sync();break;
-    case WM_DPICHANGED:{auto r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);e.sync();return 0;}
+    case WM_DPICHANGED:{
+        auto r=reinterpret_cast<RECT*>(l);const RECT suggested=*r;
+        const unsigned old_dpi=e.last_dpi,new_dpi=LOWORD(w);std::uint64_t revision_before{};
+        {std::lock_guard lock(e.bridge->mutex);revision_before=e.bridge->revision;}
+        SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);e.sync();
+        ++dpi_changed_count;e.last_dpi=GetDpiForWindow(h);
+        if(manual_dpi)e.write_dpi_telemetry(old_dpi,new_dpi,suggested,revision_before);
+        e.sync();return 0;
+    }
     case WM_IME_STARTCOMPOSITION:e.end_drag();e.pending_high=0;e.model.start();e.sync();return 0;
     case WM_IME_SETCONTEXT:return DefWindowProcW(h,message,w,l&~ISC_SHOWUICOMPOSITIONWINDOW);
     case WM_IME_REQUEST:
@@ -671,7 +705,33 @@ static void cross_process_roundtrip(EditorHost& e,bool concurrent=false,HostBind
     check_edit(e.model.state.text==u"跨程序 UIA 456"&&!e.model.composing,"cross-process writes and fixture cancellation reach model");
     check_edit(e.model.begin()==0&&e.model.end()==1,"external TextRange selection reaches renderer editing model");
 }
+// Read-only monitor inventory (--dpi-inventory): one hidden, never-shown noactivate probe window per monitor in this
+// PMv2-aware process; GetDpiForWindow reports the effective DPI. Probes are destroyed. No GL, UIA or editor.
+static int dpi_inventory(){
+    if(!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))std::cout<<"dpi-inventory SetProcessDpiAwarenessContext error="<<GetLastError()<<'\n';
+    std::cout<<"dpi-inventory process_awareness_pmv2="<<AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(),DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)<<'\n';
+    std::vector<HMONITOR> monitors;
+    EnumDisplayMonitors(nullptr,nullptr,[](HMONITOR m,HDC,LPRECT,LPARAM p)->BOOL{reinterpret_cast<std::vector<HMONITOR>*>(p)->push_back(m);return TRUE;},reinterpret_cast<LPARAM>(&monitors));
+    std::vector<unsigned> dpis;int failures=0;
+    for(size_t i=0;i<monitors.size();++i){
+        MONITORINFOEXW info{};info.cbSize=sizeof(info);
+        if(!GetMonitorInfoW(monitors[i],&info)){std::cout<<"dpi-inventory monitor="<<i<<" GetMonitorInfo error="<<GetLastError()<<'\n';++failures;continue;}
+        const RECT m=info.rcMonitor;
+        HWND probe=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW,L"STATIC",L"dpi probe",WS_POPUP,m.left+8,m.top+8,16,16,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        if(!probe){std::cout<<"dpi-inventory monitor="<<i<<" CreateWindow error="<<GetLastError()<<'\n';++failures;continue;}
+        const UINT dpi=GetDpiForWindow(probe);const bool same=MonitorFromWindow(probe,MONITOR_DEFAULTTONULL)==monitors[i];
+        DestroyWindow(probe);
+        std::string device;for(wchar_t c:std::wstring(info.szDevice))device.push_back(c<128?static_cast<char>(c):'?');
+        std::cout<<"dpi-inventory monitor="<<i<<" device="<<device<<" bounds="<<m.left<<','<<m.top<<','<<m.right<<','<<m.bottom
+                 <<" primary="<<((info.dwFlags&MONITORINFOF_PRIMARY)!=0)<<" probe_on_monitor="<<same<<" window_dpi="<<dpi<<'\n';
+        if(!same)++failures;else dpis.push_back(dpi);
+    }
+    std::sort(dpis.begin(),dpis.end());const auto distinct=std::unique(dpis.begin(),dpis.end())-dpis.begin();
+    std::cout<<"dpi-inventory monitors="<<monitors.size()<<" distinct_dpi="<<distinct<<" cross_dpi_transition_testable="<<(distinct>1)<<'\n';
+    return failures?1:0;
+}
 int main(int argc,char** argv){
+    for(int i=1;i<argc;++i)if(std::string(argv[i])=="--dpi-inventory")return dpi_inventory();
     try{
         std::cout<<std::unitbuf;
         bool interactive=false,concurrent=false,lifecycle=false;
@@ -682,12 +742,15 @@ int main(int argc,char** argv){
             if(arg=="--concurrent")concurrent=true;if(arg=="--lifecycle")lifecycle=true;
             if(arg=="--diagnose-uia-failure")diagnose_uia_failure=true;
             if(arg=="--test-uia-failure-diagnostics")test_uia_failure_diagnostics=true;
+            if(arg=="--manual-dpi")manual_dpi=true;
         }
+        require(!manual_dpi||(interactive&&!allow_test_fixture&&!lifecycle&&!concurrent&&!diagnose_uia_failure&&!test_uia_failure_diagnostics&&!save_success_trace),
+            "--manual-dpi requires --interactive and no test/fixture options");
         require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
         require(!lifecycle||(!interactive&&allow_test_fixture),"Lifecycle test requires noninteractive cross-process mode");
         require(!test_uia_failure_diagnostics||(!interactive&&allow_test_fixture),"Synthetic UIA diagnostic self-test requires noninteractive cross-process mode");
         test_accept_any_size=allow_test_fixture&&!interactive;
-        model_scenarios();
+        if(!manual_dpi)model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_IBEAM);RegisterClassW(&wc);
@@ -696,7 +759,17 @@ int main(int argc,char** argv){
         {
             EditorHost e(context,text);HostBinding binding(e);
             SetWindowLongPtrW(context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(edit_proc));
-            if(interactive)SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
+            if(interactive)SetFocus(context.window);e.create_caret();e.last_dpi=GetDpiForWindow(context.window);e.sync();
+            if(manual_dpi){
+                // Manual DPI entry: no scripted edits, fixtures or UIA self-checks. Text is set directly (not undoable).
+                e.model.state.text=u"自繪輸入：繁體中文 ABC 測試";e.model.state.anchor=e.model.state.caret=(unsigned)e.model.state.text.size();e.size_dip=24;e.sync();
+                std::cout<<"Manual DPI entry: start_dpi="<<e.last_dpi<<"; real WM_DPICHANGED rows go to dpi-telemetry.tsv; results must be confirmed by a person\n";
+                Scene scene(context.gl);scene.init();e.draw(scene);
+                while(!quitting){
+                    MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                    if(e.dirty)e.draw(scene);Sleep(10);
+                }
+            }else{
             check_edit(GetWindow(context.window,GW_CHILD)==nullptr,"custom HWND has no native Edit child");
             SendMessageW(context.window,WM_CHAR,L'A',0);
             check_edit(e.model.state.text==u"A","WM_CHAR edits selfdraw model");
@@ -749,10 +822,12 @@ int main(int argc,char** argv){
             }
             if(lifecycle)cross_process_roundtrip(e,false,&binding);
             std::cout<<"Observed real WM_IME_COMPOSITION messages="<<e.composition_messages<<" result messages="<<e.composition_results<<'\n';
+            }
             host=nullptr;DestroyCaret();
         }
         check_edit(host==nullptr&&(!context.window||GetWindowLongPtrW(context.window,GWLP_WNDPROC)==reinterpret_cast<LONG_PTR>(wnd_proc)),"window callbacks detached before model teardown");
         require(context.release(),"WGL cleanup failed");CoUninitialize();
+        if(manual_dpi){std::cout<<"Manual DPI session ended: WM_DPICHANGED="<<dpi_changed_count<<"; result pending human confirmation (no automated suite ran)\n";return 0;}
         std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
         if(save_success_trace)save_state_trace();return 0;
     }catch(const std::exception& error){save_state_trace();std::cerr<<"cleanup_host_detached="<<(host==nullptr)<<"\nFAIL "<<error.what()<<'\n';return 1;}
