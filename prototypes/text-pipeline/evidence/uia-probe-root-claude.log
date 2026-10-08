@@ -1,0 +1,13 @@
+2026-10-09 diagnostic-only cold-process UIA root probe (run.ps1 -ProbeUiaRoot -> uia_external_client.exe --probe-root)
+Executor: Claude Code Bash tool launching powershell.exe (Codex uses its own PowerShell tool; launcher differs).
+Codex's concurrent failing host run: E:/LcarsUI/.scratch/harness/claude-uia-contracts/codex-uia-recovery.log (not copied here).
+
+[probe-root] pid=18344
+[probe-root] CoInitializeEx hr=0x00000000
+[probe-root] CoCreateInstance(CUIAutomation) hr=0x00000000
+[probe-root] GetRootElement hr=0x00000000
+[probe-root] exit=0
+
+Not run by Claude in the same window: the -CrossProcess host, so this run does not show whether the host would
+have failed on this executor at that moment. One success from a different launcher/process does not identify
+the cause of the host failure.

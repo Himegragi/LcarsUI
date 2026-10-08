@@ -16,6 +16,7 @@
 #include <vector>
 #include <mutex>
 #include <functional>
+#include <cstdio>
 #include <algorithm>
 
 using Microsoft::WRL::ComPtr;
@@ -886,7 +887,28 @@ static void final_selection(IUIAutomationElement* element,IUIAutomationValuePatt
     bounds<<final_rect[0]<<'\t'<<final_rect[1]<<'\t'<<final_rect[2]<<'\t'<<final_rect[3]<<'\n';
     check(bool(bounds),"export actual UIA text rectangle for renderer comparison");
 }
+// Diagnostic only: a cold process with no host window, provider, threads, warm-up, sleep or retry.
+// One GetRootElement call, for comparison against a failing host run; it does not establish a cause.
+static int probe_root(){
+    std::printf("[probe-root] pid=%lu\n",GetCurrentProcessId());
+    HRESULT hr=CoInitializeEx(nullptr,COINIT_MULTITHREADED);std::printf("[probe-root] CoInitializeEx hr=0x%08lx\n",static_cast<unsigned long>(hr));
+    if(FAILED(hr))return 2;
+    int code=0;
+    {
+        ComPtr<IUIAutomation> automation;
+        hr=CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&automation));
+        std::printf("[probe-root] CoCreateInstance(CUIAutomation) hr=0x%08lx\n",static_cast<unsigned long>(hr));
+        if(FAILED(hr))code=3;
+        else{
+            ComPtr<IUIAutomationElement> root;hr=automation->GetRootElement(&root);
+            std::printf("[probe-root] GetRootElement hr=0x%08lx\n",static_cast<unsigned long>(hr));
+            if(FAILED(hr)||!root)code=1;
+        }
+    }
+    CoUninitialize();std::printf("[probe-root] exit=%d\n",code);return code;
+}
 int main(int argc,char** argv){
+    if(argc==2&&std::string(argv[1])=="--probe-root")return probe_root();
     log_file.open("uia-cross-process.log",std::ios::binary|std::ios::trunc);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if(FAILED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)))return 2;

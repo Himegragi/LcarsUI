@@ -533,8 +533,7 @@ static void uia_roundtrip(EditorHost& e){
     while(!done){
         MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
         if(std::chrono::steady_clock::now()>deadline){std::cerr<<"FAIL UIA client timeout\n";ExitProcess(3);}
-        Sleep(1);
-    }
+        Sleep(1);    }
     client.join();
     std::cout<<"UIA client HRESULT=0x"<<std::hex<<static_cast<unsigned long>(result.load())<<std::dec<<'\n';
     check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");

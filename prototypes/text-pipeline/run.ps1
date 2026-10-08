@@ -1,4 +1,4 @@
-param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle)
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot)
 $ErrorActionPreference='Stop'
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -11,6 +11,14 @@ $cmake=Join-Path $vsRoot 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin
 $buildDir=Join-Path $PSScriptRoot 'build/clang'
 & $cmake -S $PSScriptRoot -B $buildDir -G Ninja '-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe' '-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe' -DCMAKE_BUILD_TYPE=Release
 if($LASTEXITCODE){throw 'Configure failed'}
+# -ProbeUiaRoot: diagnostic only. Builds the external client and runs one cold-process GetRootElement.
+if($ProbeUiaRoot){
+  & $cmake --build $buildDir --target uia_external_client --parallel 4
+  if($LASTEXITCODE){throw 'Build failed'}
+  & (Join-Path $buildDir 'uia_external_client.exe') --probe-root
+  if($LASTEXITCODE){throw "UIA root probe failed (exit $LASTEXITCODE)"}
+  return
+}
 $target=if($CrossProcess -or $Concurrency -or $Lifecycle){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
 & $cmake --build $buildDir --target $target --parallel 4
 if($LASTEXITCODE){throw 'Build failed'}

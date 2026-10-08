@@ -1,0 +1,43 @@
+2026-10-09 diagnosis of in-process ElementFromHandle E_FAIL (baseline c898830)
+All runs: powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/text-pipeline/run.ps1 -CrossProcess
+Temporary probes were tagged [DEBUG-uia7] in uia_roundtrip (MTA client thread of editor_cross_host) and are removed.
+
+Run 1 (current state, no probes) - RED:
+  UIA phase=CoCreateInstance(CUIAutomation) hr=0x0 t=2ms
+  UIA ElementFromHandle ... IsWindow=1 hung=0 getobject_during=0 last_id=-25 last_result=0x0
+  UIA phase=ElementFromHandle hr=0x80004005 t=2ms
+
+Run 2 (probe: first IUIAutomation instance A on other windows, before the real client) :
+  [DEBUG-uia7] GetRootElement hr=0x80004005
+  [DEBUG-uia7] ElementFromHandle desktop               hr=0x80004005
+  [DEBUG-uia7] ElementFromHandle shell (other process)  hr=0x80004005
+  [DEBUG-uia7] ElementFromHandle native STATIC, same process hr=0x80004005
+  then the real client (second CoCreateInstance) -> ElementFromHandle hr=0x0 t=94ms, roundtrip PASS
+
+Run 3 (A twice, then new instance B, then A again):
+  A-call1 0x80004005, A-call2 0x80004005, B-call1 0x0, A-call3-after-B 0x0, desktop(A) 0x0, native(A) 0x0
+
+Run 4 (A, 500 ms diagnostic wait with UI thread pumping, A again; no new instance):
+  A-call1 0x80004005, A-call2-after-500ms 0x0
+  (several root WM_GETOBJECT were served by the UI thread during the wait)
+
+Run 5 (probes removed, same code as Run 1) - GREEN:
+  UIA phase=ElementFromHandle hr=0x0 t=63ms; whole batch PASS incl. interrupt failures=0
+
+Evidence:
+  - The failure is not specific to the custom provider: GetRootElement, desktop, a shell window and a native STATIC
+    control in this process all failed the same way from the first IUIAutomation instance. This does not show the
+    failure is unrelated to this process or its code.
+  - It is not per instance: the same instance A succeeded later.
+  - Run 4's wait combined elapsed time, UI-thread message pumping and any concurrent external activity; it cannot
+    show which of these is necessary or sufficient.
+  - Run 5 passed once without instrumentation. A single pass does not prove the environment changed or that the
+    failure is gone.
+Inference / open hypotheses (none established):
+  - No evidence places the root cause outside this process or our code.
+  - Hypothesis 1 (provider readiness): a custom-target-only explanation is insufficient, since non-custom targets failed.
+  - Hypothesis 2 (in-process client / UI-thread side effects): not isolated; no separate-process first-call
+    comparison was run while the failure was active.
+  - Hypothesis 3 (broader process/system state or timing): plausible; trigger unknown.
+No root cause and no fix. No sleep, retry, warm-up or relaxed HRESULT was added. No justified readiness barrier was
+established in this investigation; whether a documented readiness signal exists was not exhaustively checked.
