@@ -54,6 +54,30 @@ client 在原情境後新增 `range_contract_edges`，再重建最後的選取�
 
 證據：`evidence/textrange-edges-red-*.log`、`textrange-edges-green-client.log`、`textrange-edges-review-client.log`、`textrange-edges-review-direct-provider.log`、`textrange-edges-verification.log`。
 
+## 保留範圍的幾何變更（後續一輪）
+
+client 新增 `geometry_changes`：保留第一個字的範圍，依序做視窗移動、F3／F4 字級、F2 字型兩次、縮短視窗、高度不足文字列、還原大小、長文字水平捲動。
+每一步都檢查保留範圍的確切端點、文字、選取與 Value 不變（範圍仍可用，代表 revision 沒變）。
+
+- 已證實並修正：視窗內容區比文字列矮時，矩形底部仍回報 `origin.y+pixels()+10`，超出內容區（實測底部336，內容區底305）。
+  現在 `sync` 把文字列裁到內容區底部；內容區在文字列上方結束時高度為0，矩形與 GetVisibleRanges 都是空的。
+- 移動視窗：矩形平移量與視窗位移完全相同。F3 縮小、F4 還原；兩次 F2 後還原。
+- 水平捲動：捲出畫面的範圍沒有矩形；長範圍左右兩邊都被 viewport 裁掉；GetVisibleRanges 起點等於捲到左緣的字；RangeFromPoint 在左緣命中同一字。
+- 結束時還原視窗位置、大小、字級、字型與捲動，最後 GL_BACK 反白取樣仍為 `(42,78,123)`。
+- 點擊測試：在初始狀態、移動視窗、F3、F4、F2、第二次 F2 之後，對保留矩形左右緣內1像素做 RangeFromPoint，分別命中範圍的起點與終點。
+- 窄寬度：要求客戶區寬73（讓第一個字被右邊界裁一半）與40（內容寬度為0），實際都只能縮到176。
+  原因是原生視窗最小拖曳寬度 `SM_CXMINTRACK=198`（外框）。因此改驗證：保留的整份文件範圍右緣剛好被裁在 `client.right-24`（寬128＝176−48），第一個字矩形不變。
+  **內容寬度為0與第一個字被右邊界裁切兩種情境，在此視窗上無法達成，沒有通過也沒有假造**；要測需改用子視窗或處理 `WM_GETMINMAXINFO`，本輪未做。
+
+限制：
+- 只測同一 DPI（144）下的字級變化，**沒有測跨螢幕 DPI 變更**。
+- F2 對測試用的第一個字矩形沒有變化（此字兩種字型寬度相同），只證明切換後矩形與點擊測試一致，不能證明字型切換會改變寬度。
+- 高度為0的情境只在修正後執行；紅燈在前一個斷言就停止，所以它修正前的行為未觀察。
+- 只檢查文字列的上下裁切，以及捲動造成的左右裁切；沒有測視窗部分在螢幕外，或被其他視窗遮住的情況。
+- RangeFromPoint 仍只依 x 座標決定位置，忽略 y。
+
+證據：`evidence/geometry-red-short-viewport.log`、`geometry-green-client.log`、`geometry-verification.log`、`geometry-width-hit-client.log`、`geometry-width-hit-verification.log`。
+
 ## 不穩定結果：尚未確定根因
 
 後續已追加20次追蹤、受控故障與例外清理修正，見 [UIA 重跑與清理回歸](UIA_STRESS.md)；原偶發根因仍未定論。

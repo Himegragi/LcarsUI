@@ -1,0 +1,28 @@
+2026-10-08 retained TextRange geometry round (Windows11/RTX3060, single monitor, dpi=144)
+Rectangles: left top width height, physical screen pixels.
+
+RED before provider fix (evidence/geometry-red-short-viewport.log):
+  geometry short_client_height=70 line_height=61
+  geometry short count=1 225 275 51 61
+  geometry short_rect_bottom=336 client_bottom=305
+  FAIL partly clipped line rectangle stays inside client area
+  (run stopped there; zero-height case was not reached before the fix)
+
+GREEN after fix (first green run below; window position differs per run, so
+evidence/geometry-green-client.log from the final rerun shows base 263 313 51 61
+and short bottom 343 == client bottom 343, with the same relative results):
+  base 73 123 51 61; moved +37,+23 -> 110 146 51 61; restored exact
+  F3 -> 73 123 48 58; F4 restores exact
+  F2 -> 73 123 51 61 (unchanged for this glyph); second F2 restores exact
+  short client 70 -> 73 123 51 30, bottom 153 == client bottom 153; visible ranges 1
+  tiny client 30 -> no rectangles; visible ranges 0
+  restore size -> exact base
+  scroll char 50 to left: target 73 123 51 61; head count=0; whole 73 123 690 61 (clipped both edges)
+  visible_start_vs_target=0 visible_end_vs_document=-1; RangeFromPoint(view left+1) == char 50
+  every step: retained endpoints, text, selection and Value unchanged (unchanged_after=... ok=1)
+  final GL_BACK witness: render sample=42,78,123 PASS
+
+Commands (workspace root) and results:
+  run.ps1 -CrossProcess                         RED once (above), then PASS
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=124 stale=76 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection (exit=1 trials are the intended injections)

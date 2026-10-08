@@ -1,0 +1,16 @@
+2026-10-08 geometry review follow-up (evidence/geometry-width-hit-client.log)
+Command (workspace root): powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/text-pipeline/run.ps1 -CrossProcess -> PASS
+
+Hit tests (1 px inside retained first-character rectangle edges):
+  hit_after=base/move/f3/f4/f2/f2-restore left_vs_start=0 right_vs_end=0
+
+Narrow width:
+  requested_client_width=73 actual=176
+  narrow_constraint=minimum client width 176 > requested 73 (SM_CXMINTRACK=198)
+  fallback: narrow_document 111 161 128 61 -> right edge == client.right-24; first character rectangle unchanged
+  requested_client_width=40 actual=176
+  zero_width_constraint: zero-width case not reachable on this window (NOT passed)
+  restore width -> exact base rectangle; unchanged_after=narrow/restore-width ok=1
+
+Safe indexing: scroll_back_head count=1 111 161 51 61 (size checked before access)
+Final GL_BACK witness: render sample=42,78,123 PASS

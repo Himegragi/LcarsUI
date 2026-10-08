@@ -13,6 +13,7 @@
 #include <thread>
 #include <sstream>
 #include <iomanip>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 static std::ofstream log_file;
@@ -311,6 +312,170 @@ static void range_contract_edges(IUIAutomation* automation,IUIAutomationElement*
     log_file<<"stale_edge_failures="<<failures<<std::endl;
     check(failures==0,"every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE");
 }
+static std::vector<double> rects(IUIAutomationTextRange* range){
+    SAFEARRAY* array{};success(range->GetBoundingRectangles(&array),"get bounding rectangles for geometry");
+    LONG lower{},upper{};SafeArrayGetLBound(array,1,&lower);SafeArrayGetUBound(array,1,&upper);
+    std::vector<double> result;for(LONG i=lower;i<=upper;++i){double v{};SafeArrayGetElement(array,&i,&v);result.push_back(v);}
+    SafeArrayDestroy(array);return result;
+}
+static RECT client_screen(HWND window){RECT r{};GetClientRect(window,&r);POINT a{0,0},b{r.right,r.bottom};ClientToScreen(window,&a);ClientToScreen(window,&b);return {a.x,a.y,b.x,b.y};}
+static void log_rect(const char* name,const std::vector<double>& r){log_file<<"geometry "<<name<<" count="<<r.size()/4;for(double v:r)log_file<<' '<<v;log_file<<std::endl;}
+static bool close_to(double a,double b){return std::abs(a-b)<0.01;}
+static bool same_rect(const std::vector<double>& a,const std::vector<double>& b){if(a.size()!=b.size())return false;for(size_t i=0;i<a.size();++i)if(!close_to(a[i],b[i]))return false;return true;}
+// Resize the window so that its client area has the requested height, keeping width and position.
+static RECT resize_client_height(HWND window,int height){
+    RECT outer{},inner{};GetWindowRect(window,&outer);GetClientRect(window,&inner);
+    int extra=(outer.bottom-outer.top)-inner.bottom;
+    check(SetWindowPos(window,nullptr,0,0,outer.right-outer.left,height+extra,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"resize test host client height");
+    return client_screen(window);
+}
+static int visible_range_count(IUIAutomationTextPattern* pattern,ComPtr<IUIAutomationTextRange>* first=nullptr){
+    ComPtr<IUIAutomationTextRangeArray> visible;success(pattern->GetVisibleRanges(&visible),"get visible ranges for geometry");
+    int count{};success(visible->get_Length(&count),"count visible ranges for geometry");
+    if(first&&count>0)success(visible->GetElement(0,first->ReleaseAndGetAddressOf()),"get first visible range");
+    return count;
+}
+// Geometry-only changes on retained ranges. Same-DPI size changes only; cross-monitor DPI is not exercised.
+static void geometry_changes(IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for geometry");success(raw.As(&pattern),"query Text pattern for geometry");
+    RECT original{};GetWindowRect(window,&original);
+    const std::wstring fixture=L"跨程序 UIA 456";success(write_value(value,fixture),"set geometry fixture");
+    ComPtr<IUIAutomationTextRange> document,first;int moved{};
+    success(pattern->get_DocumentRange(&document),"get geometry document");success(document->Clone(&first),"clone geometry range");
+    success(first->MoveEndpointByRange(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start),"collapse geometry range");
+    success(first->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend geometry range");
+    success(first->ScrollIntoView(TRUE),"reset horizontal scroll for geometry");success(first->Select(),"select geometry range");
+    // Retained ranges must keep exact endpoints, text, selection and Value; a revision change would make them fail.
+    auto unchanged=[&](const char* name){
+        int start=9,end=9;BOOL same=FALSE;
+        success(first->CompareEndpoints(TextPatternRangeEndpoint_Start,document.Get(),TextPatternRangeEndpoint_Start,&start),"compare retained start");
+        success(first->CompareEndpoints(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start,&end),"compare retained end");
+        ComPtr<IUIAutomationTextRangeArray> selection;success(pattern->GetSelection(&selection),"read geometry selection");
+        int count{};success(selection->get_Length(&count),"count geometry selection");
+        ComPtr<IUIAutomationTextRange> selected;if(count==1){success(selection->GetElement(0,&selected),"get geometry selection");success(selected->Compare(first.Get(),&same),"compare geometry selection");}
+        bool ok=start==0&&end==1&&range_text(first.Get())==L"跨"&&range_text(document.Get())==fixture&&current_value(value)==fixture&&count==1&&same;
+        log_file<<"geometry unchanged_after="<<name<<" ok="<<ok<<std::endl;check(ok,"geometry-only change keeps retained endpoints, text, selection and Value");
+    };
+    // Hit-test just inside the reported left and right edges of the retained first character.
+    auto hit_edges=[&](const char* name,const std::vector<double>& r){
+        check(r.size()==4,"hit-test rectangle exists");
+        LONG y=static_cast<LONG>(std::lround(r[1]+r[3]/2));
+        ComPtr<IUIAutomationTextRange> left,right;int at_start=9,at_end=9;
+        success(pattern->RangeFromPoint({static_cast<LONG>(std::lround(r[0]+1)),y},&left),"hit test retained left edge");
+        success(pattern->RangeFromPoint({static_cast<LONG>(std::lround(r[0]+r[2]-1)),y},&right),"hit test retained right edge");
+        success(left->CompareEndpoints(TextPatternRangeEndpoint_Start,first.Get(),TextPatternRangeEndpoint_Start,&at_start),"compare left-edge hit");
+        success(right->CompareEndpoints(TextPatternRangeEndpoint_Start,first.Get(),TextPatternRangeEndpoint_End,&at_end),"compare right-edge hit");
+        log_file<<"geometry hit_after="<<name<<" left_vs_start="<<at_start<<" right_vs_end="<<at_end<<std::endl;
+        check(at_start==0&&at_end==0,"hit tests at reported rectangle edges resolve to retained endpoints");
+    };
+    auto base=rects(first.Get());log_rect("base",base);RECT client=client_screen(window);
+    check(base.size()==4&&close_to(base[0],client.left+24)&&close_to(base[1],client.top+40),"base range starts at rendered text origin");
+    hit_edges("base",base);
+
+    // Window move: same rectangle size, translated by the window delta.
+    check(SetWindowPos(window,nullptr,original.left+37,original.top+23,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"move test host");
+    auto moved_rect=rects(first.Get());log_rect("moved",moved_rect);unchanged("move");
+    check(moved_rect.size()==4&&close_to(moved_rect[0]-base[0],37)&&close_to(moved_rect[1]-base[1],23)&&close_to(moved_rect[2],base[2])&&close_to(moved_rect[3],base[3]),"window move translates retained rectangle exactly");
+    hit_edges("move",moved_rect);
+    check(SetWindowPos(window,nullptr,original.left,original.top,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"restore test host position");
+    check(same_rect(rects(first.Get()),base),"restored position restores rectangle");
+
+    // Font size at the same DPI (F3 smaller, F4 restores). Not a cross-monitor DPI change.
+    SendMessageW(window,WM_KEYDOWN,VK_F3,0);auto smaller=rects(first.Get());log_rect("f3",smaller);unchanged("f3");
+    check(smaller.size()==4&&close_to(smaller[0],base[0])&&smaller[3]<base[3]&&smaller[2]<=base[2],"smaller font shrinks retained rectangle at same origin");
+    hit_edges("f3",smaller);
+    SendMessageW(window,WM_KEYDOWN,VK_F4,0);check(same_rect(rects(first.Get()),base),"F4 restores retained rectangle");unchanged("f4");hit_edges("f4",base);
+
+    // Font family toggle twice; height depends only on pixel size.
+    SendMessageW(window,WM_KEYDOWN,VK_F2,0);auto other_font=rects(first.Get());log_rect("f2",other_font);unchanged("f2");
+    check(other_font.size()==4&&close_to(other_font[0],base[0])&&close_to(other_font[3],base[3])&&other_font[2]>0,"font family change keeps retained rectangle at origin and line height");
+    hit_edges("f2",other_font);
+    SendMessageW(window,WM_KEYDOWN,VK_F2,0);check(same_rect(rects(first.Get()),base),"second F2 restores rectangle");unchanged("f2-restore");hit_edges("f2-restore",base);
+
+    // Narrow client width (geometry only). The viewport right edge is client right - 24 and the
+    // content width is client width - 48; native minimum tracking size may refuse the request.
+    auto try_client_width=[&](int width){
+        RECT outer{},inner{};GetWindowRect(window,&outer);GetClientRect(window,&inner);
+        int extra=(outer.right-outer.left)-inner.right;
+        check(SetWindowPos(window,nullptr,0,0,width+extra,outer.bottom-outer.top,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"resize test host client width");
+        RECT c=client_screen(window);log_file<<"geometry requested_client_width="<<width<<" actual="<<c.right-c.left<<std::endl;return c;
+    };
+    const int partial_width=48+static_cast<int>(base[2]/2);
+    RECT narrow=try_client_width(partial_width);
+    if(narrow.right-narrow.left==partial_width){
+        auto r=rects(first.Get());log_rect("narrow_first",r);unchanged("narrow");
+        check(r.size()==4&&close_to(r[0],base[0])&&close_to(r[0]+r[2],narrow.right-24)&&r[2]<base[2],"first character partly clipped by right margin");
+        check(visible_range_count(pattern.Get())==1,"partly clipped width still reports one visible range");
+    }else{
+        // Fallback assertion with the same retained-range rules: the retained document range is cut by the right margin.
+        log_file<<"geometry narrow_constraint=minimum client width "<<narrow.right-narrow.left<<" > requested "<<partial_width<<" (SM_CXMINTRACK="<<GetSystemMetricsForDpi(SM_CXMINTRACK,GetDpiForWindow(window))<<")"<<std::endl;
+        auto r=rects(document.Get()),full=rects(first.Get());log_rect("narrow_document",r);unchanged("narrow");
+        check(narrow.right-narrow.left<original.right-original.left,"narrow resize reduced the client width");
+        check(r.size()==4&&close_to(r[0],base[0])&&close_to(r[0]+r[2],narrow.right-24),"retained document range clipped at right margin");
+        check(same_rect(full,base),"first character inside narrowed viewport keeps rectangle");
+    }
+    RECT zero=try_client_width(40);
+    if(zero.right-zero.left<=48){
+        auto r=rects(first.Get());int count=visible_range_count(pattern.Get());log_rect("zero_width",r);unchanged("zero-width");
+        log_file<<"geometry zero_width_visible_ranges="<<count<<std::endl;
+        check(r.empty()&&count==0,"zero content width has no rectangles and no visible ranges");
+    }else log_file<<"geometry zero_width_constraint=minimum client width "<<zero.right-zero.left<<" > 48; zero-width case not reachable on this window"<<std::endl;
+    check(SetWindowPos(window,nullptr,original.left,original.top,original.right-original.left,original.bottom-original.top,SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"restore test host width");
+    check(same_rect(rects(first.Get()),base),"restored width restores rectangle");unchanged("restore-width");
+
+    // Short viewport: line box taller than remaining client height must be clipped to the client bottom.
+    const int line=static_cast<int>(std::lround(base[3]));
+    RECT short_client=resize_client_height(window,40+line/2);
+    log_file<<"geometry short_client_height="<<short_client.bottom-short_client.top<<" line_height="<<line<<std::endl;
+    check(short_client.bottom-short_client.top<40+line&&short_client.bottom-short_client.top>40,"short viewport height achieved");
+    auto clipped=rects(first.Get());log_rect("short",clipped);unchanged("short");
+    log_file<<"geometry short_rect_bottom="<<(clipped.size()==4?clipped[1]+clipped[3]:0)<<" client_bottom="<<short_client.bottom<<std::endl;
+    check(clipped.size()==4&&close_to(clipped[1],base[1])&&clipped[1]+clipped[3]<=short_client.bottom+0.01,"partly clipped line rectangle stays inside client area");
+    check(visible_range_count(pattern.Get())==1,"partly clipped viewport still reports one visible range");
+
+    // Zero content height: client ends above the text line, so nothing is visible.
+    RECT tiny_client=resize_client_height(window,30);
+    log_file<<"geometry tiny_client_height="<<tiny_client.bottom-tiny_client.top<<std::endl;
+    check(tiny_client.bottom-tiny_client.top<=30,"zero-content viewport height achieved");
+    auto hidden=rects(first.Get());log_rect("tiny",hidden);unchanged("tiny");
+    int tiny_visible=visible_range_count(pattern.Get());log_file<<"geometry tiny_visible_ranges="<<tiny_visible<<std::endl;
+    check(hidden.empty(),"fully clipped range has no bounding rectangles");
+    check(tiny_visible==0,"zero-content viewport reports no visible ranges");
+    check(SetWindowPos(window,nullptr,original.left,original.top,original.right-original.left,original.bottom-original.top,SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"restore test host size");
+    check(same_rect(rects(first.Get()),base),"restored size restores rectangle");unchanged("restore-size");
+
+    // Horizontal scroll on a long line: full clip, partial clip, visible range and hit test follow the viewport.
+    std::wstring long_text=L"開頭";for(int i=0;i<40;++i)long_text+=L"繁體文字";
+    success(write_value(value,long_text),"set long geometry document");
+    ComPtr<IUIAutomationTextRange> whole,head,target;success(pattern->get_DocumentRange(&whole),"get long geometry document");
+    success(whole->Clone(&head),"clone long head");success(head->MoveEndpointByRange(TextPatternRangeEndpoint_End,whole.Get(),TextPatternRangeEndpoint_Start),"collapse long head");
+    success(head->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend long head");
+    success(head->Clone(&target),"clone scroll target");success(target->Move(TextUnit_Character,50,&moved),"move scroll target");check(moved==50,"scroll target is character 50");
+    success(head->Select(),"select long head");
+    success(target->ScrollIntoView(TRUE),"scroll character 50 to viewport left");client=client_screen(window);
+    const double view_left=client.left+24,view_right=client.right-24;
+    auto target_rect=rects(target.Get()),head_rect=rects(head.Get()),whole_rect=rects(whole.Get());
+    log_rect("scroll_target",target_rect);log_rect("scroll_head",head_rect);log_rect("scroll_whole",whole_rect);
+    check(target_rect.size()==4&&close_to(target_rect[0],view_left),"scrolled target aligns with viewport left");
+    check(head_rect.empty(),"range scrolled out of view has no rectangle");
+    check(whole_rect.size()==4&&close_to(whole_rect[0],view_left)&&close_to(whole_rect[0]+whole_rect[2],view_right),"long range is clipped to both viewport edges");
+    ComPtr<IUIAutomationTextRange> visible;check(visible_range_count(pattern.Get(),&visible)==1,"scrolled viewport has one visible range");
+    int order=9;success(visible->CompareEndpoints(TextPatternRangeEndpoint_Start,target.Get(),TextPatternRangeEndpoint_Start,&order),"compare visible start");
+    int tail=9;success(visible->CompareEndpoints(TextPatternRangeEndpoint_End,whole.Get(),TextPatternRangeEndpoint_End,&tail),"compare visible end");
+    log_file<<"geometry visible_start_vs_target="<<order<<" visible_end_vs_document="<<tail<<std::endl;
+    check(order==0&&tail<0,"visible range starts at scrolled offset and ends before document end");
+    ComPtr<IUIAutomationTextRange> hit;POINT p{static_cast<LONG>(std::lround(view_left+1)),static_cast<LONG>(std::lround(target_rect[1]+target_rect[3]/2))};
+    success(pattern->RangeFromPoint(p,&hit),"hit test scrolled viewport");
+    success(hit->CompareEndpoints(TextPatternRangeEndpoint_Start,target.Get(),TextPatternRangeEndpoint_Start,&order),"compare scrolled hit");
+    check(order==0,"hit test at viewport left resolves to scrolled offset");
+    ComPtr<IUIAutomationTextRangeArray> selection;success(pattern->GetSelection(&selection),"read selection after scroll");
+    ComPtr<IUIAutomationTextRange> selected;success(selection->GetElement(0,&selected),"get selection after scroll");BOOL same=FALSE;
+    success(selected->Compare(head.Get(),&same),"compare selection after scroll");check(same&&current_value(value)==long_text,"horizontal scroll keeps selection and Value");
+    success(head->ScrollIntoView(TRUE),"scroll back to document start");
+    auto restored_head=rects(head.Get());log_rect("scroll_back_head",restored_head);
+    check(restored_head.size()==4&&close_to(restored_head[0],view_left),"scrolling back restores head rectangle");
+}
 static void final_selection(IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
     ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;ComPtr<IUIAutomationTextRange> document,first;int moved{};
     success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for final selection");success(raw.As(&pattern),"query Text pattern for final selection");
@@ -383,6 +548,7 @@ int main(int argc,char** argv){
             if(concurrent)concurrent_reads(window,pattern.Get());
             text_ranges(element.Get(),pattern.Get(),window,changes.Get());
             range_contract_edges(automation.Get(),element.Get(),pattern.Get());
+            geometry_changes(element.Get(),pattern.Get(),window);
             final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");
             log_file<<"PASS cross-process Value and limited single-line TextRange batch; no Narrator claim"<<std::endl;

@@ -173,12 +173,15 @@ struct EditorHost {
             ImmReleaseContext(context.window,imc);
         }
         POINT origin{24,40};ClientToScreen(context.window,&origin);
+        POINT client_bottom{0,client.bottom};ClientToScreen(context.window,&client_bottom);
+        // The line box is clipped by the client area, as in draw(); empty when the client ends above the text.
+        const LONG line_bottom=std::max(origin.y,std::min<LONG>(origin.y+pixels()+10,client_bottom.y));
         std::wstring old,current=wide(model.state.text),presented=wide(model.visible());
         bool text_changed=false,selection_changed=false;
         {
             std::lock_guard lock(bridge->mutex);old=bridge->value;bridge->value=current;bridge->composing=model.composing;
             bridge->focused=GetFocus()==context.window;
-            bridge->bounds={origin.x,origin.y,origin.x+std::max(0L,client.right-48),origin.y+pixels()+10};
+            bridge->bounds={origin.x,origin.y,origin.x+std::max(0L,client.right-48),line_bottom};
             unsigned selected_begin=model.begin(),selected_end=model.composing?model.begin()+(unsigned)model.preedit.size():model.end();
             text_changed=bridge->visible!=presented;
             selection_changed=bridge->selection_begin!=selected_begin||bridge->selection_end!=selected_end;
