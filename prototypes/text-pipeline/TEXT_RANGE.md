@@ -65,9 +65,18 @@ client 新增 `geometry_changes`：保留第一個字的範圍，依序做視窗
 - 水平捲動：捲出畫面的範圍沒有矩形；長範圍左右兩邊都被 viewport 裁掉；GetVisibleRanges 起點等於捲到左緣的字；RangeFromPoint 在左緣命中同一字。
 - 結束時還原視窗位置、大小、字級、字型與捲動，最後 GL_BACK 反白取樣仍為 `(42,78,123)`。
 - 點擊測試：在初始狀態、移動視窗、F3、F4、F2、第二次 F2 之後，對保留矩形左右緣內1像素做 RangeFromPoint，分別命中範圍的起點與終點。
-- 窄寬度：要求客戶區寬73（讓第一個字被右邊界裁一半）與40（內容寬度為0），實際都只能縮到176。
-  原因是原生視窗最小拖曳寬度 `SM_CXMINTRACK=198`（外框）。因此改驗證：保留的整份文件範圍右緣剛好被裁在 `client.right-24`（寬128＝176−48），第一個字矩形不變。
-  **內容寬度為0與第一個字被右邊界裁切兩種情境，在此視窗上無法達成，沒有通過也沒有假造**；要測需改用子視窗或處理 `WM_GETMINMAXINFO`，本輪未做。
+- 窄寬度（前一輪）：客戶區最小只能到176（`SM_CXMINTRACK=198` 外框），第一個字被裁切與內容寬度為0兩種情境當時無法達成，沒有通過。
+- 窄寬度（本輪已通過）：只在非互動的跨程序測試視窗（`--cross-process` 且非 `--interactive`），`WM_WINDOWPOSCHANGING` 跳過 `DefWindowProc` 的最小尺寸限制；互動視窗不變。
+  實測只覆寫 `WM_GETMINMAXINFO` 沒有效果（客戶區仍為176，見 `evidence/narrow-width-minmax-only-client.log`），處理函式也沒被呼叫，所以已移除。
+  使用實際視窗尺寸，不是假造 Bridge 狀態。以下每一步都檢查保留範圍的端點、文字、選取與 Value 不變：
+  - 寬73（內容25）：第一個字矩形寬25，右緣等於 `client.right-24`；可見範圍1個。
+  - 寬49（內容1）：矩形寬1；可見範圍1個。
+  - 寬48（邊界）與30：沒有矩形，GetVisibleRanges 為0；DocumentRange 文字仍完整。
+  - 還原寬度後先記錄實際矩形：寬40，因為窄寬度時「保持游標可見」把捲動留在11像素；ScrollIntoView 後完全回到原值。這是現有捲動行為，不視為缺陷。
+- 渲染一致性：新增只在測試模式可用的 `WM_APP+27`，host 用與最終見證相同的方式畫到 GL_BACK（不 present），讀回單一像素。
+  寬73時 UIA 矩形內為反白 `(42,78,123)`、右緣外2像素為邊界色 `(18,25,38)`；寬49的唯一內容欄為反白；寬48與30只有邊界色。
+- 語意分開：**退化範圍**（範圍長度0）在正常 viewport 沒有矩形；**零 viewport**（內容寬或高為0）時範圍本身不退化，文字照常可讀，只是沒有矩形也沒有可見範圍。
+- 本輪沒有發現新的程式缺陷，所以沒有紅燈修正；唯一一次失敗是測試環境的尺寸限制。
 
 限制：
 - 只測同一 DPI（144）下的字級變化，**沒有測跨螢幕 DPI 變更**。
@@ -76,7 +85,9 @@ client 新增 `geometry_changes`：保留第一個字的範圍，依序做視窗
 - 只檢查文字列的上下裁切，以及捲動造成的左右裁切；沒有測視窗部分在螢幕外，或被其他視窗遮住的情況。
 - RangeFromPoint 仍只依 x 座標決定位置，忽略 y。
 
-證據：`evidence/geometry-red-short-viewport.log`、`geometry-green-client.log`、`geometry-verification.log`、`geometry-width-hit-client.log`、`geometry-width-hit-verification.log`。
+證據：`evidence/geometry-red-short-viewport.log`、`geometry-green-client.log`、`geometry-verification.log`、`geometry-width-hit-client.log`、`geometry-width-hit-verification.log`、`narrow-width-minmax-only-client.log`、`narrow-width-green-client.log`、`narrow-width-verification.log`。
+
+尚未驗證：實際 IME、Narrator、跨螢幕 DPI 變更、Windows 10；互動視窗的窄寬度仍受原生最小尺寸限制。
 
 ## 不穩定結果：尚未確定根因
 

@@ -2,6 +2,7 @@
 #include "text_probe.cpp"
 #include "editing_model.hpp"
 #include <imm.h>
+#include <windowsx.h>
 #include <objbase.h>
 #include <oleauto.h>
 #include <unknwn.h>
@@ -226,6 +227,10 @@ struct EditorHost {
 };
 static EditorHost* host=nullptr;
 static bool allow_test_fixture=false;
+// Noninteractive cross-process test window only: accept tiny sizes so narrow viewports are testable.
+static bool test_accept_any_size=false;
+static constexpr UINT test_render_sample_message=WM_APP+27;
+static unsigned test_poschanging_messages=0;
 static bool test_close_requested=false;
 struct HostBinding {
     EditorHost& editor;
@@ -263,6 +268,21 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     if(relevant)trace_state("enter",message,message==WM_CHAR?0:static_cast<unsigned long long>(w),e.model);
     switch(message){
     case WM_APP+26:if(!allow_test_fixture)return 0;test_close_requested=true;return 1;
+    case WM_WINDOWPOSCHANGING:
+        // DefWindowProc clamps to the minimum tracking size here (a WM_GETMINMAXINFO override alone
+        // was observed not to be consulted). Only the noninteractive test window skips that default.
+        if(!test_accept_any_size)break;
+        ++test_poschanging_messages;return 0;
+    case test_render_sample_message:{
+        // Same GL_BACK witness as the final check: render without presenting, read one client pixel.
+        if(!allow_test_fixture)return 0;
+        RECT r{};GetClientRect(h,&r);const int x=GET_X_LPARAM(l),y=GET_Y_LPARAM(l);
+        if(x<0||y<0||x>=r.right||y>=r.bottom)return 0;
+        Scene witness(e.context.gl);witness.init();e.draw(witness,false);e.context.gl.Finish();
+        reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"))(GL_BACK);
+        std::array<unsigned char,4> pixel{};e.context.gl.ReadPixels(x,r.bottom-1-y,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+        e.dirty=true;return 0x1000000|(pixel[0]<<16)|(pixel[1]<<8)|pixel[2];
+    }
     case select_range_message:{
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         auto range=reinterpret_cast<const RangeSelection*>(l);if(!range)return E_INVALIDARG;
@@ -464,6 +484,7 @@ static void cross_process_roundtrip(EditorHost& e,bool concurrent=false,HostBind
         Sleep(1);
     }
     DWORD code=1;GetExitCodeProcess(process.hProcess,&code);CloseHandle(process.hProcess);
+    std::cout<<"test_size_override poschanging_messages="<<test_poschanging_messages<<'\n';
     std::ifstream transcript("uia-cross-process.log");std::cout<<transcript.rdbuf();
     require(!timeout,"Cross-process UIA client timeout");
     check_edit(code==0,"independent process UIA tests");
@@ -484,6 +505,7 @@ int main(int argc,char** argv){
         }
         require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
         require(!lifecycle||(!interactive&&allow_test_fixture),"Lifecycle test requires noninteractive cross-process mode");
+        test_accept_any_size=allow_test_fixture&&!interactive;
         model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);

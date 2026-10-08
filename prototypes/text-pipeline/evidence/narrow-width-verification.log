@@ -1,0 +1,21 @@
+2026-10-08 narrow / zero-content-width round (Windows11/RTX3060, dpi=144)
+
+Harness constraint, not a product bug (evidence/narrow-width-minmax-only-client.log):
+  WM_GETMINMAXINFO override only -> requested_client_width=73 actual=176; FAIL requested client width achieved
+  Diagnostic run: minmax_messages=0 (handler never called), poschanging_messages=11
+  Fix kept: test-only WM_WINDOWPOSCHANGING skips DefWindowProc clamping (noninteractive --cross-process only)
+
+GREEN (evidence/narrow-width-green-client.log), rect = left top width height:
+  base 73 123 51 61; render base_inside=42,78,123
+  width73: narrow_first 73 123 25 61; visible ranges 1; render inside=42,78,123, past right edge=18,25,38
+  width49: 73 123 1 61; visible ranges 1; render content column=42,78,123
+  width48: no rectangles, visible ranges 0, document text intact; render=18,25,38
+  width30: no rectangles, visible ranges 0, document text intact; render=18,25,38
+  restore width: 73 123 40 61 (caret-visible scroll 11 px persisted), ScrollIntoView -> exact base; render=42,78,123
+  every step: unchanged_after=... ok=1 (exact endpoints, text, selection, Value)
+  final GL_BACK witness 42,78,123 PASS
+
+Commands (workspace root) and results:
+  run.ps1 -CrossProcess                         FAIL once (constraint above), then PASS twice (second after removing unused handler)
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=123 stale=77 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection (exit=1 trials are intended injections)

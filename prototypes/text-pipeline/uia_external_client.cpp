@@ -393,36 +393,58 @@ static void geometry_changes(IUIAutomationElement* element,IUIAutomationValuePat
     hit_edges("f2",other_font);
     SendMessageW(window,WM_KEYDOWN,VK_F2,0);check(same_rect(rects(first.Get()),base),"second F2 restores rectangle");unchanged("f2-restore");hit_edges("f2-restore",base);
 
-    // Narrow client width (geometry only). The viewport right edge is client right - 24 and the
-    // content width is client width - 48; native minimum tracking size may refuse the request.
-    auto try_client_width=[&](int width){
+    // Narrow client width (geometry only). Viewport is [client.left+24, client.right-24); content width is
+    // client width - 48. The test host opts out of native minimum tracking size in noninteractive test mode.
+    auto set_client_width=[&](int width){
         RECT outer{},inner{};GetWindowRect(window,&outer);GetClientRect(window,&inner);
         int extra=(outer.right-outer.left)-inner.right;
         check(SetWindowPos(window,nullptr,0,0,width+extra,outer.bottom-outer.top,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"resize test host client width");
-        RECT c=client_screen(window);log_file<<"geometry requested_client_width="<<width<<" actual="<<c.right-c.left<<std::endl;return c;
+        RECT c=client_screen(window);log_file<<"geometry requested_client_width="<<width<<" actual="<<c.right-c.left<<std::endl;
+        check(c.right-c.left==width,"requested client width achieved");return c;
     };
+    // Host renders to GL_BACK without presenting and returns one client pixel (0 = outside client).
+    auto render=[&](const char* name,double sx,double sy){
+        POINT p{static_cast<LONG>(std::floor(sx)),static_cast<LONG>(std::floor(sy))};ScreenToClient(window,&p);
+        LRESULT packed=SendMessageW(window,WM_APP+27,0,MAKELPARAM(p.x,p.y));
+        check(packed!=0,"render witness sample inside client");
+        unsigned rgb=static_cast<unsigned>(packed)&0xffffff;log_file<<"geometry render "<<name<<" client="<<p.x<<','<<p.y<<" rgb="<<(rgb>>16)<<','<<((rgb>>8)&255)<<','<<(rgb&255)<<std::endl;
+        return rgb;
+    };
+    constexpr unsigned highlight=(42u<<16)|(78u<<8)|123u,margin=(18u<<16)|(25u<<8)|38u;
+    const double sample_y=base[1]+base[3]-3;
+    check(render("base_inside",base[0]+2,sample_y)==highlight,"base render witness is selection highlight");
+
+    // Partly clipped first character: viewport narrower than the glyph.
     const int partial_width=48+static_cast<int>(base[2]/2);
-    RECT narrow=try_client_width(partial_width);
-    if(narrow.right-narrow.left==partial_width){
-        auto r=rects(first.Get());log_rect("narrow_first",r);unchanged("narrow");
-        check(r.size()==4&&close_to(r[0],base[0])&&close_to(r[0]+r[2],narrow.right-24)&&r[2]<base[2],"first character partly clipped by right margin");
-        check(visible_range_count(pattern.Get())==1,"partly clipped width still reports one visible range");
-    }else{
-        // Fallback assertion with the same retained-range rules: the retained document range is cut by the right margin.
-        log_file<<"geometry narrow_constraint=minimum client width "<<narrow.right-narrow.left<<" > requested "<<partial_width<<" (SM_CXMINTRACK="<<GetSystemMetricsForDpi(SM_CXMINTRACK,GetDpiForWindow(window))<<")"<<std::endl;
-        auto r=rects(document.Get()),full=rects(first.Get());log_rect("narrow_document",r);unchanged("narrow");
-        check(narrow.right-narrow.left<original.right-original.left,"narrow resize reduced the client width");
-        check(r.size()==4&&close_to(r[0],base[0])&&close_to(r[0]+r[2],narrow.right-24),"retained document range clipped at right margin");
-        check(same_rect(full,base),"first character inside narrowed viewport keeps rectangle");
+    RECT narrow=set_client_width(partial_width);const double narrow_left=narrow.left+24,narrow_right=narrow.right-24;
+    auto partial=rects(first.Get());log_rect("narrow_first",partial);unchanged("narrow");
+    check(partial.size()==4&&partial[0]>=narrow_left-0.01&&close_to(partial[0]+partial[2],narrow_right)&&partial[2]<base[2],"first character partly clipped by right margin");
+    check(visible_range_count(pattern.Get())==1,"partly clipped width still reports one visible range");
+    check(render("narrow_inside",partial[0]+partial[2]/2,sample_y)==highlight,"render highlight inside clipped UIA rectangle");
+    check(render("narrow_past_right",narrow_right+2,sample_y)==margin,"render margin just past clipped UIA right edge");
+
+    // Width 49: one pixel of content.
+    RECT one=set_client_width(49);auto sliver=rects(first.Get());log_rect("width49",sliver);unchanged("width49");
+    check(sliver.size()==4&&close_to(sliver[0],one.left+24)&&close_to(sliver[2],1),"one-pixel viewport reports one-pixel rectangle");
+    check(visible_range_count(pattern.Get())==1,"one-pixel viewport reports one visible range");
+    check(render("width49_content",one.left+24,sample_y)==highlight,"render one-pixel content column is highlighted");
+
+    // Width 48 boundary and below: zero content width. The range itself is not degenerate; the viewport is empty.
+    for(int width:{48,30}){
+        RECT zero=set_client_width(width);auto none=rects(first.Get());int count=visible_range_count(pattern.Get());
+        log_rect(width==48?"width48":"width30",none);log_file<<"geometry zero_width="<<width<<" visible_ranges="<<count<<std::endl;
+        unchanged(width==48?"width48":"width30");
+        check(none.empty()&&count==0,"zero content width has no rectangles and no visible ranges");
+        check(range_text(document.Get())==fixture,"zero viewport does not hide text from range content");
+        check(render(width==48?"width48_center":"width30_center",zero.left+width/2.0,sample_y)==margin,"render zero content width shows only margin");
     }
-    RECT zero=try_client_width(40);
-    if(zero.right-zero.left<=48){
-        auto r=rects(first.Get());int count=visible_range_count(pattern.Get());log_rect("zero_width",r);unchanged("zero-width");
-        log_file<<"geometry zero_width_visible_ranges="<<count<<std::endl;
-        check(r.empty()&&count==0,"zero content width has no rectangles and no visible ranges");
-    }else log_file<<"geometry zero_width_constraint=minimum client width "<<zero.right-zero.left<<" > 48; zero-width case not reachable on this window"<<std::endl;
+
+    // Recovery: caret-visible scrolling during narrow resizes may persist; ScrollIntoView restores the origin.
     check(SetWindowPos(window,nullptr,original.left,original.top,original.right-original.left,original.bottom-original.top,SWP_NOZORDER|SWP_NOACTIVATE)!=FALSE,"restore test host width");
-    check(same_rect(rects(first.Get()),base),"restored width restores rectangle");unchanged("restore-width");
+    auto after_resize=rects(first.Get());log_rect("restore_width_before_scroll",after_resize);unchanged("restore-width");
+    success(first->ScrollIntoView(TRUE),"scroll retained range back to origin");
+    check(same_rect(rects(first.Get()),base),"restored width and scroll restore rectangle");unchanged("restore-width-scroll");
+    check(render("restored_inside",base[0]+2,sample_y)==highlight,"restored render witness is selection highlight");
 
     // Short viewport: line box taller than remaining client height must be clipped to the client bottom.
     const int line=static_cast<int>(std::lround(base[3]));
