@@ -139,6 +139,28 @@ client 新增 `composition_transaction`（文字「甲乙丙丁」，先選取 1
 - 測試期間若使用者把真實滑鼠移到測試視窗上，可能產生無按鍵的真實移動而提早結束拖曳，造成偶發失敗。
 - 沒有自動捲動（拖到 viewport 外只夾在可見邊緣）、雙擊選詞、多行或完整 grapheme 行為。
 
+## 補充平面字元（U+20000、U+1F600）
+
+使用者回報（本機手動、新互動版本）：兩個方向的拖曳、中文取代、在視窗外放開滑鼠都正常。這是使用者的觀察，不是獨立驗證。
+
+測試文字「繁體A」+U+20000+「中」+U+1F600+「B」（UTF-16 共9個單位）。原始碼用跳脫序列寫入，避免編碼問題。
+全部經過真實的 `WM_CHAR`／`WM_KEYDOWN` 處理、共用 layout 與 UIA 範圍；沒有假造 Bridge。每次讀取 Value 都檢查是合法的 UTF-16。
+結果全部通過，**沒有發現缺陷，所以沒有紅燈或修正**（`evidence/supplementary-client.log`）：
+- 成對的 `WM_CHAR` 各插入一個完整字元；每個字元一個 undo 步驟（undo 一次只移除 emoji，再一次只移除 U+20000），redo 兩次還原。
+- UIA Character 範圍依序回傳7個完整字元；在 emoji 位置 ExpandToEnclosingUnit 回傳完整 emoji。
+- VK_LEFT 從尾端依序停在 8、6、5、3（跳過整個代理對），VK_RIGHT 從 3 到 5。
+- Backspace 刪掉整個 emoji，Delete 刪掉整個 U+20000；undo 都還原。
+- 選取 U+20000 後打字取代；選取「中」與 emoji 後用組字 fixture 提交取代；undo 都還原。
+- host 直接檢查共用 layout：每個字形 cluster 與游標停點都不落在代理對的後半段。
+
+缺字形與資料損壞的區別：
+- layout 回報 `missing_glyphs=2`：U+20000 與 U+1F600 在目前字型與後備字型中都是 `id=0`（.notdef，畫成紅色方框）。
+- 同時 Value、範圍文字與 UTF-16 單位都完整。所以畫面看到方框是**字型沒有涵蓋**，不是資料被破壞。沒有彩色 emoji，也沒有字型涵蓋測試。
+
+邊界觀察（只記錄，不宣稱 UAX#29 grapheme）：
+- `e`+U+0301+`x`：HarfBuzz cluster 讓 `e` 與組合記號成為同一個 Character 範圍。
+- U+1F468 ZWJ U+1F469 `x`：被分成三個 Character 範圍（人、ZWJ、人）。這不是使用者心目中的「一個字」，游標可以停在 ZWJ 兩側，但沒有拆開任何代理對。
+
 ## 不穩定結果：尚未確定根因
 
 後續已追加20次追蹤、受控故障與例外清理修正，見 [UIA 重跑與清理回歸](UIA_STRESS.md)；原偶發根因仍未定論。

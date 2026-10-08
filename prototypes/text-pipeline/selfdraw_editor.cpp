@@ -428,6 +428,19 @@ static void direct_endpoint_validation(EditorHost& e){
     check_edit(unchanged,"rejected endpoint arguments leave direct provider range unchanged");
     other->Release();range->Release();
 }
+// Shared layout for supplementary-plane text: clusters/carets must start on scalar boundaries.
+// Missing glyphs (id 0, drawn as the red .notdef box) are reported, not treated as data corruption.
+static void supplementary_layout_observation(EditorHost& e){
+    const std::wstring text=L"繁體A\xd840\xdc00中\xd83d\xde00" L"B";
+    auto layout=e.engine.shape(text,e.pixels());bool aligned=true;
+    for(const auto& g:layout.glyphs){
+        std::cout<<"unicode glyph cluster="<<g.cluster<<" font="<<g.font<<" id="<<g.id<<" advance="<<g.advance<<'\n';
+        if(g.cluster>=text.size()||(text[g.cluster]>=0xdc00&&text[g.cluster]<=0xdfff))aligned=false;
+    }
+    for(auto [offset,x]:layout.carets)if(offset<text.size()&&text[offset]>=0xdc00&&text[offset]<=0xdfff)aligned=false;
+    std::cout<<"unicode layout missing_glyphs="<<layout.missing<<" fallback_glyphs="<<layout.fallback<<'\n';
+    check_edit(aligned,"layout clusters and caret stops never point inside a surrogate pair");
+}
 static void model_scenarios(){
     editing::Model m;m.state.text=u"ABC";m.select(1,2);
     m.start();m.update(u"ㄓ",1);
@@ -576,6 +589,7 @@ int main(int argc,char** argv){
             check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
             uia_roundtrip(e);
             direct_endpoint_validation(e);
+            supplementary_layout_observation(e);
             if(allow_test_fixture){
                 if(inject_test_composition){e.model.start();e.model.update(u"測",1);trace_state("injected-composition",WM_IME_STARTCOMPOSITION,0,e.model);e.sync();}
                 cross_process_roundtrip(e,concurrent);

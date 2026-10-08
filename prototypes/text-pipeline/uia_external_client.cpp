@@ -454,6 +454,88 @@ static void composition_transaction(IUIAutomation* automation,IUIAutomationEleme
     success(automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,events.Get()),"unsubscribe transaction TextSelectionChanged");
 }
 static std::vector<double> rects(IUIAutomationTextRange* range);
+static bool valid_utf16(const std::wstring& s){
+    for(size_t i=0;i<s.size();++i){
+        if(s[i]>=0xd800&&s[i]<=0xdbff){if(i+1>=s.size()||s[i+1]<0xdc00||s[i+1]>0xdfff)return false;++i;}
+        else if(s[i]>=0xdc00&&s[i]<=0xdfff)return false;
+    }
+    return true;
+}
+static std::string hex_units(const std::wstring& s){std::ostringstream o;o<<std::hex;for(wchar_t c:s)o<<(unsigned)c<<' ';return o.str();}
+// Supplementary-plane characters (U+20000, U+1F600) mixed with Traditional Chinese and ASCII through the real
+// WM_CHAR / WM_KEYDOWN handlers, shared layout boundaries and UIA ranges. Not a UAX#29 grapheme or font-coverage test.
+static void supplementary_text(IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for supplementary");success(raw.As(&pattern),"query Text pattern for supplementary");
+    const std::wstring cjk=L"\xd840\xdc00",emoji=L"\xd83d\xde00";
+    const std::wstring full=L"繁體A"+cjk+L"中"+emoji+L"B";  // units: 繁0 體1 A2 U+20000 3-4 中5 U+1F600 6-7 B8
+    auto value_now=[&](const char* name){auto v=current_value(value);log_file<<"unicode "<<name<<" units="<<hex_units(v)<<std::endl;check(valid_utf16(v),"Value stays valid UTF-16");return v;};
+    auto char_range=[&](int first,int count){
+        ComPtr<IUIAutomationTextRange> d,r;int moved{};success(pattern->get_DocumentRange(&d),"get supplementary document");success(d->Clone(&r),"clone supplementary range");
+        success(r->MoveEndpointByRange(TextPatternRangeEndpoint_End,d.Get(),TextPatternRangeEndpoint_Start),"collapse supplementary range");
+        if(first){success(r->Move(TextUnit_Character,first,&moved),"move supplementary range");check(moved==first,"moved requested characters");}
+        if(count){success(r->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,count,&moved),"extend supplementary range");check(moved==count,"extended requested characters");}
+        return r;
+    };
+    auto caret=[&](int first_char){success(char_range(first_char,0)->Select(),"place caret through TextRange");};
+    auto key=[&](WPARAM k){SendMessageW(window,WM_KEYDOWN,k,0);};
+    auto chars=[&](const std::wstring& s){for(wchar_t c:s)SendMessageW(window,WM_CHAR,c,0);};
+    auto fixture=[&](WPARAM op,LPARAM arg){return SendMessageW(window,WM_APP+21,op,arg)==1;};
+
+    // Paired WM_CHAR inserts one intact scalar and one undo step each.
+    success(write_value(value,L"繁體A中B"),"set supplementary base text");
+    caret(3);chars(cjk);check(value_now("after-cjk")==L"繁體A"+cjk+L"中B","paired WM_CHAR inserts intact U+20000");
+    caret(5);chars(emoji);check(value_now("after-emoji")==full,"paired WM_CHAR inserts intact U+1F600");
+    check(selection_offsets(pattern.Get())==std::pair{8,8},"caret after emoji is UTF-16 offset 8");
+    check(fixture(5,0)&&value_now("undo-1")==L"繁體A"+cjk+L"中B","one undo removes only the emoji");
+    check(fixture(5,0)&&value_now("undo-2")==L"繁體A中B","second undo removes only U+20000");
+    check(fixture(6,0)&&fixture(6,0)&&value_now("redo")==full,"redo restores both scalars");
+
+    // UIA Character units follow layout boundaries and never split a surrogate pair.
+    const std::array<std::wstring,7> expected{L"繁",L"體",L"A",cjk,L"中",emoji,L"B"};
+    for(int k=0;k<7;++k){auto t=range_text(char_range(k,1).Get());log_file<<"unicode char "<<k<<" units="<<hex_units(t)<<std::endl;check(t==expected[(size_t)k],"Character range returns one intact scalar");}
+    {ComPtr<IUIAutomationTextRange> d,r;success(pattern->get_DocumentRange(&d),"get document for expand");success(d->Clone(&r),"clone for expand");
+     int moved{};success(r->MoveEndpointByRange(TextPatternRangeEndpoint_End,d.Get(),TextPatternRangeEndpoint_Start),"collapse for expand");
+     success(r->Move(TextUnit_Character,5,&moved),"move to emoji");success(r->ExpandToEnclosingUnit(TextUnit_Character),"expand at emoji");
+     check(range_text(r.Get())==emoji,"ExpandToEnclosingUnit(Character) returns intact emoji");}
+    auto emoji_rect=rects(char_range(5,1).Get());
+    log_file<<"unicode emoji_rect_count="<<emoji_rect.size()/4<<" width="<<(emoji_rect.size()==4?emoji_rect[2]:0)<<" (advance only; glyph coverage not verified)"<<std::endl;
+
+    // Keyboard navigation through the real WM_KEYDOWN handler.
+    caret(7);
+    const std::array<std::pair<int,int>,4> lefts{std::pair{8,8},{6,6},{5,5},{3,3}};
+    for(auto expect:lefts){key(VK_LEFT);auto s=selection_offsets(pattern.Get());log_file<<"unicode left selection="<<s.first<<':'<<s.second<<std::endl;check(s==expect,"VK_LEFT steps over whole scalars");}
+    key(VK_RIGHT);check(selection_offsets(pattern.Get())==std::pair{5,5},"VK_RIGHT steps over whole U+20000");
+
+    // Backspace / Delete remove whole scalars; undo restores.
+    caret(6);key(VK_BACK);check(value_now("backspace")==L"繁體A"+cjk+L"中B"&&selection_offsets(pattern.Get())==std::pair{6,6},"Backspace removes the whole emoji");
+    check(fixture(5,0)&&value_now("undo-backspace")==full,"undo restores emoji after Backspace");
+    caret(3);key(VK_DELETE);check(value_now("delete")==L"繁體A中"+emoji+L"B","Delete removes the whole U+20000");
+    check(fixture(5,0)&&value_now("undo-delete")==full,"undo restores U+20000 after Delete");
+
+    // Selection replacement by typing and by the composition fixture.
+    success(char_range(3,1)->Select(),"select U+20000");SendMessageW(window,WM_CHAR,L'Z',0);
+    check(value_now("replace-typing")==L"繁體AZ中"+emoji+L"B","typing replaces the selected supplementary scalar");
+    check(fixture(5,0)&&value_now("undo-replace")==full,"undo restores replaced scalar");
+    success(char_range(4,2)->Select(),"select 中 and emoji");
+    check(fixture(2,0)&&fixture(3,2)&&fixture(4,0)&&value_now("replace-composition")==L"繁體A"+cjk+L"測試B","composition commit replaces mixed selection");
+    check(fixture(5,0)&&value_now("undo-composition")==full,"undo restores mixed selection");
+
+    // Observation only: combining mark and ZWJ sequence boundaries come from HarfBuzz clusters, not UAX#29.
+    for(const std::wstring sample:{std::wstring(L"e\x0301x"),std::wstring(L"\xd83d\xdc68\x200d\xd83d\xdc69x")}){
+        success(write_value(value,sample),"set boundary observation text");
+        ComPtr<IUIAutomationTextRange> d,r;success(pattern->get_DocumentRange(&d),"get observation document");success(d->Clone(&r),"clone observation");
+        int moved{};success(r->MoveEndpointByRange(TextPatternRangeEndpoint_End,d.Get(),TextPatternRangeEndpoint_Start),"collapse observation");
+        std::ostringstream pieces;bool split=false;
+        for(int k=0;k<8;++k){
+            success(r->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend observation");if(!moved)break;
+            auto t=range_text(r.Get());if(!valid_utf16(t))split=true;pieces<<'['<<hex_units(t)<<']';
+            success(r->MoveEndpointByRange(TextPatternRangeEndpoint_Start,r.Get(),TextPatternRangeEndpoint_End),"advance observation");
+        }
+        log_file<<"unicode observation "<<hex_units(sample)<<"-> "<<pieces.str()<<std::endl;
+        check(!split,"observed character boundaries never split a surrogate pair");
+    }
+}
 // Mouse drag selection through the real window procedure messages, sent to the dedicated test HWND only.
 // No global input injection, cursor movement or focus change: this cannot prove hardware capture behavior.
 static void mouse_drag(IUIAutomation* automation,IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
@@ -793,6 +875,7 @@ int main(int argc,char** argv){
             range_contract_edges(automation.Get(),element.Get(),pattern.Get());
             composition_transaction(automation.Get(),element.Get(),pattern.Get(),window);
             mouse_drag(automation.Get(),element.Get(),pattern.Get(),window);
+            supplementary_text(element.Get(),pattern.Get(),window);
             geometry_changes(element.Get(),pattern.Get(),window);
             final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");

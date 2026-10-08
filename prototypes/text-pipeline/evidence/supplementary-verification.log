@@ -1,0 +1,24 @@
+2026-10-09 supplementary-plane editing regression (U+20000, U+1F600 with Traditional Chinese and ASCII)
+Source: evidence/supplementary-client.log (client) and host output of the same run.
+No red result: every new assertion passed; no product behavior changed (host only gained a test observation).
+
+Host shared layout (繁體A U+20000 中 U+1F600 B):
+  cluster=0 font=1 id=20008 | 1 font=1 id=27323 | 2 font=0 id=36 | 3 font=1 id=0 | 5 font=1 id=7700 | 6 font=1 id=0 | 8 font=0 id=37
+  missing_glyphs=2 fallback_glyphs=5 -> both supplementary scalars render as .notdef (font coverage), data intact
+  PASS layout clusters and caret stops never point inside a surrogate pair
+
+Client (UTF-16 units in hex):
+  after-emoji  7e41 9ad4 41 d840 dc00 4e2d d83d de00 42
+  undo-1 removes only d83d de00; undo-2 removes only d840 dc00; redo restores both
+  Character ranges: [7e41][9ad4][41][d840 dc00][4e2d][d83d de00][42]
+  VK_LEFT stops 8, 6, 5, 3; VK_RIGHT 3 -> 5
+  Backspace at 8 removes d83d de00; Delete at 3 removes d840 dc00; undo restores
+  typing Z over U+20000 and composition commit over 中+U+1F600 replace once; undo restores
+  observation e+U+0301+x -> [65 301][78]
+  observation U+1F468 ZWJ U+1F469 x -> [d83d dc68][200d][d83d dc69][78]  (not a grapheme; no split surrogate)
+
+Commands (workspace root):
+  run.ps1 -CrossProcess                         PASS (client checks only), then build error in my host literal (\xde00B), then PASS with host layout check; final witness 42,78,123
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=122 stale=78 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection (exit=1 trials are intended injections)
+editor_probe and running interactive windows were not built or touched.
