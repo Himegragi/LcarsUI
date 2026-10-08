@@ -453,6 +453,86 @@ static void composition_transaction(IUIAutomation* automation,IUIAutomationEleme
     success(automation->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId,element,events.Get()),"unsubscribe transaction TextChanged");
     success(automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,events.Get()),"unsubscribe transaction TextSelectionChanged");
 }
+static std::vector<double> rects(IUIAutomationTextRange* range);
+// Mouse drag selection through the real window procedure messages, sent to the dedicated test HWND only.
+// No global input injection, cursor movement or focus change: this cannot prove hardware capture behavior.
+static void mouse_drag(IUIAutomation* automation,IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for mouse");success(raw.As(&pattern),"query Text pattern for mouse");
+    const std::wstring original=L"甲乙丙丁";success(write_value(value,original),"set mouse fixture text");
+    ComPtr<TransactionEvents> events;events.Attach(new TransactionEvents);
+    success(automation->AddAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,TreeScope_Element,nullptr,events.Get()),"subscribe mouse TextSelectionChanged");
+    // Client x of each caret boundary, from UIA character rectangles of the current layout.
+    std::array<int,5> boundary{};int y=0;
+    {
+        ComPtr<IUIAutomationTextRange> document;success(pattern->get_DocumentRange(&document),"get mouse document");
+        for(int k=0;k<4;++k){
+            ComPtr<IUIAutomationTextRange> c;int moved{};success(document->Clone(&c),"clone mouse character");
+            success(c->MoveEndpointByRange(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start),"collapse mouse character");
+            if(k)success(c->Move(TextUnit_Character,k,&moved),"move mouse character");
+            success(c->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend mouse character");
+            auto r=rects(c.Get());check(r.size()==4,"mouse character has rectangle");
+            POINT a{static_cast<LONG>(std::lround(r[0])),static_cast<LONG>(std::lround(r[1]+r[3]/2))},z{static_cast<LONG>(std::lround(r[0]+r[2])),0};
+            ScreenToClient(window,&a);ScreenToClient(window,&z);boundary[(size_t)k]=a.x;boundary[(size_t)k+1]=z.x;y=a.y;
+        }
+    }
+    log_file<<"mouse boundaries="<<boundary[0]<<','<<boundary[1]<<','<<boundary[2]<<','<<boundary[3]<<','<<boundary[4]<<" y="<<y<<std::endl;
+    auto at=[&](int x){return static_cast<LPARAM>(MAKELPARAM(static_cast<WORD>(static_cast<short>(x)),static_cast<WORD>(static_cast<short>(y))));};
+    auto down=[&](int x){SendMessageW(window,WM_LBUTTONDOWN,MK_LBUTTON,at(x));};
+    auto move=[&](int x,bool button=true){SendMessageW(window,WM_MOUSEMOVE,button?MK_LBUTTON:0,at(x));};
+    auto up=[&](int x){SendMessageW(window,WM_LBUTTONUP,0,at(x));};
+    auto selection=[&](const char* name){auto s=selection_offsets(pattern.Get());log_file<<"mouse "<<name<<" selection="<<s.first<<':'<<s.second<<std::endl;return s;};
+    auto fixture=[&](WPARAM op,LPARAM arg){return SendMessageW(window,WM_APP+21,op,arg)==1;};
+    RECT client{};GetClientRect(window,&client);
+    DWORD thread=GetWindowThreadProcessId(window,nullptr);
+
+    // Forward drag, then typing replaces the dragged selection once; undo restores it.
+    down(boundary[1]+2);
+    GUITHREADINFO info{};info.cbSize=sizeof(info);GetGUIThreadInfo(thread,&info);
+    log_file<<"mouse capture_after_down="<<(info.hwndCapture==window)<<" (observation only; background capture is not hardware-verified)"<<std::endl;
+    move(boundary[2]+2);check(selection("forward-move")==std::pair{1,2},"drag move extends selection from anchor");
+    move(boundary[3]+2);up(boundary[3]+2);
+    check(selection("forward-up")==std::pair{1,3},"forward drag selects 1:3");
+    SendMessageW(window,WM_CHAR,L'X',0);check(current_value(value)==L"甲X丁","typing replaces dragged selection once");
+    check(fixture(5,0)&&current_value(value)==original&&selection("undo-typing")==std::pair{1,3},"undo restores text and dragged selection");
+
+    // Reverse drag, then a composition fixture commit replaces it once; undo restores.
+    down(boundary[3]+2);move(boundary[1]+2);up(boundary[1]+2);
+    check(selection("reverse")==std::pair{1,3},"reverse drag selects 1:3");
+    check(fixture(2,0)&&fixture(3,2)&&fixture(4,0)&&current_value(value)==L"甲測試丁","composition commit replaces dragged selection once");
+    check(fixture(5,0)&&current_value(value)==original,"undo restores text after composition replacement");
+
+    // Signed coordinates outside the client clamp to the text edges.
+    down(boundary[2]+2);move(-500);check(selection("outside-left")==std::pair{0,2},"drag left of client clamps to document start");
+    move(client.right+500);check(selection("outside-right")==std::pair{2,4},"drag right of client clamps to document end");
+    up(-30000);check(selection("outside-up")==std::pair{0,2},"release far outside client keeps clamped selection");
+
+    // Capture loss, cancel mode, focus loss and a move without the button all end the drag.
+    struct Cancel{UINT message;const char* name;};
+    for(auto c:{Cancel{WM_CAPTURECHANGED,"capture-changed"},Cancel{WM_CANCELMODE,"cancel-mode"},Cancel{WM_KILLFOCUS,"kill-focus"}}){
+        down(boundary[1]+2);move(boundary[2]+2);SendMessageW(window,c.message,0,0);
+        move(boundary[4]);up(boundary[4]);
+        log_file<<"mouse cancel="<<c.name<<std::endl;
+        check(selection(c.name)==std::pair{1,2},"cancelled drag does not keep extending");
+    }
+    down(boundary[1]+2);move(boundary[3]+2,false);move(boundary[4]);
+    check(selection("move-without-button")==std::pair{1,1},"move without button ends drag without extending");
+    up(boundary[4]);check(selection("up-after-end")==std::pair{1,1},"release after ended drag does not extend");
+
+    // Composition guard: no mouse selection change while composing; the drag ends with composition.
+    down(boundary[1]+2);move(boundary[2]+2);check(fixture(2,0),"start composition during drag");
+    move(boundary[4]);check(current_value(value)==original&&selection("composing-move")==std::pair{1,1},"drag move ignored while composing");
+    down(boundary[3]+2);check(selection("composing-down")==std::pair{1,1},"button down ignored while composing");
+    check(fixture(0,0)&&selection("after-cancel")==std::pair{1,2},"cancel restores pre-composition drag selection");
+    move(boundary[4]);up(boundary[4]);check(selection("after-cancel-move")==std::pair{1,2},"moves after cancellation do not extend");
+
+    // A plain click afterwards collapses; a later button-less move does nothing.
+    down(boundary[3]+2);up(boundary[3]+2);move(boundary[1]+2,false);
+    check(selection("click")==std::pair{3,3},"click after cancelled drag collapses at hit offset");
+    log_file<<"mouse selection_events="<<events->selection_events<<" (whole scenario, phase not attributed)"<<std::endl;
+    check(events->selection_events>0,"mouse selection changes raise TextSelectionChanged");
+    success(automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,events.Get()),"unsubscribe mouse TextSelectionChanged");
+}
 static std::vector<double> rects(IUIAutomationTextRange* range){
     SAFEARRAY* array{};success(range->GetBoundingRectangles(&array),"get bounding rectangles for geometry");
     LONG lower{},upper{};SafeArrayGetLBound(array,1,&lower);SafeArrayGetUBound(array,1,&upper);
@@ -712,6 +792,7 @@ int main(int argc,char** argv){
             text_ranges(element.Get(),pattern.Get(),window,changes.Get());
             range_contract_edges(automation.Get(),element.Get(),pattern.Get());
             composition_transaction(automation.Get(),element.Get(),pattern.Get(),window);
+            mouse_drag(automation.Get(),element.Get(),pattern.Get(),window);
             geometry_changes(element.Get(),pattern.Get(),window);
             final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");

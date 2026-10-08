@@ -113,6 +113,32 @@ client 新增 `composition_transaction`（文字「甲乙丙丁」，先選取 1
 沒有發現缺陷，所以沒有紅燈修正。證據：`evidence/composition-fixture-corrected-client.log`、`composition-fixture-verification.log`（舊的 `composition-fixture-client.log` 為更正前版本）。
 限制：沒有測真實 IME 的 GCS 旗標組合、重轉換、候選窗位置、焦點切換造成的取消，也沒有測 Narrator 對組字的朗讀。
 
+## 滑鼠拖曳選取（修正）
+
+使用者回報（本機手動測試、未指明輸入法，不是獨立驗證）：互動原型無法用滑鼠拖曳選取來取代文字，Shift+方向鍵可以；其他建議的 IME 檢查使用者回報正常。
+
+- 原因：`WM_LBUTTONDOWN` 只處理點擊與 Shift+點擊，沒有處理 `WM_MOUSEMOVE`／`WM_LBUTTONUP`。
+- 紅燈：`evidence/mouse-drag-red-client.log`，`mouse forward-move selection=1:1`，`FAIL drag move extends selection from anchor`。
+- 修正（`selfdraw_editor.cpp`）：
+  - 按下時設定錨點並開始拖曳；移動時延伸；放開時完成。
+  - 用有號的 `GET_X_LPARAM` 取座標，夾在文字 viewport 內，再呼叫共用的 layout hit test。
+  - 選取寫回模型後走既有的 `sync`，所以 UIA 選取快照與 TextSelectionChanged 都沿用原路徑。
+  - 下列任一情況都會結束拖曳：`WM_CAPTURECHANGED`、`WM_CANCELMODE`、`WM_KILLFOCUS`、開始組字、組字中的移動，以及沒按住按鍵的移動。
+  - 組字中按下滑鼠與移動都忽略。
+- 綠燈（`evidence/mouse-drag-green-client.log`）：
+  - 正向與反向拖曳都得到 1:3。
+  - 拖曳後打字只取代一次，undo 還原；組字 fixture 提交只取代一次，undo 還原。
+  - 拖到左外側或右外側，分別夾在文件頭與文件尾；在 -30000 放開也不會出錯。
+  - 三種取消訊息與無按鍵移動之後，再移動或放開都不再延伸。
+  - 組字中移動與按下都被忽略；取消後還原拖曳選取，之後的移動也不延伸；最後一般點擊收合在 3:3。
+- 測試方式：跨程序 client 只對專用測試 HWND 呼叫 `SendMessage`。沒有全域輸入注入、沒有移動游標、沒有改變焦點。
+
+自動測試與真實硬體的差異：
+- 非互動測試視窗不呼叫 `SetFocus`／`SetCapture`。實測背景 `SetCapture` 成功後，系統送來代表真實滑鼠狀態（按鍵未按）的移動訊息，結束了模擬拖曳（`evidence/mouse-drag-capture-interference-client.log`）；而且自動測試不應抓住使用者的滑鼠。
+- 因此**真正的系統滑鼠捕捉、拖出視窗外時的訊息遞送、硬體按鍵時序都沒有自動驗證**；只驗證了視窗程序的狀態路徑。互動模式仍會呼叫 `SetCapture`，需人工確認。
+- 測試期間若使用者把真實滑鼠移到測試視窗上，可能產生無按鍵的真實移動而提早結束拖曳，造成偶發失敗。
+- 沒有自動捲動（拖到 viewport 外只夾在可見邊緣）、雙擊選詞、多行或完整 grapheme 行為。
+
 ## 不穩定結果：尚未確定根因
 
 後續已追加20次追蹤、受控故障與例外清理修正，見 [UIA 重跑與清理回歸](UIA_STRESS.md)；原偶發根因仍未定論。

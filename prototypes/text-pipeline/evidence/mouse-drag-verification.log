@@ -1,0 +1,29 @@
+2026-10-09 mouse drag selection fix (messages sent with SendMessage to the dedicated test HWND only)
+User report (manual, current machine, unspecified IME; not independent proof): mouse drag could not select for
+replacement; Shift+arrows worked; other suggested IME checks reported normal.
+
+RED (evidence/mouse-drag-red-client.log; old handler, SetFocus already skipped for the test window):
+  mouse boundaries=24,75,126,177,228 y=71
+  mouse forward-move selection=1:1
+  FAIL drag move extends selection from anchor
+
+Intermediate (evidence/mouse-drag-capture-interference-client.log; fix with background SetCapture):
+  mouse capture_after_down=1
+  mouse forward-move selection=1:2
+  mouse forward-up selection=1:2   -> FAIL forward drag selects 1:3
+  Interpretation: after capture, a real-input move with no button ended the drag; test window no longer captures.
+
+GREEN (evidence/mouse-drag-green-client.log):
+  capture_after_down=0 (test window does not capture; not hardware-verified)
+  forward-move 1:2, forward-up 1:3, undo-typing 1:3, reverse 1:3
+  outside-left 0:2, outside-right 2:4, outside-up(-30000) 0:2
+  capture-changed 1:2, cancel-mode 1:2, kill-focus 1:2
+  move-without-button 1:1, up-after-end 1:1
+  composing-move 1:1, composing-down 1:1, after-cancel 1:2, after-cancel-move 1:2, click 3:3
+  selection_events=7 (whole scenario, phase not attributed)
+
+Commands (workspace root):
+  run.ps1 -CrossProcess                         RED, intermediate FAIL, then PASS; final GL_BACK witness 42,78,123
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=123 stale=77 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection (exit=1 trials are intended injections)
+editor_probe (interactive binary) was not built or touched.

@@ -201,6 +201,14 @@ struct EditorHost {
         std::wostringstream title;title<<L"LcarsUI 自繪編輯原型 | F2 字型 / F3,F4 字級 | "<<size_dip<<L" DIP | composing="<<model.composing<<L" | IMM messages="<<composition_messages;
         SetWindowTextW(context.window,title.str().c_str());dirty=true;
     }
+    bool dragging=false;
+    void end_drag(){dragging=false;if(GetCapture()==context.window)ReleaseCapture();}
+    // Signed client x, clamped to the text viewport, then the shared layout hit test.
+    unsigned mouse_offset(LPARAM l){
+        RECT client{};GetClientRect(context.window,&client);
+        const int x=std::clamp(GET_X_LPARAM(l),24,std::max(24,static_cast<int>(client.right)-24));
+        return engine.hit(layout(),x-24.f+horizontal_scroll);
+    }
     void move(int direction,bool extend){
         auto l=layout();auto pos=model.state.caret;
         if(direction<0){auto it=l.carets.lower_bound(pos);if(it!=l.carets.begin())pos=std::prev(it)->first;}
@@ -263,7 +271,7 @@ static std::u16string composition_string(HIMC imc,DWORD kind){
 static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     if(!host)return wnd_proc(h,message,w,l);
     auto& e=*host;
-    bool relevant=message==select_range_message||message==set_value_message||message==WM_APP+21||message==WM_CHAR||message==WM_KEYDOWN||message==WM_LBUTTONDOWN||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_IME_STARTCOMPOSITION||message==WM_IME_COMPOSITION||message==WM_IME_ENDCOMPOSITION;
+    bool relevant=message==select_range_message||message==set_value_message||message==WM_APP+21||message==WM_CHAR||message==WM_KEYDOWN||message==WM_LBUTTONDOWN||message==WM_LBUTTONUP||message==WM_CAPTURECHANGED||message==WM_CANCELMODE||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_IME_STARTCOMPOSITION||message==WM_IME_COMPOSITION||message==WM_IME_ENDCOMPOSITION;
     struct ExitTrace{bool enabled;UINT message;const editing::Model& model;~ExitTrace(){if(enabled)trace_state("exit",message,0,model);}} exit_trace{relevant,message,e.model};
     if(relevant)trace_state("enter",message,message==WM_CHAR?0:static_cast<unsigned long long>(w),e.model);
     switch(message){
@@ -318,10 +326,10 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
         if(std::wstring(reinterpret_cast<const wchar_t*>(l)).find_first_of(L"\r\n\t")!=std::wstring::npos)return E_INVALIDARG;
         e.model.set(u16(reinterpret_cast<const wchar_t*>(l)));e.sync();return S_OK;
     case WM_SETFOCUS:CreateCaret(h,nullptr,2,e.pixels()+10);e.sync();UiaRaiseAutomationEvent(e.provider,UIA_AutomationFocusChangedEventId);return 0;
-    case WM_KILLFOCUS:{auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
+    case WM_KILLFOCUS:{e.end_drag();auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
     case WM_SIZE:case WM_MOVE:e.sync();break;
     case WM_DPICHANGED:{auto r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);e.sync();return 0;}
-    case WM_IME_STARTCOMPOSITION:e.model.start();e.sync();return 0;
+    case WM_IME_STARTCOMPOSITION:e.end_drag();e.model.start();e.sync();return 0;
     case WM_IME_SETCONTEXT:return DefWindowProcW(h,message,w,l&~ISC_SHOWUICOMPOSITIONWINDOW);
     case WM_IME_REQUEST:
         if(w==IMR_QUERYCHARPOSITION&&l){
@@ -342,10 +350,28 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     case WM_IME_ENDCOMPOSITION:e.model.cancel();e.sync();return 0;
     case WM_IME_CHAR:return 0; // Result is already consumed through GCS_RESULTSTR.
     case WM_LBUTTONDOWN:{
-        if(e.model.composing)return 0;SetFocus(h);auto layout=e.layout();
-        auto offset=e.engine.hit(layout,static_cast<short>(LOWORD(l))-24.f+e.horizontal_scroll);
-        e.model.select((w&MK_SHIFT)?e.model.state.anchor:offset,offset);e.sync();return 0;
+        if(e.model.composing)return 0;if(!test_accept_any_size)SetFocus(h);
+        auto offset=e.mouse_offset(l);
+        e.model.select((w&MK_SHIFT)?e.model.state.anchor:offset,offset);
+        // The noninteractive test window must not capture the user's real mouse: after a background
+        // SetCapture the system delivered a real button-up move that ended the synthetic drag.
+        e.dragging=true;if(!test_accept_any_size)SetCapture(h);e.sync();return 0;
     }
+    case WM_MOUSEMOVE:{
+        if(!e.dragging)break;
+        // Composition or a released button (e.g. lost up message) ends the drag instead of extending.
+        if(e.model.composing||!(w&MK_LBUTTON)){e.end_drag();return 0;}
+        auto offset=e.mouse_offset(l);
+        if(offset!=e.model.state.caret){e.model.select(e.model.state.anchor,offset);e.sync();}
+        return 0;
+    }
+    case WM_LBUTTONUP:{
+        if(!e.dragging)break;
+        if(!e.model.composing){auto offset=e.mouse_offset(l);if(offset!=e.model.state.caret){e.model.select(e.model.state.anchor,offset);e.sync();}}
+        e.end_drag();return 0;
+    }
+    case WM_CAPTURECHANGED:if(reinterpret_cast<HWND>(l)!=h)e.dragging=false;break;
+    case WM_CANCELMODE:e.end_drag();break;
     case WM_KEYDOWN:{
         if(e.model.composing){
             if(w==VK_ESCAPE){auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();e.sync();return 0;}
