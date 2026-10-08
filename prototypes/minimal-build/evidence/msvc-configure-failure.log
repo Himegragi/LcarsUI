@@ -1,0 +1,27 @@
+-- Configuring done (0.0s)
+CMake Error in CMakeLists.txt:
+  Target "probe_core" requires the language dialect "CXX26" .  But the
+  current compiler "MSVC" does not support this, or CMake does not know the
+  flags to enable it.
+
+
+CMake Error in CMakeLists.txt:
+  Target "core_consumer" requires the language dialect "CXX26" .  But the
+  current compiler "MSVC" does not support this, or CMake does not know the
+  flags to enable it.
+
+
+CMake Error in CMakeLists.txt:
+  Target "gl_probe" requires the language dialect "CXX26" .  But the current
+  compiler "MSVC" does not support this, or CMake does not know the flags to
+  enable it.
+
+
+-- Generating done (0.0s)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+CMake configure failed
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\run.ps1:24 char:28
++ if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
++                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (CMake configure failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : CMake configure failed

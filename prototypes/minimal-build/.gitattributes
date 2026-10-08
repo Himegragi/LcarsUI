@@ -1,0 +1,3 @@
+# Preserve upstream bytes, including upstream formatting, for SHA256 checks.
+third_party/** -text -whitespace
+evidence/*.log text eol=lf

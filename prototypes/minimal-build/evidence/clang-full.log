@@ -1,0 +1,46 @@
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang
+Change Dir: 'C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang'
+
+Run Build Command(s): C:/PROGRA~1/LLVM/bin/ninja.exe -v
+[1/6] "C:\Program Files\LLVM\bin\clang-cl.exe"  /nologo -TP  -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++latest -MDd -Zi /utf-8 -clang:-MD -clang:-MTCMakeFiles\probe_core.dir\core.cpp.obj -clang:-MFCMakeFiles\probe_core.dir\core.cpp.obj.d /FoCMakeFiles\probe_core.dir\core.cpp.obj /FdCMakeFiles\probe_core.dir\probe_core.pdb -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core.cpp
+[2/6] C:\WINDOWS\system32\cmd.exe /C "cd . && "C:\Program Files\LLVM\bin\llvm-lib.exe" /nologo /machine:x64 /out:probe_core.lib CMakeFiles\probe_core.dir\core.cpp.obj && cd ."
+[3/6] "C:\Program Files\LLVM\bin\clang-cl.exe"  /nologo -TP  -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++latest -MDd -Zi /utf-8 -clang:-MD -clang:-MTCMakeFiles\core_consumer.dir\core_consumer.cpp.obj -clang:-MFCMakeFiles\core_consumer.dir\core_consumer.cpp.obj.d /FoCMakeFiles\core_consumer.dir\core_consumer.cpp.obj /FdCMakeFiles\core_consumer.dir\ -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core_consumer.cpp
+[4/6] C:\WINDOWS\system32\cmd.exe /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\core_consumer.dir --rc="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\rc.exe" --mt="C:\Program Files\LLVM\bin\llvm-mt.exe" --manifests  -- "C:\Program Files\LLVM\bin\lld-link.exe" /nologo CMakeFiles\core_consumer.dir\core_consumer.cpp.obj  /out:core_consumer.exe /implib:core_consumer.lib /pdb:core_consumer.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console  probe_core.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+[5/6] "C:\Program Files\LLVM\bin\clang-cl.exe"  /nologo -TP -DNOMINMAX -DUNICODE -DWIN32_LEAN_AND_MEAN -D_UNICODE -D_WIN32_WINNT=0x0A00 -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\third_party -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++latest -MDd -Zi /utf-8 -clang:-MD -clang:-MTCMakeFiles\gl_probe.dir\gl_probe.cpp.obj -clang:-MFCMakeFiles\gl_probe.dir\gl_probe.cpp.obj.d /FoCMakeFiles\gl_probe.dir\gl_probe.cpp.obj /FdCMakeFiles\gl_probe.dir\ -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\gl_probe.cpp
+[6/6] C:\WINDOWS\system32\cmd.exe /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\gl_probe.dir --rc="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\rc.exe" --mt="C:\Program Files\LLVM\bin\llvm-mt.exe" --manifests  -- "C:\Program Files\LLVM\bin\lld-link.exe" /nologo CMakeFiles\gl_probe.dir\gl_probe.cpp.obj  /out:gl_probe.exe /implib:gl_probe.lib /pdb:gl_probe.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console  probe_core.lib  opengl32.lib  user32.lib  gdi32.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+
+C++26 pack indexing + static library consumer: 26
+THROWAWAY PROTOTYPE cxx26=26
+__cplusplus=202400 pack_indexing=202311
+compiler=clang 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+cycle=0 client=938x584
+pixel(117,292)=25,51,76
+pixel(469,292)=140,90,54
+pixel(820,292)=25,51,76
+cycle=0 client=618x424
+pixel(77,212)=25,51,76
+pixel(309,212)=140,90,54
+pixel(540,212)=25,51,76
+cycle 0 cleanup=PASS
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+cycle=1 client=938x584
+pixel(117,292)=25,51,76
+pixel(469,292)=140,90,54
+pixel(820,292)=25,51,76
+cycle=1 client=618x424
+pixel(77,212)=25,51,76
+pixel(309,212)=140,90,54
+pixel(540,212)=25,51,76
+cycle 1 cleanup=PASS
+PASS: C++26, core context, shaders, texture, alpha blend, scissor, resize, cleanup/recreation
