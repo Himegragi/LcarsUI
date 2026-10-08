@@ -1,0 +1,46 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+ninja: no work to do.
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS automated window does not take foreground focus
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=207,219
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA client HRESULT=0x80004005
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+Text probe failed
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\run.ps1:28 char:21
++   if($LASTEXITCODE){throw 'Text probe failed'}
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Text probe failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : Text probe failed
+ 

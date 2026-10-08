@@ -1,0 +1,34 @@
+2026-10-09 WM_CHAR surrogate assembler lifetime regression
+Each case: (green: marker 標記) -> fixture 甲乙丙丁 -> caret 1 -> WM_CHAR d840 -> interruption -> WM_CHAR dc00 -> undo
+
+RED (evidence/surrogate-interruption-red-client.log; weaker history check, text check caught every case):
+  uia-setvalue        units=5b50 4e11 d840 dc00          selection=4:4
+  uia-select          units=7532 4e59 d840 dc00 4e01     selection=4:4
+  key-right           units=7532 4e59 d840 dc00 4e19 4e01 selection=4:4
+  key-backspace       units=d840 dc00 4e59 4e19 4e01     selection=2:2
+  key-delete          units=7532 d840 dc00 4e19 4e01     selection=3:3
+  kill-focus          units=7532 d840 dc00 4e59 4e19 4e01 selection=3:3
+  mouse-click         units=7532 4e59 4e19 d840 dc00 4e01 selection=5:5
+  ime-start-end       units=7532 d840 dc00 4e59 4e19 4e01 selection=3:3
+  fixture-composition units=7532 d840 dc00 4e59 4e19 4e01 selection=3:3
+  interrupt failures=9
+
+GREEN (evidence/surrogate-interruption-green-client.log; marker history check):
+  uia-setvalue        5b50 4e11            2:2  undo -> 甲乙丙丁
+  uia-select          甲乙丙丁             2:3  undo -> 標記
+  key-right           甲乙丙丁             2:2  undo -> 標記
+  key-backspace       4e59 4e19 4e01       0:0  undo -> 甲乙丙丁
+  key-delete          7532 4e19 4e01       1:1  undo -> 甲乙丙丁
+  kill-focus          甲乙丙丁             1:1  undo -> 標記
+  mouse-click         甲乙丙丁             3:3  undo -> 標記
+  ime-start-end       甲乙丙丁             1:1  undo -> 標記
+  fixture-composition 甲乙丙丁             1:1  undo -> 標記
+  interrupt failures=0
+  consecutive pair, F3 between halves, rejected multiline SetValue between halves: one scalar, one undo
+  lone low ignored; high,high,low -> second high pairs (U+1F600), one undo
+
+Commands (workspace root):
+  run.ps1 -CrossProcess                         RED, then PASS, then PASS with marker history check; final witness 42,78,123
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=123 stale=77 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection (exit=1 trials are intended injections)
+Only editor_cross_host / uia_external_client were built; live interactive binaries untouched.

@@ -1,0 +1,38 @@
+Copied (relevant lines, verbatim) from Codex independent verification:
+E:/LcarsUI/.scratch/harness/claude-uia-contracts/codex-interruption-regression.log
+Build: "ninja: no work to do." (same binaries as the surrogate-interruption green run)
+
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA client HRESULT=0x80004005
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+Text probe failed
+
+Reading: no "UIA role=" line, so the in-process uia_roundtrip failed in CoCreateInstance(CUIAutomation)
+or ElementFromHandle with E_FAIL; that code had no per-phase output, so the phase cannot be told apart.
+The failure happened before any of the new surrogate-interruption tests (those run in the external client later).
+
+--- Claude reproduction with phase diagnostics (2026-10-09, run.ps1 -CrossProcess, 3 consecutive runs, all FAIL) ---
+Run 1 (phase only):
+  UIA phase=CoInitializeEx hr=0x0 t=0ms
+  UIA phase=CoCreateInstance(CUIAutomation) hr=0x0 t=2ms
+  UIA phase=ElementFromHandle hr=0x80004005 t=2ms
+Run 2 (+WM_GETOBJECT counters):
+  UIA ElementFromHandle window=0000000001880C1A IsWindow=1 hung=0 getobject_during=0 last_id=-25 last_result=0x0
+  UIA phase=ElementFromHandle hr=0x80004005 t=2ms
+Run 3 (+per-message WM_GETOBJECT log):
+  UIA ElementFromHandle window=0000000001D206E8 IsWindow=1 hung=0 getobject_during=0 last_id=-25 last_result=0x0
+  UIA phase=ElementFromHandle hr=0x80004005 t=2ms
+  WM_GETOBJECT root wparam=0xf360a40a result=0x10000 lasterror=0 retired=0   (printed after the failure)
+
+Facts:
+  - Exact failing phase: IUIAutomation::ElementFromHandle on the in-process MTA client thread, E_FAIL within ~2 ms.
+  - ElementFromHandle itself caused no WM_GETOBJECT (getobject_during=0).
+  - A root WM_GETOBJECT (UiaRootObjectId=-25, wParam 0xf360a40a) had already entered the UI-thread handler before the
+    call (id recorded, result still the initial 0) and completed later with a nonzero provider result 0x10000.
+Unproven inference: an external UIA request being served on the UI thread concurrently with the in-process
+ElementFromHandle correlates with the fast E_FAIL. Sender and causality are not established.
+The same code passed earlier (00:51 runs); the change is environmental or timing, not shown to be caused by the
+pending_high edits (which are not reached before this point). Not fixed; no retry or relaxed assertion added.

@@ -161,6 +161,47 @@ client 新增 `composition_transaction`（文字「甲乙丙丁」，先選取 1
 - `e`+U+0301+`x`：HarfBuzz cluster 讓 `e` 與組合記號成為同一個 Character 範圍。
 - U+1F468 ZWJ U+1F469 `x`：被分成三個 Character 範圍（人、ZWJ、人）。這不是使用者心目中的「一個字」，游標可以停在 ZWJ 兩側，但沒有拆開任何代理對。
 
+## WM_CHAR 代理對組合器的生命週期（修正）
+
+問題：`WM_CHAR` 先收到高位代理時會暫存，等下一個低位代理再組成一個字元。暫存值原本只在下一個字元到來時才清除，
+所以中間如果發生 UIA 寫入、選取、方向鍵、刪除、焦點離開、滑鼠點擊或組字，之後的低位代理會和舊的高位代理，在**新位置**組出一個過期的字元。
+
+紅燈（`evidence/surrogate-interruption-red-client.log`）：9種中斷情境全部失敗，例如 `uia-setvalue` 得到「子丑」+U+20000（應為「子丑」），`key-right` 在位置2插入 U+20000。
+
+修正（`selfdraw_editor.cpp`，只清除暫存值，不改模型或 revision 策略）。這是**有限的 WM_CHAR 組合規則**：
+- 高位代理等待下一個低位代理；兩者連續到達時插入一個字元，一個 undo 步驟。
+- 單獨的低位代理忽略；第二個高位代理取代暫存的高位代理（原本已是如此）。
+- 以下**被接受**的編輯情境變更會丟棄暫存值：UIA SetValue／Select、編輯與導覽鍵（方向、Home、End、Backspace、Delete、Ctrl 組合鍵）、滑鼠按下、失去焦點、開始組字、測試 fixture 操作。
+- 不會丟棄：F2／F3／F4（只改幾何）、被拒絕的 UIA 操作（例如多行 SetValue 回 `E_INVALIDARG`）、視窗大小或位置變更。
+- 不涵蓋：Model 或 UIA 對一般不合法 UTF-16 的處理政策、grapheme 規則。
+
+綠燈（`evidence/surrogate-interruption-green-client.log`）：每個情境都檢查確切文字、選取與 undo 邊界。
+- 每個情境先寫入獨特的標記「標記」，再寫入「甲乙丙丁」並把游標放在1。
+- 編輯類中斷（SetValue、Backspace、Delete）undo 回到「甲乙丙丁」；非編輯類 undo 回到「標記」，證明沒有多出 undo 步驟。
+- 紅燈那次執行用的是較弱的歷史檢查（事前文字剛好等於測試文字），當時的失敗是由確切文字斷言抓到的；綠燈時已改成標記文字。
+- 連續的高位＋低位、中間插入 F3、中間有被拒絕的 UIA 寫入，都插入一個字元並且一次 undo 移除；單獨低位被忽略；兩個高位時由第二個配對。
+
+限制：
+- 只用專用測試 HWND 的 `SendMessage`；沒有真實鍵盤、IME 或焦點切換。
+- 真實的 `WM_KILLFOCUS` 與 IME 訊息順序可能和這裡模擬的不同。
+- 沒有涵蓋 `WM_UNICHAR` 或 `WM_IME_CHAR` 路徑。
+- 刻意未納入：`WM_CANCELMODE` 與 `WM_CAPTURECHANGED` 只結束滑鼠拖曳，**不會**清除暫存的高位代理，也沒有測試；
+  WM_KEYDOWN 的 Ctrl+C（只複製）目前也會清除暫存值，這不是必要的，也沒有測試。
+
+## 獨立驗證失敗：程序內 UIA roundtrip（未修正）
+
+Codex 獨立重跑 `-CrossProcess`（未重建）在新測試之前就失敗：`UIA client HRESULT=0x80004005`，沒有 `UIA role` 行。
+原始內容複製在 `evidence/independent-uia-roundtrip-failure.log`。
+
+加入只做診斷的階段紀錄後，我連續3次都重現（同一份程式在00:51的執行曾通過）：
+- 失敗階段確定是程序內 MTA 執行緒的 `ElementFromHandle`，約2毫秒回 `E_FAIL`；`CoCreateInstance` 成功。
+- 這次呼叫本身沒有讓視窗收到 `WM_GETOBJECT`。
+- 呼叫前，已有另一個 root `WM_GETOBJECT`（wParam `0xf360a40a`）進入 UI 執行緒處理中，之後才完成並回傳非零的 provider。
+
+推論（未證實）：外部 UIA 請求正在 UI 執行緒處理時，程序內的 `ElementFromHandle` 會很快失敗。發送者與因果關係都沒有確定。
+沒有修正，也沒有加入重試或放寬斷言；斷言條件不變，只多了階段、時間與 `WM_GETOBJECT` 的紀錄（只在測試模式輸出）。
+在這個失敗排除前，本輪的 surrogate 與先前的回歸測試都無法在目前環境完成重跑。
+
 ## 不穩定結果：尚未確定根因
 
 後續已追加20次追蹤、受控故障與例外清理修正，見 [UIA 重跑與清理回歸](UIA_STRESS.md)；原偶發根因仍未定論。

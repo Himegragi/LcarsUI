@@ -1,0 +1,1633 @@
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=18284 provider_pid=28988
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+PASS write Value across process boundary
+PASS read current Value
+PASS cross-process value round trip
+PASS receive external Value property change event with expected payload
+value_events=1
+multiline_hresult=0x80070057
+PASS single-line provider rejects multiline mutation
+PASS read current Value
+PASS rejected mutation preserves value
+PASS start simulated composition fixture
+composition_hresult=0x80131509
+PASS external write rejected during composition
+PASS read current Value
+PASS composition protection preserves committed text
+PASS resize dedicated test host
+PASS query external HWND bounds after resize
+PASS bounds match physical HWND coordinates
+PASS query TextPattern capability
+PASS single-line TextPattern capability is advertised
+PASS get Text pattern across process boundary
+PASS query Text pattern interface
+PASS get document range
+PASS read current Value
+PASS read text range
+PASS document text agrees with Value
+PASS clone document range
+PASS collapse range at document start
+PASS extend range by one character unit
+PASS read text range
+PASS first character range is correct
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS text bounds are smaller than HWND bounds
+PASS hit test physical screen point
+PASS compare hit-test text offset
+PASS left edge resolves to first caret position
+PASS select text through external TextRange
+PASS read selected text range
+PASS read selection count
+PASS single selection returned
+PASS get selection range
+PASS read text range
+selected_length=1 first_code=36328
+PASS UIA selection matches selected character
+PASS receive TextSelectionChanged event
+PASS clone selected range
+PASS compare equal ranges
+PASS clone preserves endpoints
+PASS move range one character
+PASS read text range
+PASS range movement selects next character
+PASS expand to document
+PASS compare expanded document
+PASS document expansion is consistent
+PASS case-insensitive range search
+PASS read text range
+PASS range search returns requested text
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS existing range geometry updates after font size change
+PASS get visible ranges
+PASS read visible range count
+PASS single visible line returned
+PASS mutate text to invalidate previous ranges
+stale_range_hresult=0x80040201
+PASS stale revision-bound range is explicitly rejected
+PASS receive TextChanged event
+PASS reacquire range after text mutation
+PASS read text range
+PASS new document range returns current text
+PASS set empty document
+PASS get empty document range
+PASS read text range
+PASS empty range returns empty text
+PASS get degenerate range rectangles
+PASS degenerate range has no bounding rectangles
+PASS set long single-line document
+PASS get long document
+PASS clone long document
+PASS collapse at long document start
+PASS select first long-document character
+PASS scroll text range into view without changing selection
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS scrolled range aligns with rendered viewport origin
+PASS read current Value
+PASS scroll operation preserves document contents
+PASS get Text pattern for edge checks
+PASS query Text pattern for edge checks
+PASS set edge-check fixture
+PASS get edge document range
+PASS read IsReadOnly attribute
+PASS editable field reports IsReadOnly false
+PASS read unsupported FontName attribute
+PASS classify unsupported attribute value
+PASS unsupported attribute is the reserved NotSupported value
+edge find_readonly_false=0x0
+PASS search matching IsReadOnly false
+PASS matching attribute search returns a range
+PASS compare attribute match
+PASS attribute match spans the uniform range
+edge find_readonly_true=0x0
+PASS search non-matching IsReadOnly true
+PASS non-matching live attribute search is success with no range
+edge find_unsupported_live=0x80040204
+PASS unsupported attribute search never fabricates a match
+PASS clone for degenerate checks
+PASS collapse at start for edge checks
+PASS zero-count move
+PASS read text range
+PASS zero-count move is a no-op
+PASS move collapsed range before start
+PASS cannot move before document start
+PASS move start endpoint before document start
+PASS start endpoint clamps at document start
+PASS compare clamped start
+PASS clamped degenerate range remains at document start
+PASS move collapsed range forward
+PASS read text range
+PASS collapsed range moves and stays degenerate
+PASS push start past end
+PASS compare pushed endpoints
+PASS moving start past end drags end along
+PASS collapse at document end
+PASS move end endpoint past document end
+PASS end endpoint clamps at document end
+PASS move collapsed range past end
+PASS read text range
+PASS cannot move past document end
+PASS clone for invalid-argument checks
+edge invalid_expand_unit=0x8000ffff
+PASS invalid ExpandToEnclosingUnit unit is rejected
+edge invalid_move_unit=0x8000ffff
+PASS invalid Move unit is rejected
+edge invalid_compare_endpoint_proxy=0x0
+edge invalid_compare_endpoint_order=1
+PASS compare after rejected arguments
+PASS rejected arguments leave range unchanged
+edge invalid_endpoint_move_proxy=0x0
+PASS locate end after proxy-normalized endpoint
+edge invalid_endpoint_move_moved=-1 end_vs_document_end=-1
+PASS clone first selection candidate
+PASS collapse selection candidate
+PASS extend selection candidate
+PASS clone second selection candidate
+PASS move second selection candidate
+PASS select first candidate
+edge add_same_selection=0x0
+PASS adding the existing selection is idempotent
+edge add_second_selection=0x80131509
+PASS single-selection provider rejects a second disjoint selection
+edge remove_live_selection=0x80131509
+PASS single-selection provider does not fabricate RemoveFromSelection
+PASS read selection for edge checks
+PASS read selection count for edge checks
+PASS get edge selection range
+PASS read text range
+PASS rejected selection operations keep the one existing selection
+PASS retain range to become stale
+PASS retain second range to become stale
+PASS mutate text for stale-range edge checks
+PASS get fresh range after mutation
+PASS capture selection before stale operations
+PASS count selection before stale operations
+PASS one selection before stale operations
+PASS get selection before stale operations
+PASS locate selection start before stale operations
+PASS locate selection end before stale operations
+edge selection_before start_vs_doc_start=1 end_vs_doc_end=0
+edge stale_clone=0x80040201
+edge stale_attribute_supported=0x80040201
+edge stale_attribute_unsupported=0x80040201
+edge stale_find_readonly_false=0x80040201
+edge stale_find_readonly_true=0x80040201
+edge stale_find_text=0x80040201
+edge stale_compare_self_fresh=0x80040201
+edge stale_compare_fresh_other=0x80040201
+edge stale_compare_endpoints=0x80040201
+edge stale_compare_endpoints_other=0x80040201
+edge stale_move_endpoint_by_range=0x80040201
+edge stale_expand=0x80040201
+edge stale_move=0x80040201
+edge stale_move_endpoint=0x80040201
+edge stale_rectangles=0x80040201
+edge stale_enclosing=0x80040201
+edge stale_children=0x80040201
+edge stale_select=0x80040201
+edge stale_add_selection=0x80040201
+edge stale_remove_selection=0x80040201
+edge stale_scroll=0x80040201
+PASS read current Value
+PASS stale operations do not change Value
+PASS capture selection after stale operations
+PASS count selection after stale operations
+PASS get selection after stale operations
+edge selection_compare_after_stale=0x0
+PASS compare selection across stale operations in same revision
+PASS compare selection start across stale operations
+PASS compare selection end across stale operations
+PASS read text range
+PASS fresh document range is still current after stale operations
+edge selection_after count=1 same=1 start_delta=0 end_delta=0
+PASS stale operations leave selection count and exact endpoints unchanged
+stale_edge_failures=0
+PASS every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE
+PASS get Text pattern for composition
+PASS query Text pattern for composition
+PASS set composition fixture text
+PASS get composition base document
+PASS clone composition selection
+PASS move to second character
+PASS extend over two characters
+PASS select composition target
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=before value_length=4 presented_length=4 selection=1:3
+PASS read text range
+PASS composition target selection is 1:3
+PASS subscribe transaction Value events
+PASS subscribe transaction TextChanged
+PASS subscribe transaction TextSelectionChanged
+composition op=2 arg=0 result=1
+PASS start empty composition fixture
+PASS read current Value
+PASS empty preedit keeps committed Value
+PASS get presented document
+PASS read text range
+PASS empty preedit removes selection from presented text
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=empty value_length=4 presented_length=2 selection=1:1
+PASS empty preedit selection collapses at composition start
+PASS presented-text change invalidates retained ranges
+PASS get composing document
+PASS clone composing range
+PASS collapse composing range
+PASS extend composing range
+composition write=0x80131509 select=0x80131509
+PASS Value write and TextRange Select rejected while composing
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=rejected value_length=4 presented_length=2 selection=1:1
+PASS rejected operations leave composition unchanged
+PASS rejected operations do not change presented revision
+composition op=3 arg=0 result=1
+PASS update preedit to one character
+PASS first preedit update invalidates the empty-preedit range
+PASS retain presented range
+PASS read text range
+PASS one-character preedit is presented
+composition op=3 arg=2 result=1
+PASS update preedit to two characters
+PASS second preedit update invalidates the one-character range
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS preedit update changes only presentation
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=update value_length=4 presented_length=4 selection=1:3
+PASS selection covers preedit span
+PASS retain presented range
+composition op=0 arg=0 result=1
+PASS cancel composition fixture
+PASS cancel invalidates the range held over the preedit
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS cancel restores presented text
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=cancel value_length=4 presented_length=4 selection=1:3
+PASS cancel restores original selection
+PASS retain presented range
+composition op=0 arg=0 result=1
+PASS repeat cancel fixture
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=cancel-again value_length=4 presented_length=4 selection=1:3
+PASS repeated cancel is a no-op and keeps revision
+composition op=2 arg=0 result=1
+PASS restart composition
+composition op=3 arg=2 result=1
+PASS update restarted preedit
+composition value_payloads_before_commit=0 presented_only_payload_seen=0
+PASS no preedit-only Value payload observed before commit (bounded 300 ms observation)
+PASS retain presented range
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=final-preedit value_length=4 presented_length=4 selection=1:3
+PASS final preedit selection covers preedit
+composition op=4 arg=0 result=1
+PASS commit preedit
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS commit replaces selection once
+PASS read text range
+PASS identical presentation keeps final preedit range valid after commit
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=commit value_length=4 presented_length=4 selection=3:3
+PASS commit moves selection to caret after inserted text
+PASS Value event carrying the committed text is received
+PASS commit without composition is refused by fixture
+composition op=0 arg=0 result=1
+PASS end after commit
+composition op=0 arg=0 result=1
+PASS repeat end after commit
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=end-after-commit value_length=4 presented_length=4 selection=3:3
+PASS end/cancel after commit does not duplicate, revert or change revision
+composition transaction_text_events=6 transaction_selection_events=6
+PASS TextChanged and TextSelectionChanged received during the transaction (phase not attributed)
+composition op=5 arg=0 result=1
+PASS undo composition transaction
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=undo value_length=4 presented_length=4 selection=1:3
+PASS undo restores text and selection before composition
+composition op=6 arg=0 result=1
+PASS redo composition transaction
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=redo value_length=4 presented_length=4 selection=3:3
+PASS redo reapplies committed composition
+composition op=2 arg=0 result=1
+PASS start composition before undo
+composition op=3 arg=1 result=1
+PASS preedit before undo
+composition op=5 arg=0 result=1
+PASS undo during composition
+PASS read current Value
+PASS get presented document
+PASS read text range
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS read current Value
+PASS get presented document
+PASS read text range
+composition state=undo-composing value_length=4 presented_length=4 selection=3:3
+PASS undo during composition cancels preedit only
+PASS unsubscribe transaction Value events
+PASS unsubscribe transaction TextChanged
+PASS unsubscribe transaction TextSelectionChanged
+PASS get Text pattern for mouse
+PASS query Text pattern for mouse
+PASS set mouse fixture text
+PASS subscribe mouse TextSelectionChanged
+PASS get mouse document
+PASS clone mouse character
+PASS collapse mouse character
+PASS extend mouse character
+PASS get bounding rectangles for geometry
+PASS mouse character has rectangle
+PASS clone mouse character
+PASS collapse mouse character
+PASS move mouse character
+PASS extend mouse character
+PASS get bounding rectangles for geometry
+PASS mouse character has rectangle
+PASS clone mouse character
+PASS collapse mouse character
+PASS move mouse character
+PASS extend mouse character
+PASS get bounding rectangles for geometry
+PASS mouse character has rectangle
+PASS clone mouse character
+PASS collapse mouse character
+PASS move mouse character
+PASS extend mouse character
+PASS get bounding rectangles for geometry
+PASS mouse character has rectangle
+mouse boundaries=24,75,126,177,228 y=71
+mouse capture_after_down=0 (observation only; background capture is not hardware-verified)
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse forward-move selection=1:2
+PASS drag move extends selection from anchor
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse forward-up selection=1:3
+PASS forward drag selects 1:3
+PASS read current Value
+PASS typing replaces dragged selection once
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse undo-typing selection=1:3
+PASS undo restores text and dragged selection
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse reverse selection=1:3
+PASS reverse drag selects 1:3
+PASS read current Value
+PASS composition commit replaces dragged selection once
+PASS read current Value
+PASS undo restores text after composition replacement
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse outside-left selection=0:2
+PASS drag left of client clamps to document start
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse outside-right selection=2:4
+PASS drag right of client clamps to document end
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse outside-up selection=0:2
+PASS release far outside client keeps clamped selection
+mouse cancel=capture-changed
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse capture-changed selection=1:2
+PASS cancelled drag does not keep extending
+mouse cancel=cancel-mode
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse cancel-mode selection=1:2
+PASS cancelled drag does not keep extending
+mouse cancel=kill-focus
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse kill-focus selection=1:2
+PASS cancelled drag does not keep extending
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse move-without-button selection=1:1
+PASS move without button ends drag without extending
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse up-after-end selection=1:1
+PASS release after ended drag does not extend
+PASS start composition during drag
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse composing-move selection=1:1
+PASS drag move ignored while composing
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse composing-down selection=1:1
+PASS button down ignored while composing
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse after-cancel selection=1:2
+PASS cancel restores pre-composition drag selection
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse after-cancel-move selection=1:2
+PASS moves after cancellation do not extend
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+mouse click selection=3:3
+PASS click after cancelled drag collapses at hit offset
+mouse selection_events=7 (whole scenario, phase not attributed)
+PASS mouse selection changes raise TextSelectionChanged
+PASS unsubscribe mouse TextSelectionChanged
+PASS get Text pattern for supplementary
+PASS query Text pattern for supplementary
+PASS set supplementary base text
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS place caret through TextRange
+PASS read current Value
+unicode after-cjk units=7e41 9ad4 41 d840 dc00 4e2d 42 
+PASS Value stays valid UTF-16
+PASS paired WM_CHAR inserts intact U+20000
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS place caret through TextRange
+PASS read current Value
+unicode after-emoji units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS paired WM_CHAR inserts intact U+1F600
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS caret after emoji is UTF-16 offset 8
+PASS read current Value
+unicode undo-1 units=7e41 9ad4 41 d840 dc00 4e2d 42 
+PASS Value stays valid UTF-16
+PASS one undo removes only the emoji
+PASS read current Value
+unicode undo-2 units=7e41 9ad4 41 4e2d 42 
+PASS Value stays valid UTF-16
+PASS second undo removes only U+20000
+PASS read current Value
+unicode redo units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS redo restores both scalars
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 0 units=7e41 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 1 units=9ad4 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 2 units=41 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 3 units=d840 dc00 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 4 units=4e2d 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 5 units=d83d de00 
+PASS Character range returns one intact scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS read text range
+unicode char 6 units=42 
+PASS Character range returns one intact scalar
+PASS get document for expand
+PASS clone for expand
+PASS collapse for expand
+PASS move to emoji
+PASS expand at emoji
+PASS read text range
+PASS ExpandToEnclosingUnit(Character) returns intact emoji
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS get bounding rectangles for geometry
+unicode emoji_rect_count=1 width=35 (advance only; glyph coverage not verified)
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS place caret through TextRange
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+unicode left selection=8:8
+PASS VK_LEFT steps over whole scalars
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+unicode left selection=6:6
+PASS VK_LEFT steps over whole scalars
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+unicode left selection=5:5
+PASS VK_LEFT steps over whole scalars
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+unicode left selection=3:3
+PASS VK_LEFT steps over whole scalars
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS VK_RIGHT steps over whole U+20000
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS place caret through TextRange
+PASS read current Value
+unicode backspace units=7e41 9ad4 41 d840 dc00 4e2d 42 
+PASS Value stays valid UTF-16
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS Backspace removes the whole emoji
+PASS read current Value
+unicode undo-backspace units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS undo restores emoji after Backspace
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS place caret through TextRange
+PASS read current Value
+unicode delete units=7e41 9ad4 41 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS Delete removes the whole U+20000
+PASS read current Value
+unicode undo-delete units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS undo restores U+20000 after Delete
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS select U+20000
+PASS read current Value
+unicode replace-typing units=7e41 9ad4 41 5a 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS typing replaces the selected supplementary scalar
+PASS read current Value
+unicode undo-replace units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS undo restores replaced scalar
+PASS get supplementary document
+PASS clone supplementary range
+PASS collapse supplementary range
+PASS move supplementary range
+PASS moved requested characters
+PASS extend supplementary range
+PASS extended requested characters
+PASS select 中 and emoji
+PASS read current Value
+unicode replace-composition units=7e41 9ad4 41 d840 dc00 6e2c 8a66 42 
+PASS Value stays valid UTF-16
+PASS composition commit replaces mixed selection
+PASS read current Value
+unicode undo-composition units=7e41 9ad4 41 d840 dc00 4e2d d83d de00 42 
+PASS Value stays valid UTF-16
+PASS undo restores mixed selection
+PASS set boundary observation text
+PASS get observation document
+PASS clone observation
+PASS collapse observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+unicode observation 65 301 78 -> [65 301 ][78 ]
+PASS observed character boundaries never split a surrogate pair
+PASS set boundary observation text
+PASS get observation document
+PASS clone observation
+PASS collapse observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+PASS read text range
+PASS advance observation
+PASS extend observation
+unicode observation d83d dc68 200d d83d dc69 78 -> [d83d dc68 ][200d ][d83d dc69 ][78 ]
+PASS observed character boundaries never split a surrogate pair
+PASS get Text pattern for interruptions
+PASS query Text pattern for interruptions
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS accepted UIA SetValue
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt uia-setvalue units=5b50 4e11 selection=2:2 undo_units=7532 4e59 4e19 4e01 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS extend interruption range
+PASS accepted UIA Select
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt uia-select units=7532 4e59 4e19 4e01 selection=2:3 undo_units=6a19 8a18 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt key-right units=7532 4e59 4e19 4e01 selection=2:2 undo_units=6a19 8a18 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt key-backspace units=4e59 4e19 4e01 selection=0:0 undo_units=7532 4e59 4e19 4e01 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt key-delete units=7532 4e19 4e01 selection=1:1 undo_units=7532 4e59 4e19 4e01 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt kill-focus units=7532 4e59 4e19 4e01 selection=1:1 undo_units=6a19 8a18 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS extend interruption range
+PASS get bounding rectangles for geometry
+PASS mouse target rectangle
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt mouse-click units=7532 4e59 4e19 4e01 selection=3:3 undo_units=6a19 8a18 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt ime-start-end units=7532 4e59 4e19 4e01 selection=1:1 undo_units=6a19 8a18 ok=1 history=1
+PASS set history marker
+PASS set interruption fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place interruption caret
+PASS fixture start/cancel
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS undo after interruption
+PASS read current Value
+interrupt fixture-composition units=7532 4e59 4e19 4e01 selection=1:1 undo_units=6a19 8a18 ok=1 history=1
+interrupt failures=0
+PASS interruptions discard a buffered high surrogate without stray insertion or history
+PASS set pair fixture
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place pair caret
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS consecutive high+low inserts one scalar
+PASS read current Value
+PASS one undo removes the whole pair
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place geometry caret
+PASS read current Value
+PASS font size change between halves does not interrupt the pair
+PASS read current Value
+PASS undo removes pair after geometry change
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place rejected caret
+PASS read current Value
+PASS rejected UIA write is a no-op for the pending pair
+PASS read current Value
+PASS undo removes pair after rejected write
+PASS get interruption document
+PASS clone interruption range
+PASS collapse interruption range
+PASS move interruption range
+PASS place malformed caret
+PASS read current Value
+PASS unmatched low surrogate is ignored
+PASS read current Value
+PASS read composition selection
+PASS count composition selection
+PASS composition keeps one selection
+PASS get composition selection
+PASS get composition document
+PASS clone composition head
+PASS measure selection start
+PASS read text range
+PASS read text range
+PASS second high replaces buffered high
+PASS read current Value
+PASS one undo after replaced high
+PASS get Text pattern for geometry
+PASS query Text pattern for geometry
+PASS set geometry fixture
+PASS get geometry document
+PASS clone geometry range
+PASS collapse geometry range
+PASS extend geometry range
+PASS reset horizontal scroll for geometry
+PASS select geometry range
+PASS get bounding rectangles for geometry
+geometry base count=1 225 275 51 61
+PASS base range starts at rendered text origin
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=base left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS move test host
+PASS get bounding rectangles for geometry
+geometry moved count=1 262 298 51 61
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=move ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS window move translates retained rectangle exactly
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=move left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS restore test host position
+PASS get bounding rectangles for geometry
+PASS restored position restores rectangle
+PASS get bounding rectangles for geometry
+geometry f3 count=1 225 275 48 58
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=f3 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS smaller font shrinks retained rectangle at same origin
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=f3 left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS get bounding rectangles for geometry
+PASS F4 restores retained rectangle
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=f4 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=f4 left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS get bounding rectangles for geometry
+geometry f2 count=1 225 275 51 61
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=f2 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS font family change keeps retained rectangle at origin and line height
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=f2 left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS get bounding rectangles for geometry
+PASS second F2 restores rectangle
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=f2-restore ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS hit-test rectangle exists
+PASS hit test retained left edge
+PASS hit test retained right edge
+PASS compare left-edge hit
+PASS compare right-edge hit
+geometry hit_after=f2-restore left_vs_start=0 right_vs_end=0
+PASS hit tests at reported rectangle edges resolve to retained endpoints
+PASS render witness sample inside client
+geometry render base_inside client=26,98 rgb=42,78,123
+PASS base render witness is selection highlight
+PASS resize test host client width
+geometry requested_client_width=73 actual=73
+PASS requested client width achieved
+PASS get bounding rectangles for geometry
+geometry narrow_first count=1 225 275 25 61
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=narrow ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS first character partly clipped by right margin
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+PASS partly clipped width still reports one visible range
+PASS render witness sample inside client
+geometry render narrow_inside client=36,98 rgb=42,78,123
+PASS render highlight inside clipped UIA rectangle
+PASS render witness sample inside client
+geometry render narrow_past_right client=51,98 rgb=18,25,38
+PASS render margin just past clipped UIA right edge
+PASS resize test host client width
+geometry requested_client_width=49 actual=49
+PASS requested client width achieved
+PASS get bounding rectangles for geometry
+geometry width49 count=1 225 275 1 61
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=width49 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS one-pixel viewport reports one-pixel rectangle
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+PASS one-pixel viewport reports one visible range
+PASS render witness sample inside client
+geometry render width49_content client=24,98 rgb=42,78,123
+PASS render one-pixel content column is highlighted
+PASS resize test host client width
+geometry requested_client_width=48 actual=48
+PASS requested client width achieved
+PASS get bounding rectangles for geometry
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+geometry width48 count=0
+geometry zero_width=48 visible_ranges=0
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=width48 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS zero content width has no rectangles and no visible ranges
+PASS read text range
+PASS zero viewport does not hide text from range content
+PASS render witness sample inside client
+geometry render width48_center client=24,98 rgb=18,25,38
+PASS render zero content width shows only margin
+PASS resize test host client width
+geometry requested_client_width=30 actual=30
+PASS requested client width achieved
+PASS get bounding rectangles for geometry
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+geometry width30 count=0
+geometry zero_width=30 visible_ranges=0
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=width30 ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS zero content width has no rectangles and no visible ranges
+PASS read text range
+PASS zero viewport does not hide text from range content
+PASS render witness sample inside client
+geometry render width30_center client=15,98 rgb=18,25,38
+PASS render zero content width shows only margin
+PASS restore test host width
+PASS get bounding rectangles for geometry
+geometry restore_width_before_scroll count=1 225 275 40 61
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=restore-width ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS scroll retained range back to origin
+PASS get bounding rectangles for geometry
+PASS restored width and scroll restore rectangle
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=restore-width-scroll ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS render witness sample inside client
+geometry render restored_inside client=26,98 rgb=42,78,123
+PASS restored render witness is selection highlight
+PASS resize test host client height
+geometry short_client_height=70 line_height=61
+PASS short viewport height achieved
+PASS get bounding rectangles for geometry
+geometry short count=1 225 275 51 30
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=short ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+geometry short_rect_bottom=305 client_bottom=305
+PASS partly clipped line rectangle stays inside client area
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+PASS partly clipped viewport still reports one visible range
+PASS resize test host client height
+geometry tiny_client_height=30
+PASS zero-content viewport height achieved
+PASS get bounding rectangles for geometry
+geometry tiny count=0
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=tiny ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+geometry tiny_visible_ranges=0
+PASS fully clipped range has no bounding rectangles
+PASS zero-content viewport reports no visible ranges
+PASS restore test host size
+PASS get bounding rectangles for geometry
+PASS restored size restores rectangle
+PASS compare retained start
+PASS compare retained end
+PASS read geometry selection
+PASS count geometry selection
+PASS get geometry selection
+PASS compare geometry selection
+PASS read text range
+PASS read text range
+PASS read current Value
+geometry unchanged_after=restore-size ok=1
+PASS geometry-only change keeps retained endpoints, text, selection and Value
+PASS set long geometry document
+PASS get long geometry document
+PASS clone long head
+PASS collapse long head
+PASS extend long head
+PASS clone scroll target
+PASS move scroll target
+PASS scroll target is character 50
+PASS select long head
+PASS scroll character 50 to viewport left
+PASS get bounding rectangles for geometry
+PASS get bounding rectangles for geometry
+PASS get bounding rectangles for geometry
+geometry scroll_target count=1 225 275 51 61
+geometry scroll_head count=0
+geometry scroll_whole count=1 225 275 690 61
+PASS scrolled target aligns with viewport left
+PASS range scrolled out of view has no rectangle
+PASS long range is clipped to both viewport edges
+PASS get visible ranges for geometry
+PASS count visible ranges for geometry
+PASS get first visible range
+PASS scrolled viewport has one visible range
+PASS compare visible start
+PASS compare visible end
+geometry visible_start_vs_target=0 visible_end_vs_document=-1
+PASS visible range starts at scrolled offset and ends before document end
+PASS hit test scrolled viewport
+PASS compare scrolled hit
+PASS hit test at viewport left resolves to scrolled offset
+PASS read selection after scroll
+PASS get selection after scroll
+PASS compare selection after scroll
+PASS read current Value
+PASS horizontal scroll keeps selection and Value
+PASS scroll back to document start
+PASS get bounding rectangles for geometry
+geometry scroll_back_head count=1 225 275 51 61
+PASS scrolling back restores head rectangle
+PASS get Text pattern for final selection
+PASS query Text pattern for final selection
+PASS restore test fixture
+PASS get restored document
+PASS clone restored document
+PASS collapse restored range
+PASS extend restored first character
+PASS leave first character selected for host verification
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS export actual UIA text rectangle for renderer comparison
+PASS unsubscribe event handler
+PASS cross-process Value and limited single-line TextRange batch; no Narrator claim

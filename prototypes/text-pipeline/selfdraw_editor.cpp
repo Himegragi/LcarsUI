@@ -133,6 +133,9 @@ struct EditorHost {
     bool dirty=true;
     int size_dip=24;
     float horizontal_scroll=0;
+    // Limited WM_CHAR surrogate assembler: a high surrogate waits for the next low one. An unmatched low is
+    // ignored, a new high replaces the buffered one, and accepted editing-context changes (UIA SetValue/Select,
+    // editing/navigation keys, mouse down, focus loss, composition start, fixture ops) discard it.
     wchar_t pending_high=0;
     unsigned composition_messages=0,composition_results=0;
     bool candidate_positioned=false;
@@ -239,6 +242,8 @@ static bool allow_test_fixture=false;
 static bool test_accept_any_size=false;
 static constexpr UINT test_render_sample_message=WM_APP+27;
 static unsigned test_poschanging_messages=0;
+// Diagnostics for the in-process UIA roundtrip (independent ElementFromHandle E_FAIL).
+static std::atomic<unsigned> getobject_messages{0};static std::atomic<LONG> last_getobject_id{0};static std::atomic<LRESULT> last_getobject_result{0};
 static bool test_close_requested=false;
 struct HostBinding {
     EditorHost& editor;
@@ -294,7 +299,7 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     case select_range_message:{
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         auto range=reinterpret_cast<const RangeSelection*>(l);if(!range)return E_INVALIDARG;
-        e.model.select(range->begin,range->end);
+        e.pending_high=0;e.model.select(range->begin,range->end);
         if(allow_test_fixture&&inject_test_selection){e.model.select(range->end,range->end);trace_state("injected-caret-move",select_range_message,0,e.model);}
         e.sync();return S_OK;
     }
@@ -318,18 +323,28 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
         case 6:if(!e.model.redo())return 0;break;
         default:return 0;
         }
+        e.pending_high=0;  // same rule as the IME/undo paths below
         e.sync();return 1;
     case WM_PAINT:ValidateRect(h,nullptr);e.dirty=true;return 0;
-    case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return e.retired?0:UiaReturnRawElementProvider(h,w,l,e.provider);break;
+    case WM_GETOBJECT:{
+        ++getobject_messages;last_getobject_id=static_cast<LONG>(l);
+        if(static_cast<LONG>(l)==UiaRootObjectId){
+            LRESULT r=e.retired?0:UiaReturnRawElementProvider(h,w,l,e.provider);last_getobject_result=r;
+            if(allow_test_fixture)std::cout<<"WM_GETOBJECT root wparam=0x"<<std::hex<<static_cast<unsigned long long>(w)<<" result=0x"<<static_cast<unsigned long long>(r)<<" lasterror="<<std::dec<<GetLastError()<<" retired="<<e.retired<<'\n';
+            return r;
+        }
+        if(allow_test_fixture)std::cout<<"WM_GETOBJECT id="<<static_cast<LONG>(l)<<" (default handling)\n";
+        break;
+    }
     case set_value_message:
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         if(std::wstring(reinterpret_cast<const wchar_t*>(l)).find_first_of(L"\r\n\t")!=std::wstring::npos)return E_INVALIDARG;
-        e.model.set(u16(reinterpret_cast<const wchar_t*>(l)));e.sync();return S_OK;
+        e.pending_high=0;e.model.set(u16(reinterpret_cast<const wchar_t*>(l)));e.sync();return S_OK;
     case WM_SETFOCUS:CreateCaret(h,nullptr,2,e.pixels()+10);e.sync();UiaRaiseAutomationEvent(e.provider,UIA_AutomationFocusChangedEventId);return 0;
-    case WM_KILLFOCUS:{e.end_drag();auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
+    case WM_KILLFOCUS:{e.end_drag();e.pending_high=0;auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
     case WM_SIZE:case WM_MOVE:e.sync();break;
     case WM_DPICHANGED:{auto r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);e.sync();return 0;}
-    case WM_IME_STARTCOMPOSITION:e.end_drag();e.model.start();e.sync();return 0;
+    case WM_IME_STARTCOMPOSITION:e.end_drag();e.pending_high=0;e.model.start();e.sync();return 0;
     case WM_IME_SETCONTEXT:return DefWindowProcW(h,message,w,l&~ISC_SHOWUICOMPOSITIONWINDOW);
     case WM_IME_REQUEST:
         if(w==IMR_QUERYCHARPOSITION&&l){
@@ -351,7 +366,7 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     case WM_IME_CHAR:return 0; // Result is already consumed through GCS_RESULTSTR.
     case WM_LBUTTONDOWN:{
         if(e.model.composing)return 0;if(!test_accept_any_size)SetFocus(h);
-        auto offset=e.mouse_offset(l);
+        auto offset=e.mouse_offset(l);e.pending_high=0;
         e.model.select((w&MK_SHIFT)?e.model.state.anchor:offset,offset);
         // The noninteractive test window must not capture the user's real mouse: after a background
         // SetCapture the system delivered a real button-up move that ended the synthetic drag.
@@ -397,6 +412,8 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
         else if(w==VK_F3)e.size_dip=std::max(12,e.size_dip-2);
         else if(w==VK_F4)e.size_dip=std::min(48,e.size_dip+2);
         else break;
+        // Editing/navigation keys change the insertion context; font keys are geometry only.
+        if(w!=VK_F2&&w!=VK_F3&&w!=VK_F4)e.pending_high=0;
         e.sync();return 0;
     }
     case WM_CHAR:{
@@ -457,15 +474,30 @@ static void uia_roundtrip(EditorHost& e){
     using Microsoft::WRL::ComPtr;
     std::atomic<bool> done=false;
     std::atomic<HRESULT> result=E_FAIL;
+    // Diagnostics only: name and duration of each completed phase; the pass/fail rule is unchanged.
+    std::atomic<const char*> phase="CoInitializeEx";
+    auto started=std::chrono::steady_clock::now();
+    auto mark=[&](const char* next,HRESULT hr){
+        auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
+        std::cout<<"UIA phase="<<phase.load()<<" hr=0x"<<std::hex<<static_cast<unsigned long>(hr)<<std::dec<<" t="<<ms<<"ms\n";
+        if(SUCCEEDED(hr))phase=next;
+    };
     std::thread client([&]{
         HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
-        HRESULT hr=init;
+        HRESULT hr=init;mark("CoCreateInstance(CUIAutomation)",hr);
         if(SUCCEEDED(init)){
             {
                 ComPtr<IUIAutomation> automation;ComPtr<IUIAutomationElement> element;
                 ComPtr<IUnknown> unknown;ComPtr<IUIAutomationValuePattern> pattern;
                 hr=CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&automation));
-                if(SUCCEEDED(hr))hr=automation->ElementFromHandle(e.context.window,&element);
+                mark("ElementFromHandle",hr);
+                if(SUCCEEDED(hr)){
+                    const unsigned before=getobject_messages;
+                    hr=automation->ElementFromHandle(e.context.window,&element);
+                    std::cout<<"UIA ElementFromHandle window="<<e.context.window<<" IsWindow="<<IsWindow(e.context.window)<<" hung="<<IsHungAppWindow(e.context.window)
+                        <<" getobject_during="<<(getobject_messages-before)<<" last_id="<<last_getobject_id<<" last_result=0x"<<std::hex<<static_cast<unsigned long long>(last_getobject_result)<<std::dec<<'\n';
+                    mark("role/value/bounds",hr);
+                }
                 if(SUCCEEDED(hr)){
                     CONTROLTYPEID type{};hr=element->get_CurrentControlType(&type);
                     std::cout<<"UIA role="<<type<<" expected="<<UIA_EditControlTypeId<<'\n';
@@ -491,6 +523,7 @@ static void uia_roundtrip(EditorHost& e){
                     if(SUCCEEDED(hr)&&(available.vt!=VT_BOOL||available.boolVal!=VARIANT_TRUE))hr=E_FAIL;
                     VariantClear(&available);
                 }
+                mark("done",hr);
             }
             CoUninitialize();
         }

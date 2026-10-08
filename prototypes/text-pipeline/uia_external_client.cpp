@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <vector>
 #include <mutex>
+#include <functional>
 #include <algorithm>
 
 using Microsoft::WRL::ComPtr;
@@ -615,6 +616,78 @@ static void mouse_drag(IUIAutomation* automation,IUIAutomationElement* element,I
     check(events->selection_events>0,"mouse selection changes raise TextSelectionChanged");
     success(automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId,element,events.Get()),"unsubscribe mouse TextSelectionChanged");
 }
+// WM_CHAR surrogate assembler lifetime: a buffered high surrogate must not survive an editing-context change
+// and later pair with a low surrogate at a new location. All messages go to the dedicated test HWND only.
+static void surrogate_interruptions(IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for interruptions");success(raw.As(&pattern),"query Text pattern for interruptions");
+    const std::wstring original=L"甲乙丙丁",cjk=L"\xd840\xdc00";
+    const wchar_t high=0xd840,low=0xdc00;
+    auto ch=[&](wchar_t c){SendMessageW(window,WM_CHAR,c,0);};
+    auto key=[&](WPARAM k){SendMessageW(window,WM_KEYDOWN,k,0);};
+    auto fixture=[&](WPARAM op){return SendMessageW(window,WM_APP+21,op,0)==1;};
+    auto char_range=[&](int first,int count){
+        ComPtr<IUIAutomationTextRange> d,r;int moved{};success(pattern->get_DocumentRange(&d),"get interruption document");success(d->Clone(&r),"clone interruption range");
+        success(r->MoveEndpointByRange(TextPatternRangeEndpoint_End,d.Get(),TextPatternRangeEndpoint_Start),"collapse interruption range");
+        if(first)success(r->Move(TextUnit_Character,first,&moved),"move interruption range");
+        if(count)success(r->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,count,&moved),"extend interruption range");
+        return r;
+    };
+    // Each case: set fixture (one history entry), caret at 1, high surrogate, interruption, low surrogate.
+    // Expected text/selection are the interruption's own effect only; undo then shows the history boundary.
+    struct Case{const char* name;std::function<void()> interrupt;std::wstring text;std::pair<int,int> selection;bool edits;};
+    std::vector<Case> cases{
+        {"uia-setvalue",[&]{success(write_value(value,L"子丑"),"accepted UIA SetValue");},L"子丑",{2,2},true},
+        {"uia-select",[&]{success(char_range(2,1)->Select(),"accepted UIA Select");},original,{2,3},false},
+        {"key-right",[&]{key(VK_RIGHT);},original,{2,2},false},
+        {"key-backspace",[&]{key(VK_BACK);},L"乙丙丁",{0,0},true},
+        {"key-delete",[&]{key(VK_DELETE);},L"甲丙丁",{1,1},true},
+        {"kill-focus",[&]{SendMessageW(window,WM_KILLFOCUS,0,0);},original,{1,1},false},
+        {"mouse-click",[&]{
+            ComPtr<IUIAutomationTextRange> r=char_range(3,1);auto box=rects(r.Get());check(box.size()==4,"mouse target rectangle");
+            POINT p{static_cast<LONG>(std::lround(box[0]+1)),static_cast<LONG>(std::lround(box[1]+box[3]/2))};ScreenToClient(window,&p);
+            SendMessageW(window,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(p.x,p.y));SendMessageW(window,WM_LBUTTONUP,0,MAKELPARAM(p.x,p.y));},original,{3,3},false},
+        {"ime-start-end",[&]{SendMessageW(window,WM_IME_STARTCOMPOSITION,0,0);SendMessageW(window,WM_IME_ENDCOMPOSITION,0,0);},original,{1,1},false},
+        {"fixture-composition",[&]{check(fixture(2)&&fixture(0),"fixture start/cancel");},original,{1,1},false},
+    };
+    unsigned failures=0;
+    for(auto& c:cases){
+        // A distinct marker before the fixture makes the undo boundary observable (a stray extra entry
+        // would undo back to the fixture text, not the marker).
+        const std::wstring before=L"標記";success(write_value(value,before),"set history marker");
+        success(write_value(value,original),"set interruption fixture");success(char_range(1,0)->Select(),"place interruption caret");
+        ch(high);c.interrupt();ch(low);
+        auto text=current_value(value);auto sel=selection_offsets(pattern.Get());
+        bool ok=valid_utf16(text)&&text==c.text&&sel==c.selection;
+        check(fixture(5),"undo after interruption");auto undone=current_value(value);
+        bool history=undone==(c.edits?original:before);
+        log_file<<"interrupt "<<c.name<<" units="<<hex_units(text)<<"selection="<<sel.first<<':'<<sel.second<<" undo_units="<<hex_units(undone)<<"ok="<<ok<<" history="<<history<<std::endl;
+        if(!ok||!history){++failures;log_file<<"FAIL interrupt "<<c.name<<std::endl;}
+    }
+    log_file<<"interrupt failures="<<failures<<std::endl;
+    check(failures==0,"interruptions discard a buffered high surrogate without stray insertion or history");
+
+    // Non-interruptions: ordinary pair, pure geometry (font size) and a rejected UIA write keep the pair.
+    success(write_value(value,original),"set pair fixture");success(char_range(1,0)->Select(),"place pair caret");
+    ch(high);ch(low);
+    check(current_value(value)==L"甲"+cjk+L"乙丙丁"&&selection_offsets(pattern.Get())==std::pair{3,3},"consecutive high+low inserts one scalar");
+    check(fixture(5)&&current_value(value)==original,"one undo removes the whole pair");
+    success(char_range(1,0)->Select(),"place geometry caret");
+    ch(high);key(VK_F3);ch(low);key(VK_F4);
+    check(current_value(value)==L"甲"+cjk+L"乙丙丁","font size change between halves does not interrupt the pair");
+    check(fixture(5)&&current_value(value)==original,"undo removes pair after geometry change");
+    success(char_range(1,0)->Select(),"place rejected caret");
+    ch(high);HRESULT rejected=write_value(value,L"two\nlines");ch(low);
+    check(rejected==E_INVALIDARG&&current_value(value)==L"甲"+cjk+L"乙丙丁","rejected UIA write is a no-op for the pending pair");
+    check(fixture(5)&&current_value(value)==original,"undo removes pair after rejected write");
+
+    // Malformed WM_CHAR: lone low ignored; a second high replaces the first.
+    success(char_range(1,0)->Select(),"place malformed caret");
+    ch(low);check(current_value(value)==original,"unmatched low surrogate is ignored");
+    ch(0xd83d);ch(0xd83d);ch(0xde00);
+    check(current_value(value)==L"甲\xd83d\xde00乙丙丁"&&selection_offsets(pattern.Get())==std::pair{3,3},"second high replaces buffered high");
+    check(fixture(5)&&current_value(value)==original,"one undo after replaced high");
+}
 static std::vector<double> rects(IUIAutomationTextRange* range){
     SAFEARRAY* array{};success(range->GetBoundingRectangles(&array),"get bounding rectangles for geometry");
     LONG lower{},upper{};SafeArrayGetLBound(array,1,&lower);SafeArrayGetUBound(array,1,&upper);
@@ -876,6 +949,7 @@ int main(int argc,char** argv){
             composition_transaction(automation.Get(),element.Get(),pattern.Get(),window);
             mouse_drag(automation.Get(),element.Get(),pattern.Get(),window);
             supplementary_text(element.Get(),pattern.Get(),window);
+            surrogate_interruptions(element.Get(),pattern.Get(),window);
             geometry_changes(element.Get(),pattern.Get(),window);
             final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");
