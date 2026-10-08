@@ -49,7 +49,8 @@ public:
         if(!out)return E_POINTER;*out=nullptr;
         if(attr!=UIA_IsReadOnlyAttributeId)return UIA_E_NOTSUPPORTED;
         if(value.vt!=VT_BOOL)return E_INVALIDARG;
-        if(value.boolVal==VARIANT_FALSE)return Clone(out);return S_OK;
+        if(value.boolVal==VARIANT_FALSE)return Clone(out);
+        std::lock_guard lock(b().mutex);return valid();  // no match, but only for a current range
     }
     HRESULT STDMETHODCALLTYPE FindText(BSTR text,BOOL backward,BOOL ignore_case,ITextRangeProvider** out)override{
         if(!out)return E_POINTER;*out=nullptr;if(!text||SysStringLen(text)==0)return E_INVALIDARG;
@@ -121,7 +122,9 @@ public:
             if(b().selection_begin!=b().selection_end&&(b().selection_begin!=first||b().selection_end!=last))return UIA_E_INVALIDOPERATION;}
         return Select();
     }
-    HRESULT STDMETHODCALLTYPE RemoveFromSelection()override{return UIA_E_INVALIDOPERATION;}
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection()override{
+        std::lock_guard lock(b().mutex);if(FAILED(valid()))return valid();return UIA_E_INVALIDOPERATION;
+    }
     HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL align_top)override{
         HWND window{};unsigned position;
         {std::lock_guard lock(b().mutex);if(FAILED(valid()))return valid();window=b().window;position=align_top?first:last;}

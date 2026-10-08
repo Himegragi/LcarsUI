@@ -1,0 +1,4 @@
+PASS direct provider document range
+PASS direct provider CompareEndpoints rejects endpoint 7
+PASS direct provider MoveEndpointByUnit rejects endpoint 7
+PASS rejected endpoint arguments leave direct provider range unchanged

@@ -1,0 +1,22 @@
+2026-10-08 TextRange edge-contract review follow-up
+
+Stronger non-mutation check (evidence/textrange-edges-review-client.log):
+  21 stale calls (edge stale_* lines), stale_edge_failures=0
+  edge selection_before start_vs_doc_start=1 end_vs_doc_end=0   (collapsed caret at document end)
+  PASS stale operations do not change Value
+  edge selection_after count=1 same=1 start_delta=0 end_delta=0
+  The pre-captured selection range is still usable afterward, so no revision change occurred.
+
+Verified provider behavior, host calls provider directly (evidence/textrange-edges-review-direct-provider.log):
+  PASS direct provider CompareEndpoints rejects endpoint 7 (both sides E_INVALIDARG, out 0)
+  PASS direct provider MoveEndpointByUnit rejects endpoint 7 (E_INVALIDARG, moved 0)
+  PASS rejected endpoint arguments leave direct provider range unchanged
+
+Observed external-client behavior only (not provider validation; layer not instrumented):
+  invalid_compare_endpoint_proxy=0x0 order=1; invalid_endpoint_move_proxy=0x0 moved=-1
+  invalid_expand_unit / invalid_move_unit = 0x8000ffff
+
+Commands (workspace root) and results:
+  run.ps1 -CrossProcess                         PASS
+  run.ps1 -Concurrency -Lifecycle -TraceState   PASS concurrent_success=125 stale=75 invalid=0; retired lifecycle PASS
+  verify-uia-faults.ps1                         PASS composition, PASS selection

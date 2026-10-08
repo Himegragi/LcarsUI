@@ -36,10 +36,23 @@ UIA client 的 SetValue 已改用真正 `SysAllocStringLen` 配置的 BSTR，取
 - 僅單行 LTR，無嵌入子物件、多重選取或 ITextProvider2。
 - Character 暫沿用 HarfBuzz cluster 邊界；不能因此宣稱已滿足 Unicode grapheme 與連字內游標規則。
 - Word／Format／Paragraph 等未獨立支援，提升到較大的單行／Document 單位；並非真正語言學斷詞。
-- 只有部分文字屬性；未知屬性回傳 UIA reserved NotSupported 值。FindAttribute、AddToSelection 等分支尚未全面測試。
+- 只有部分文字屬性；未知屬性回傳 UIA reserved NotSupported 值。FindAttribute、選取等分支已補邊界測試（見下節），仍非完整。
 - preedit 出現在可見文字快照，會使 range revision 改變；實際 IME、重轉換與輔助工具對此行為尚未驗證。
 - 相同文字的重新提交等事件語意、provider shutdown 競態、完整失效契約仍需測試。
 - 實際候選窗、Narrator、跨螢幕 DPI、Windows10 及其他 OS 尚未通過。
+
+## 邊界與負面契約（後續一輪）
+
+client 在原情境後新增 `range_contract_edges`，再重建最後的選取供 host 渲染比對。
+- 過期範圍：Clone、GetAttributeValue（支援／不支援屬性）、FindAttribute（true/false）、FindText、Compare／CompareEndpoints（兩個方向）、MoveEndpointByRange、Expand、Move、MoveEndpointByUnit、矩形、EnclosingElement、Children、Select、AddToSelection、RemoveFromSelection、ScrollIntoView，共21個呼叫，全部要求 `UIA_E_ELEMENTNOTAVAILABLE`。之後 Value 不變，且在同一 revision 下用 Compare／CompareEndpoints 比對選取數量與確切端點不變（實測選取為文件尾端的收合游標，不能只比文字）。
+- 已證實並修正兩個缺陷：過期範圍 `FindAttribute(IsReadOnly,true)` 回傳 `S_OK`/null（無法分辨「沒找到」與「範圍過期」）；`RemoveFromSelection` 不檢查存續，一律回 `UIA_E_INVALIDOPERATION`。現在先檢查 revision。
+- 有效範圍：IsReadOnly 為 false；不支援屬性為 reserved NotSupported；未支援屬性搜尋不會假造結果（實測 `UIA_E_NOTSUPPORTED`）。
+- 退化範圍在文件頭尾的 Move／MoveEndpointByUnit 夾住且回報0；start 越過 end 時 end 跟著移動。
+- 單一選取：重複加入同一範圍成功；加入第二個不相交範圍及 RemoveFromSelection 回 `UIA_E_INVALIDOPERATION`。
+- 已驗證的 provider 行為：host 直接呼叫 provider（不經 UIA client），endpoint 值7 的 CompareEndpoints（兩側）與 MoveEndpointByUnit 回 `E_INVALIDARG`，輸出為0，範圍端點不變。
+- 外部 client 只做觀察、不算 provider 驗證：無效 unit 得到 `E_UNEXPECTED`；endpoint 值7 得到 `S_OK`，結果與 End 相同（CompareEndpoints 回1、MoveEndpointByUnit 移動 End -1）。推論是 UIA client／傳送層在 provider 之前正規化了此值，但未加 instrumentation，不能確定在哪一層發生。
+
+證據：`evidence/textrange-edges-red-*.log`、`textrange-edges-green-client.log`、`textrange-edges-review-client.log`、`textrange-edges-review-direct-provider.log`、`textrange-edges-verification.log`。
 
 ## 不穩定結果：尚未確定根因
 

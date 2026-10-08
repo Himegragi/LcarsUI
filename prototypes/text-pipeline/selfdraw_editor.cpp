@@ -351,6 +351,23 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     return wnd_proc(h,message,w,l);
 }
 static void check_edit(bool ok,const char* name){std::cout<<(ok?"PASS ":"FAIL ")<<name<<'\n';require(ok,name);}
+// Direct provider call; the external UIA client path returns S_OK for these values (layer not instrumented).
+static void direct_endpoint_validation(EditorHost& e){
+    ITextRangeProvider *range{},*other{};
+    check_edit(SUCCEEDED(e.provider->get_DocumentRange(&range))&&SUCCEEDED(range->Clone(&other)),"direct provider document range");
+    const auto bad=static_cast<TextPatternRangeEndpoint>(7);int order=9,moved=9;BOOL equal=FALSE;
+    HRESULT left=range->CompareEndpoints(bad,other,TextPatternRangeEndpoint_Start,&order);
+    HRESULT right=range->CompareEndpoints(TextPatternRangeEndpoint_Start,other,bad,&order);
+    check_edit(left==E_INVALIDARG&&right==E_INVALIDARG&&order==0,"direct provider CompareEndpoints rejects endpoint 7");
+    HRESULT move=range->MoveEndpointByUnit(bad,TextUnit_Character,-1,&moved);
+    check_edit(move==E_INVALIDARG&&moved==0,"direct provider MoveEndpointByUnit rejects endpoint 7");
+    int start=9,end=9;
+    bool unchanged=SUCCEEDED(range->Compare(other,&equal))&&equal
+        &&SUCCEEDED(range->CompareEndpoints(TextPatternRangeEndpoint_Start,other,TextPatternRangeEndpoint_Start,&start))&&start==0
+        &&SUCCEEDED(range->CompareEndpoints(TextPatternRangeEndpoint_End,other,TextPatternRangeEndpoint_End,&end))&&end==0;
+    check_edit(unchanged,"rejected endpoint arguments leave direct provider range unchanged");
+    other->Release();range->Release();
+}
 static void model_scenarios(){
     editing::Model m;m.state.text=u"ABC";m.select(1,2);
     m.start();m.update(u"ㄓ",1);
@@ -496,6 +513,7 @@ int main(int argc,char** argv){
             SendMessageW(context.window,WM_KEYDOWN,VK_ESCAPE,0);
             check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
             uia_roundtrip(e);
+            direct_endpoint_validation(e);
             if(allow_test_fixture){
                 if(inject_test_composition){e.model.start();e.model.update(u"測",1);trace_state("injected-composition",WM_IME_STARTCOMPOSITION,0,e.model);e.sync();}
                 cross_process_roundtrip(e,concurrent);

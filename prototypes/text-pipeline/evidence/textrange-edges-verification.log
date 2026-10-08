@@ -1,0 +1,21 @@
+2026-10-08 TextRange edge-contract round (Windows11/RTX3060, clang-cl build via run.ps1)
+
+RED before provider fix (evidence/textrange-edges-red-3-stale-defects.log):
+  edge stale_find_readonly_true=0x0          expected 0x80040201
+  edge stale_remove_selection=0x80131509     expected 0x80040201
+  stale_edge_failures=2
+Proxy observations (not provider defects; red-1/red-2 logs show the first strict assertions failing):
+  edge invalid_compare_endpoint_proxy=0x0 order=1
+  edge invalid_endpoint_move_proxy=0x0 moved=-1 end_vs_document_end=-1
+  edge invalid_expand_unit=0x8000ffff, invalid_move_unit=0x8000ffff
+
+GREEN after fix (evidence/textrange-edges-green-client.log):
+  edge stale_find_readonly_true=0x80040201
+  edge stale_remove_selection=0x80040201
+  stale_edge_failures=0
+
+Commands and results:
+  run.ps1 -CrossProcess                      PASS (renderer sample 42,78,123 inside UIA rectangle)
+  run.ps1 -Concurrency -Lifecycle -TraceState PASS concurrent_success=122 stale=78 invalid=0; retired provider lifecycle PASS
+  verify-uia-faults.ps1                      PASS composition, PASS selection
+  stress-uia.ps1 -Trials 3 -Concurrency -Lifecycle  PASS 3 runs (exit=0 each)

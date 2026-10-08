@@ -1,0 +1,213 @@
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=30820 provider_pid=29020
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+PASS write Value across process boundary
+PASS read current Value
+PASS cross-process value round trip
+PASS receive external Value property change event with expected payload
+value_events=1
+multiline_hresult=0x80070057
+PASS single-line provider rejects multiline mutation
+PASS read current Value
+PASS rejected mutation preserves value
+PASS start simulated composition fixture
+composition_hresult=0x80131509
+PASS external write rejected during composition
+PASS read current Value
+PASS composition protection preserves committed text
+PASS resize dedicated test host
+PASS query external HWND bounds after resize
+PASS bounds match physical HWND coordinates
+PASS query TextPattern capability
+PASS single-line TextPattern capability is advertised
+PASS get Text pattern across process boundary
+PASS query Text pattern interface
+PASS get document range
+PASS read current Value
+PASS read text range
+PASS document text agrees with Value
+PASS clone document range
+PASS collapse range at document start
+PASS extend range by one character unit
+PASS read text range
+PASS first character range is correct
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS text bounds are smaller than HWND bounds
+PASS hit test physical screen point
+PASS compare hit-test text offset
+PASS left edge resolves to first caret position
+PASS select text through external TextRange
+PASS read selected text range
+PASS read selection count
+PASS single selection returned
+PASS get selection range
+PASS read text range
+selected_length=1 first_code=36328
+PASS UIA selection matches selected character
+PASS receive TextSelectionChanged event
+PASS clone selected range
+PASS compare equal ranges
+PASS clone preserves endpoints
+PASS move range one character
+PASS read text range
+PASS range movement selects next character
+PASS expand to document
+PASS compare expanded document
+PASS document expansion is consistent
+PASS case-insensitive range search
+PASS read text range
+PASS range search returns requested text
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS existing range geometry updates after font size change
+PASS get visible ranges
+PASS read visible range count
+PASS single visible line returned
+PASS mutate text to invalidate previous ranges
+stale_range_hresult=0x80040201
+PASS stale revision-bound range is explicitly rejected
+PASS receive TextChanged event
+PASS reacquire range after text mutation
+PASS read text range
+PASS new document range returns current text
+PASS set empty document
+PASS get empty document range
+PASS read text range
+PASS empty range returns empty text
+PASS get degenerate range rectangles
+PASS degenerate range has no bounding rectangles
+PASS set long single-line document
+PASS get long document
+PASS clone long document
+PASS collapse at long document start
+PASS select first long-document character
+PASS scroll text range into view without changing selection
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS scrolled range aligns with rendered viewport origin
+PASS read current Value
+PASS scroll operation preserves document contents
+PASS get Text pattern for edge checks
+PASS query Text pattern for edge checks
+PASS set edge-check fixture
+PASS get edge document range
+PASS read IsReadOnly attribute
+PASS editable field reports IsReadOnly false
+PASS read unsupported FontName attribute
+PASS classify unsupported attribute value
+PASS unsupported attribute is the reserved NotSupported value
+edge find_readonly_false=0x0
+PASS search matching IsReadOnly false
+PASS matching attribute search returns a range
+PASS compare attribute match
+PASS attribute match spans the uniform range
+edge find_readonly_true=0x0
+PASS search non-matching IsReadOnly true
+PASS non-matching live attribute search is success with no range
+edge find_unsupported_live=0x80040204
+PASS unsupported attribute search never fabricates a match
+PASS clone for degenerate checks
+PASS collapse at start for edge checks
+PASS zero-count move
+PASS read text range
+PASS zero-count move is a no-op
+PASS move collapsed range before start
+PASS cannot move before document start
+PASS move start endpoint before document start
+PASS start endpoint clamps at document start
+PASS compare clamped start
+PASS clamped degenerate range remains at document start
+PASS move collapsed range forward
+PASS read text range
+PASS collapsed range moves and stays degenerate
+PASS push start past end
+PASS compare pushed endpoints
+PASS moving start past end drags end along
+PASS collapse at document end
+PASS move end endpoint past document end
+PASS end endpoint clamps at document end
+PASS move collapsed range past end
+PASS read text range
+PASS cannot move past document end
+PASS clone for invalid-argument checks
+edge invalid_expand_unit=0x8000ffff
+PASS invalid ExpandToEnclosingUnit unit is rejected
+edge invalid_move_unit=0x8000ffff
+PASS invalid Move unit is rejected
+edge invalid_compare_endpoint_proxy=0x0
+edge invalid_compare_endpoint_order=1
+PASS compare after rejected arguments
+PASS rejected arguments leave range unchanged
+edge invalid_endpoint_move_proxy=0x0
+PASS locate end after proxy-normalized endpoint
+edge invalid_endpoint_move_moved=-1 end_vs_document_end=-1
+PASS clone first selection candidate
+PASS collapse selection candidate
+PASS extend selection candidate
+PASS clone second selection candidate
+PASS move second selection candidate
+PASS select first candidate
+edge add_same_selection=0x0
+PASS adding the existing selection is idempotent
+edge add_second_selection=0x80131509
+PASS single-selection provider rejects a second disjoint selection
+edge remove_live_selection=0x80131509
+PASS single-selection provider does not fabricate RemoveFromSelection
+PASS read selection for edge checks
+PASS read selection count for edge checks
+PASS get edge selection range
+PASS read text range
+PASS rejected selection operations keep the one existing selection
+PASS retain range to become stale
+PASS retain second range to become stale
+PASS mutate text for stale-range edge checks
+PASS get fresh range after mutation
+PASS read selection for edge checks
+PASS read selection count for edge checks
+PASS get edge selection range
+PASS read text range
+edge stale_clone=0x80040201
+edge stale_attribute_supported=0x80040201
+edge stale_attribute_unsupported=0x80040201
+edge stale_find_readonly_false=0x80040201
+edge stale_find_readonly_true=0x0
+FAIL stale stale_find_readonly_true
+edge stale_find_text=0x80040201
+edge stale_compare_self_fresh=0x80040201
+edge stale_compare_fresh_other=0x80040201
+edge stale_compare_endpoints=0x80040201
+edge stale_compare_endpoints_other=0x80040201
+edge stale_move_endpoint_by_range=0x80040201
+edge stale_expand=0x80040201
+edge stale_move=0x80040201
+edge stale_move_endpoint=0x80040201
+edge stale_rectangles=0x80040201
+edge stale_enclosing=0x80040201
+edge stale_children=0x80040201
+edge stale_select=0x80040201
+edge stale_add_selection=0x80040201
+edge stale_remove_selection=0x80131509
+FAIL stale stale_remove_selection
+edge stale_scroll=0x80040201
+PASS read selection for edge checks
+PASS read selection count for edge checks
+PASS get edge selection range
+PASS read text range
+PASS stale selection operations do not change the selection
+stale_edge_failures=2
+FAIL every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE
+FAIL every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE

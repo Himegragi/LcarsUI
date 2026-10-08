@@ -190,8 +190,132 @@ static void text_ranges(IUIAutomationElement* element,IUIAutomationValuePattern*
     auto scrolled=rectangle(first.Get());POINT client_origin{24,40};ClientToScreen(window,&client_origin);
     check(std::abs(scrolled[0]-client_origin.x)<1,"scrolled range aligns with rendered viewport origin");
     check(current_value(value)==long_text,"scroll operation preserves document contents");
+}
+static HRESULT logged(const char* name,HRESULT hr){log_file<<"edge "<<name<<"=0x"<<std::hex<<static_cast<unsigned long>(hr)<<std::dec<<std::endl;return hr;}
+static VARIANT bool_variant(bool value){VARIANT v{};v.vt=VT_BOOL;v.boolVal=value?VARIANT_TRUE:VARIANT_FALSE;return v;}
+static std::pair<unsigned,unsigned> selection_text_and_count(IUIAutomationTextPattern* pattern,std::wstring& text){
+    ComPtr<IUIAutomationTextRangeArray> selection;success(pattern->GetSelection(&selection),"read selection for edge checks");
+    int count{};success(selection->get_Length(&count),"read selection count for edge checks");text.clear();
+    if(count>0){ComPtr<IUIAutomationTextRange> range;success(selection->GetElement(0,&range),"get edge selection range");text=range_text(range.Get());}
+    return {static_cast<unsigned>(count),static_cast<unsigned>(text.size())};
+}
+// Negative and boundary contracts. Arguments are valid unless the check name says otherwise.
+static void range_contract_edges(IUIAutomation* automation,IUIAutomationElement* element,IUIAutomationValuePattern* value){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for edge checks");success(raw.As(&pattern),"query Text pattern for edge checks");
+    success(write_value(value,L"跨程序 UIA 456"),"set edge-check fixture");
+    ComPtr<IUIAutomationTextRange> document,live,found;success(pattern->get_DocumentRange(&document),"get edge document range");
+
+    VARIANT attribute{};success(document->GetAttributeValue(UIA_IsReadOnlyAttributeId,&attribute),"read IsReadOnly attribute");
+    check(attribute.vt==VT_BOOL&&attribute.boolVal==VARIANT_FALSE,"editable field reports IsReadOnly false");VariantClear(&attribute);
+    success(document->GetAttributeValue(UIA_FontNameAttributeId,&attribute),"read unsupported FontName attribute");
+    BOOL unsupported=FALSE;success(automation->CheckNotSupported(attribute,&unsupported),"classify unsupported attribute value");VariantClear(&attribute);
+    check(unsupported!=FALSE,"unsupported attribute is the reserved NotSupported value");
+    success(logged("find_readonly_false",document->FindAttribute(UIA_IsReadOnlyAttributeId,bool_variant(false),FALSE,&found)),"search matching IsReadOnly false");
+    BOOL equal=FALSE;check(found!=nullptr,"matching attribute search returns a range");success(found->Compare(document.Get(),&equal),"compare attribute match");check(equal!=FALSE,"attribute match spans the uniform range");
+    found.Reset();success(logged("find_readonly_true",document->FindAttribute(UIA_IsReadOnlyAttributeId,bool_variant(true),FALSE,&found)),"search non-matching IsReadOnly true");
+    check(found==nullptr,"non-matching live attribute search is success with no range");
+    VARIANT font{};font.vt=VT_BSTR;font.bstrVal=SysAllocString(L"Segoe UI");
+    HRESULT find_unsupported=logged("find_unsupported_live",document->FindAttribute(UIA_FontNameAttributeId,font,FALSE,&found));VariantClear(&font);
+    check(FAILED(find_unsupported)||found==nullptr,"unsupported attribute search never fabricates a match");found.Reset();
+
+    // Degenerate range at both document edges.
+    success(document->Clone(&live),"clone for degenerate checks");
+    success(live->MoveEndpointByRange(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start),"collapse at start for edge checks");
+    int moved=-7;success(live->Move(TextUnit_Character,0,&moved),"zero-count move");check(moved==0&&range_text(live.Get()).empty(),"zero-count move is a no-op");
+    moved=-7;success(live->Move(TextUnit_Character,-1,&moved),"move collapsed range before start");check(moved==0,"cannot move before document start");
+    moved=-7;success(live->MoveEndpointByUnit(TextPatternRangeEndpoint_Start,TextUnit_Character,-3,&moved),"move start endpoint before document start");check(moved==0,"start endpoint clamps at document start");
+    int order=9;success(live->CompareEndpoints(TextPatternRangeEndpoint_Start,document.Get(),TextPatternRangeEndpoint_Start,&order),"compare clamped start");check(order==0,"clamped degenerate range remains at document start");
+    moved=-7;success(live->Move(TextUnit_Character,1,&moved),"move collapsed range forward");check(moved==1&&range_text(live.Get()).empty(),"collapsed range moves and stays degenerate");
+    moved=-7;success(live->MoveEndpointByUnit(TextPatternRangeEndpoint_Start,TextUnit_Character,1,&moved),"push start past end");
+    success(live->CompareEndpoints(TextPatternRangeEndpoint_Start,live.Get(),TextPatternRangeEndpoint_End,&order),"compare pushed endpoints");check(moved==1&&order==0,"moving start past end drags end along");
+    success(live->MoveEndpointByRange(TextPatternRangeEndpoint_Start,document.Get(),TextPatternRangeEndpoint_End),"collapse at document end");
+    moved=-7;success(live->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,2,&moved),"move end endpoint past document end");check(moved==0,"end endpoint clamps at document end");
+    moved=-7;success(live->Move(TextUnit_Character,1,&moved),"move collapsed range past end");check(moved==0&&range_text(live.Get()).empty(),"cannot move past document end");
+
+    // Invalid arguments where the proxy forwards them; only failure and unchanged state are required.
+    success(document->Clone(&live),"clone for invalid-argument checks");
+    check(FAILED(logged("invalid_expand_unit",live->ExpandToEnclosingUnit(static_cast<TextUnit>(99)))),"invalid ExpandToEnclosingUnit unit is rejected");
+    moved=-7;check(FAILED(logged("invalid_move_unit",live->Move(static_cast<TextUnit>(-5),1,&moved)))&&moved<=0,"invalid Move unit is rejected");
+    // Observation only: the external client gets S_OK, End-like results. Provider validation is asserted directly in the host.
+    order=9;logged("invalid_compare_endpoint_proxy",live->CompareEndpoints(static_cast<TextPatternRangeEndpoint>(7),document.Get(),TextPatternRangeEndpoint_Start,&order));
+    log_file<<"edge invalid_compare_endpoint_order="<<order<<std::endl;
+    success(live->Compare(document.Get(),&equal),"compare after rejected arguments");check(equal!=FALSE,"rejected arguments leave range unchanged");
+    // Same observation for MoveEndpointByUnit; record the resulting endpoint.
+    moved=-7;logged("invalid_endpoint_move_proxy",live->MoveEndpointByUnit(static_cast<TextPatternRangeEndpoint>(7),TextUnit_Character,-1,&moved));
+    success(live->CompareEndpoints(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_End,&order),"locate end after proxy-normalized endpoint");
+    log_file<<"edge invalid_endpoint_move_moved="<<moved<<" end_vs_document_end="<<order<<std::endl;
+
+    // Single selection.
+    ComPtr<IUIAutomationTextRange> one,two;success(document->Clone(&one),"clone first selection candidate");
+    success(one->MoveEndpointByRange(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start),"collapse selection candidate");
+    success(one->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend selection candidate");
+    success(one->Clone(&two),"clone second selection candidate");success(two->Move(TextUnit_Character,1,&moved),"move second selection candidate");
+    success(one->Select(),"select first candidate");
+    success(logged("add_same_selection",one->AddToSelection()),"adding the existing selection is idempotent");
+    HRESULT add_other=logged("add_second_selection",two->AddToSelection());
+    check(add_other==UIA_E_INVALIDOPERATION,"single-selection provider rejects a second disjoint selection");
+    HRESULT remove=logged("remove_live_selection",one->RemoveFromSelection());
+    check(remove==UIA_E_INVALIDOPERATION,"single-selection provider does not fabricate RemoveFromSelection");
+    std::wstring selected;auto [count,length]=selection_text_and_count(pattern.Get(),selected);
+    check(count==1&&selected==L"跨","rejected selection operations keep the one existing selection");
+
+    // Stale range: every operation with valid arguments reports element unavailable.
+    ComPtr<IUIAutomationTextRange> stale,stale_other;success(document->Clone(&stale),"retain range to become stale");success(one->Clone(&stale_other),"retain second range to become stale");
+    success(write_value(value,L"過期測試"),"mutate text for stale-range edge checks");
+    ComPtr<IUIAutomationTextRange> fresh;success(pattern->get_DocumentRange(&fresh),"get fresh range after mutation");
+    // Capture exact endpoints in the current revision; a collapsed caret has empty text, so text alone proves nothing.
+    ComPtr<IUIAutomationTextRangeArray> before_array;success(pattern->GetSelection(&before_array),"capture selection before stale operations");
+    int before_count{};success(before_array->get_Length(&before_count),"count selection before stale operations");
+    check(before_count==1,"one selection before stale operations");
+    ComPtr<IUIAutomationTextRange> before_range;success(before_array->GetElement(0,&before_range),"get selection before stale operations");
+    int before_start{},before_end{};
+    success(before_range->CompareEndpoints(TextPatternRangeEndpoint_Start,fresh.Get(),TextPatternRangeEndpoint_Start,&before_start),"locate selection start before stale operations");
+    success(before_range->CompareEndpoints(TextPatternRangeEndpoint_End,fresh.Get(),TextPatternRangeEndpoint_End,&before_end),"locate selection end before stale operations");
+    log_file<<"edge selection_before start_vs_doc_start="<<before_start<<" end_vs_doc_end="<<before_end<<std::endl;
+    unsigned failures=0;
+    auto expect_stale=[&](const char* name,HRESULT hr){logged(name,hr);if(hr!=UIA_E_ELEMENTNOTAVAILABLE){++failures;log_file<<"FAIL stale "<<name<<std::endl;}};
+    ComPtr<IUIAutomationTextRange> out;expect_stale("stale_clone",stale->Clone(&out));out.Reset();
+    expect_stale("stale_attribute_supported",stale->GetAttributeValue(UIA_IsReadOnlyAttributeId,&attribute));VariantClear(&attribute);
+    expect_stale("stale_attribute_unsupported",stale->GetAttributeValue(UIA_FontNameAttributeId,&attribute));VariantClear(&attribute);
+    expect_stale("stale_find_readonly_false",stale->FindAttribute(UIA_IsReadOnlyAttributeId,bool_variant(false),FALSE,&out));out.Reset();
+    expect_stale("stale_find_readonly_true",stale->FindAttribute(UIA_IsReadOnlyAttributeId,bool_variant(true),FALSE,&out));out.Reset();
+    BSTR needle=SysAllocString(L"UIA");expect_stale("stale_find_text",stale->FindText(needle,FALSE,FALSE,&out));SysFreeString(needle);out.Reset();
+    expect_stale("stale_compare_self_fresh",stale->Compare(fresh.Get(),&equal));
+    expect_stale("stale_compare_fresh_other",fresh->Compare(stale.Get(),&equal));
+    expect_stale("stale_compare_endpoints",stale->CompareEndpoints(TextPatternRangeEndpoint_Start,fresh.Get(),TextPatternRangeEndpoint_Start,&order));
+    expect_stale("stale_compare_endpoints_other",fresh->CompareEndpoints(TextPatternRangeEndpoint_Start,stale.Get(),TextPatternRangeEndpoint_End,&order));
+    expect_stale("stale_move_endpoint_by_range",fresh->MoveEndpointByRange(TextPatternRangeEndpoint_End,stale.Get(),TextPatternRangeEndpoint_Start));
+    expect_stale("stale_expand",stale->ExpandToEnclosingUnit(TextUnit_Character));
+    expect_stale("stale_move",stale->Move(TextUnit_Character,1,&moved));
+    expect_stale("stale_move_endpoint",stale->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,-1,&moved));
+    SAFEARRAY* rects{};expect_stale("stale_rectangles",stale->GetBoundingRectangles(&rects));if(rects)SafeArrayDestroy(rects);
+    ComPtr<IUIAutomationElement> enclosing;expect_stale("stale_enclosing",stale->GetEnclosingElement(&enclosing));
+    ComPtr<IUIAutomationElementArray> children;expect_stale("stale_children",stale->GetChildren(&children));
+    expect_stale("stale_select",stale_other->Select());
+    expect_stale("stale_add_selection",stale_other->AddToSelection());
+    expect_stale("stale_remove_selection",stale_other->RemoveFromSelection());
+    expect_stale("stale_scroll",stale->ScrollIntoView(TRUE));
+    check(current_value(value)==L"過期測試","stale operations do not change Value");
+    // before_range stays valid only if no text mutation happened; its own success proves the revision is unchanged.
+    ComPtr<IUIAutomationTextRangeArray> after_array;success(pattern->GetSelection(&after_array),"capture selection after stale operations");
+    int after_count{};success(after_array->get_Length(&after_count),"count selection after stale operations");
+    ComPtr<IUIAutomationTextRange> after_range;if(after_count>0)success(after_array->GetElement(0,&after_range),"get selection after stale operations");
+    BOOL same=FALSE;int start_delta=9,end_delta=9;
+    success(logged("selection_compare_after_stale",before_range->Compare(after_range.Get(),&same)),"compare selection across stale operations in same revision");
+    success(before_range->CompareEndpoints(TextPatternRangeEndpoint_Start,after_range.Get(),TextPatternRangeEndpoint_Start,&start_delta),"compare selection start across stale operations");
+    success(before_range->CompareEndpoints(TextPatternRangeEndpoint_End,after_range.Get(),TextPatternRangeEndpoint_End,&end_delta),"compare selection end across stale operations");
+    check(range_text(fresh.Get())==L"過期測試","fresh document range is still current after stale operations");
+    log_file<<"edge selection_after count="<<after_count<<" same="<<same<<" start_delta="<<start_delta<<" end_delta="<<end_delta<<std::endl;
+    check(after_count==before_count&&same&&start_delta==0&&end_delta==0,"stale operations leave selection count and exact endpoints unchanged");
+    log_file<<"stale_edge_failures="<<failures<<std::endl;
+    check(failures==0,"every stale-range operation reports UIA_E_ELEMENTNOTAVAILABLE");
+}
+static void final_selection(IUIAutomationElement* element,IUIAutomationValuePattern* value,HWND window){
+    ComPtr<IUnknown> raw;ComPtr<IUIAutomationTextPattern> pattern;ComPtr<IUIAutomationTextRange> document,first;int moved{};
+    success(element->GetCurrentPattern(UIA_TextPatternId,&raw),"get Text pattern for final selection");success(raw.As(&pattern),"query Text pattern for final selection");
     success(write_value(value,L"跨程序 UIA 456"),"restore test fixture");
-    document.Reset();first.Reset();success(pattern->get_DocumentRange(&document),"get restored document");success(document->Clone(&first),"clone restored document");
+    success(pattern->get_DocumentRange(&document),"get restored document");success(document->Clone(&first),"clone restored document");
     success(first->MoveEndpointByRange(TextPatternRangeEndpoint_End,document.Get(),TextPatternRangeEndpoint_Start),"collapse restored range");
     success(first->MoveEndpointByUnit(TextPatternRangeEndpoint_End,TextUnit_Character,1,&moved),"extend restored first character");success(first->Select(),"leave first character selected for host verification");
     auto final_rect=rectangle(first.Get());
@@ -258,6 +382,8 @@ int main(int argc,char** argv){
             check(present,"single-line TextPattern capability is advertised");
             if(concurrent)concurrent_reads(window,pattern.Get());
             text_ranges(element.Get(),pattern.Get(),window,changes.Get());
+            range_contract_edges(automation.Get(),element.Get(),pattern.Get());
+            final_selection(element.Get(),pattern.Get(),window);
             success(automation->RemovePropertyChangedEventHandler(element.Get(),changes.Get()),"unsubscribe event handler");
             log_file<<"PASS cross-process Value and limited single-line TextRange batch; no Narrator claim"<<std::endl;
             }
