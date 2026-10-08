@@ -1,0 +1,19 @@
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/declarative-state/build/clang
+[1/2] Building CXX object CMakeFiles\state_probe.dir\native_probe.cpp.obj
+[2/2] Linking CXX executable state_probe.exe
+PASS C++26 and independent state library
+PASS reorder/insert preserve native handle and instance
+PASS reorder/insert preserve native focus and selection
+PASS keyboard tab order follows declared order
+PASS reorder preserves unsaved input
+PASS external update preserves dirty draft and marks conflict
+PASS external update refreshes clean field
+PASS programmatic refresh does not recurse into change events
+PASS duplicate identity rejected before mutation
+PASS removed field clears logical focus
+PASS recreated key receives a new lifetime
+PASS stale event cannot target recreated key
+PASS recreated field uses current model
+PASS all declarative-state scenarios

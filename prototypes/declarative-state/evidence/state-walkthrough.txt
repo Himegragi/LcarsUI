@@ -1,0 +1,19 @@
+已派送的使用者變更事件：1
+邏輯焦點：
+
+profile.email  instance=2
+  model: new@example.com (rev 1)
+  draft: new@example.com
+  dirty=0 conflict=0 selection=0:0
+
+profile.name  instance=4
+  model: Server update (rev 1)
+  draft: Server update
+  dirty=0 conflict=0 selection=0:0
+
+profile.note  instance=3
+  model: Optional note (rev 0)
+  draft: Optional note
+  dirty=0 conflict=0 selection=0:0
+
+自動情境已通過。可繼續輸入、重排、外部更新與檢視衝突。
