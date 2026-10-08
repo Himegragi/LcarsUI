@@ -44,7 +44,28 @@ F2 切換繁中字型；F3/F4 改 DIP 字級；組字中 Esc 取消，非組字�
 | 舊原型回歸 | 原 text_probe 的 shaping／字型／GL 情境仍通過 |
 
 自動 log 的真實 WM_IME_COMPOSITION/result 計數均為 0：測到的是組字模型與 adapter 的座標接點，不是人工輸入法端到端成功。
-UIA 測試使用真實 UIAutomation client，但在同一 process 的獨立 MTA thread；跨 process 與 Narrator 尚未測。
+最初測試使用同一 process 的獨立 MTA thread。後續跨 process 測試見下節；Narrator 尚未測。
+
+## 跨程序補測
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/text-pipeline/run.ps1 -CrossProcess
+```
+
+此指令建置獨立 `editor_cross_host.exe`，不覆寫已開啟的互動 `editor_probe.exe`。
+Host 啟動沒有主視窗的 `uia_external_client.exe`；client 驗證 HWND 所屬 PID、UIA ProcessId 與 AutomationId，確認是另一個已知程序內的測試欄位後才写入。
+
+2026-10-08 本機通過：
+- 跨程序取得自繪欄位的 Edit role、Value pattern，寫入／讀回繁中＋英文值。
+- 訂閱 Value property changed，收到正確新值的事件（本次 count=1）；解除訂閱成功。
+- 多行輸入回傳 E_INVALIDARG（0x80070057），已提交值不變。
+- 使用**測試專用訊息**建立模擬組字狀態後，跨程序寫入回傳 UIA_E_INVALIDOPERATION（0x80131509），已提交值不變；取消後狀態恢復。
+- 調整專用測試視窗大小後，UIA BoundingRectangle 與 physical HWND bounds 相符。
+- 未實作的 TextPattern 明確不對外宣告可用。
+
+`evidence/uia-cross-process.log` 是獨立 client 的紀錄；`evidence/cross-process-build.log` 包含 host 檢查與建置。
+測試 hook 僅在 `--cross-process` 模式啟用，不是正式公開介面，也不是實際 IME 輸入。
+所有讀寫只针对本輪建立的專用測試視窗，不使用系統剪貼簿；這仍不代表 TextRange、Narrator 或實際輸入法已通過。
 
 ![selfdraw editor framebuffer](evidence/selfdraw-editor.bmp)
 
@@ -63,7 +84,7 @@ UIA 測試使用真實 UIAutomation client，但在同一 process 的獨立 MTA 
 1. 常用注音／倉頡輸入「設定」，檢查候選窗位置、提交與取消。
 2. 提交後 Ctrl+Z 是否一次撤銷；檢查沒有重複提交。
 3. 跨螢幕 DPI、字型切換、長文字水平捲動時的候選窗與選取。
-4. 正式 Text/TextRange provider、文字範圍矩形、selection事件、Narrator，以及跨 process UIA。
+4. 正式 Text/TextRange provider、文字範圍矩形、selection事件與 Narrator。跨程序 Value 已通過，不外推成完整無障礙。
 
 Linux/macOS 尚未實作或實測。本機 WSL 的 PATH 中未找到 CMake、clang++、g++；本輪沒有安裝工具或假稱非 Windows 測試通過。
 

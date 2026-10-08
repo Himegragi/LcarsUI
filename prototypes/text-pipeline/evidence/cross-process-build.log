@@ -1,0 +1,97 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/5] Building CXX object CMakeFiles\uia_external_client.dir\uia_external_client.cpp.obj
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\uia_external_client.cpp(62,39): warning: ISO C++11 does not allow conversion from string literal to 'BSTR' (aka 'wchar_t *') [-Wwritable-strings]
+   62 |             success(pattern->SetValue(L"跨程序 UIA 456"),"write Value across process boundary");
+      |                                       ^
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\uia_external_client.cpp(69,47): warning: ISO C++11 does not allow conversion from string literal to 'BSTR' (aka 'wchar_t *') [-Wwritable-strings]
+   69 |             HRESULT invalid=pattern->SetValue(L"line one\nline two");
+      |                                               ^
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\uia_external_client.cpp(76,49): warning: ISO C++11 does not allow conversion from string literal to 'BSTR' (aka 'wchar_t *') [-Wwritable-strings]
+   76 |             HRESULT composing=pattern->SetValue(L"must not replace composition");
+      |                                                 ^
+3 warnings generated.
+[2/5] Linking CXX executable uia_external_client.exe
+[3/5] Building CXX object CMakeFiles\editor_cross_host.dir\C_\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core.cpp.obj
+[4/5] Building CXX object CMakeFiles\editor_cross_host.dir\selfdraw_editor.cpp.obj
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\selfdraw_editor.cpp(292,55): warning: ISO C++11 does not allow conversion from string literal to 'BSTR' (aka 'wchar_t *') [-Wwritable-strings]
+  292 |                 if(SUCCEEDED(hr))hr=pattern->SetValue(L"UIA 設定 ABC");
+      |                                                       ^
+1 warning generated.
+[5/5] Linking CXX executable editor_cross_host.exe
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=207,219
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA role=50004 expected=50004
+UIA value length=10
+UIA bounds=76,76,1036,716 expected=76,76,1036,716
+UIA client HRESULT=0x0
+PASS real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+PASS UIA mutation reaches common editing model
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=25028 provider_pid=30968
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS write Value across process boundary
+PASS read current Value
+PASS cross-process value round trip
+PASS receive external Value property change event with expected payload
+value_events=1
+multiline_hresult=0x80070057
+PASS single-line provider rejects multiline mutation
+PASS read current Value
+PASS rejected mutation preserves value
+PASS start simulated composition fixture
+composition_hresult=0x80131509
+PASS external write rejected during composition
+PASS read current Value
+PASS composition protection preserves committed text
+PASS resize dedicated test host
+PASS query external HWND bounds after resize
+PASS bounds match physical HWND coordinates
+PASS query TextPattern capability
+PASS unsupported TextPattern is not advertised
+PASS unsubscribe event handler
+PASS cross-process UIA contract batch; no Narrator or TextRange claim
+PASS independent process UIA tests
+PASS cross-process writes and fixture cancellation reach model
+Observed real WM_IME_COMPOSITION messages=0 result messages=0
+PASS selfdraw editing/IMM geometry/UIA Value prototype; real IME and TextRange remain unverified

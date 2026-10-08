@@ -51,3 +51,17 @@ target_compile_definitions(editor_probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNI
 target_compile_options(editor_probe PRIVATE /utf-8)
 target_include_directories(editor_probe PRIVATE ../minimal-build/third_party)
 target_link_libraries(editor_probe PRIVATE harfbuzz freetype opengl32 user32 gdi32 imm32 ole32 oleaut32 uiautomationcore uuid)
+
+# Separate executable so automated tests do not overwrite an open interactive probe.
+add_executable(editor_cross_host selfdraw_editor.cpp ../minimal-build/core.cpp)
+set_target_properties(editor_cross_host PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_definitions(editor_cross_host PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+target_compile_options(editor_cross_host PRIVATE /utf-8)
+target_include_directories(editor_cross_host PRIVATE ../minimal-build/third_party)
+target_link_libraries(editor_cross_host PRIVATE harfbuzz freetype opengl32 user32 gdi32 imm32 ole32 oleaut32 uiautomationcore uuid)
+add_executable(uia_external_client uia_external_client.cpp)
+set_target_properties(uia_external_client PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_definitions(uia_external_client PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WINNT=0x0A00)
+target_compile_options(uia_external_client PRIVATE /utf-8)
+target_link_libraries(uia_external_client PRIVATE user32 ole32 oleaut32 uiautomationcore uuid)
+add_dependencies(editor_cross_host uia_external_client)

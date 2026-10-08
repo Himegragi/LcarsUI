@@ -159,6 +159,7 @@ struct EditorHost {
     }
 };
 static EditorHost* host=nullptr;
+static bool allow_test_fixture=false;
 static bool copy_selection(HWND window,const editing::Model& model){
     if(model.begin()==model.end()||!OpenClipboard(window))return false;
     auto text=wide(model.state.text.substr(model.begin(),model.end()-model.begin()));
@@ -178,6 +179,10 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     if(!host)return wnd_proc(h,message,w,l);
     auto& e=*host;
     switch(message){
+    case WM_APP+21:
+        if(!allow_test_fixture)return 0;
+        if(w){e.model.start();e.model.update(u"測試",2);}else e.model.cancel();
+        e.sync();return 1;
     case WM_PAINT:ValidateRect(h,nullptr);e.dirty=true;return 0;
     case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return UiaReturnRawElementProvider(h,w,l,e.provider);break;
     case set_value_message:
@@ -318,10 +323,32 @@ static void uia_roundtrip(EditorHost& e){
     check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");
     check_edit(e.model.state.text==u"UIA 設定 ABC","UIA mutation reaches common editing model");
 }
+static void cross_process_roundtrip(EditorHost& e){
+    wchar_t filename[32768]{};DWORD length=GetModuleFileNameW(nullptr,filename,32768);
+    require(length>0&&length<32768,"Executable path unavailable");
+    std::wstring executable(filename,length);executable.resize(executable.find_last_of(L"\\/")+1);executable+=L"uia_external_client.exe";
+    std::wstring command=L"\""+executable+L"\" "+std::to_wstring(reinterpret_cast<uintptr_t>(e.context.window))+L" "+std::to_wstring(GetCurrentProcessId());
+    STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION process{};
+    require(CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process),"Cannot launch independent UIA test client");
+    CloseHandle(process.hThread);
+    auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(40);
+    bool timeout=false;
+    while(WaitForSingleObject(process.hProcess,0)==WAIT_TIMEOUT){
+        MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+        if(std::chrono::steady_clock::now()>deadline){timeout=true;TerminateProcess(process.hProcess,3);WaitForSingleObject(process.hProcess,2000);break;}
+        Sleep(1);
+    }
+    DWORD code=1;GetExitCodeProcess(process.hProcess,&code);CloseHandle(process.hProcess);
+    std::ifstream transcript("uia-cross-process.log");std::cout<<transcript.rdbuf();
+    require(!timeout,"Cross-process UIA client timeout");
+    check_edit(code==0,"independent process UIA tests");
+    check_edit(e.model.state.text==u"跨程序 UIA 456"&&!e.model.composing,"cross-process writes and fixture cancellation reach model");
+}
 int main(int argc,char** argv){
     try{
         std::cout<<std::unitbuf;
-        const bool interactive=argc>1&&std::string(argv[1])=="--interactive";
+        bool interactive=false;
+        for(int i=1;i<argc;++i){if(std::string(argv[i])=="--interactive")interactive=true;if(std::string(argv[i])=="--cross-process")allow_test_fixture=true;}
         model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -353,6 +380,7 @@ int main(int argc,char** argv){
             SendMessageW(context.window,WM_KEYDOWN,VK_ESCAPE,0);
             check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
             uia_roundtrip(e);
+            if(allow_test_fixture)cross_process_roundtrip(e);
             e.model.set(u"自繪輸入：繁體中文 ABC");e.model.select((unsigned)e.model.state.text.size(),(unsigned)e.model.state.text.size());e.size_dip=24;e.sync();
             Scene scene(context.gl);scene.init();e.draw(scene);
             // Draw once more to back buffer for evidence, without changing model.

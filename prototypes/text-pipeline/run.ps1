@@ -1,4 +1,4 @@
-param([switch]$Interactive,[switch]$SelfDraw)
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess)
 $ErrorActionPreference='Stop'
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -11,11 +11,15 @@ $cmake=Join-Path $vsRoot 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin
 $buildDir=Join-Path $PSScriptRoot 'build/clang'
 & $cmake -S $PSScriptRoot -B $buildDir -G Ninja '-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe' '-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe' -DCMAKE_BUILD_TYPE=Release
 if($LASTEXITCODE){throw 'Configure failed'}
-& $cmake --build $buildDir --parallel 4
+$target=if($CrossProcess){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
+& $cmake --build $buildDir --target $target --parallel 4
 if($LASTEXITCODE){throw 'Build failed'}
 Push-Location $buildDir
 try {
-  $probeExe=if($SelfDraw){'.\editor_probe.exe'}else{'.\text_probe.exe'}
-  if($Interactive){& $probeExe --interactive}else{& $probeExe}
+  $probeExe=".\$target.exe"
+  $probeArgs=@()
+  if($Interactive){$probeArgs+='--interactive'}
+  if($CrossProcess){$probeArgs+='--cross-process'}
+  & $probeExe @probeArgs
   if($LASTEXITCODE){throw 'Text probe failed'}
 }finally{Pop-Location}
