@@ -475,10 +475,7 @@ static bool diagnose_uia_failure=false;
 // Diagnostic only: launch a fresh read-only external probe while this host keeps pumping its UI thread.
 // Bounded to 20 s; only this child is terminated on timeout; handles are always closed.
 // Diagnostic self-test only: injects a labelled synthetic failure after a successful roundtrip to exercise the child path.
-static bool test_uia_failure_diagnostics=false;
-// Manual Narrator/accessibility entry (--interactive --manual-narrator): skips every scripted check.
-static bool manual_narrator=false;
-// Every API result is recorded; cleanup is reported from these results, not from flags.
+static bool test_uia_failure_diagnostics=false;// Every API result is recorded; cleanup is reported from these results, not from flags.
 struct ChildRun {
     bool launched=false;DWORD launch_error=0,pid=0;
     bool timed_out=false,terminate_called=false,terminate_ok=false;DWORD terminate_error=0;
@@ -685,15 +682,12 @@ int main(int argc,char** argv){
             if(arg=="--concurrent")concurrent=true;if(arg=="--lifecycle")lifecycle=true;
             if(arg=="--diagnose-uia-failure")diagnose_uia_failure=true;
             if(arg=="--test-uia-failure-diagnostics")test_uia_failure_diagnostics=true;
-            if(arg=="--manual-narrator")manual_narrator=true;
         }
-        require(!manual_narrator||(interactive&&!allow_test_fixture&&!lifecycle&&!concurrent&&!diagnose_uia_failure&&!test_uia_failure_diagnostics&&!save_success_trace),
-            "--manual-narrator requires --interactive and no test/fixture options");
         require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
         require(!lifecycle||(!interactive&&allow_test_fixture),"Lifecycle test requires noninteractive cross-process mode");
         require(!test_uia_failure_diagnostics||(!interactive&&allow_test_fixture),"Synthetic UIA diagnostic self-test requires noninteractive cross-process mode");
         test_accept_any_size=allow_test_fixture&&!interactive;
-        if(!manual_narrator)model_scenarios();
+        model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_IBEAM);RegisterClassW(&wc);
@@ -703,17 +697,6 @@ int main(int argc,char** argv){
             EditorHost e(context,text);HostBinding binding(e);
             SetWindowLongPtrW(context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(edit_proc));
             if(interactive)SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
-            if(manual_narrator){
-                // Manual accessibility entry: no scripted input, fixtures, self-checks or UIA test clients.
-                // Initial text is set directly (not an undoable edit), caret at the end.
-                e.model.state.text=u"自繪輸入：繁體中文 ABC";e.model.state.anchor=e.model.state.caret=(unsigned)e.model.state.text.size();e.size_dip=24;e.sync();
-                std::cout<<"Manual Narrator entry: no automated checks run; results must be recorded manually\n";
-                Scene scene(context.gl);scene.init();e.draw(scene);
-                while(!quitting){
-                    MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
-                    if(e.dirty)e.draw(scene);Sleep(10);
-                }
-            }else{
             check_edit(GetWindow(context.window,GW_CHILD)==nullptr,"custom HWND has no native Edit child");
             SendMessageW(context.window,WM_CHAR,L'A',0);
             check_edit(e.model.state.text==u"A","WM_CHAR edits selfdraw model");
@@ -766,13 +749,11 @@ int main(int argc,char** argv){
             }
             if(lifecycle)cross_process_roundtrip(e,false,&binding);
             std::cout<<"Observed real WM_IME_COMPOSITION messages="<<e.composition_messages<<" result messages="<<e.composition_results<<'\n';
-            }
             host=nullptr;DestroyCaret();
         }
         check_edit(host==nullptr&&(!context.window||GetWindowLongPtrW(context.window,GWLP_WNDPROC)==reinterpret_cast<LONG_PTR>(wnd_proc)),"window callbacks detached before model teardown");
         require(context.release(),"WGL cleanup failed");CoUninitialize();
-        if(manual_narrator)std::cout<<"Manual session ended; Narrator result pending user (no automated suite ran)\n";
-        else std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
+        std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
         if(save_success_trace)save_state_trace();return 0;
     }catch(const std::exception& error){save_state_trace();std::cerr<<"cleanup_host_detached="<<(host==nullptr)<<"\nFAIL "<<error.what()<<'\n';return 1;}
 }

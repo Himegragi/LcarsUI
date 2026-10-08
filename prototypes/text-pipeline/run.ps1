@@ -1,7 +1,4 @@
-param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot,[switch]$DiagnoseUiaFailure,[switch]$TestUiaFailureDiagnostics,[switch]$ManualNarrator)
-# -ManualNarrator: manual accessibility entry. Builds editor_cross_host and runs it with
-# --interactive --manual-narrator only (no --cross-process): no scripted input, fixtures or self-checks.
-if($ManualNarrator -and ($ProbeUiaRoot -or $Interactive -or $SelfDraw -or $BuildOnly -or $CrossProcess -or $Concurrency -or $Lifecycle -or $TraceState -or $DiagnoseUiaFailure -or $TestUiaFailureDiagnostics)){throw '-ManualNarrator cannot be combined with test options'}
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot,[switch]$DiagnoseUiaFailure,[switch]$TestUiaFailureDiagnostics)
 # -TestUiaFailureDiagnostics: diagnostic self-test only, implies -CrossProcess. Injects a labelled synthetic failure
 # after a successful roundtrip to exercise the child path; the run is expected to fail (nonzero).
 if($TestUiaFailureDiagnostics){$CrossProcess=$true}
@@ -28,7 +25,7 @@ if($ProbeUiaRoot){
   if($LASTEXITCODE){throw "UIA root probe failed (exit $LASTEXITCODE)"}
   return
 }
-$target=if($CrossProcess -or $Concurrency -or $Lifecycle -or $ManualNarrator){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
+$target=if($CrossProcess -or $Concurrency -or $Lifecycle){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
 & $cmake --build $buildDir --target $target --parallel 4
 if($LASTEXITCODE){throw 'Build failed'}
 if($BuildOnly){return}
@@ -36,8 +33,7 @@ Push-Location $buildDir
 try {
   $probeExe=".\$target.exe"
   $probeArgs=@()
-  if($Interactive -or $ManualNarrator){$probeArgs+='--interactive'}
-  if($ManualNarrator){$probeArgs+='--manual-narrator'}
+  if($Interactive){$probeArgs+='--interactive'}
   if($CrossProcess -or $Concurrency -or $Lifecycle){$probeArgs+='--cross-process'}
   if($TraceState){$probeArgs+='--trace-state'}
   if($Concurrency){$probeArgs+='--concurrent'}
