@@ -1,0 +1,13 @@
+2026-10-09 Codex independent verification of skin-switch v2
+Release build: run.ps1 -BuildOnly PASS (no work to do).
+Independent native benchmark --benchmark, separate cwd evidence/codex: PASS.
+All 24/128/512 fixture sets: 123 switches each, 369 total state/history checks PASS.
+Each direction structural sample count=30; tokens sample count=60 per realized field count.
+CPU pre-submit = per-sample destroy_build_place_ms + hb_shape_ms + cpu_raster_ms; sorted nearest-rank convention matching prototype (p50 index15,p95 index28 for30).
+A->B CPU pre-submit p50/p95/max ms:
+  24 fields:  2.612 / 2.711 / 2.762
+  128 fields: 3.366 / 3.612 / 3.612
+  512 fields: 6.273 / 6.589 / 6.598
+Excludes upload_submit and SwapBuffers; not total visible latency or GPU measurement.
+Viewed both skin-A-v2.bmp and skin-B-v2.bmp: expected labels/values, no garbage suffix; A stacked labels+outlines vs B inline labels+icons+underlines+decorative x. These are flat visual part lists with different composition/placement, not a general tree/template engine.
+Scope: shared logical models, internal focus target and fixture history. No actual IME/UIA integration, OS focus continuity proof, scrolling, edited-code hot reload, cache/atlas or production performance guarantee.

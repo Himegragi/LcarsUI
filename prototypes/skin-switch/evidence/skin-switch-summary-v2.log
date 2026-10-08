@@ -1,0 +1,44 @@
+THROWAWAY skin-switch benchmark v2 (fixed fixture). CPU wall time via steady_clock; no glFinish/readback in timed path; not GPU/scanout latency.
+Stages: destroy old nodes + build/place new nodes | HarfBuzz shaping of label/edit/adornment text | CPU FreeType raster of visible nodes | texture upload + draw submit | SwapBuffers call. Swap interval not set or measured.
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2 client=938x584 dpi=144
+
+fields=24 fixture=asserted(labels/text/selection) state_check=PASS(all 123 switches: ids, model identities, text/selection/preedit/preedit cursor/composing, focus, revision equal; full undo+redo drains on copies equal)
+  first_structural_A_to_B n=1 destroyed=96 built=144 shaped_nodes=72 glyphs_shaped=555 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.039/0.039/0.039 | HB shaping 0.223/0.223/0.223 | cpu raster 2.502/2.502/2.502 | upload+submit 0.618/0.618/0.618 | SwapBuffers 0.022/0.022/0.022 | total 3.404/3.404/3.404
+  structural_A_to_B n=30 destroyed=96 built=144 shaped_nodes=72 glyphs_shaped=555 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.025/0.037/0.041 | HB shaping 0.216/0.253/0.295 | cpu raster 2.332/2.476/2.780 | upload+submit 13.988/14.191/14.338 | SwapBuffers 0.030/0.035/0.038 | total 16.590/16.686/16.798
+  structural_B_to_A n=30 destroyed=144 built=96 shaped_nodes=48 glyphs_shaped=531 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.025/0.038/0.039 | HB shaping 0.189/0.211/0.230 | cpu raster 1.902/2.072/2.213 | upload+submit 14.511/14.679/14.704 | SwapBuffers 0.028/0.040/0.040 | total 16.647/16.783/16.845
+  first_tokens_only n=1 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.000 | cpu raster 2.361/2.361/2.361 | upload+submit 13.954/13.954/13.954 | SwapBuffers 0.038/0.038/0.038 | total 16.353/16.353/16.353
+  tokens_only n=60 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.000 | cpu raster 1.974/2.143/2.214 | upload+submit 14.621/14.856/15.024 | SwapBuffers 0.030/0.045/0.190 | total 16.614/16.760/16.814
+  element counts (not a memory footprint): nodes=96 node_capacity=96 glyphs=531 glyph_capacity=580 caret_entries=579 frame_image_bytes=2191168
+
+fields=128 fixture=asserted(labels/text/selection) state_check=PASS(all 123 switches: ids, model identities, text/selection/preedit/preedit cursor/composing, focus, revision equal; full undo+redo drains on copies equal)
+  first_structural_A_to_B n=1 destroyed=512 built=768 shaped_nodes=384 glyphs_shaped=3107 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.294/0.294/0.294 | HB shaping 1.097/1.097/1.097 | cpu raster 2.312/2.312/2.312 | upload+submit 12.891/12.891/12.891 | SwapBuffers 0.031/0.031/0.031 | total 16.625/16.625/16.625
+  structural_A_to_B n=30 destroyed=512 built=768 shaped_nodes=384 glyphs_shaped=3107 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.193/0.304/0.332 | HB shaping 0.899/1.105/1.357 | cpu raster 2.228/2.410/2.458 | upload+submit 13.036/13.300/13.511 | SwapBuffers 0.029/0.031/0.032 | total 16.405/16.683/17.002
+  structural_B_to_A n=30 destroyed=768 built=512 shaped_nodes=256 glyphs_shaped=2979 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.182/0.225/0.256 | HB shaping 0.815/0.910/1.003 | cpu raster 1.781/1.977/1.992 | upload+submit 13.694/13.840/13.928 | SwapBuffers 0.028/0.037/0.056 | total 16.474/16.667/16.684
+  first_tokens_only n=1 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.000 | cpu raster 1.837/1.837/1.837 | upload+submit 14.418/14.418/14.418 | SwapBuffers 0.035/0.035/0.035 | total 16.291/16.291/16.291
+  tokens_only n=60 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.001 | cpu raster 1.870/1.984/2.048 | upload+submit 14.476/14.665/14.780 | SwapBuffers 0.030/0.040/0.060 | total 16.389/16.515/16.616
+  element counts (not a memory footprint): nodes=512 node_capacity=512 glyphs=2979 glyph_capacity=3180 caret_entries=3235 frame_image_bytes=2191168
+
+fields=512 fixture=asserted(labels/text/selection) state_check=PASS(all 123 switches: ids, model identities, text/selection/preedit/preedit cursor/composing, focus, revision equal; full undo+redo drains on copies equal)
+  first_structural_A_to_B n=1 destroyed=2048 built=3072 shaped_nodes=1536 glyphs_shaped=13091 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.862/0.862/0.862 | HB shaping 3.582/3.582/3.582 | cpu raster 2.649/2.649/2.649 | upload+submit 9.536/9.536/9.536 | SwapBuffers 0.030/0.030/0.030 | total 16.659/16.659/16.659
+  structural_A_to_B n=30 destroyed=2048 built=3072 shaped_nodes=1536 glyphs_shaped=13091 raster_nodes=78 raster_glyphs=291
+    p50/p95/max ms: destroy+build+place 0.674/0.816/1.000 | HB shaping 3.435/3.820/4.993 | cpu raster 2.180/2.342/2.366 | upload+submit 9.425/9.814/9.826 | SwapBuffers 0.032/0.038/0.038 | total 15.806/15.969/16.067
+  structural_B_to_A n=30 destroyed=3072 built=2048 shaped_nodes=1024 glyphs_shaped=12579 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.601/0.773/0.799 | HB shaping 3.047/3.320/4.088 | cpu raster 1.780/1.841/2.053 | upload+submit 10.347/10.713/10.745 | SwapBuffers 0.030/0.035/0.035 | total 15.841/16.044/16.055
+  first_tokens_only n=1 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.000 | cpu raster 1.794/1.794/1.794 | upload+submit 14.224/14.224/14.224 | SwapBuffers 0.030/0.030/0.030 | total 16.048/16.048/16.048
+  tokens_only n=60 destroyed=0 built=0 shaped_nodes=0 glyphs_shaped=0 raster_nodes=34 raster_glyphs=171
+    p50/p95/max ms: destroy+build+place 0.000/0.000/0.000 | HB shaping 0.000/0.000/0.000 | cpu raster 1.813/1.962/2.075 | upload+submit 14.046/14.270/14.345 | SwapBuffers 0.029/0.033/0.034 | total 15.905/16.083/16.169
+  element counts (not a memory footprint): nodes=2048 node_capacity=2048 glyphs=12579 glyph_capacity=12780 caret_entries=13603 frame_image_bytes=2191168
+
+No layout cache and no glyph atlas implemented. Visible rows only are rasterized; all realized fields are shaped on structural switch.

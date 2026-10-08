@@ -65,3 +65,14 @@ target_compile_definitions(uia_external_client PRIVATE UNICODE _UNICODE NOMINMAX
 target_compile_options(uia_external_client PRIVATE /utf-8)
 target_link_libraries(uia_external_client PRIVATE user32 ole32 oleaut32 uiautomationcore uuid)
 add_dependencies(editor_cross_host uia_external_client)
+
+# Opt-in throwaway prototype (prototypes/skin-switch); reuses this build's HarfBuzz/FreeType. Not built by default.
+option(LCARS_SKIN_SWITCH_PROTOTYPE "Register the throwaway skin-switch prototype target" OFF)
+if(LCARS_SKIN_SWITCH_PROTOTYPE)
+  add_executable(skin_switch EXCLUDE_FROM_ALL ../skin-switch/skin_switch.cpp ../minimal-build/core.cpp)
+  set_target_properties(skin_switch PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_definitions(skin_switch PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+  target_compile_options(skin_switch PRIVATE /utf-8)
+  target_include_directories(skin_switch PRIVATE ../minimal-build/third_party)
+  target_link_libraries(skin_switch PRIVATE harfbuzz freetype opengl32 user32 gdi32)
+endif()

@@ -1,0 +1,4 @@
+INVALID: skin-A.bmp, skin-B.bmp, skin-switch-summary.log and skin-switch-samples.csv in this folder were produced by the
+first version, whose make_page built strings from two different std::to_wstring temporaries (undefined behavior).
+The fixture text was wrong (garbage boxes visible after numeric labels/values), so those numbers and images must not be used.
+Renaming them was not permitted in this session; they are kept as-is. Valid results: *-v2.* files.
