@@ -44,3 +44,10 @@ target_compile_definitions(text_probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICO
 target_compile_options(text_probe PRIVATE /utf-8)
 target_include_directories(text_probe PRIVATE ../minimal-build/third_party)
 target_link_libraries(text_probe PRIVATE harfbuzz freetype opengl32 user32 gdi32)
+
+add_executable(editor_probe selfdraw_editor.cpp ../minimal-build/core.cpp)
+set_target_properties(editor_probe PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_definitions(editor_probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+target_compile_options(editor_probe PRIVATE /utf-8)
+target_include_directories(editor_probe PRIVATE ../minimal-build/third_party)
+target_link_libraries(editor_probe PRIVATE harfbuzz freetype opengl32 user32 gdi32 imm32 ole32 oleaut32 uiautomationcore uuid)

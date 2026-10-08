@@ -105,7 +105,7 @@ static LRESULT CALLBACK text_proc(HWND h,UINT m,WPARAM w,LPARAM l) {
 static std::wstring edit_text(){
     int n=GetWindowTextLengthW(editor);std::wstring t(n+1,L'\0');GetWindowTextW(editor,t.data(),n+1);t.resize(n);return t;
 }
-static std::vector<unsigned char> paint(TextEngine& e,const Layout& layout,int width,int height,unsigned begin,unsigned end,int size) {
+static std::vector<unsigned char> paint(TextEngine& e,const Layout& layout,int width,int height,unsigned begin,unsigned end,int size,unsigned caret=~0u) {
     std::vector<unsigned char> image(static_cast<size_t>(width)*height*4);
     for(size_t i=0;i<image.size();i+=4){image[i]=18;image[i+1]=25;image[i+2]=38;image[i+3]=255;}
     auto fill=[&](int x,int y,int w,int h,unsigned char r,unsigned char g,unsigned char b){
@@ -135,7 +135,7 @@ static std::vector<unsigned char> paint(TextEngine& e,const Layout& layout,int w
             for(int c=0;c<3;++c){unsigned ink=glyph.id?235:(c==0?255:70);image[p+c]=static_cast<unsigned char>((ink*alpha+image[p+c]*(255-alpha))/255);}
         }
     }
-    fill(left+static_cast<int>(nearest(end)),baseline-size,2,size+9,96,219,200);
+    fill(left+static_cast<int>(nearest(caret==~0u?end:caret)),baseline-size,2,size+9,96,219,200);
     return image;
 }
 static void display(Context& c,Scene& scene,TextEngine& e,const std::wstring& text,unsigned begin,unsigned end) {
@@ -174,6 +174,7 @@ static void tests(TextEngine& e){
     check(!supplementary.carets.contains(2),"UTF16 surrogate pair is not split into caret stops");
     e.reload(false);
 }
+#ifndef LCARS_TEXT_HELPERS_ONLY
 int main(int argc,char** argv){
     try{
         std::cout<<std::unitbuf;
@@ -217,3 +218,4 @@ int main(int argc,char** argv){
         return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}
 }
+#endif

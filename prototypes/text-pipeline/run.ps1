@@ -1,4 +1,4 @@
-param([switch]$Interactive)
+param([switch]$Interactive,[switch]$SelfDraw)
 $ErrorActionPreference='Stop'
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -15,6 +15,7 @@ if($LASTEXITCODE){throw 'Configure failed'}
 if($LASTEXITCODE){throw 'Build failed'}
 Push-Location $buildDir
 try {
-  if($Interactive){& .\text_probe.exe --interactive}else{& .\text_probe.exe}
+  $probeExe=if($SelfDraw){'.\editor_probe.exe'}else{'.\text_probe.exe'}
+  if($Interactive){& $probeExe --interactive}else{& $probeExe}
   if($LASTEXITCODE){throw 'Text probe failed'}
 }finally{Pop-Location}

@@ -2,6 +2,7 @@
 
 目的：先驗證固定原始碼建置、繁中 shaping／fallback、字形點陣化及 OpenGL 顯示是否接得起來。
 這是文字整合議題的第一個實測階段；**尚未完成自繪編輯器的 IME／UIA 整合**。
+後續 `editor_probe` 已加入自繪編輯模型、IMM 接點與 UIA Value 的有限驗證；詳見 [第二階段說明](SELF_DRAW_EDITING.md)，完整 TextRange／實際輸入法驗收仍未完成。
 
 ## 執行
 

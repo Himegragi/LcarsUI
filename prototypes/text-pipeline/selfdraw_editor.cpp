@@ -1,0 +1,374 @@
+#define LCARS_TEXT_HELPERS_ONLY
+#include "text_probe.cpp"
+#include "editing_model.hpp"
+#include <imm.h>
+#include <objbase.h>
+#include <oleauto.h>
+#include <unknwn.h>
+#include <UIAutomation.h>
+#include <atomic>
+#include <mutex>
+#include <thread>
+#include <wrl/client.h>
+
+// Prototype: one custom HWND, no native Edit child. Value provider is deliberately
+// limited; Text/TextRange and a full TSF text store remain separate work.
+static constexpr UINT set_value_message=WM_APP+20;
+static std::u16string u16(const std::wstring& s){return {s.begin(),s.end()};}
+static std::wstring wide(const std::u16string& s){return {s.begin(),s.end()};}
+struct Bridge {
+    std::mutex mutex;
+    HWND window{};
+    bool alive=true,focused=false,composing=false;
+    std::wstring value;
+    RECT bounds{},window_bounds{};
+};
+class ValueProvider final:public IRawElementProviderSimple,public IValueProvider {
+    std::atomic<ULONG> references{1};
+public:
+    std::shared_ptr<Bridge> bridge;
+    explicit ValueProvider(std::shared_ptr<Bridge> b):bridge(std::move(b)){}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id,void** out) override {
+        if(!out)return E_POINTER;*out=nullptr;
+        if(id==__uuidof(IUnknown)||id==__uuidof(IRawElementProviderSimple))*out=static_cast<IRawElementProviderSimple*>(this);
+        else if(id==__uuidof(IValueProvider))*out=static_cast<IValueProvider*>(this);
+        else return E_NOINTERFACE;
+        AddRef();return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override{return ++references;}
+    ULONG STDMETHODCALLTYPE Release() override{auto n=--references;if(!n)delete this;return n;}
+    HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions* out) override{if(!out)return E_POINTER;*out=ProviderOptions_ServerSideProvider;return S_OK;}
+    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID pattern,IUnknown** out) override {
+        if(!out)return E_POINTER;*out=nullptr;
+        std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
+        if(pattern==UIA_ValuePatternId){*out=static_cast<IValueProvider*>(this);AddRef();}return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID property,VARIANT* out) override {
+        if(!out)return E_POINTER;VariantInit(out);
+        std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
+        auto str=[&](const wchar_t* text){out->vt=VT_BSTR;out->bstrVal=SysAllocString(text);return out->bstrVal?S_OK:E_OUTOFMEMORY;};
+        auto flag=[&](bool value){out->vt=VT_BOOL;out->boolVal=value?VARIANT_TRUE:VARIANT_FALSE;};
+        if(property==UIA_NamePropertyId)return str(L"LcarsUI 自繪文字輸入框");
+        if(property==UIA_AutomationIdPropertyId)return str(L"lcars.prototype.text");
+        if(property==UIA_FrameworkIdPropertyId)return str(L"LcarsUI Prototype");
+        if(property==UIA_ProviderDescriptionPropertyId)return str(L"LcarsUI prototype: custom Value provider; TextPattern not implemented");
+        if(property==UIA_ControlTypePropertyId){out->vt=VT_I4;out->lVal=UIA_EditControlTypeId;}
+        else if(property==UIA_IsKeyboardFocusablePropertyId||property==UIA_IsEnabledPropertyId||property==UIA_IsControlElementPropertyId||property==UIA_IsContentElementPropertyId)flag(true);
+        else if(property==UIA_HasKeyboardFocusPropertyId)flag(bridge->focused);
+        else if(property==UIA_IsTextPatternAvailablePropertyId||property==UIA_IsPasswordPropertyId)flag(false);
+        // HWND host provider supplies BoundingRectangle. Text geometry needs TextRange.
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(IRawElementProviderSimple** out) override {
+        if(!out)return E_POINTER;HWND window;
+        {std::lock_guard lock(bridge->mutex);if(!bridge->alive){*out=nullptr;return UIA_E_ELEMENTNOTAVAILABLE;}window=bridge->window;}
+        return UiaHostProviderFromHwnd(window,out);
+    }
+    HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
+        if(!value)return E_INVALIDARG;HWND window;
+        {std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;window=bridge->window;}
+        // Synchronous marshal to owning UI thread; never touch FT/GL on a COM thread.
+        return static_cast<HRESULT>(SendMessageW(window,set_value_message,0,reinterpret_cast<LPARAM>(value)));
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(BSTR* out) override {
+        if(!out)return E_POINTER;*out=nullptr;std::lock_guard lock(bridge->mutex);
+        if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
+        *out=SysAllocStringLen(bridge->value.data(),static_cast<UINT>(bridge->value.size()));return *out?S_OK:E_OUTOFMEMORY;
+    }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override{if(!out)return E_POINTER;*out=FALSE;return S_OK;}
+};
+struct EditorHost {
+    Context& context;
+    TextEngine& engine;
+    editing::Model model;
+    std::shared_ptr<Bridge> bridge=std::make_shared<Bridge>();
+    ValueProvider* provider{};
+    bool dirty=true;
+    int size_dip=24;
+    float horizontal_scroll=0;
+    wchar_t pending_high=0;
+    unsigned composition_messages=0,composition_results=0;
+    bool candidate_positioned=false;
+    POINT candidate{};
+    explicit EditorHost(Context& c,TextEngine& e):context(c),engine(e){
+        bridge->window=c.window;provider=new ValueProvider(bridge);
+        model.state.text=u"自繪文字 ABC";model.select(0,(unsigned)model.state.text.size());
+    }
+    ~EditorHost(){
+        {std::lock_guard lock(bridge->mutex);bridge->alive=false;}
+        UiaDisconnectProvider(provider);provider->Release();
+    }
+    int pixels() const{return MulDiv(size_dip,static_cast<int>(GetDpiForWindow(context.window)),96);}
+    Layout layout(){return engine.shape(wide(model.visible()),pixels());}
+    float x_at(const Layout& l,unsigned offset){auto it=l.carets.upper_bound(offset);return it==l.carets.begin()?0:std::prev(it)->second;}
+    void sync() {
+        auto l=layout();RECT client{};GetClientRect(context.window,&client);
+        float x=x_at(l,model.visible_caret());
+        const float span=std::max(40L,client.right-48);
+        if(x-horizontal_scroll>span)horizontal_scroll=x-span;
+        if(x<horizontal_scroll)horizontal_scroll=x;
+        horizontal_scroll=std::max(0.f,horizontal_scroll);
+        candidate={24+static_cast<LONG>(std::round(x-horizontal_scroll)),40+pixels()+10};
+        SetCaretPos(candidate.x,40);
+        HIMC imc=ImmGetContext(context.window);candidate_positioned=false;
+        if(imc){
+            CANDIDATEFORM cf{};cf.dwIndex=0;cf.dwStyle=CFS_EXCLUDE;cf.ptCurrentPos=candidate;
+            cf.rcArea={candidate.x,40,candidate.x+2,candidate.y};
+            COMPOSITIONFORM composition{};composition.dwStyle=CFS_POINT;composition.ptCurrentPos={candidate.x,40};
+            const bool a=ImmSetCandidateWindow(imc,&cf)!=FALSE;
+            const bool b=ImmSetCompositionWindow(imc,&composition)!=FALSE;
+            CANDIDATEFORM actual{};
+            candidate_positioned=a&&b&&ImmGetCandidateWindow(imc,0,&actual)&&actual.ptCurrentPos.x==candidate.x&&actual.ptCurrentPos.y==candidate.y;
+            ImmReleaseContext(context.window,imc);
+        }
+        POINT origin{24,40};ClientToScreen(context.window,&origin);
+        std::wstring old,current=wide(model.state.text);
+        {
+            std::lock_guard lock(bridge->mutex);old=bridge->value;bridge->value=current;bridge->composing=model.composing;
+            bridge->focused=GetFocus()==context.window;
+            bridge->bounds={origin.x,origin.y,origin.x+std::max(0L,client.right-48),origin.y+pixels()+10};
+            GetWindowRect(context.window,&bridge->window_bounds);
+        }
+        if(old!=current){
+            VARIANT before{},after{};before.vt=after.vt=VT_BSTR;before.bstrVal=SysAllocString(old.c_str());after.bstrVal=SysAllocString(current.c_str());
+            UiaRaiseAutomationPropertyChangedEvent(provider,UIA_ValueValuePropertyId,before,after);
+            VariantClear(&before);VariantClear(&after);
+        }
+        std::wostringstream title;title<<L"LcarsUI 自繪編輯原型 | F2 字型 / F3,F4 字級 | "<<size_dip<<L" DIP | composing="<<model.composing<<L" | IMM messages="<<composition_messages;
+        SetWindowTextW(context.window,title.str().c_str());dirty=true;
+    }
+    void move(int direction,bool extend){
+        auto l=layout();auto pos=model.state.caret;
+        if(direction<0){auto it=l.carets.lower_bound(pos);if(it!=l.carets.begin())pos=std::prev(it)->first;}
+        else {auto it=l.carets.upper_bound(pos);if(it!=l.carets.end())pos=it->first;}
+        model.select(extend?model.state.anchor:pos,pos);
+    }
+    void erase(bool back){
+        if(model.begin()==model.end()){auto anchor=model.state.caret;move(back?-1:1,true);model.state.anchor=anchor;}
+        if(model.begin()!=model.end())model.replace(u"");
+    }
+    void draw(Scene& scene){
+        RECT r{};GetClientRect(context.window,&r);if(r.right<=0||r.bottom<=0)return;
+        auto l=layout();for(auto& g:l.glyphs)g.x-=horizontal_scroll;for(auto& [offset,x]:l.carets)x-=horizontal_scroll;
+        unsigned begin=model.begin(),end=model.composing?model.begin()+(unsigned)model.preedit.size():model.end();
+        auto image=paint(engine,l,r.right,r.bottom,begin,end,pixels(),model.visible_caret());auto& gl=context.gl;
+        gl.Viewport(0,0,r.right,r.bottom);gl.Disable(GL_SCISSOR_TEST);gl.Disable(GL_BLEND);
+        gl.BindTexture(GL_TEXTURE_2D,scene.texture);gl.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,r.right,r.bottom,0,GL_RGBA,GL_UNSIGNED_BYTE,image.data());
+        gl.UseProgram(scene.program);gl.BindVertexArray(scene.vao);gl.DrawArrays(GL_TRIANGLES,0,3);
+        require(gl.GetError()==GL_NO_ERROR,"Selfdraw GL error");SwapBuffers(context.dc);dirty=false;
+    }
+};
+static EditorHost* host=nullptr;
+static bool copy_selection(HWND window,const editing::Model& model){
+    if(model.begin()==model.end()||!OpenClipboard(window))return false;
+    auto text=wide(model.state.text.substr(model.begin(),model.end()-model.begin()));
+    HGLOBAL memory=GlobalAlloc(GMEM_MOVEABLE,(text.size()+1)*sizeof(wchar_t));
+    if(!memory){CloseClipboard();return false;}
+    auto data=GlobalLock(memory);if(!data){GlobalFree(memory);CloseClipboard();return false;}
+    memcpy(data,text.c_str(),(text.size()+1)*sizeof(wchar_t));GlobalUnlock(memory);
+    const bool ok=EmptyClipboard()&&SetClipboardData(CF_UNICODETEXT,memory)!=nullptr;
+    if(!ok)GlobalFree(memory);CloseClipboard();return ok;
+}
+static std::u16string composition_string(HIMC imc,DWORD kind){
+    LONG bytes=ImmGetCompositionStringW(imc,kind,nullptr,0);if(bytes<=0)return {};
+    std::u16string text(static_cast<size_t>(bytes)/2,u'\0');
+    if(ImmGetCompositionStringW(imc,kind,text.data(),bytes)<0)return {};return text;
+}
+static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
+    if(!host)return wnd_proc(h,message,w,l);
+    auto& e=*host;
+    switch(message){
+    case WM_PAINT:ValidateRect(h,nullptr);e.dirty=true;return 0;
+    case WM_GETOBJECT:if(static_cast<LONG>(l)==UiaRootObjectId)return UiaReturnRawElementProvider(h,w,l,e.provider);break;
+    case set_value_message:
+        if(e.model.composing)return UIA_E_INVALIDOPERATION;
+        if(std::wstring(reinterpret_cast<const wchar_t*>(l)).find_first_of(L"\r\n\t")!=std::wstring::npos)return E_INVALIDARG;
+        e.model.set(u16(reinterpret_cast<const wchar_t*>(l)));e.sync();return S_OK;
+    case WM_SETFOCUS:CreateCaret(h,nullptr,2,e.pixels()+10);e.sync();UiaRaiseAutomationEvent(e.provider,UIA_AutomationFocusChangedEventId);return 0;
+    case WM_KILLFOCUS:{auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();DestroyCaret();e.sync();return 0;}
+    case WM_SIZE:case WM_MOVE:e.sync();break;
+    case WM_DPICHANGED:{auto r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);e.sync();return 0;}
+    case WM_IME_STARTCOMPOSITION:e.model.start();e.sync();return 0;
+    case WM_IME_SETCONTEXT:return DefWindowProcW(h,message,w,l&~ISC_SHOWUICOMPOSITIONWINDOW);
+    case WM_IME_REQUEST:
+        if(w==IMR_QUERYCHARPOSITION&&l){
+            auto info=reinterpret_cast<IMECHARPOSITION*>(l);if(info->dwSize<sizeof(IMECHARPOSITION))return 0;
+            auto layout=e.layout();auto offset=e.model.composing?e.model.begin()+std::min(info->dwCharPos,(DWORD)e.model.preedit.size()):e.model.state.caret;
+            info->pt={24+(LONG)std::round(e.x_at(layout,offset)-e.horizontal_scroll),40};ClientToScreen(h,&info->pt);
+            info->cLineHeight=e.pixels()+10;GetClientRect(h,&info->rcDocument);
+            POINT first{info->rcDocument.left,info->rcDocument.top},last{info->rcDocument.right,info->rcDocument.bottom};ClientToScreen(h,&first);ClientToScreen(h,&last);
+            info->rcDocument={first.x,first.y,last.x,last.y};return 1;
+        }
+        break;
+    case WM_IME_COMPOSITION:{
+        ++e.composition_messages;auto imc=ImmGetContext(h);if(!imc)return 0;
+        if(l&GCS_RESULTSTR){e.model.commit(composition_string(imc,GCS_RESULTSTR));++e.composition_results;}
+        if(l&GCS_COMPSTR){auto text=composition_string(imc,GCS_COMPSTR);LONG caret=ImmGetCompositionStringW(imc,GCS_CURSORPOS,nullptr,0);e.model.update(std::move(text),static_cast<unsigned>(std::max(0L,caret)));}
+        ImmReleaseContext(h,imc);e.sync();return 0;
+    }
+    case WM_IME_ENDCOMPOSITION:e.model.cancel();e.sync();return 0;
+    case WM_IME_CHAR:return 0; // Result is already consumed through GCS_RESULTSTR.
+    case WM_LBUTTONDOWN:{
+        if(e.model.composing)return 0;SetFocus(h);auto layout=e.layout();
+        auto offset=e.engine.hit(layout,static_cast<short>(LOWORD(l))-24.f+e.horizontal_scroll);
+        e.model.select((w&MK_SHIFT)?e.model.state.anchor:offset,offset);e.sync();return 0;
+    }
+    case WM_KEYDOWN:{
+        if(e.model.composing){
+            if(w==VK_ESCAPE){auto imc=ImmGetContext(h);if(imc){ImmNotifyIME(imc,NI_COMPOSITIONSTR,CPS_CANCEL,0);ImmReleaseContext(h,imc);}e.model.cancel();e.sync();return 0;}
+            break;
+        }
+        bool ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0,shift=(GetKeyState(VK_SHIFT)&0x8000)!=0;
+        if(ctrl&&w=='A')e.model.select(0,(unsigned)e.model.state.text.size());
+        else if(ctrl&&w=='Z')e.model.undo();else if(ctrl&&w=='Y')e.model.redo();
+        else if(ctrl&&(w=='C'||w=='X')){if(copy_selection(h,e.model)&&w=='X')e.model.replace(u"");}
+        else if(ctrl&&w=='V'){
+            if(OpenClipboard(h)){
+                auto data=GetClipboardData(CF_UNICODETEXT);
+                auto ptr=data?static_cast<const wchar_t*>(GlobalLock(data)):nullptr;
+                if(ptr){std::wstring text(ptr);if(text.find_first_of(L"\r\n\t")==std::wstring::npos)e.model.replace(u16(text));GlobalUnlock(data);}
+                CloseClipboard();
+            }
+        }
+        else if(w==VK_LEFT||w==VK_RIGHT)e.move(w==VK_LEFT?-1:1,shift);
+        else if(w==VK_HOME)e.model.select(shift?e.model.state.anchor:0,0);
+        else if(w==VK_END){auto end=(unsigned)e.model.state.text.size();e.model.select(shift?e.model.state.anchor:end,end);}
+        else if(w==VK_BACK)e.erase(true);else if(w==VK_DELETE)e.erase(false);
+        else if(w==VK_F2)e.engine.reload(!e.engine.ming);
+        else if(w==VK_F3)e.size_dip=std::max(12,e.size_dip-2);
+        else if(w==VK_F4)e.size_dip=std::min(48,e.size_dip+2);
+        else break;
+        e.sync();return 0;
+    }
+    case WM_CHAR:{
+        if(e.model.composing||w<32||w==127)return 0;
+        wchar_t ch=static_cast<wchar_t>(w);
+        if(ch>=0xd800&&ch<=0xdbff){e.pending_high=ch;return 0;}
+        std::u16string text;
+        if(ch>=0xdc00&&ch<=0xdfff){if(!e.pending_high)return 0;text.push_back(e.pending_high);}
+        e.pending_high=0;text.push_back(ch);e.model.replace(std::move(text));e.sync();return 0;
+    }
+    }
+    return wnd_proc(h,message,w,l);
+}
+static void check_edit(bool ok,const char* name){std::cout<<(ok?"PASS ":"FAIL ")<<name<<'\n';require(ok,name);}
+static void model_scenarios(){
+    editing::Model m;m.state.text=u"ABC";m.select(1,2);
+    m.start();m.update(u"ㄓ",1);
+    check_edit(m.state.text==u"ABC"&&m.visible()==u"AㄓC","preedit changes presentation, not committed text");
+    m.update(u"中文",1);check_edit(m.visible_caret()==2,"composition cursor maps into presentation");
+    m.cancel();check_edit(m.state.text==u"ABC"&&m.state.anchor==1&&m.state.caret==2,"cancel restores pre-composition selection");
+    m.start();m.update(u"ㄓ",1);m.update(u"中文",2);m.commit(u"中文");
+    check_edit(m.state.text==u"A中文C"&&m.state.caret==3&&!m.composing,"commit replaces selection once");
+    check_edit(m.undo()&&m.state.text==u"ABC","entire composition commits as one undo transaction");
+    check_edit(m.redo()&&m.state.text==u"A中文C","redo restores committed composition");
+    m.start();m.update(u"暫",1);m.undo();check_edit(!m.composing&&m.state.text==u"A中文C","undo during composition cancels preedit");
+}
+static void uia_roundtrip(EditorHost& e){
+    using Microsoft::WRL::ComPtr;
+    std::atomic<bool> done=false;
+    std::atomic<HRESULT> result=E_FAIL;
+    std::thread client([&]{
+        HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+        HRESULT hr=init;
+        if(SUCCEEDED(init)){
+            {
+                ComPtr<IUIAutomation> automation;ComPtr<IUIAutomationElement> element;
+                ComPtr<IUnknown> unknown;ComPtr<IUIAutomationValuePattern> pattern;
+                hr=CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&automation));
+                if(SUCCEEDED(hr))hr=automation->ElementFromHandle(e.context.window,&element);
+                if(SUCCEEDED(hr)){
+                    CONTROLTYPEID type{};hr=element->get_CurrentControlType(&type);
+                    std::cout<<"UIA role="<<type<<" expected="<<UIA_EditControlTypeId<<'\n';
+                    if(SUCCEEDED(hr)&&type!=UIA_EditControlTypeId)hr=E_FAIL;
+                }
+                if(SUCCEEDED(hr))hr=element->GetCurrentPattern(UIA_ValuePatternId,&unknown);
+                if(SUCCEEDED(hr))hr=unknown.As(&pattern);
+                if(SUCCEEDED(hr))hr=pattern->SetValue(L"UIA 設定 ABC");
+                if(SUCCEEDED(hr)){
+                    BSTR value{};hr=pattern->get_CurrentValue(&value);
+                    std::cout<<"UIA value length="<<(value?SysStringLen(value):0)<<'\n';
+                    if(SUCCEEDED(hr)&&std::wstring(value?value:L"")!=L"UIA 設定 ABC")hr=E_FAIL;
+                    SysFreeString(value);
+                }
+                if(SUCCEEDED(hr)){
+                    RECT r{};hr=element->get_CurrentBoundingRectangle(&r);
+                    RECT expected{};{std::lock_guard lock(e.bridge->mutex);expected=e.bridge->window_bounds;}
+                    std::cout<<"UIA bounds="<<r.left<<','<<r.top<<','<<r.right<<','<<r.bottom<<" expected="<<expected.left<<','<<expected.top<<','<<expected.right<<','<<expected.bottom<<'\n';
+                    if(SUCCEEDED(hr)&&!EqualRect(&r,&expected))hr=E_FAIL;
+                }
+                if(SUCCEEDED(hr)){
+                    VARIANT available{};hr=element->GetCurrentPropertyValue(UIA_IsTextPatternAvailablePropertyId,&available);
+                    if(SUCCEEDED(hr)&&(available.vt!=VT_BOOL||available.boolVal!=VARIANT_FALSE))hr=E_FAIL;
+                    VariantClear(&available);
+                }
+            }
+            CoUninitialize();
+        }
+        result=hr;done=true;
+    });
+    auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(45);
+    while(!done){
+        MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+        if(std::chrono::steady_clock::now()>deadline){std::cerr<<"FAIL UIA client timeout\n";ExitProcess(3);}
+        Sleep(1);
+    }
+    client.join();
+    std::cout<<"UIA client HRESULT=0x"<<std::hex<<static_cast<unsigned long>(result.load())<<std::dec<<'\n';
+    check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");
+    check_edit(e.model.state.text==u"UIA 設定 ABC","UIA mutation reaches common editing model");
+}
+int main(int argc,char** argv){
+    try{
+        std::cout<<std::unitbuf;
+        const bool interactive=argc>1&&std::string(argv[1])=="--interactive";
+        model_scenarios();
+        require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_IBEAM);RegisterClassW(&wc);
+        TextEngine text;Context context;context.open();
+        {
+            EditorHost e(context,text);host=&e;
+            SetWindowLongPtrW(context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(edit_proc));
+            SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
+            check_edit(GetWindow(context.window,GW_CHILD)==nullptr,"custom HWND has no native Edit child");
+            SendMessageW(context.window,WM_CHAR,L'A',0);
+            check_edit(e.model.state.text==u"A","WM_CHAR edits selfdraw model");
+            SendMessageW(context.window,WM_CHAR,0xd840,0);SendMessageW(context.window,WM_CHAR,0xdc00,0);
+            check_edit(e.model.state.text==u"A\U00020000","surrogate input committed together");
+            SendMessageW(context.window,WM_KEYDOWN,VK_BACK,0);
+            check_edit(e.model.state.text==u"A","backspace uses layout boundary instead of splitting surrogate");
+            e.model.set(u"繁體中文 ABC");e.model.select(2,2);e.sync();
+            const auto first_candidate=e.candidate;
+            e.size_dip=32;e.sync();check_edit(e.candidate.x>first_candidate.x,"font size updates shared caret/candidate geometry");
+            POINT screen=e.candidate;ClientToScreen(context.window,&screen);
+            std::cout<<"IMM candidate placement roundtrip="<<e.candidate_positioned<<" client="<<e.candidate.x<<','<<e.candidate.y<<" screen="<<screen.x<<','<<screen.y<<'\n';
+            check_edit(e.candidate_positioned,"IMM candidate API accepts and returns shared geometry (not visual IME proof)");
+            e.model.start();e.model.update(u"測",1);e.sync();
+            IMECHARPOSITION position{};position.dwSize=sizeof(position);position.dwCharPos=1;
+            check_edit(SendMessageW(context.window,WM_IME_REQUEST,IMR_QUERYCHARPOSITION,reinterpret_cast<LPARAM>(&position))==1,"IME character-position request answered from text layout");
+            POINT expected{e.candidate.x,40};ClientToScreen(context.window,&expected);
+            check_edit(position.pt.x==expected.x&&position.pt.y==expected.y,"IME character screen coordinates match caret layout");
+            check_edit(e.provider->SetValue(L"must not overwrite preedit")==UIA_E_INVALIDOPERATION,"UIA write rejected during composition");
+            SendMessageW(context.window,WM_KEYDOWN,VK_ESCAPE,0);
+            check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
+            uia_roundtrip(e);
+            e.model.set(u"自繪輸入：繁體中文 ABC");e.model.select((unsigned)e.model.state.text.size(),(unsigned)e.model.state.text.size());e.size_dip=24;e.sync();
+            Scene scene(context.gl);scene.init();e.draw(scene);
+            // Draw once more to back buffer for evidence, without changing model.
+            e.dirty=true;e.draw(scene);
+            context.gl.Finish();
+            auto read_buffer=reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"));
+            read_buffer(GL_FRONT);RECT r{};GetClientRect(context.window,&r);capture(context.gl,r.right,r.bottom,"selfdraw-editor.bmp");read_buffer(GL_BACK);
+            while(interactive&&!quitting){
+                MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                if(e.dirty)e.draw(scene);Sleep(10);
+            }
+            std::cout<<"Observed real WM_IME_COMPOSITION messages="<<e.composition_messages<<" result messages="<<e.composition_results<<'\n';
+            host=nullptr;DestroyCaret();
+        }
+        require(context.release(),"WGL cleanup failed");CoUninitialize();
+        std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value prototype; real IME and TextRange remain unverified\n";
+        return 0;
+    }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
+}
