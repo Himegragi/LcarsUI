@@ -9,6 +9,7 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <deque>
 #include <wrl/client.h>
 
 // Prototype: one custom HWND, no native Edit child. Single-line TextRange uses
@@ -16,6 +17,29 @@
 static constexpr UINT set_value_message=WM_APP+20;
 static constexpr UINT select_range_message=WM_APP+23,scroll_range_message=WM_APP+24;
 struct RangeSelection { unsigned begin,end; };
+struct StateTrace { unsigned long long sequence; DWORD thread; UINT message; unsigned long long detail; bool composing; unsigned anchor,caret; size_t length,preedit_length; const char* stage; };
+static std::mutex trace_mutex;
+static std::deque<StateTrace> state_trace;
+static unsigned long long trace_sequence=0;
+static bool save_success_trace=false;
+static bool inject_test_composition=false,inject_test_selection=false;
+static void trace_state(const char* stage,UINT message,unsigned long long detail,const editing::Model& model){
+    if(!save_success_trace)return;
+    std::lock_guard lock(trace_mutex);
+    if(state_trace.size()==2048)state_trace.pop_front();
+    state_trace.push_back({++trace_sequence,GetCurrentThreadId(),message,detail,model.composing,model.state.anchor,model.state.caret,model.state.text.size(),model.preedit.size(),stage});
+}
+static void trace_selection_snapshot(unsigned a,unsigned z,size_t length,bool composing){
+    if(!save_success_trace)return;
+    std::lock_guard lock(trace_mutex);
+    if(state_trace.size()==2048)state_trace.pop_front();
+    state_trace.push_back({++trace_sequence,GetCurrentThreadId(),0xffff,0,composing,a,z,length,0,"uia-get-selection"});
+}
+static void save_state_trace(){
+    std::lock_guard lock(trace_mutex);std::ofstream out("state-trace.tsv",std::ios::binary);
+    out<<"seq\tthread\tmessage\tdetail\tcomposing\tanchor\tcaret\tlength\tpreedit_length\tstage\n";
+    for(const auto& e:state_trace)out<<e.sequence<<'\t'<<e.thread<<'\t'<<e.message<<'\t'<<e.detail<<'\t'<<e.composing<<'\t'<<e.anchor<<'\t'<<e.caret<<'\t'<<e.length<<'\t'<<e.preedit_length<<'\t'<<e.stage<<'\n';
+}
 static std::u16string u16(const std::wstring& s){return {s.begin(),s.end()};}
 static std::wstring wide(const std::u16string& s){return {s.begin(),s.end()};}
 struct Bridge {
@@ -191,6 +215,16 @@ struct EditorHost {
 };
 static EditorHost* host=nullptr;
 static bool allow_test_fixture=false;
+struct HostBinding {
+    EditorHost& editor;
+    explicit HostBinding(EditorHost& e):editor(e){host=&e;}
+    ~HostBinding(){
+        // Runs before EditorHost destruction, including exception unwinding.
+        // Context teardown may synchronously send focus/IME/window messages.
+        host=nullptr;
+        SetWindowLongPtrW(editor.context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(wnd_proc));
+    }
+};
 static bool copy_selection(HWND window,const editing::Model& model){
     if(model.begin()==model.end()||!OpenClipboard(window))return false;
     auto text=wide(model.state.text.substr(model.begin(),model.end()-model.begin()));
@@ -209,11 +243,16 @@ static std::u16string composition_string(HIMC imc,DWORD kind){
 static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     if(!host)return wnd_proc(h,message,w,l);
     auto& e=*host;
+    bool relevant=message==select_range_message||message==set_value_message||message==WM_APP+21||message==WM_CHAR||message==WM_KEYDOWN||message==WM_LBUTTONDOWN||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_IME_STARTCOMPOSITION||message==WM_IME_COMPOSITION||message==WM_IME_ENDCOMPOSITION;
+    struct ExitTrace{bool enabled;UINT message;const editing::Model& model;~ExitTrace(){if(enabled)trace_state("exit",message,0,model);}} exit_trace{relevant,message,e.model};
+    if(relevant)trace_state("enter",message,message==WM_CHAR?0:static_cast<unsigned long long>(w),e.model);
     switch(message){
     case select_range_message:{
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
         auto range=reinterpret_cast<const RangeSelection*>(l);if(!range)return E_INVALIDARG;
-        e.model.select(range->begin,range->end);e.sync();return S_OK;
+        e.model.select(range->begin,range->end);
+        if(allow_test_fixture&&inject_test_selection){e.model.select(range->end,range->end);trace_state("injected-caret-move",select_range_message,0,e.model);}
+        e.sync();return S_OK;
     }
     case scroll_range_message:{
         if(e.model.composing)return UIA_E_INVALIDOPERATION;
@@ -391,14 +430,19 @@ int main(int argc,char** argv){
     try{
         std::cout<<std::unitbuf;
         bool interactive=false;
-        for(int i=1;i<argc;++i){if(std::string(argv[i])=="--interactive")interactive=true;if(std::string(argv[i])=="--cross-process")allow_test_fixture=true;}
+        for(int i=1;i<argc;++i){
+            const std::string arg=argv[i];
+            if(arg=="--interactive")interactive=true;if(arg=="--cross-process")allow_test_fixture=true;if(arg=="--trace-state")save_success_trace=true;
+            if(arg=="--inject-test-composition")inject_test_composition=true;if(arg=="--inject-test-selection")inject_test_selection=true;
+        }
+        require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
         model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSW wc{};wc.style=CS_OWNDC;wc.lpfnWndProc=wnd_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"LcarsBuildProbe";wc.hCursor=LoadCursorW(nullptr,IDC_IBEAM);RegisterClassW(&wc);
         TextEngine text;Context context;context.open();
         {
-            EditorHost e(context,text);host=&e;
+            EditorHost e(context,text);HostBinding binding(e);
             SetWindowLongPtrW(context.window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(edit_proc));
             SetFocus(context.window);CreateCaret(context.window,nullptr,2,e.pixels()+10);e.sync();
             check_edit(GetWindow(context.window,GW_CHILD)==nullptr,"custom HWND has no native Edit child");
@@ -424,6 +468,7 @@ int main(int argc,char** argv){
             check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
             uia_roundtrip(e);
             if(allow_test_fixture){
+                if(inject_test_composition){e.model.start();e.model.update(u"測",1);trace_state("injected-composition",WM_IME_STARTCOMPOSITION,0,e.model);e.sync();}
                 cross_process_roundtrip(e);
                 Scene witness(context.gl);witness.init();e.draw(witness);context.gl.Finish();
                 double left{},top{},width{},height{};std::ifstream bounds("uia-text-rectangle.tsv");bounds>>left>>top>>width>>height;
@@ -451,8 +496,9 @@ int main(int argc,char** argv){
             std::cout<<"Observed real WM_IME_COMPOSITION messages="<<e.composition_messages<<" result messages="<<e.composition_results<<'\n';
             host=nullptr;DestroyCaret();
         }
+        check_edit(host==nullptr&&GetWindowLongPtrW(context.window,GWLP_WNDPROC)==reinterpret_cast<LONG_PTR>(wnd_proc),"window callbacks detached before model teardown");
         require(context.release(),"WGL cleanup failed");CoUninitialize();
         std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
-        return 0;
-    }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
+        if(save_success_trace)save_state_trace();return 0;
+    }catch(const std::exception& error){save_state_trace();std::cerr<<"cleanup_host_detached="<<(host==nullptr)<<"\nFAIL "<<error.what()<<'\n';return 1;}
 }

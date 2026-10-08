@@ -1,4 +1,4 @@
-param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess)
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly)
 $ErrorActionPreference='Stop'
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -14,12 +14,14 @@ if($LASTEXITCODE){throw 'Configure failed'}
 $target=if($CrossProcess){'editor_cross_host'}elseif($SelfDraw){'editor_probe'}else{'text_probe'}
 & $cmake --build $buildDir --target $target --parallel 4
 if($LASTEXITCODE){throw 'Build failed'}
+if($BuildOnly){return}
 Push-Location $buildDir
 try {
   $probeExe=".\$target.exe"
   $probeArgs=@()
   if($Interactive){$probeArgs+='--interactive'}
   if($CrossProcess){$probeArgs+='--cross-process'}
+  if($TraceState){$probeArgs+='--trace-state'}
   & $probeExe @probeArgs
   if($LASTEXITCODE){throw 'Text probe failed'}
 }finally{Pop-Location}

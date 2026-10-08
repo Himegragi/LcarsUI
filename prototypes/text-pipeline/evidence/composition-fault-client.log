@@ -1,0 +1,19 @@
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=31924 provider_pid=3080
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+HRESULT=0x80131509
+FAIL write Value across process boundary
+FAIL write Value across process boundary

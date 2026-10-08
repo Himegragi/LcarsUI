@@ -1,0 +1,21 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/2] Building CXX object CMakeFiles\editor_cross_host.dir\selfdraw_editor.cpp.obj
+[2/2] Linking CXX executable editor_cross_host.exe
+trial=1 exit=1 artifacts=C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\build\stress\20261008-220011-aa2547d7\trial-001
+UIA failure; evidence retained at C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline
+\build\stress\20261008-220011-aa2547d7\trial-001
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\stress-uia.ps1:28 char:19
++ ...  if($code -ne 0){throw "UIA failure; evidence retained at $trialDir"}
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (UIA failure; ev...547d7\trial-001:String) [], RuntimeException
+    + FullyQualifiedErrorId : UIA failure; evidence retained at C:\Users\user\.codex\worktrees\lcars-build-prototype\L
+   carsUI\prototypes\text-pipeline\build\stress\20261008-220011-aa2547d7\trial-001

@@ -1,0 +1,57 @@
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=283,295
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA role=50004 expected=50004
+UIA value length=10
+UIA bounds=152,152,1112,792 expected=152,152,1112,792
+UIA client HRESULT=0x0
+PASS real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+PASS UIA mutation reaches common editing model
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=31924 provider_pid=3080
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+HRESULT=0x80131509
+FAIL write Value across process boundary
+FAIL write Value across process boundary
+FAIL independent process UIA tests
+editor_cross_host.exe : cleanup_host_detached=1
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\stress-uia.ps1:21 char:7
++       & $executable @arguments *> host.log
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (cleanup_host_detached=1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+FAIL independent process UIA tests

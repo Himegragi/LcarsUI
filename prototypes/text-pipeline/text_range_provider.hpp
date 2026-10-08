@@ -139,6 +139,7 @@ static HRESULT range_array(ITextRangeProvider* range,SAFEARRAY** out){
 }
 HRESULT ValueProvider::GetSelection(SAFEARRAY** out){
     if(!out)return E_POINTER;*out=nullptr;std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
+    trace_selection_snapshot(bridge->selection_begin,bridge->selection_end,bridge->visible.size(),bridge->composing);
     return range_array(new TextRange(this,bridge->selection_begin,bridge->selection_end,bridge->revision),out);
 }
 HRESULT ValueProvider::GetVisibleRanges(SAFEARRAY** out){
