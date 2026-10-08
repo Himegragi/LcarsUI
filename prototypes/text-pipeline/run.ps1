@@ -1,4 +1,10 @@
-param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot)
+param([switch]$Interactive,[switch]$SelfDraw,[switch]$CrossProcess,[switch]$TraceState,[switch]$BuildOnly,[switch]$Concurrency,[switch]$Lifecycle,[switch]$ProbeUiaRoot,[switch]$DiagnoseUiaFailure,[switch]$TestUiaFailureDiagnostics)
+# -TestUiaFailureDiagnostics: diagnostic self-test only, implies -CrossProcess. Injects a labelled synthetic failure
+# after a successful roundtrip to exercise the child path; the run is expected to fail (nonzero).
+if($TestUiaFailureDiagnostics){$CrossProcess=$true}
+# -DiagnoseUiaFailure: diagnostic only, implies -CrossProcess; launches read-only probe children only after the
+# host's original in-process UIA roundtrip has failed. The run still fails in that case.
+if($DiagnoseUiaFailure){$CrossProcess=$true}
 $ErrorActionPreference='Stop'
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -32,6 +38,8 @@ try {
   if($TraceState){$probeArgs+='--trace-state'}
   if($Concurrency){$probeArgs+='--concurrent'}
   if($Lifecycle){$probeArgs+='--lifecycle'}
+  if($DiagnoseUiaFailure){$probeArgs+='--diagnose-uia-failure'}
+  if($TestUiaFailureDiagnostics){$probeArgs+='--test-uia-failure-diagnostics'}
   & $probeExe @probeArgs
   if($LASTEXITCODE){throw 'Text probe failed'}
 }finally{Pop-Location}

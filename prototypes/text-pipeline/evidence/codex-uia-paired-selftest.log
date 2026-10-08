@@ -1,0 +1,81 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+ninja: no work to do.
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS automated window does not take foreground focus
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=169,181
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA phase=CoInitializeEx hr=0x0 t=0ms
+UIA phase=CoCreateInstance(CUIAutomation) hr=0x0 t=3ms
+WM_GETOBJECT root wparam=0xeb1930d3 result=0x10000 lasterror=0 retired=0
+WM_GETOBJECT root wparam=0x0 result=0x10000 lasterror=0 retired=0
+UIA host ElementFromHandle pid=37304 start_ms=13435955072978 end_ms=13435955073046
+UIA ElementFromHandle window=00000000005D0C62 IsWindow=1 hung=0 getobject_during=2 last_id=-25 last_result=0x10000
+UIA phase=ElementFromHandle hr=0x0 t=71ms
+UIA role=50004 expected=50004
+UIA value length=10
+UIA bounds=38,38,998,678 expected=38,38,998,678
+UIA phase=role/value/bounds hr=0x0 t=86ms
+UIA client HRESULT=0x0
+[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)
+UIA diagnose child launched pid=11400 host_pid=37304 launch_ms=13435955073076
+WM_GETOBJECT root wparam=0xeb2c85a7 result=0x10000 lasterror=0 retired=0
+WM_GETOBJECT root wparam=0x0 result=0x10000 lasterror=0 retired=0
+[probe-hwnd] pid=11400 hwnd=00000000005D0C62 win32_owner=37304 expected_host=37304
+[probe-hwnd] CoCreateInstance hr=0x00000000
+[probe-hwnd] ElementFromHandle hr=0x00000000 start_ms=13435955073104 end_ms=13435955073168
+[probe-hwnd] UIA ProcessId hr=0x00000000 pid=37304
+[probe-hwnd] GetRootElement (after, separate) hr=0x00000000
+[probe-hwnd] exit=0
+UIA diagnose child pid=11400 exit=0 timeout=0 handles_closed=1 end_ms=13435955073184
+UIA diagnose child launched pid=2224 host_pid=37304 launch_ms=13435955073184
+[probe-root] pid=2224
+[probe-root] CoInitializeEx hr=0x00000000
+[probe-root] CoCreateInstance(CUIAutomation) hr=0x00000000
+[probe-root] GetRootElement hr=0x00000000
+[probe-root] exit=0
+UIA diagnose child pid=2224 exit=0 timeout=0 handles_closed=1 end_ms=13435955073230
+UIA diagnose child launched pid=45404 host_pid=37304 launch_ms=13435955073230
+[probe-hwnd] pid=45404 hwnd=00000000005D0C62 win32_owner=37304 expected_host=37305
+[probe-hwnd] host identity mismatch
+UIA diagnose child pid=45404 exit=5 timeout=0 handles_closed=1 end_ms=13435955073261
+[SYNTHETIC] child exits valid_hwnd=0 (expect 0) root=0 (expect 0) wrong_pid=5 (expect 5)
+PASS [SYNTHETIC] diagnostic child path produced expected exits
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+Text probe failed
+At C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\text-pipeline\run.ps1:44 char:21
++   if($LASTEXITCODE){throw 'Text probe failed'}
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Text probe failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : Text probe failed
+ 

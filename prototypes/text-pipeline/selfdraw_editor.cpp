@@ -470,6 +470,36 @@ static void model_scenarios(){
     check_edit(m.redo()&&m.state.text==u"A中文C","redo restores committed composition");
     m.start();m.update(u"暫",1);m.undo();check_edit(!m.composing&&m.state.text==u"A中文C","undo during composition cancels preedit");
 }
+static unsigned long long wall_ms(){FILETIME f{};GetSystemTimePreciseAsFileTime(&f);ULARGE_INTEGER u{};u.LowPart=f.dwLowDateTime;u.HighPart=f.dwHighDateTime;return u.QuadPart/10000;}
+static bool diagnose_uia_failure=false;
+// Diagnostic only: launch a fresh read-only external probe while this host keeps pumping its UI thread.
+// Bounded to 20 s; only this child is terminated on timeout; handles are always closed.
+// Diagnostic self-test only: injects a labelled synthetic failure after a successful roundtrip to exercise the child path.
+static bool test_uia_failure_diagnostics=false;
+static DWORD diagnose_with_child(EditorHost& e,const std::wstring& arguments){
+    wchar_t filename[32768]{};DWORD length=GetModuleFileNameW(nullptr,filename,32768);
+    if(!length||length>=32768){std::cout<<"UIA diagnose child: executable path unavailable\n";return 0xffffffff;}
+    std::wstring executable(filename,length);executable.resize(executable.find_last_of(L"\\/")+1);executable+=L"uia_external_client.exe";
+    std::wstring command=L"\""+executable+L"\" "+arguments;
+    STARTUPINFOW startup{};startup.cb=sizeof(startup);startup.dwFlags=STARTF_USESTDHANDLES;
+    startup.hStdInput=GetStdHandle(STD_INPUT_HANDLE);startup.hStdOutput=GetStdHandle(STD_OUTPUT_HANDLE);startup.hStdError=GetStdHandle(STD_ERROR_HANDLE);
+    PROCESS_INFORMATION process{};
+    std::cout<<std::flush;
+    const auto launch=wall_ms();
+    if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process)){
+        std::cout<<"UIA diagnose child launch failed error="<<GetLastError()<<'\n';return 0xffffffff;}
+    CloseHandle(process.hThread);
+    std::cout<<"UIA diagnose child launched pid="<<process.dwProcessId<<" host_pid="<<GetCurrentProcessId()<<" launch_ms="<<launch<<'\n';
+    auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(20);bool timeout=false;
+    while(WaitForSingleObject(process.hProcess,0)==WAIT_TIMEOUT){
+        MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+        if(std::chrono::steady_clock::now()>deadline){timeout=true;TerminateProcess(process.hProcess,4);WaitForSingleObject(process.hProcess,2000);break;}
+        Sleep(1);
+    }
+    DWORD code=0;GetExitCodeProcess(process.hProcess,&code);CloseHandle(process.hProcess);
+    std::cout<<"UIA diagnose child pid="<<process.dwProcessId<<" exit="<<code<<" timeout="<<timeout<<" handles_closed=1 end_ms="<<wall_ms()<<'\n';
+    (void)e;return code;
+}
 static void uia_roundtrip(EditorHost& e){
     using Microsoft::WRL::ComPtr;
     std::atomic<bool> done=false;
@@ -493,7 +523,9 @@ static void uia_roundtrip(EditorHost& e){
                 mark("ElementFromHandle",hr);
                 if(SUCCEEDED(hr)){
                     const unsigned before=getobject_messages;
+                    const auto call_start=wall_ms();
                     hr=automation->ElementFromHandle(e.context.window,&element);
+                    std::cout<<"UIA host ElementFromHandle pid="<<GetCurrentProcessId()<<" start_ms="<<call_start<<" end_ms="<<wall_ms()<<'\n';
                     std::cout<<"UIA ElementFromHandle window="<<e.context.window<<" IsWindow="<<IsWindow(e.context.window)<<" hung="<<IsHungAppWindow(e.context.window)
                         <<" getobject_during="<<(getobject_messages-before)<<" last_id="<<last_getobject_id<<" last_result=0x"<<std::hex<<static_cast<unsigned long long>(last_getobject_result)<<std::dec<<'\n';
                     mark("role/value/bounds",hr);
@@ -536,6 +568,21 @@ static void uia_roundtrip(EditorHost& e){
         Sleep(1);    }
     client.join();
     std::cout<<"UIA client HRESULT=0x"<<std::hex<<static_cast<unsigned long>(result.load())<<std::dec<<'\n';
+    // Opt-in diagnostic: only after the original call has already failed. The failure below still stands.
+    if(diagnose_uia_failure&&FAILED(result.load())){
+        diagnose_with_child(e,L"--probe-hwnd "+std::to_wstring(reinterpret_cast<uintptr_t>(e.context.window))+L" "+std::to_wstring(GetCurrentProcessId()));
+        diagnose_with_child(e,L"--probe-root");
+    }
+    if(test_uia_failure_diagnostics&&SUCCEEDED(result.load())){
+        std::cout<<"[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)\n";
+        const std::wstring hwnd=std::to_wstring(reinterpret_cast<uintptr_t>(e.context.window));
+        DWORD valid=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()));
+        DWORD root=diagnose_with_child(e,L"--probe-root");
+        DWORD wrong=diagnose_with_child(e,L"--probe-hwnd "+hwnd+L" "+std::to_wstring(GetCurrentProcessId()+1));  // controlled failure: wrong expected PID
+        std::cout<<"[SYNTHETIC] child exits valid_hwnd="<<valid<<" (expect 0) root="<<root<<" (expect 0) wrong_pid="<<wrong<<" (expect 5)\n";
+        check_edit(valid==0&&root==0&&wrong==5,"[SYNTHETIC] diagnostic child path produced expected exits");
+        result=E_FAIL;  // the self-test always ends the run as a failure
+    }
     check_edit(SUCCEEDED(result.load()),"real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)");
     check_edit(e.model.state.text==u"UIA 設定 ABC","UIA mutation reaches common editing model");
 }
@@ -584,9 +631,12 @@ int main(int argc,char** argv){
             if(arg=="--interactive")interactive=true;if(arg=="--cross-process")allow_test_fixture=true;if(arg=="--trace-state")save_success_trace=true;
             if(arg=="--inject-test-composition")inject_test_composition=true;if(arg=="--inject-test-selection")inject_test_selection=true;
             if(arg=="--concurrent")concurrent=true;if(arg=="--lifecycle")lifecycle=true;
+            if(arg=="--diagnose-uia-failure")diagnose_uia_failure=true;
+            if(arg=="--test-uia-failure-diagnostics")test_uia_failure_diagnostics=true;
         }
         require((!inject_test_composition&&!inject_test_selection)||allow_test_fixture,"Fault injection requires cross-process test mode");
         require(!lifecycle||(!interactive&&allow_test_fixture),"Lifecycle test requires noninteractive cross-process mode");
+        require(!test_uia_failure_diagnostics||(!interactive&&allow_test_fixture),"Synthetic UIA diagnostic self-test requires noninteractive cross-process mode");
         test_accept_any_size=allow_test_fixture&&!interactive;
         model_scenarios();
         require(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed");

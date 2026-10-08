@@ -1,0 +1,15 @@
+2026-10-09 opt-in contemporaneous diagnosis: run.ps1 -DiagnoseUiaFailure (baseline fcd0cb3 + diagnostic code)
+Mode: host runs normal -CrossProcess; ONLY if the original in-process uia_roundtrip fails, it keeps pumping and launches
+  1) uia_external_client --probe-hwnd <host hwnd> <host pid>  (first UIA call = ElementFromHandle on that HWND; PID checked)
+  2) uia_external_client --probe-root                          (separate fresh process, one GetRootElement)
+then the host still fails as before.
+Executor: Claude Code Bash tool launching powershell.exe.
+
+Attempt 1: UIA host ElementFromHandle pid=12460 start_ms=13435954831202 end_ms=13435954831260; hr=0x0 -> PASS
+Attempt 2: UIA host ElementFromHandle pid=17432 start_ms=13435954842749 end_ms=13435954842810; hr=0x0 -> PASS
+Attempt 3: UIA host ElementFromHandle pid=23792 start_ms=13435954863752 end_ms=13435954863811; hr=0x0 -> PASS
+(ms values are FILETIME/10000, i.e. milliseconds since 1601-01-01 UTC)
+
+Result: no failure captured in 3 attempts. This is not a reproduction and not evidence of a fix.
+The diagnostic child path (launch, PID check, 20 s bound, termination of own child, handle cleanup, child-failure
+path) was compiled but NEVER executed; its cleanup behavior is unverified.

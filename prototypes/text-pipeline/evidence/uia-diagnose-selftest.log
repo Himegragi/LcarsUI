@@ -1,0 +1,34 @@
+2026-10-09 diagnostic self-test: run.ps1 -TestUiaFailureDiagnostics (expected nonzero; synthetic, not a natural reproduction)
+Executor: Claude Code Bash tool launching powershell.exe. Relevant lines, verbatim:
+
+UIA host ElementFromHandle pid=21372 start_ms=13435955010096 end_ms=13435955010156
+UIA client HRESULT=0x0
+[SYNTHETIC] diagnostic self-test: original roundtrip PASSED; injecting a labelled synthetic failure (not a natural reproduction)
+UIA diagnose child launched pid=40968 host_pid=21372 launch_ms=13435955010187
+[probe-hwnd] pid=40968 hwnd=000000000054007C win32_owner=21372 expected_host=21372
+[probe-hwnd] CoCreateInstance hr=0x00000000
+[probe-hwnd] ElementFromHandle hr=0x00000000 start_ms=13435955010247 end_ms=13435955010312
+[probe-hwnd] UIA ProcessId hr=0x00000000 pid=21372
+[probe-hwnd] GetRootElement (after, separate) hr=0x00000000
+[probe-hwnd] exit=0
+UIA diagnose child pid=40968 exit=0 timeout=0 handles_closed=1 end_ms=13435955010327
+UIA diagnose child launched pid=26652 host_pid=21372 launch_ms=13435955010328
+[probe-root] pid=26652
+[probe-root] CoInitializeEx hr=0x00000000
+[probe-root] CoCreateInstance(CUIAutomation) hr=0x00000000
+[probe-root] GetRootElement hr=0x00000000
+[probe-root] exit=0
+UIA diagnose child pid=26652 exit=0 timeout=0 handles_closed=1 end_ms=13435955010389
+UIA diagnose child launched pid=38904 host_pid=21372 launch_ms=13435955010389
+[probe-hwnd] pid=38904 hwnd=000000000054007C win32_owner=21372 expected_host=21373
+[probe-hwnd] host identity mismatch
+UIA diagnose child pid=38904 exit=5 timeout=0 handles_closed=1 end_ms=13435955010420
+[SYNTHETIC] child exits valid_hwnd=0 (expect 0) root=0 (expect 0) wrong_pid=5 (expect 5)
+PASS [SYNTHETIC] diagnostic child path produced expected exits
+FAIL real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+cleanup_host_detached=1
+Text probe failed   (run.ps1 nonzero, as expected)
+
+Verified: child launch with inherited stdout, PID identity check (match and controlled mismatch), read-only HWND
+query, separate root probe, exit-code propagation, handle close, host failure + detach after injection.
+Not verified: 20 s timeout / TerminateProcess path, CreateProcess failure path, behavior during a natural failure.

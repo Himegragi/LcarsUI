@@ -905,10 +905,35 @@ static int probe_root(){
             if(FAILED(hr)||!root)code=1;
         }
     }
-    CoUninitialize();std::printf("[probe-root] exit=%d\n",code);return code;
+    CoUninitialize();std::printf("[probe-root] exit=%d\n",code);std::fflush(stdout);return code;
+}
+static unsigned long long wall_ms(){FILETIME f{};GetSystemTimePreciseAsFileTime(&f);ULARGE_INTEGER u{};u.LowPart=f.dwLowDateTime;u.HighPart=f.dwHighDateTime;return u.QuadPart/10000;}
+// Diagnostic only, read-only: first UIA call in this fresh process is ElementFromHandle on the given host HWND.
+static int probe_hwnd(HWND window,DWORD expected_pid){
+    DWORD owner{};GetWindowThreadProcessId(window,&owner);
+    std::printf("[probe-hwnd] pid=%lu hwnd=%p win32_owner=%lu expected_host=%lu\n",GetCurrentProcessId(),static_cast<void*>(window),owner,expected_pid);
+    if(owner!=expected_pid){std::printf("[probe-hwnd] host identity mismatch\n");return 5;}
+    HRESULT hr=CoInitializeEx(nullptr,COINIT_MULTITHREADED);if(FAILED(hr)){std::printf("[probe-hwnd] CoInitializeEx hr=0x%08lx\n",static_cast<unsigned long>(hr));return 2;}
+    int code=0;
+    {
+        ComPtr<IUIAutomation> automation;hr=CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&automation));
+        std::printf("[probe-hwnd] CoCreateInstance hr=0x%08lx\n",static_cast<unsigned long>(hr));
+        if(FAILED(hr))code=3;
+        else{
+            ComPtr<IUIAutomationElement> element;auto start=wall_ms();hr=automation->ElementFromHandle(window,&element);
+            std::printf("[probe-hwnd] ElementFromHandle hr=0x%08lx start_ms=%llu end_ms=%llu\n",static_cast<unsigned long>(hr),start,wall_ms());
+            if(FAILED(hr)||!element){code=1;if(SUCCEEDED(hr))std::printf("[probe-hwnd] success HRESULT with null element\n");}
+            else{int pid{};HRESULT p=element->get_CurrentProcessId(&pid);std::printf("[probe-hwnd] UIA ProcessId hr=0x%08lx pid=%d\n",static_cast<unsigned long>(p),pid);
+                if(FAILED(p)||static_cast<DWORD>(pid)!=expected_pid)code=6;}
+            ComPtr<IUIAutomationElement> root;hr=automation->GetRootElement(&root);
+            std::printf("[probe-hwnd] GetRootElement (after, separate) hr=0x%08lx\n",static_cast<unsigned long>(hr));
+        }
+    }
+    CoUninitialize();std::printf("[probe-hwnd] exit=%d\n",code);std::fflush(stdout);return code;
 }
 int main(int argc,char** argv){
     if(argc==2&&std::string(argv[1])=="--probe-root")return probe_root();
+    if(argc==4&&std::string(argv[1])=="--probe-hwnd")return probe_hwnd(reinterpret_cast<HWND>(static_cast<uintptr_t>(std::stoull(argv[2]))),std::stoul(argv[3]));
     log_file.open("uia-cross-process.log",std::ios::binary|std::ios::trunc);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if(FAILED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)))return 2;

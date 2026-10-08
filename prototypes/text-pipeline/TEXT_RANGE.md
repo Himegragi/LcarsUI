@@ -216,6 +216,18 @@ Codex 獨立重跑 `-CrossProcess`（未重建）在新測試之前就失敗：`
   - 3（更廣的程序或系統狀態／時間點）：仍然可能，觸發條件未知。
 - 診斷用 `run.ps1 -ProbeUiaRoot`：只建置外部 client，以 `--probe-root` 開一個全新程序，做 MTA 初始化、建立 `CUIAutomation`、呼叫一次 `GetRootElement`；沒有 host、視窗、provider、執行緒、預熱、等待或重試，失敗時回非零。預設驗收不變。
   Claude 這邊（Bash 工具啟動 powershell.exe）執行一次：全部 `hr=0`，exit 0（`evidence/uia-probe-root-claude.log`）。同一時間 Codex 的 host 執行失敗；兩者啟動方式不同，而且我沒有在同一時間跑 host，所以**不能據此判斷原因**。
+- 診斷用 `run.ps1 -DiagnoseUiaFailure`（含 `-CrossProcess`）：**只有在**原本的程序內 roundtrip 已經失敗後，host 繼續處理訊息，並依序啟動兩個唯讀的全新子程序：
+  先以 `--probe-hwnd` 對同一個 host HWND 做第一次 UIA 呼叫 `ElementFromHandle`，並檢查 PID；再以 `--probe-root` 呼叫一次 `GetRootElement`。
+  子程序最多20秒，逾時只終止自己的子程序；host 仍照原樣失敗。一般驗收不使用這個模式，也沒有重試、退路或預熱。
+  Claude 執行3次，原本的 `ElementFromHandle` 每次都約60毫秒成功，**沒有捕捉到失敗**（`evidence/uia-diagnose-failure-attempts.log`）。
+  這不是重現，也不代表已修正。Codex 獨立執行 `-DiagnoseUiaFailure -TraceState` 也通過，同樣沒有捕捉到自然發生的失敗。
+- 診斷自我測試 `run.ps1 -TestUiaFailureDiagnostics`（含 `-CrossProcess`，只限非互動模式）：原本的 roundtrip **通過後**，注入標記為 `[SYNTHETIC]` 的人工失敗，走同一條子程序路徑；
+  整次執行**預期以非零結束**，這不是自然重現。實測（`evidence/uia-diagnose-selftest.log`）：
+  - 子程序1 `--probe-hwnd`（正確 PID）：Win32 擁有者與 UIA ProcessId 都是 host PID；`ElementFromHandle` 與隨後的 `GetRootElement` 都 `hr=0`；exit 0。
+  - 子程序2 `--probe-root`：`GetRootElement hr=0`；exit 0。
+  - 子程序3 `--probe-hwnd`（故意給錯的 PID）：回報身分不符，exit 5（預期中的受控失敗）。
+  - 三個子程序都沒有逾時，handle 都已關閉；host 最後標記失敗、`cleanup_host_detached=1`、run.ps1 非零。
+  - **未驗證**：20秒逾時與終止子程序的路徑、子程序啟動失敗的路徑、自然失敗當下子程序的行為。
 
 ## 不穩定結果：尚未確定根因
 
