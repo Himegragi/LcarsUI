@@ -1,0 +1,41 @@
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang-cmake-4.3.1-msvc1-Release
+Change Dir: 'C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang-cmake-4.3.1-msvc1-Release'
+
+Run Build Command(s): C:/PROGRA~1/LLVM/bin/ninja.exe -v
+ninja: no work to do.
+
+C++26 pack indexing + static library consumer: 26
+THROWAWAY PROTOTYPE cxx26=26
+__cplusplus=202400 pack_indexing=202311
+compiler=clang 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+cycle=0 client=938x584
+pixel(117,292)=25,51,76
+pixel(469,292)=140,90,54
+pixel(820,292)=25,51,76
+cycle=0 client=618x424
+pixel(77,212)=25,51,76
+pixel(309,212)=140,90,54
+pixel(540,212)=25,51,76
+cycle 0 cleanup=PASS
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+cycle=1 client=938x584
+pixel(117,292)=25,51,76
+pixel(469,292)=140,90,54
+pixel(820,292)=25,51,76
+cycle=1 client=618x424
+pixel(77,212)=25,51,76
+pixel(309,212)=140,90,54
+pixel(540,212)=25,51,76
+cycle 1 cleanup=PASS
+PASS: C++26, core context, shaders, texture, alpha blend, scissor, resize, cleanup/recreation

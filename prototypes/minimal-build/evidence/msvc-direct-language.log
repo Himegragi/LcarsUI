@@ -1,0 +1,5 @@
+Direct MSVC feature probe; this does not bypass the CMake CXX26 requirement.
+core.cpp
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core.cpp(3): fatal error C1189: #error:  C++26 pack indexing is required by this probe
+core_consumer.cpp
+Generating Code...

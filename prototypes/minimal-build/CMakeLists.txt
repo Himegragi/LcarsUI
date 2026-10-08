@@ -14,6 +14,7 @@ if(MSVC)
 endif()
 
 # Offline, pinned source headers. A changed file is an explicit configure error.
+if(PROBE_BUILD_OPENGL)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glcorearb.h" gl_hash)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/third_party/KHR/khrplatform.h" khr_hash)
 if(NOT gl_hash STREQUAL "65fae555a8b3b5709099837001e0c14228b3e45651e2d0fa2ad22649833921e1")
@@ -21,6 +22,7 @@ if(NOT gl_hash STREQUAL "65fae555a8b3b5709099837001e0c14228b3e45651e2d0fa2ad2264
 endif()
 if(NOT khr_hash STREQUAL "7b1e01aaa7ad8f6fc34b5c7bdf79ebf5189bb09e2c4d2e79fc5d350623d11e83")
   message(FATAL_ERROR "khrplatform.h checksum mismatch")
+endif()
 endif()
 
 add_library(probe_core STATIC core.cpp)

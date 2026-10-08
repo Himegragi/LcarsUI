@@ -22,6 +22,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/minimal-build
 ```
 
 按 Esc 或視窗關閉按鈕結束。另有 `-CoreOnly`（不建立 OpenGL target）、`-Compiler msvc`（重現當前不支援的 CMake 設定），以及 `-CMakeExecutable <path>`。
+`-BuildType Release` 使用獨立的 Release 建置目錄；`-CoreOnly -VerifyCoreIsolation` 會複製只有核心及 consumer 的原始碼，驗證完全不提供 GL 程式碼及 Khronos 標頭仍能建置。
+`-MsvcLanguageProbe` 單獨用 MSVC `/std:c++latest` 編譯相同 pack indexing 程式，僅用來定位 compiler／CMake 差異，不會放寬正常建置的 CXX26 要求。
 腳本以本機 LLVM 預設安裝位置為候選，尚未做通用工具探索與部署。
 
 ## 2026-10-08 實測
@@ -37,8 +39,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/minimal-build
 | Context | 實際回報 OpenGL 3.3.0 core profile、GLSL 3.30 |
 | 顯示環境 | 視窗 DPI 144（150%）；不代表已測跨 DPI 切換 |
 | 核心獨立建置 | `PROBE_BUILD_OPENGL=OFF`：只建立 core library + consumer；不連結 opengl32 |
+| Release 補測 | clang-cl／CMake 4.3.1-msvc1 完整 GPU 探針及 Core-only 均通過；`/O2`、`/MD`，不依赖 Debug CRT |
+| 原始碼隔離補測 | 只有 CMakeLists、core.hpp、core.cpp、core_consumer.cpp 的目錄，無 GL source／Khronos headers，Release build/run 通過；PE imports 無 opengl32 |
+| MSVC 直接特性探針 | `/std:c++latest /Zc:__cplusplus` 仍在 `__cpp_pack_indexing` 檢查失敗（C1189，exit 2），未通過此原型的特性契約 |
 
 MSVC 的結果只證明本機 CMake/MSVC 組合無法表達此標準要求，不能推論 MSVC 所有 C++26 特性都不支援。
+後續直接編譯另證明 MSVC 未宣告本探針要求的 pack indexing feature macro；因此不僅有 CMake 對應問題，原型特性檢查本身也未通過。未據此判斷全部 C++26 功能。
 clang 通過一個語言特性，不表示全部 C++26 或新增 STL 功能都可用。
 
 ## GPU 檢查做了什麼
@@ -60,6 +66,8 @@ clang 通過一個語言特性，不表示全部 C++26 或新增 STL 功能都�
 - `evidence/clang-core-cmake431.log`：關閉 OpenGL 的獨立建置。
 - `evidence/msvc-cmake431-failure.log`：同版本 CMake 的 MSVC 配置失敗。
 - 另保留 4.4.0-rc2 的比較日誌，以及初始／resize 後影像。
+- `evidence/clang-release.log`、`clang-core-release.log`：Release 補測；`msvc-direct-language.log`：直接 compiler 探針。
+- `evidence/core-source-isolation.log`、`core-imports.log`：移除所有 GL 原始碼及標頭後的 Core consumer 建置與 PE imports。
 - `third_party/SOURCES.md`：固定來源、commit、SHA256；上游授權保留於標頭。
 
 ## 對下一步的建議與限制
@@ -67,6 +75,6 @@ clang 通過一個語言特性，不表示全部 C++26 或新增 STL 功能都�
 建議後續原型先用這套已測的 clang-cl／CMake 組合，保留 C++26 REQUIRED 與實際特性探針。
 這是已驗證組合，不是宣稱最低 compiler／SDK 版本。OpenGL 3.3 core 足以通過這個有限探針，尚不能定為全框架的最低 GPU 保證。
 
-尚未驗證：Windows 10 實機、其他 GPU/driver、Release／部署、跨螢幕 DPI、context 遺失、鍵盤輸入/IME/UIA、HarfBuzz/FreeType、字型排版、外觀替換、繪圖效能或 API 完整性。
+尚未驗證：Windows 10 實機、其他 GPU/driver、乾淨電腦部署、跨螢幕 DPI、context 遺失、鍵盤輸入/IME/UIA、HarfBuzz/FreeType、字型排版、外觀替換、繪圖效能或 API 完整性。渲染診斷設計依使用者要求留待後續訪談，本輪沒有新增診斷系統。
 使用者檢視與正式基線決策記於 GitHub 的「驗證 CMake、C++26 與 OpenGL 最小建置」議題。
 簡短的本地 GL symbol table 僅供探針；不將其直接定為正式框架 loader。

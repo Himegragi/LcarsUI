@@ -1,0 +1,95 @@
+
+File: prototypes/minimal-build/build/clang-cmake-4.3.1-msvc1-core-Release-isolated/core_consumer.exe
+Format: COFF-x86-64
+Arch: x86_64
+AddressSize: 64bit
+Import {
+  Name: MSVCP140.dll
+  ImportLookupTableRVA: 0x32D8
+  ImportAddressTableRVA: 0x3488
+  Symbol: ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@H@Z (255)
+  Symbol: ?_Osfx@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAXXZ (580)
+  Symbol: ?clear@?$basic_ios@DU?$char_traits@D@std@@@std@@QEAAXH_N@Z (678)
+  Symbol: ?cout@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A (692)
+  Symbol: ?flush@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@XZ (872)
+  Symbol: ?good@ios_base@std@@QEBA_NXZ (965)
+  Symbol: ?sputc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAAHD@Z (1246)
+  Symbol: ?uncaught_exceptions@std@@YAHXZ (1311)
+}
+Import {
+  Name: KERNEL32.dll
+  ImportLookupTableRVA: 0x3320
+  ImportAddressTableRVA: 0x34D0
+  Symbol: GetCurrentProcessId (578)
+  Symbol: GetCurrentThreadId (582)
+  Symbol: GetModuleHandleW (677)
+  Symbol: GetSystemTimeAsFileTime (794)
+  Symbol: InitializeSListHead (922)
+  Symbol: QueryPerformanceCounter (1153)
+  Symbol: SetUnhandledExceptionFilter (1464)
+}
+Import {
+  Name: VCRUNTIME140.dll
+  ImportLookupTableRVA: 0x3360
+  ImportAddressTableRVA: 0x3510
+  Symbol: __C_specific_handler (8)
+  Symbol: __CxxFrameHandler3 (14)
+  Symbol: __current_exception (27)
+  Symbol: __current_exception_context (28)
+  Symbol: __std_terminate (35)
+  Symbol: memcpy (60)
+}
+Import {
+  Name: api-ms-win-crt-runtime-l1-1-0.dll
+  ImportLookupTableRVA: 0x3398
+  ImportAddressTableRVA: 0x3548
+  Symbol: __p___argc (4)
+  Symbol: __p___argv (5)
+  Symbol: _c_exit (21)
+  Symbol: _cexit (22)
+  Symbol: _configure_narrow_argv (24)
+  Symbol: _crt_atexit (30)
+  Symbol: _exit (35)
+  Symbol: _get_initial_narrow_environment (40)
+  Symbol: _initialize_narrow_environment (51)
+  Symbol: _initialize_onexit_table (52)
+  Symbol: _initterm (54)
+  Symbol: _initterm_e (55)
+  Symbol: _register_onexit_function (60)
+  Symbol: _register_thread_local_exe_atexit_callback (61)
+  Symbol: _seh_filter_exe (64)
+  Symbol: _set_app_type (66)
+  Symbol: exit (85)
+  Symbol: terminate (103)
+}
+Import {
+  Name: api-ms-win-crt-stdio-l1-1-0.dll
+  ImportLookupTableRVA: 0x3430
+  ImportAddressTableRVA: 0x35E0
+  Symbol: __p__commode (1)
+  Symbol: _set_fmode (84)
+}
+Import {
+  Name: api-ms-win-crt-math-l1-1-0.dll
+  ImportLookupTableRVA: 0x3448
+  ImportAddressTableRVA: 0x35F8
+  Symbol: __setusermatherr (9)
+}
+Import {
+  Name: api-ms-win-crt-locale-l1-1-0.dll
+  ImportLookupTableRVA: 0x3458
+  ImportAddressTableRVA: 0x3608
+  Symbol: _configthreadlocale (8)
+}
+Import {
+  Name: api-ms-win-crt-heap-l1-1-0.dll
+  ImportLookupTableRVA: 0x3468
+  ImportAddressTableRVA: 0x3618
+  Symbol: _set_new_mode (22)
+}
+Import {
+  Name: api-ms-win-crt-string-l1-1-0.dll
+  ImportLookupTableRVA: 0x3478
+  ImportAddressTableRVA: 0x3628
+  Symbol: strlen (139)
+}

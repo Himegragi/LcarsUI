@@ -1,0 +1,18 @@
+-- The CXX compiler identification is Clang 22.1.8 with MSVC-like command-line
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/LLVM/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (2.3s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang-cmake-4.3.1-msvc1-core-Release
+Change Dir: 'C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/minimal-build/build/clang-cmake-4.3.1-msvc1-core-Release'
+
+Run Build Command(s): C:/PROGRA~1/LLVM/bin/ninja.exe -v
+[1/4] C:\PROGRA~1\LLVM\bin\clang-cl.exe  /nologo -TP  -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++latest -MD /utf-8 -clang:-MD -clang:-MTCMakeFiles\probe_core.dir\core.cpp.obj -clang:-MFCMakeFiles\probe_core.dir\core.cpp.obj.d /FoCMakeFiles\probe_core.dir\core.cpp.obj /FdCMakeFiles\probe_core.dir\probe_core.pdb -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core.cpp
+[2/4] C:\WINDOWS\system32\cmd.exe /C "cd . && C:\PROGRA~1\LLVM\bin\llvm-lib.exe /nologo /machine:x64 /out:probe_core.lib CMakeFiles\probe_core.dir\core.cpp.obj && cd ."
+[3/4] C:\PROGRA~1\LLVM\bin\clang-cl.exe  /nologo -TP  -IC:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++latest -MD /utf-8 -clang:-MD -clang:-MTCMakeFiles\core_consumer.dir\core_consumer.cpp.obj -clang:-MFCMakeFiles\core_consumer.dir\core_consumer.cpp.obj.d /FoCMakeFiles\core_consumer.dir\core_consumer.cpp.obj /FdCMakeFiles\core_consumer.dir\ -c -- C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\minimal-build\core_consumer.cpp
+[4/4] C:\WINDOWS\system32\cmd.exe /C "cd . && "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\core_consumer.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\rc.exe --mt=C:\PROGRA~1\LLVM\bin\llvm-mt.exe --manifests  -- C:\PROGRA~1\LLVM\bin\lld-link.exe /nologo CMakeFiles\core_consumer.dir\core_consumer.cpp.obj  /out:core_consumer.exe /implib:core_consumer.lib /pdb:core_consumer.pdb /version:0.0 /machine:x64 /INCREMENTAL:NO /subsystem:console  probe_core.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+
+C++26 pack indexing + static library consumer: 26
