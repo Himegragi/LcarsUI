@@ -11,9 +11,11 @@
 #include <thread>
 #include <wrl/client.h>
 
-// Prototype: one custom HWND, no native Edit child. Value provider is deliberately
-// limited; Text/TextRange and a full TSF text store remain separate work.
+// Prototype: one custom HWND, no native Edit child. Single-line TextRange uses
+// the same cached layout; this is not a complete Unicode editor or TSF store.
 static constexpr UINT set_value_message=WM_APP+20;
+static constexpr UINT select_range_message=WM_APP+23,scroll_range_message=WM_APP+24;
+struct RangeSelection { unsigned begin,end; };
 static std::u16string u16(const std::wstring& s){return {s.begin(),s.end()};}
 static std::wstring wide(const std::u16string& s){return {s.begin(),s.end()};}
 struct Bridge {
@@ -21,9 +23,13 @@ struct Bridge {
     HWND window{};
     bool alive=true,focused=false,composing=false;
     std::wstring value;
+    std::wstring visible;
+    std::map<unsigned,double> positions;
+    unsigned selection_begin=0,selection_end=0;
+    std::uint64_t revision=0;
     RECT bounds{},window_bounds{};
 };
-class ValueProvider final:public IRawElementProviderSimple,public IValueProvider {
+class ValueProvider final:public IRawElementProviderSimple,public IValueProvider,public ITextProvider {
     std::atomic<ULONG> references{1};
 public:
     std::shared_ptr<Bridge> bridge;
@@ -32,6 +38,7 @@ public:
         if(!out)return E_POINTER;*out=nullptr;
         if(id==__uuidof(IUnknown)||id==__uuidof(IRawElementProviderSimple))*out=static_cast<IRawElementProviderSimple*>(this);
         else if(id==__uuidof(IValueProvider))*out=static_cast<IValueProvider*>(this);
+        else if(id==__uuidof(ITextProvider))*out=static_cast<ITextProvider*>(this);
         else return E_NOINTERFACE;
         AddRef();return S_OK;
     }
@@ -41,7 +48,9 @@ public:
     HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID pattern,IUnknown** out) override {
         if(!out)return E_POINTER;*out=nullptr;
         std::lock_guard lock(bridge->mutex);if(!bridge->alive)return UIA_E_ELEMENTNOTAVAILABLE;
-        if(pattern==UIA_ValuePatternId){*out=static_cast<IValueProvider*>(this);AddRef();}return S_OK;
+        if(pattern==UIA_ValuePatternId)*out=static_cast<IValueProvider*>(this);
+        if(pattern==UIA_TextPatternId)*out=static_cast<ITextProvider*>(this);
+        if(*out)AddRef();return S_OK;
     }
     HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID property,VARIANT* out) override {
         if(!out)return E_POINTER;VariantInit(out);
@@ -51,11 +60,12 @@ public:
         if(property==UIA_NamePropertyId)return str(L"LcarsUI 自繪文字輸入框");
         if(property==UIA_AutomationIdPropertyId)return str(L"lcars.prototype.text");
         if(property==UIA_FrameworkIdPropertyId)return str(L"LcarsUI Prototype");
-        if(property==UIA_ProviderDescriptionPropertyId)return str(L"LcarsUI prototype: custom Value provider; TextPattern not implemented");
+        if(property==UIA_ProviderDescriptionPropertyId)return str(L"LcarsUI prototype: Value and single-line TextRange");
         if(property==UIA_ControlTypePropertyId){out->vt=VT_I4;out->lVal=UIA_EditControlTypeId;}
         else if(property==UIA_IsKeyboardFocusablePropertyId||property==UIA_IsEnabledPropertyId||property==UIA_IsControlElementPropertyId||property==UIA_IsContentElementPropertyId)flag(true);
         else if(property==UIA_HasKeyboardFocusPropertyId)flag(bridge->focused);
-        else if(property==UIA_IsTextPatternAvailablePropertyId||property==UIA_IsPasswordPropertyId)flag(false);
+        else if(property==UIA_IsTextPatternAvailablePropertyId)flag(true);
+        else if(property==UIA_IsPasswordPropertyId)flag(false);
         // HWND host provider supplies BoundingRectangle. Text geometry needs TextRange.
         return S_OK;
     }
@@ -76,7 +86,14 @@ public:
         *out=SysAllocStringLen(bridge->value.data(),static_cast<UINT>(bridge->value.size()));return *out?S_OK:E_OUTOFMEMORY;
     }
     HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override{if(!out)return E_POINTER;*out=FALSE;return S_OK;}
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override;
+    HRESULT STDMETHODCALLTYPE GetVisibleRanges(SAFEARRAY** out) override;
+    HRESULT STDMETHODCALLTYPE RangeFromChild(IRawElementProviderSimple*,ITextRangeProvider** out) override{if(!out)return E_POINTER;*out=nullptr;return E_INVALIDARG;}
+    HRESULT STDMETHODCALLTYPE RangeFromPoint(UiaPoint point,ITextRangeProvider** out) override;
+    HRESULT STDMETHODCALLTYPE get_DocumentRange(ITextRangeProvider** out) override;
+    HRESULT STDMETHODCALLTYPE get_SupportedTextSelection(SupportedTextSelection* out) override{if(!out)return E_POINTER;*out=SupportedTextSelection_Single;return S_OK;}
 };
+#include "text_range_provider.hpp"
 struct EditorHost {
     Context& context;
     TextEngine& engine;
@@ -101,12 +118,14 @@ struct EditorHost {
     int pixels() const{return MulDiv(size_dip,static_cast<int>(GetDpiForWindow(context.window)),96);}
     Layout layout(){return engine.shape(wide(model.visible()),pixels());}
     float x_at(const Layout& l,unsigned offset){auto it=l.carets.upper_bound(offset);return it==l.carets.begin()?0:std::prev(it)->second;}
-    void sync() {
+    void sync(bool keep_caret_visible=true) {
         auto l=layout();RECT client{};GetClientRect(context.window,&client);
         float x=x_at(l,model.visible_caret());
         const float span=std::max(40L,client.right-48);
-        if(x-horizontal_scroll>span)horizontal_scroll=x-span;
-        if(x<horizontal_scroll)horizontal_scroll=x;
+        if(keep_caret_visible){
+            if(x-horizontal_scroll>span)horizontal_scroll=x-span;
+            if(x<horizontal_scroll)horizontal_scroll=x;
+        }
         horizontal_scroll=std::max(0.f,horizontal_scroll);
         candidate={24+static_cast<LONG>(std::round(x-horizontal_scroll)),40+pixels()+10};
         SetCaretPos(candidate.x,40);
@@ -122,13 +141,22 @@ struct EditorHost {
             ImmReleaseContext(context.window,imc);
         }
         POINT origin{24,40};ClientToScreen(context.window,&origin);
-        std::wstring old,current=wide(model.state.text);
+        std::wstring old,current=wide(model.state.text),presented=wide(model.visible());
+        bool text_changed=false,selection_changed=false;
         {
             std::lock_guard lock(bridge->mutex);old=bridge->value;bridge->value=current;bridge->composing=model.composing;
             bridge->focused=GetFocus()==context.window;
             bridge->bounds={origin.x,origin.y,origin.x+std::max(0L,client.right-48),origin.y+pixels()+10};
+            unsigned selected_begin=model.begin(),selected_end=model.composing?model.begin()+(unsigned)model.preedit.size():model.end();
+            text_changed=bridge->visible!=presented;
+            selection_changed=bridge->selection_begin!=selected_begin||bridge->selection_end!=selected_end;
+            if(text_changed)++bridge->revision;
+            bridge->visible=presented;bridge->selection_begin=selected_begin;bridge->selection_end=selected_end;
+            bridge->positions.clear();for(auto [offset,pos]:l.carets)bridge->positions[offset]=origin.x+pos-horizontal_scroll;
             GetWindowRect(context.window,&bridge->window_bounds);
         }
+        if(text_changed)UiaRaiseAutomationEvent(provider,UIA_Text_TextChangedEventId);
+        if(selection_changed)UiaRaiseAutomationEvent(provider,UIA_Text_TextSelectionChangedEventId);
         if(old!=current){
             VARIANT before{},after{};before.vt=after.vt=VT_BSTR;before.bstrVal=SysAllocString(old.c_str());after.bstrVal=SysAllocString(current.c_str());
             UiaRaiseAutomationPropertyChangedEvent(provider,UIA_ValueValuePropertyId,before,after);
@@ -152,6 +180,9 @@ struct EditorHost {
         auto l=layout();for(auto& g:l.glyphs)g.x-=horizontal_scroll;for(auto& [offset,x]:l.carets)x-=horizontal_scroll;
         unsigned begin=model.begin(),end=model.composing?model.begin()+(unsigned)model.preedit.size():model.end();
         auto image=paint(engine,l,r.right,r.bottom,begin,end,pixels(),model.visible_caret());auto& gl=context.gl;
+        for(int y=0;y<r.bottom;++y)for(int x=0;x<r.right;++x)if(x<24||x>=r.right-24){
+            size_t p=(static_cast<size_t>(y)*r.right+x)*4;image[p]=18;image[p+1]=25;image[p+2]=38;
+        }
         gl.Viewport(0,0,r.right,r.bottom);gl.Disable(GL_SCISSOR_TEST);gl.Disable(GL_BLEND);
         gl.BindTexture(GL_TEXTURE_2D,scene.texture);gl.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,r.right,r.bottom,0,GL_RGBA,GL_UNSIGNED_BYTE,image.data());
         gl.UseProgram(scene.program);gl.BindVertexArray(scene.vao);gl.DrawArrays(GL_TRIANGLES,0,3);
@@ -179,6 +210,17 @@ static LRESULT CALLBACK edit_proc(HWND h,UINT message,WPARAM w,LPARAM l){
     if(!host)return wnd_proc(h,message,w,l);
     auto& e=*host;
     switch(message){
+    case select_range_message:{
+        if(e.model.composing)return UIA_E_INVALIDOPERATION;
+        auto range=reinterpret_cast<const RangeSelection*>(l);if(!range)return E_INVALIDARG;
+        e.model.select(range->begin,range->end);e.sync();return S_OK;
+    }
+    case scroll_range_message:{
+        if(e.model.composing)return UIA_E_INVALIDOPERATION;
+        auto layout=e.layout();RECT rect{};GetClientRect(h,&rect);
+        e.horizontal_scroll=std::max(0.f,e.x_at(layout,static_cast<unsigned>(l))-(w?0.f:std::max(40L,rect.right-48)));
+        e.sync(false);return S_OK;
+    }
     case WM_APP+21:
         if(!allow_test_fixture)return 0;
         if(w){e.model.start();e.model.update(u"測試",2);}else e.model.cancel();
@@ -289,7 +331,7 @@ static void uia_roundtrip(EditorHost& e){
                 }
                 if(SUCCEEDED(hr))hr=element->GetCurrentPattern(UIA_ValuePatternId,&unknown);
                 if(SUCCEEDED(hr))hr=unknown.As(&pattern);
-                if(SUCCEEDED(hr))hr=pattern->SetValue(L"UIA 設定 ABC");
+                if(SUCCEEDED(hr)){BSTR value=SysAllocString(L"UIA 設定 ABC");hr=value?pattern->SetValue(value):E_OUTOFMEMORY;SysFreeString(value);}
                 if(SUCCEEDED(hr)){
                     BSTR value{};hr=pattern->get_CurrentValue(&value);
                     std::cout<<"UIA value length="<<(value?SysStringLen(value):0)<<'\n';
@@ -304,7 +346,7 @@ static void uia_roundtrip(EditorHost& e){
                 }
                 if(SUCCEEDED(hr)){
                     VARIANT available{};hr=element->GetCurrentPropertyValue(UIA_IsTextPatternAvailablePropertyId,&available);
-                    if(SUCCEEDED(hr)&&(available.vt!=VT_BOOL||available.boolVal!=VARIANT_FALSE))hr=E_FAIL;
+                    if(SUCCEEDED(hr)&&(available.vt!=VT_BOOL||available.boolVal!=VARIANT_TRUE))hr=E_FAIL;
                     VariantClear(&available);
                 }
             }
@@ -343,6 +385,7 @@ static void cross_process_roundtrip(EditorHost& e){
     require(!timeout,"Cross-process UIA client timeout");
     check_edit(code==0,"independent process UIA tests");
     check_edit(e.model.state.text==u"跨程序 UIA 456"&&!e.model.composing,"cross-process writes and fixture cancellation reach model");
+    check_edit(e.model.begin()==0&&e.model.end()==1,"external TextRange selection reaches renderer editing model");
 }
 int main(int argc,char** argv){
     try{
@@ -380,7 +423,20 @@ int main(int argc,char** argv){
             SendMessageW(context.window,WM_KEYDOWN,VK_ESCAPE,0);
             check_edit(!e.model.composing&&!quitting,"Escape cancels composition without closing editor");
             uia_roundtrip(e);
-            if(allow_test_fixture)cross_process_roundtrip(e);
+            if(allow_test_fixture){
+                cross_process_roundtrip(e);
+                Scene witness(context.gl);witness.init();e.draw(witness);context.gl.Finish();
+                double left{},top{},width{},height{};std::ifstream bounds("uia-text-rectangle.tsv");bounds>>left>>top>>width>>height;
+                require(bool(bounds)&&width>4&&height>4,"UIA witness rectangle unavailable");
+                POINT sample{(LONG)std::round(left+2),(LONG)std::round(top+height-3)};ScreenToClient(context.window,&sample);
+                RECT client{};GetClientRect(context.window,&client);
+                auto read_buffer=reinterpret_cast<PFNGLREADBUFFERPROC>(symbol("glReadBuffer"));read_buffer(GL_FRONT);
+                std::array<unsigned char,4> pixel{};
+                context.gl.ReadPixels(sample.x,client.bottom-1-sample.y,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+                std::cout<<"UIA rectangle render sample="<<int(pixel[0])<<','<<int(pixel[1])<<','<<int(pixel[2])<<'\n';
+                check_edit(pixel[0]==42&&pixel[1]==78&&pixel[2]==123,"external TextRange rectangle lands inside rendered selection highlight");
+                capture(context.gl,client.right,client.bottom,"textrange-selection.bmp");read_buffer(GL_BACK);
+            }
             e.model.set(u"自繪輸入：繁體中文 ABC");e.model.select((unsigned)e.model.state.text.size(),(unsigned)e.model.state.text.size());e.size_dip=24;e.sync();
             Scene scene(context.gl);scene.init();e.draw(scene);
             // Draw once more to back buffer for evidence, without changing model.
@@ -396,7 +452,7 @@ int main(int argc,char** argv){
             host=nullptr;DestroyCaret();
         }
         require(context.release(),"WGL cleanup failed");CoUninitialize();
-        std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value prototype; real IME and TextRange remain unverified\n";
+        std::cout<<"PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
 }

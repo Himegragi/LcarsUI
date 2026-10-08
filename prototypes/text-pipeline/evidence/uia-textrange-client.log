@@ -1,0 +1,114 @@
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=26316 provider_pid=38096
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+PASS write Value across process boundary
+PASS read current Value
+PASS cross-process value round trip
+PASS receive external Value property change event with expected payload
+value_events=1
+multiline_hresult=0x80070057
+PASS single-line provider rejects multiline mutation
+PASS read current Value
+PASS rejected mutation preserves value
+PASS start simulated composition fixture
+composition_hresult=0x80131509
+PASS external write rejected during composition
+PASS read current Value
+PASS composition protection preserves committed text
+PASS resize dedicated test host
+PASS query external HWND bounds after resize
+PASS bounds match physical HWND coordinates
+PASS query TextPattern capability
+PASS single-line TextPattern capability is advertised
+PASS get Text pattern across process boundary
+PASS query Text pattern interface
+PASS get document range
+PASS read current Value
+PASS read text range
+PASS document text agrees with Value
+PASS clone document range
+PASS collapse range at document start
+PASS extend range by one character unit
+PASS read text range
+PASS first character range is correct
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS text bounds are smaller than HWND bounds
+PASS hit test physical screen point
+PASS compare hit-test text offset
+PASS left edge resolves to first caret position
+PASS select text through external TextRange
+PASS read selected text range
+PASS read selection count
+PASS single selection returned
+PASS get selection range
+PASS read text range
+selected_length=1 first_code=36328
+PASS UIA selection matches selected character
+PASS receive TextSelectionChanged event
+PASS clone selected range
+PASS compare equal ranges
+PASS clone preserves endpoints
+PASS move range one character
+PASS read text range
+PASS range movement selects next character
+PASS expand to document
+PASS compare expanded document
+PASS document expansion is consistent
+PASS case-insensitive range search
+PASS read text range
+PASS range search returns requested text
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS existing range geometry updates after font size change
+PASS get visible ranges
+PASS read visible range count
+PASS single visible line returned
+PASS mutate text to invalidate previous ranges
+stale_range_hresult=0x80040201
+PASS stale revision-bound range is explicitly rejected
+PASS receive TextChanged event
+PASS reacquire range after text mutation
+PASS read text range
+PASS new document range returns current text
+PASS set empty document
+PASS get empty document range
+PASS read text range
+PASS empty range returns empty text
+PASS get degenerate range rectangles
+PASS degenerate range has no bounding rectangles
+PASS set long single-line document
+PASS get long document
+PASS clone long document
+PASS collapse at long document start
+PASS select first long-document character
+PASS scroll text range into view without changing selection
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS scrolled range aligns with rendered viewport origin
+PASS read current Value
+PASS scroll operation preserves document contents
+PASS restore test fixture
+PASS get restored document
+PASS clone restored document
+PASS collapse restored range
+PASS extend restored first character
+PASS leave first character selected for host verification
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS export actual UIA text rectangle for renderer comparison
+PASS unsubscribe event handler
+PASS cross-process Value and limited single-line TextRange batch; no Narrator claim

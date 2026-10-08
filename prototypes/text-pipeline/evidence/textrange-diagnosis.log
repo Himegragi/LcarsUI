@@ -1,0 +1,169 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/clang/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/text-pipeline/build/clang
+[1/2] Building CXX object CMakeFiles\editor_cross_host.dir\selfdraw_editor.cpp.obj
+[2/2] Linking CXX executable editor_cross_host.exe
+PASS preedit changes presentation, not committed text
+PASS composition cursor maps into presentation
+PASS cancel restores pre-composition selection
+PASS commit replaces selection once
+PASS entire composition commits as one undo transaction
+PASS redo restores committed composition
+PASS undo during composition cancels preedit
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 610.62
+GLSL=3.30 NVIDIA via Cg compiler
+profile=1 dpi=144
+PASS custom HWND has no native Edit child
+PASS WM_CHAR edits selfdraw model
+PASS surrogate input committed together
+PASS backspace uses layout boundary instead of splitting surrogate
+PASS font size updates shared caret/candidate geometry
+IMM candidate placement roundtrip=1 client=120,98 screen=283,295
+PASS IMM candidate API accepts and returns shared geometry (not visual IME proof)
+PASS IME character-position request answered from text layout
+PASS IME character screen coordinates match caret layout
+[DEBUG-trange] SetValue rejected: composition active
+PASS UIA write rejected during composition
+PASS Escape cancels composition without closing editor
+UIA role=50004 expected=50004
+UIA value length=10
+UIA bounds=152,152,1112,792 expected=152,152,1112,792
+UIA client HRESULT=0x0
+PASS real UIA client on MTA thread reads/writes Value, role and HWND bounds (not TextRange)
+PASS UIA mutation reaches common editing model
+[DEBUG-trange] fixture toggle=1
+[DEBUG-trange] SetValue rejected: composition active
+[DEBUG-trange] fixture toggle=0
+TextRange Select requested=0:1 actual=0:1
+TextRange Select requested=0:1 actual=0:1
+[DEBUG-trange] fixture toggle=0
+PASS host HWND and process identity supplied
+PASS provider is in a separate known process
+client_pid=36676 provider_pid=7508
+PASS create UIA client
+PASS resolve external HWND provider
+PASS read AutomationId
+PASS target is the intended prototype field
+PASS read control role
+PASS custom provider exposes Edit role
+PASS read UIA process id
+PASS UIA process identity matches Win32
+PASS get external Value pattern
+PASS query Value pattern interface
+PASS subscribe to Value change events
+PASS subscribe to TextChanged
+PASS subscribe to TextSelectionChanged
+PASS write Value across process boundary
+PASS read current Value
+PASS cross-process value round trip
+PASS receive external Value property change event with expected payload
+value_events=1
+multiline_hresult=0x80070057
+PASS single-line provider rejects multiline mutation
+PASS read current Value
+PASS rejected mutation preserves value
+PASS start simulated composition fixture
+composition_hresult=0x80131509
+PASS external write rejected during composition
+PASS read current Value
+PASS composition protection preserves committed text
+PASS resize dedicated test host
+PASS query external HWND bounds after resize
+PASS bounds match physical HWND coordinates
+PASS query TextPattern capability
+PASS single-line TextPattern capability is advertised
+PASS get Text pattern across process boundary
+PASS query Text pattern interface
+PASS get document range
+PASS read current Value
+PASS read text range
+PASS document text agrees with Value
+PASS clone document range
+PASS collapse range at document start
+PASS extend range by one character unit
+PASS read text range
+PASS first character range is correct
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS text bounds are smaller than HWND bounds
+PASS hit test physical screen point
+PASS compare hit-test text offset
+PASS left edge resolves to first caret position
+PASS select text through external TextRange
+PASS read selected text range
+PASS read selection count
+PASS single selection returned
+PASS get selection range
+PASS read text range
+selected_length=1 first_code=36328
+PASS UIA selection matches selected character
+PASS receive TextSelectionChanged event
+PASS clone selected range
+PASS compare equal ranges
+PASS clone preserves endpoints
+PASS move range one character
+PASS read text range
+PASS range movement selects next character
+PASS expand to document
+PASS compare expanded document
+PASS document expansion is consistent
+PASS case-insensitive range search
+PASS read text range
+PASS range search returns requested text
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS existing range geometry updates after font size change
+PASS get visible ranges
+PASS read visible range count
+PASS single visible line returned
+PASS mutate text to invalidate previous ranges
+stale_range_hresult=0x80040201
+PASS stale revision-bound range is explicitly rejected
+PASS receive TextChanged event
+PASS reacquire range after text mutation
+PASS read text range
+PASS new document range returns current text
+PASS set empty document
+PASS get empty document range
+PASS read text range
+PASS empty range returns empty text
+PASS get degenerate range rectangles
+PASS degenerate range has no bounding rectangles
+PASS set long single-line document
+PASS get long document
+PASS clone long document
+PASS collapse at long document start
+PASS select first long-document character
+PASS scroll text range into view without changing selection
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS scrolled range aligns with rendered viewport origin
+PASS read current Value
+PASS scroll operation preserves document contents
+PASS restore test fixture
+PASS get restored document
+PASS clone restored document
+PASS collapse restored range
+PASS extend restored first character
+PASS leave first character selected for host verification
+PASS get text bounding rectangles
+PASS single-line range has one rectangle
+PASS export actual UIA text rectangle for renderer comparison
+PASS unsubscribe event handler
+PASS cross-process Value and limited single-line TextRange batch; no Narrator claim
+PASS independent process UIA tests
+PASS cross-process writes and fixture cancellation reach model
+PASS external TextRange selection reaches renderer editing model
+UIA rectangle render sample=42,78,123
+PASS external TextRange rectangle lands inside rendered selection highlight
+Observed real WM_IME_COMPOSITION messages=0 result messages=0
+PASS selfdraw editing/IMM geometry/UIA Value and limited TextRange; real IME and Narrator remain unverified
