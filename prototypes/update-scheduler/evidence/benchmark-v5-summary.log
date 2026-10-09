@@ -1,0 +1,43 @@
+v5. steady_clock CPU wall time. Work cost = controlled busy-wait (synthetic). Trace formatting disabled in slices; files written after runs.
+Slice time covers: boundary checks, completion settlement, notice/event dispatch (incl. rejected delivery), commit, round promotion.
+Host step time additionally covers close-state ticks. Producer offers and publications happen between steps, outside both timers.
+
+batch budget=0.500ms/4 cost=50.000us A_cap=4096 sampled_A_slices=40
+  slice ms p50/p95/max: 0.200/0.200/0.201   host step ms p50/p95/max: 0.200/0.200/0.201
+  items per slice p50/p95/max: 4.000/4.000/4.000  stop: count=40 time=0
+  A offers=2000 accepted=2000 not_accepted=0 pending_after_sample=1841 peak_used=2000 settled=0 max_ordinary_gap=0; after drain A executed=2000 pending=0 B executed=2000  [PASS accounting]
+
+batch budget=0.500ms/16 cost=50.000us A_cap=4096 sampled_A_slices=40
+  slice ms p50/p95/max: 0.500/0.501/0.503   host step ms p50/p95/max: 0.500/0.501/0.503
+  items per slice p50/p95/max: 10.000/10.000/11.000  stop: count=0 time=40
+  A offers=2000 accepted=2000 not_accepted=0 pending_after_sample=1600 peak_used=2000 settled=0 max_ordinary_gap=0; after drain A executed=2000 pending=0 B executed=2000  [PASS accounting]
+
+batch budget=2.000ms/16 cost=50.000us A_cap=4096 sampled_A_slices=40
+  slice ms p50/p95/max: 0.800/0.801/0.806   host step ms p50/p95/max: 0.800/0.803/0.807
+  items per slice p50/p95/max: 16.000/16.000/16.000  stop: count=40 time=0
+  A offers=2000 accepted=2000 not_accepted=0 pending_after_sample=1361 peak_used=2000 settled=0 max_ordinary_gap=0; after drain A executed=2000 pending=0 B executed=2000  [PASS accounting]
+
+batch_zero_cost budget=2.000ms/16 cost=0.000us A_cap=4096 sampled_A_slices=40
+  slice ms p50/p95/max: 0.001/0.001/0.002   host step ms p50/p95/max: 0.001/0.002/0.002
+  items per slice p50/p95/max: 16.000/16.000/16.000  stop: count=40 time=0
+  A offers=2000 accepted=2000 not_accepted=0 pending_after_sample=1361 peak_used=2000 settled=0 max_ordinary_gap=0; after drain A executed=2000 pending=0 B executed=2000  [PASS accounting]
+
+sustained_overload_mixed budget=0.500ms/8 cost=50.000us A_cap=64 sampled_A_slices=40
+  slice ms p50/p95/max: 0.300/0.300/0.301   host step ms p50/p95/max: 0.300/0.301/0.301
+  items per slice p50/p95/max: 8.000/8.000/8.000  stop: count=40 time=0
+  A offers=1896 accepted=294 not_accepted=1602 pending_after_sample=58 peak_used=64 settled=79 max_ordinary_gap=2; after drain A executed=294 pending=0 B executed=79  [PASS accounting]
+
+sustained_overload_mixed budget=2.000ms/16 cost=50.000us A_cap=64 sampled_A_slices=40
+  slice ms p50/p95/max: 0.700/0.701/0.722   host step ms p50/p95/max: 0.700/0.702/0.722
+  items per slice p50/p95/max: 16.000/16.000/16.000  stop: count=40 time=0
+  A offers=1896 accepted=600 not_accepted=1296 pending_after_sample=50 peak_used=64 settled=79 max_ordinary_gap=2; after drain A executed=600 pending=0 B executed=79  [PASS accounting]
+
+long_callback_demo (separate, not a cohort): slice1 5.000ms executed=2; slice2 0.513ms; PASS
+
+== native thread close ==
+worker1：故意忽略取消，迴圈 60 次 sleep_for(1ms)；worker2：合作式。兩者只持有帳本指標與 token。
+觀察時間：關閉 11.6ms、逾期 42.0ms、已關閉 921.2ms（實際觀察值）
+結算=2 拒絕回寫=2 目標值=0 A 收尾期間 B 執行事件=59 逾期時租用=2 結束租用=1 槽位歸還=2
+PASS native close（只在 finished 後 join）
+
+benchmark failures=0
