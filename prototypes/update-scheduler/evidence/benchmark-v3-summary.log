@@ -1,0 +1,53 @@
+v3. steady_clock CPU wall time. Work cost = controlled busy-wait (synthetic). Trace formatting disabled in slices; files written after runs.
+Slice time covers: boundary checks, completion processing, notice/event dispatch (incl. rejected delivery), commit, round promotion.
+Host step time additionally covers bounded mailbox admission (<= admit_limit) and tick bookkeeping.
+40 A slices are SAMPLED per case; afterwards leftover work is drained OUTSIDE measurement and event accounting is asserted.
+
+hybrid budget=0.500ms/4 cost=50.000us sampled_A_slices=40
+  slice ms p50/p95/max: 0.200/0.200/0.201   host step ms p50/p95/max: 0.200/0.200/0.201
+  items per slice p50/p95/max: 4.000/4.000/4.000  stop reasons: count=40 time=0
+  A pending after sampling=1861; after drain: A accepted=2000 executed=2000 rejected=0 pending=0; B executed=2000 unknown completions charged=20  [PASS accounting]
+
+hybrid budget=0.500ms/16 cost=50.000us sampled_A_slices=40
+  slice ms p50/p95/max: 0.500/0.500/0.501   host step ms p50/p95/max: 0.500/0.500/0.502
+  items per slice p50/p95/max: 10.000/10.000/16.000  stop reasons: count=2 time=38
+  A pending after sampling=1609; after drain: A accepted=2000 executed=2000 rejected=0 pending=0; B executed=2000 unknown completions charged=20  [PASS accounting]
+
+hybrid budget=2.000ms/4 cost=50.000us sampled_A_slices=40
+  slice ms p50/p95/max: 0.200/0.200/0.204   host step ms p50/p95/max: 0.200/0.201/0.204
+  items per slice p50/p95/max: 4.000/4.000/4.000  stop reasons: count=40 time=0
+  A pending after sampling=1861; after drain: A accepted=2000 executed=2000 rejected=0 pending=0; B executed=2000 unknown completions charged=20  [PASS accounting]
+
+hybrid budget=2.000ms/16 cost=50.000us sampled_A_slices=40
+  slice ms p50/p95/max: 0.800/0.801/0.803   host step ms p50/p95/max: 0.800/0.801/0.803
+  items per slice p50/p95/max: 16.000/16.000/16.000  stop reasons: count=40 time=0
+  A pending after sampling=1381; after drain: A accepted=2000 executed=2000 rejected=0 pending=0; B executed=2000 unknown completions charged=20  [PASS accounting]
+
+zero_cost_overhead budget=2.000ms/16 cost=0.000us sampled_A_slices=40
+  slice ms p50/p95/max: 0.001/0.001/0.001   host step ms p50/p95/max: 0.001/0.001/0.003
+  items per slice p50/p95/max: 16.000/16.000/16.000  stop reasons: count=40 time=0
+  A pending after sampling=1381; after drain: A accepted=2000 executed=2000 rejected=0 pending=0; B executed=2000 unknown completions charged=20  [PASS accounting]
+
+long_callback_demo (separate, not a cohort): budget 0.5ms/16, first event spins 5ms
+  slice1 5.000ms executed=2 stop=時間額度; slice2 0.500ms executed=10; accounting after drain PASS
+
+== native thread close ==
+worker op1：故意忽略取消，迴圈 60 次 sleep_for(1ms)；worker op2：合作式，看到取消就提早完成。兩者都有限、都不碰 UI 指標。
+觀察時間：關閉要求 18.5ms、逾期 50.6ms、已關閉 926.7ms（實際觀察值，受 OS 排程影響）
+A 完成收到=2 拒絕回寫失效目標次數=2 失效目標值=0 B 在 A 收尾期間實際執行事件=59 逾期時共用服務租用=2 結束時租用=1
+  [t=0.002ms 環境A 輪0 游標0/0] 建立目標 1 世代1
+  [t=0.008ms 環境A 輪0 游標0/0] 操作#1啟動（屬範圍，不屬視圖），租用共用服務 → 租用數2
+  [t=0.010ms 環境A 輪0 游標0/0] 操作#2啟動（屬範圍，不屬視圖），租用共用服務 → 租用數3
+  [t=18.564ms 環境A 輪0 游標0/0] 關閉要求：收尾中，診斷期限 t=38.561ms
+  [t=18.588ms 環境A 輪0 游標0/0] 對操作#1送出取消請求（請求≠成功）
+  [t=18.596ms 環境A 輪0 游標0/0] 對操作#2送出取消請求（請求≠成功）
+  [t=18.616ms 環境A 輪0 游標0/0] 提交：實體移除目標 1
+  [t=50.621ms 環境A 輪0 游標0/0] 收尾逾期：仍有2項未結（狀態仍為收尾中，非已關閉）
+  [t=50.629ms 環境A 輪0 游標0/0] 操作#2 完成已收（工作端看到取消），租用釋放 → 租用數2
+  [t=50.633ms 環境A 輪0 游標0/0] 拒絕回寫：目標1已失效、世代不符或範圍收尾中
+  [t=926.794ms 環境A 輪0 游標0/0] 操作#1 完成已收（工作端看到取消），租用釋放 → 租用數1
+  [t=926.798ms 環境A 輪0 游標0/0] 拒絕回寫：目標1已失效、世代不符或範圍收尾中
+  [t=926.802ms 環境A 輪0 游標0/0] 所有操作與租用已結算，範圍已關閉
+PASS native close（只在 finished 後 join；逾期時一個操作仍持有租用）
+
+benchmark failures=0

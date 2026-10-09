@@ -1,0 +1,5 @@
+SUPERSEDED / INCOMPLETE: scenarios-v1.log, benchmark-v1-summary.log, benchmark-v1-slices.csv.
+v1 had admission holes (set/add_target/reuse_target ignored Closing; start_op accepted invalid targets), processed all
+mailbox completions and commit/round promotion outside the hybrid budget, could promote the next round while a dispatch
+was on the stack, stopped the benchmark with thousands of accepted events left unaccounted, and labelled a rejection
+count as writes. Use the *-v2.* files.

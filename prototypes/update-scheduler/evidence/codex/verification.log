@@ -1,0 +1,12 @@
+2026-10-09 Codex independent verification, v3 model.
+Release BuildOnly PASS. Direct native --scenarios PASS failures=0; --benchmark PASS failures=0, cwd evidence/codex.
+Scenario assertions cover immediate read; fixed-round mid-yield; count/time budget; nonrecursive wake; pending removal/new-op rejection; invalid target & generation; Closing/overdue leases; bounded completion flood; commit/round promotion guard; suppressed queued UI notices after close; close from current callback; outer-traversal closing lease guard.
+Five benchmark cohorts, 40 sampled A slices each, 50us controlled busy-work except zero-cost case. Leftovers drained outside measurements, accepted 2000 A +2000 B events per cohort accounted, pending0; unknown completions charged20.
+Selected independent p50/p95/max slice ms:
+0.5ms/4 units: 0.200/0.200/0.210 (count40)
+0.5ms/16 units: 0.500/0.500/0.503 (time38,count2)
+2ms/16 units: 0.800/0.801/0.809 (count40)
+Long callback dedicated demo: 5.000ms slice under0.5ms budget; no hard bound claim.
+Native-thread close: close requested20.0ms, overdue51.6ms, closed914.9ms. Two completions received, two rejected stale UI writes, target value0. B executed58 events while A Closing; service leases2 at observed overdue checkpoint,1 after A closed (B retained). Actual times host-dependent.
+Portable scheduler model drives native Win32 shell; interactive steps use SIMULATED clock. Native close uses actual finite workers; modal/nested platform-loop interoperability not proved.
+Two observer lanes: bounded mailbox admission outside slice, completion delivery charged inside slice. Host envelope measured separately. Fixed tiny fixture scope list / lease counts not production resource ownership proof. No default policy/latency values adopted.
