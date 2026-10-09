@@ -1,0 +1,15 @@
+SUPERSEDED: scenarios-v1.log (v1 model, 14 scenarios PASS at the time) is not current.
+Review found boundary gaps that v1 did not test. scenarios-v1-red-review.log is the v1 model run with the added
+regression scenarios 15-18: failures=6
+  - host callback could rebuild / add env / settle / replace service / declare service fault (state changed)
+  - off-owner set_value succeeded and mutated UI state
+  - fault->replace->rebuild->retire cycles without delivery threw "notification capacity invariant violated"
+  - after the unsafe-handoff marker, a previously reserved result was applied by settle
+  (scenario 17, wrong reservation generation against a Reserved slot, already passed on v1; the v1 scenario 8
+   variant was confounded and has been removed)
+scenarios-v2.log (failures=0 at the time) is also superseded: scenarios-v2-red-review.log is the v2 model run with
+added scenarios 19-21: failures=5
+  - after a later unsafe-handoff marker, deliver() still called the host for an earlier pending notice and returned credits
+  - with no host registered, deliver() counted delivered and implied KeepProcess
+  - add_env accepted an existing name and overwrote the current mapping
+Current evidence: scenarios-v3.log (failures=0).
