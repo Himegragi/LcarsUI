@@ -1,0 +1,2037 @@
+[
+  {
+    "guide": "1 最後一個 UI 關閉",
+    "steps": [
+      {
+        "index": 1,
+        "label": "A 開始命令 c1（宣告可繼續）",
+        "result": "開始命令 W1.C10（槽位 0 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "A 開始命令 c2（預設會被請求取消）",
+        "result": "開始命令 W1.C11（槽位 1 世代 1）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "回條與結果預留在開始前取得"
+        }
+      },
+      {
+        "index": 3,
+        "label": "C 故障 → 看管範圍內的交接",
+        "result": "C 故障 → 交接 W1.HO12 隸屬看管範圍（額度 W1.H9 自啟用前預留）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 4,
+        "label": "遞送交接給 host1（回呼開始、租用服務）",
+        "result": "遞送 W1.HO12 給 host1：回呼中，租用 W1.L14、列管工作 W1.WK15",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "遞送交接給 host1（回呼開始、租用服務）"
+        }
+      },
+      {
+        "index": 5,
+        "label": "A 的接收途徑失效",
+        "result": "途徑 W1.R2 失效；受影響：A",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "c2 只是取消請求，不是完成"
+        }
+      },
+      {
+        "index": 6,
+        "label": "worker：c2 完成",
+        "result": "控制訊息 W1.M16（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "處理控制訊息",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "終態已完成、UI 處置仍待定"
+        }
+      },
+      {
+        "index": 8,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W1.R17（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 9,
+        "label": "A 請求恢復（固定本批）",
+        "result": "恢復嘗試 W1.AT18：固定本批 1 份",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 請求恢復（固定本批）"
+        }
+      },
+      {
+        "index": 10,
+        "label": "關閉 A 的視覺",
+        "result": "A 視覺已安全移除；控制生命週期進入收尾中",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "恢復失效；A 仍有命令，啟用預留保留"
+        }
+      },
+      {
+        "index": 11,
+        "label": "關閉 B（閒置）",
+        "result": "B 視覺已安全移除；控制生命週期進入收尾中",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 沒有義務 → 自己的啟用預留歸還一次"
+        }
+      },
+      {
+        "index": 12,
+        "label": "關閉 C（最後一個 UI）",
+        "result": "C 視覺已安全移除；控制生命週期進入收尾中",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "交接仍在看管範圍；A 的預留仍在"
+        }
+      },
+      {
+        "index": 13,
+        "label": "舊恢復嘗試處理一份（應過期）",
+        "result": "過期：沒有這個進行中的嘗試",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "舊恢復嘗試處理一份（應過期）"
+        }
+      },
+      {
+        "index": 14,
+        "label": "host1 確認（回呼仍在執行）",
+        "result": "控制訊息 W1.M19（ack）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 15,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：ack:已確認（額度仍保留：回呼／工作／租用未結束）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "已確認但不提早歸還"
+        }
+      },
+      {
+        "index": 16,
+        "label": "worker：c1 晚到完成",
+        "result": "控制訊息 W1.M20（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 17,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；目標已關閉 → 安全判定不適用",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 18,
+        "label": "A 安全收尾：留存的 c2 判定不適用",
+        "result": "安全處置 1 份；仍在執行的命令 0 個",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 義務結束 → A 啟用預留歸還"
+        }
+      },
+      {
+        "index": 19,
+        "label": "host1：回呼結束",
+        "result": "控制訊息 W1.M21（callbackEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 20,
+        "label": "host1：列管工作結束",
+        "result": "控制訊息 W1.M22（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 21,
+        "label": "host1：租用歸還",
+        "result": "控制訊息 W1.M23（leaseEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 22,
+        "label": "處理（預算 2）",
+        "result": "處理 2 則（剩 1）：callbackEnd:回呼安全結束；workEnd:列管工作 W1.WK15 結束",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 23,
+        "label": "處理剩下的",
+        "result": "處理 1 則（剩 0）：leaseEnd:租用 W1.L14 歸還",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "三筆交接額度（A、B 啟用、C 交接）各歸還一次"
+        }
+      },
+      {
+        "index": 24,
+        "label": "重複確認",
+        "result": "控制訊息 W1.M24（ack）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 25,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：ack:忽略：外來／已釋放／未知指派",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 26,
+        "label": "檢查回條（尚未收取）",
+        "result": "處理 0 則（剩 0）：無",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "每個已受理執行各一張回條；未收取前不歸零"
+        }
+      },
+      {
+        "index": 27,
+        "label": "明確收取回條",
+        "result": "收取 2 張已結清回條：W1.C10:已完成/不適用、W1.C11:已完成/不適用",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "收取後所有池歸零"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 16,
+    "expectationsFailed": 0
+  },
+  {
+    "guide": "2 共享不安全服務",
+    "steps": [
+      {
+        "index": 1,
+        "label": "B 的接收途徑失效",
+        "result": "途徑 W2.R3 失效；受影響：B",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "A 故障，共享服務X 不可信",
+        "result": "A 故障 → 交接 W2.HO10 隸屬看管範圍（額度 W2.H7 自啟用前預留）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 3,
+        "label": "遞送交接給 host1（回呼租用服務X）",
+        "result": "遞送 W2.HO10 給 host1：回呼中，租用 W2.L12、列管工作 W2.WK13",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 4,
+        "label": "安裝新 B 途徑",
+        "result": "安裝 routeB W2.R14（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 5,
+        "label": "B 請求恢復（應被拒：服務不可信）",
+        "result": "拒絕恢復：依賴不可信的 共享服務X（換途徑不能修復）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 請求恢復（應被拒：服務不可信）"
+        }
+      },
+      {
+        "index": 6,
+        "label": "宣告 B 隔離未知",
+        "result": "B 隔離宣告：未知（fixture 宣告，不是偵測）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "B 請求恢復（應被拒：隔離未知）",
+        "result": "拒絕恢復：隔離未知",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 請求恢復（應被拒：隔離未知）"
+        }
+      },
+      {
+        "index": 8,
+        "label": "改派 A 的交接給 host2",
+        "result": "改派受理：舊確認資格立即撤銷；新指派 W2.AS15 等舊回呼與工作結束（租用另計）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 9,
+        "label": "host1 用舊憑證確認",
+        "result": "控制訊息 W2.M16（ack）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 10,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：ack:拒絕：資格已撤銷",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "舊確認被拒；舊租用仍在"
+        }
+      },
+      {
+        "index": 11,
+        "label": "B 改綁新的可信服務",
+        "result": "B 改用新的可信服務 W2.S17；舊服務仍由其租用者持有；仍需明確證實隔離",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 12,
+        "label": "撤回「隔離未知」（改為未宣告，不是證實）",
+        "result": "B 隔離宣告：未宣告（fixture 宣告，不是偵測）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 13,
+        "label": "B 請求恢復（應被拒：換新服務不等於證實隔離）",
+        "result": "拒絕恢復：共享故障後尚未明確證實隔離（換新資源不等於證實）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "資源已修復、途徑有效，仍缺隔離證明"
+        }
+      },
+      {
+        "index": 14,
+        "label": "宣告 B 已證實隔離",
+        "result": "B 隔離宣告：已證實（fixture 宣告，不是偵測）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 15,
+        "label": "B 請求恢復",
+        "result": "恢復嘗試 W2.AT18：固定本批 0 份",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 請求恢復"
+        }
+      },
+      {
+        "index": 16,
+        "label": "B 提交恢復",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 提交恢復"
+        }
+      },
+      {
+        "index": 17,
+        "label": "host1：列管工作結束",
+        "result": "控制訊息 W2.M19（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 18,
+        "label": "重複送同一工作結束",
+        "result": "控制訊息 W2.M20（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 19,
+        "label": "host1：回呼結束",
+        "result": "控制訊息 W2.M21（callbackEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 20,
+        "label": "處理",
+        "result": "處理 2 則（剩 1）：workEnd:列管工作 W2.WK13 結束；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 21,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：callbackEnd:回呼安全結束",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 22,
+        "label": "改派生效",
+        "result": "改派生效",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 23,
+        "label": "遞送給 host2",
+        "result": "遞送 W2.HO10 給 host2：回呼中，租用 W2.L22、列管工作 W2.WK23",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 24,
+        "label": "host2 確認",
+        "result": "控制訊息 W2.M24（ack）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 25,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：ack:已確認（額度仍保留：回呼／工作／租用未結束）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 26,
+        "label": "確認後再改派（應被拒）",
+        "result": "不受理：已有效確認，不能重開交接資格",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "確認後再改派（應被拒）"
+        }
+      },
+      {
+        "index": 27,
+        "label": "host2 回呼結束",
+        "result": "控制訊息 W2.M25（callbackEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 28,
+        "label": "host2 工作結束",
+        "result": "控制訊息 W2.M26（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 29,
+        "label": "host1 舊回呼租用歸還",
+        "result": "控制訊息 W2.M27（leaseEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 30,
+        "label": "處理",
+        "result": "處理 2 則（剩 1）：callbackEnd:回呼安全結束；workEnd:列管工作 W2.WK23 結束",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 31,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：leaseEnd:租用 W2.L12 歸還",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "host2 的租用未歸還前仍保留"
+        }
+      },
+      {
+        "index": 32,
+        "label": "host2 租用歸還",
+        "result": "控制訊息 W2.M28（leaseEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 33,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：leaseEnd:租用 W2.L22 歸還",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 交接歸還一次；B、C 健康環境仍持有啟用預留"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 10,
+    "expectationsFailed": 0
+  },
+  {
+    "guide": "3 普通佇列滿載 vs 控制通道",
+    "steps": [
+      {
+        "index": 1,
+        "label": "C 開始命令 c1",
+        "result": "開始命令 W3.C10（槽位 0 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "B 故障 → 交接",
+        "result": "B 故障 → 交接 W3.HO11 隸屬看管範圍（額度 W3.H8 自啟用前預留）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 3,
+        "label": "遞送交接",
+        "result": "遞送 W3.HO11 給 host1：回呼中，租用 W3.L13、列管工作 W3.WK14",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 4,
+        "label": "C 送入普通動作 1",
+        "result": "受理 W3.Q15（未開始）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 5,
+        "label": "C 送入普通動作 2",
+        "result": "受理 W3.Q16（未開始）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 6,
+        "label": "C 送入普通動作 3",
+        "result": "受理 W3.Q17（未開始）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "C 送入普通動作 4（應不受理）",
+        "result": "不受理：普通佇列已滿（呼叫端自行決定重送）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "C 送入普通動作 4（應不受理）"
+        }
+      },
+      {
+        "index": 8,
+        "label": "host 確認",
+        "result": "控制訊息 W3.M18（ack）已受理",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "普通佇列滿不影響控制通道"
+        }
+      },
+      {
+        "index": 9,
+        "label": "回呼結束",
+        "result": "控制訊息 W3.M19（callbackEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 10,
+        "label": "工作結束",
+        "result": "控制訊息 W3.M20（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 11,
+        "label": "c1 結果",
+        "result": "控制訊息 W3.M21（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 12,
+        "label": "無效訊息 1（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T23 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 13,
+        "label": "無效訊息 2（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T25 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 14,
+        "label": "無效訊息 3（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T27 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 15,
+        "label": "無效訊息 4（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T29 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 16,
+        "label": "無效訊息 5（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T31 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 17,
+        "label": "無效訊息 6（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T33 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 18,
+        "label": "無效訊息 7（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T35 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 19,
+        "label": "無效訊息 8（控制滿 → 送方保留）",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T37 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 20,
+        "label": "租用歸還（控制與重送票都滿）",
+        "result": "控制通道與送方重送票都滿：未受理，也「未保留」——訊息仍歸呼叫端，需自行之後再送",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "明確回報未保留；租用義務仍在"
+        }
+      },
+      {
+        "index": 21,
+        "label": "第 1 次：處理 4 則",
+        "result": "處理 4 則（剩 0）：ack:已確認（額度仍保留：回呼／工作／租用未結束）；callbackEnd:回呼安全結束；workEnd:列管工作 W3.WK14 結束；result:終態：已完成 → 已套用",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 22,
+        "label": "送方重送",
+        "result": "送方重送 4 則；仍保留 4",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 23,
+        "label": "第 2 次：處理 4 則",
+        "result": "處理 4 則（剩 0）：workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 24,
+        "label": "送方重送",
+        "result": "送方重送 4 則；仍保留 0",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 25,
+        "label": "第 3 次：處理 4 則",
+        "result": "處理 4 則（剩 0）：workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 26,
+        "label": "送方重送",
+        "result": "送方重送 0 則；仍保留 0",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 27,
+        "label": "處理剩下的",
+        "result": "處理 0 則（剩 0）：無",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理剩下的"
+        }
+      },
+      {
+        "index": 28,
+        "label": "呼叫端之後重送租用歸還",
+        "result": "控制訊息 W3.M40（leaseEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 29,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：leaseEnd:租用 W3.L13 歸還",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "交接釋放；普通佇列仍滿"
+        }
+      },
+      {
+        "index": 30,
+        "label": "第 1 輪 訊息 1",
+        "result": "控制訊息 W3.M41（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 31,
+        "label": "第 1 輪 訊息 2",
+        "result": "控制訊息 W3.M42（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 32,
+        "label": "第 1 輪 訊息 3",
+        "result": "控制訊息 W3.M43（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 33,
+        "label": "第 1 輪 訊息 4",
+        "result": "控制訊息 W3.M44（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 34,
+        "label": "第 1 輪 訊息 5",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T46 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 35,
+        "label": "處理",
+        "result": "處理 4 則（剩 0）：workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 36,
+        "label": "重送",
+        "result": "送方重送 1 則；仍保留 0",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 37,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 38,
+        "label": "第 2 輪 訊息 1",
+        "result": "控制訊息 W3.M47（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 39,
+        "label": "第 2 輪 訊息 2",
+        "result": "控制訊息 W3.M48（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 40,
+        "label": "第 2 輪 訊息 3",
+        "result": "控制訊息 W3.M49（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 41,
+        "label": "第 2 輪 訊息 4",
+        "result": "控制訊息 W3.M50（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 42,
+        "label": "第 2 輪 訊息 5",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T52 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 43,
+        "label": "處理",
+        "result": "處理 4 則（剩 0）：workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 44,
+        "label": "重送",
+        "result": "送方重送 1 則；仍保留 0",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 45,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 46,
+        "label": "第 3 輪 訊息 1",
+        "result": "控制訊息 W3.M53（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 47,
+        "label": "第 3 輪 訊息 2",
+        "result": "控制訊息 W3.M54（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 48,
+        "label": "第 3 輪 訊息 3",
+        "result": "控制訊息 W3.M55（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 49,
+        "label": "第 3 輪 訊息 4",
+        "result": "控制訊息 W3.M56（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 50,
+        "label": "第 3 輪 訊息 5",
+        "result": "控制通道已滿：未受理；送方以重送票 W3.T58 保留原訊息（之後需明確重送）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 51,
+        "label": "處理",
+        "result": "處理 4 則（剩 0）：workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 52,
+        "label": "重送",
+        "result": "送方重送 1 則；仍保留 0",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 53,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 8,
+    "expectationsFailed": 0
+  },
+  {
+    "guide": "4 取消 vs 提交、舊訊息與槽位重用",
+    "steps": [
+      {
+        "index": 1,
+        "label": "A 開始命令 c1",
+        "result": "開始命令 W4.C10（槽位 0 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "A 開始命令 c2",
+        "result": "開始命令 W4.C11（槽位 1 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 3,
+        "label": "A 的途徑失效",
+        "result": "途徑 W4.R2 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 4,
+        "label": "c1 結果",
+        "result": "控制訊息 W4.M12（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 5,
+        "label": "c2 結果",
+        "result": "控制訊息 W4.M13（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 6,
+        "label": "處理",
+        "result": "處理 2 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI；result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "安裝新途徑",
+        "result": "安裝 routeA W4.R14（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 8,
+        "label": "請求恢復",
+        "result": "恢復嘗試 W4.AT15：固定本批 2 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 9,
+        "label": "處理本批（2 份）",
+        "result": "處理 2 份（2/2）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "本批處理完 ≠ 已提交"
+        }
+      },
+      {
+        "index": 10,
+        "label": "送：取消 a1",
+        "result": "控制訊息 W4.M16（cancelResume）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 11,
+        "label": "送：提交 a1",
+        "result": "控制訊息 W4.M17（commitResume）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 12,
+        "label": "處理",
+        "result": "處理 2 則（剩 0）：cancelResume:取消成功：維持暫停，已處置結果保持終態；commitResume:已結束：已取消",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 13,
+        "label": "再次請求恢復（空本批）",
+        "result": "恢復嘗試 W4.AT18：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 14,
+        "label": "送：提交 a2",
+        "result": "控制訊息 W4.M19（commitResume）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 15,
+        "label": "送：取消 a2",
+        "result": "控制訊息 W4.M20（cancelResume）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 16,
+        "label": "處理",
+        "result": "處理 2 則（剩 0）：commitResume:提交成功：重新開放；cancelResume:太晚：已提交",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 17,
+        "label": "A 開始命令 c3（重用槽位）",
+        "result": "開始命令 W4.C21（槽位 0 世代 2）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 開始命令 c3（重用槽位）"
+        }
+      },
+      {
+        "index": 18,
+        "label": "舊 c1 結果重送",
+        "result": "控制訊息 W4.M22（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 19,
+        "label": "外來工作結束",
+        "result": "控制訊息 W4.M23（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 20,
+        "label": "處理",
+        "result": "處理 2 則（剩 0）：result:忽略：重複／過期／外來結果；workEnd:忽略：外來、偽造或重複工作",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 21,
+        "label": "c3 結果",
+        "result": "控制訊息 W4.M24（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 22,
+        "label": "c3 結果重複",
+        "result": "控制訊息 W4.M25（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 23,
+        "label": "處理",
+        "result": "處理 2 則（剩 0）：result:終態：已完成 → 已套用；result:忽略：重複／過期／外來結果",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "處理"
+        }
+      },
+      {
+        "index": 24,
+        "label": "收取回條",
+        "result": "收取 3 張已結清回條：W4.C10:已完成/已套用、W4.C11:已完成/已套用、W4.C21:已完成/已套用",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "收取回條"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 7,
+    "expectationsFailed": 0
+  },
+  {
+    "guide": "5 反例與邊界",
+    "steps": [
+      {
+        "index": 1,
+        "label": "第 1 輪：A 途徑失效",
+        "result": "途徑 W5.R2 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R10（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 3,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT11：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 4,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 5,
+        "label": "第 2 輪：A 途徑失效",
+        "result": "途徑 W5.R10 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 6,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R12（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT13：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 8,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 9,
+        "label": "第 3 輪：A 途徑失效",
+        "result": "途徑 W5.R12 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 10,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R14（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 11,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT15：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 12,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 13,
+        "label": "第 4 輪：A 途徑失效",
+        "result": "途徑 W5.R14 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 14,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R16（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 15,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT17：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 16,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 17,
+        "label": "第 5 輪：A 途徑失效",
+        "result": "途徑 W5.R16 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 18,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R18（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 19,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT19：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 20,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 21,
+        "label": "第 6 輪：A 途徑失效",
+        "result": "途徑 W5.R18 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 22,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R20（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 23,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT21：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 24,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 25,
+        "label": "第 7 輪：A 途徑失效",
+        "result": "途徑 W5.R20 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 26,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R22（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 27,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT23：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 28,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 29,
+        "label": "第 8 輪：A 途徑失效",
+        "result": "途徑 W5.R22 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 30,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R24（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 31,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT25：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 32,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 33,
+        "label": "第 9 輪：A 途徑失效",
+        "result": "途徑 W5.R24 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 34,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R26（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 35,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT27：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 36,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 37,
+        "label": "第 10 輪：A 途徑失效",
+        "result": "途徑 W5.R26 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 38,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W5.R28（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 39,
+        "label": "恢復",
+        "result": "恢復嘗試 W5.AT29：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 40,
+        "label": "提交",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交"
+        }
+      },
+      {
+        "index": 41,
+        "label": "A 開始命令 cx（預設取消請求）",
+        "result": "開始命令 W5.C30（槽位 0 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 42,
+        "label": "A 收尾宣告不安全",
+        "result": "A 收尾安全宣告：不安全（fixture 宣告）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 43,
+        "label": "關閉 A",
+        "result": "A 視覺已安全移除；控制生命週期進入收尾中",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 44,
+        "label": "worker：cx 以取消結束",
+        "result": "控制訊息 W5.M31（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 45,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已取消；收尾不安全 → 保留結果與預留（未完成）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "已取消也不立即處置：資源保留"
+        }
+      },
+      {
+        "index": 46,
+        "label": "A 嘗試收尾（不安全）",
+        "result": "收尾不安全：保留結果與資源，回報未完成（不強制）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 嘗試收尾（不安全）"
+        }
+      },
+      {
+        "index": 47,
+        "label": "A 收尾宣告安全",
+        "result": "A 收尾安全宣告：安全（fixture 宣告）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 48,
+        "label": "A 安全收尾",
+        "result": "安全處置 1 份；仍在執行的命令 0 個",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 安全收尾"
+        }
+      },
+      {
+        "index": 49,
+        "label": "C 故障",
+        "result": "C 故障 → 交接 W5.HO32 隸屬看管範圍（額度 W5.H9 自啟用前預留）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 50,
+        "label": "遞送",
+        "result": "遞送 W5.HO32 給 host1：回呼中，租用 W5.L34、列管工作 W5.WK35",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 51,
+        "label": "偽造：外來 World 的回呼結束",
+        "result": "控制訊息 W5.M36（callbackEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 52,
+        "label": "偽造：錯誤指派的工作結束",
+        "result": "控制訊息 W5.M37（workEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 53,
+        "label": "偽造：外來 World 的租用歸還",
+        "result": "控制訊息 W5.M38（leaseEnd）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 54,
+        "label": "處理",
+        "result": "處理 3 則（剩 0）：callbackEnd:忽略：外來、偽造或重複；workEnd:忽略：外來、偽造或重複工作；leaseEnd:忽略：外來、偽造或重複租用",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "真正的義務都沒變"
+        }
+      },
+      {
+        "index": 55,
+        "label": "host1 確認",
+        "result": "控制訊息 W5.M39（ack）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 56,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：ack:已確認（額度仍保留：回呼／工作／租用未結束）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 57,
+        "label": "確認後改派（應被拒）",
+        "result": "不受理：已有效確認，不能重開交接資格",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "確認後改派（應被拒）"
+        }
+      },
+      {
+        "index": 58,
+        "label": "停止派送",
+        "result": "宿主停止派送",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "停止派送"
+        }
+      },
+      {
+        "index": 59,
+        "label": "關閉 B（應無進展）",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 60,
+        "label": "B 開始命令",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 61,
+        "label": "B 送入動作",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 62,
+        "label": "安裝途徑",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 63,
+        "label": "B 故障",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 64,
+        "label": "處理控制",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 65,
+        "label": "收取回條",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 66,
+        "label": "檢查：狀態未變",
+        "result": "沒有進展：宿主停止派送（狀態、資源、額度都不變）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "只有「沒有進展」計數與日誌改變"
+        }
+      },
+      {
+        "index": 67,
+        "label": "送：回呼結束（停止時仍可投遞）",
+        "result": "控制訊息 W5.M40（callbackEnd）已受理",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "送：回呼結束（停止時仍可投遞）"
+        }
+      },
+      {
+        "index": 68,
+        "label": "恢復派送",
+        "result": "宿主恢復派送（需逐步明確推進；不會自動重新開放 UI）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "不自動推進或重新開放"
+        }
+      },
+      {
+        "index": 69,
+        "label": "B 途徑失效",
+        "result": "途徑 W5.R3 失效；受影響：B",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 70,
+        "label": "安裝 B 途徑",
+        "result": "安裝 routeB W5.R41（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 71,
+        "label": "B 請求恢復",
+        "result": "恢復嘗試 W5.AT42：固定本批 0 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 72,
+        "label": "恢復中 B 故障",
+        "result": "B 故障 → 交接 W5.HO43 隸屬看管範圍（額度 W5.H8 自啟用前預留）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "恢復中 B 故障"
+        }
+      },
+      {
+        "index": 73,
+        "label": "安裝未使用的途徑 1",
+        "result": "安裝 spare W5.R45（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 74,
+        "label": "安裝未使用的途徑 2",
+        "result": "安裝 spare W5.R46（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 75,
+        "label": "安裝未使用的途徑 3",
+        "result": "安裝 spare W5.R47（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 76,
+        "label": "安裝未使用的途徑 4",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 77,
+        "label": "安裝未使用的途徑 5",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 78,
+        "label": "安裝未使用的途徑 6",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 79,
+        "label": "安裝未使用的途徑 7",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 80,
+        "label": "安裝未使用的途徑 8",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 81,
+        "label": "安裝未使用的途徑 9",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 82,
+        "label": "安裝未使用的途徑 10",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 83,
+        "label": "再安裝一次（應不受理）",
+        "result": "不受理：途徑表已滿（只回收已失效且無人引用的項目）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "再安裝一次（應不受理）"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 21,
+    "expectationsFailed": 0
+  },
+  {
+    "guide": "6 晚到結果與不安全的閒置關閉",
+    "steps": [
+      {
+        "index": 1,
+        "label": "B 收尾宣告不安全",
+        "result": "B 收尾安全宣告：不安全（fixture 宣告）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 2,
+        "label": "關閉 B（閒置）",
+        "result": "B 視覺已安全移除；控制生命週期進入收尾中",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "不安全時即使閒置也不歸還"
+        }
+      },
+      {
+        "index": 3,
+        "label": "B 嘗試收尾（不安全）",
+        "result": "收尾不安全：保留結果與資源，回報未完成（不強制）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 嘗試收尾（不安全）"
+        }
+      },
+      {
+        "index": 4,
+        "label": "B 收尾宣告安全",
+        "result": "B 收尾安全宣告：安全（fixture 宣告）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 5,
+        "label": "B 明確收尾",
+        "result": "安全處置 0 份；仍在執行的命令 0 個",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "B 明確收尾"
+        }
+      },
+      {
+        "index": 6,
+        "label": "A 開始命令 c1",
+        "result": "開始命令 W6.C10（槽位 0 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 7,
+        "label": "A 開始命令 c2",
+        "result": "開始命令 W6.C11（槽位 1 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 8,
+        "label": "A 開始命令 c3",
+        "result": "開始命令 W6.C12（槽位 2 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 9,
+        "label": "A 開始命令 c4",
+        "result": "開始命令 W6.C13（槽位 3 世代 1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 10,
+        "label": "A 的途徑失效",
+        "result": "途徑 W6.R2 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 11,
+        "label": "c1 完成",
+        "result": "控制訊息 W6.M14（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 12,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 13,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W6.R15（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 14,
+        "label": "A 請求恢復（本批只有 c1）",
+        "result": "恢復嘗試 W6.AT16：固定本批 1 份",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "A 請求恢復（本批只有 c1）"
+        }
+      },
+      {
+        "index": 15,
+        "label": "恢復期間 c2 晚到",
+        "result": "控制訊息 W6.M17（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 16,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 17,
+        "label": "處理本批",
+        "result": "處理 1 份（1/1）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "c2 不加入本批"
+        }
+      },
+      {
+        "index": 18,
+        "label": "提交恢復",
+        "result": "提交成功：重新開放",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "提交時晚到的 c2 仍被保留"
+        }
+      },
+      {
+        "index": 19,
+        "label": "一般處理輪",
+        "result": "一般處理輪：處置 1 份；仍待處置 0 份",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "一般處理輪"
+        }
+      },
+      {
+        "index": 20,
+        "label": "c2 重複完成",
+        "result": "控制訊息 W6.M18（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 21,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:忽略：重複／過期／外來結果",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 22,
+        "label": "再跑一般處理輪",
+        "result": "一般處理輪：處置 0 份；仍待處置 0 份",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "只套用一次；逐筆回條保留"
+        }
+      },
+      {
+        "index": 23,
+        "label": "A 的途徑再失效",
+        "result": "途徑 W6.R15 失效；受影響：A",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 24,
+        "label": "c3 完成",
+        "result": "控制訊息 W6.M19（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 25,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 26,
+        "label": "安裝新 A 途徑",
+        "result": "安裝 routeA W6.R20（不會自動恢復）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 27,
+        "label": "A 請求恢復（本批 c3）",
+        "result": "恢復嘗試 W6.AT21：固定本批 1 份",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 28,
+        "label": "恢復期間 c4 晚到",
+        "result": "控制訊息 W6.M22（result）已受理",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 29,
+        "label": "處理",
+        "result": "處理 1 則（剩 0）：result:終態：已完成；環境暫停中 → 留存，不套用 UI",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 30,
+        "label": "處理本批",
+        "result": "處理 1 份（1/1）",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 31,
+        "label": "提交前途徑失效",
+        "result": "途徑 W6.R20 失效；受影響：A(恢復失效)",
+        "errors": [],
+        "expectation": null
+      },
+      {
+        "index": 32,
+        "label": "提交（應不重新開放）",
+        "result": "已結束：失效",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "c4 的結果與回條義務保留"
+        }
+      },
+      {
+        "index": 33,
+        "label": "暫停中跑一般處理輪（應拒絕）",
+        "result": "拒絕：已暫停（只在執行中處理）",
+        "errors": [],
+        "expectation": {
+          "ok": true,
+          "why": "暫停中跑一般處理輪（應拒絕）"
+        }
+      }
+    ],
+    "invariantErrors": 0,
+    "expectationsChecked": 10,
+    "expectationsFailed": 0
+  }
+]

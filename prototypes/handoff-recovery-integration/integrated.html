@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>可丟棄整合原型 v3：交接看管 × 暫停／恢復（模擬）</title>
+<style>
+  body{font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif;margin:0;padding:24px 32px;color:#1d2330;background:#fafbfc;line-height:1.5}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:18px 0 8px} h3{font-size:14px;margin:12px 0 4px}
+  .warn{background:#fff4e5;border:1px solid #f0c78a;padding:8px 12px;border-radius:6px;margin:8px 0 12px}
+  .q{background:#eef3ff;border-left:4px solid #3557c9;padding:8px 12px;margin-bottom:12px}
+  .grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+  .card{background:#fff;border:1px solid #dde2ea;border-radius:8px;padding:10px 14px}
+  table{border-collapse:collapse;width:100%;font-size:13px} td,th{border-bottom:1px solid #eceff4;padding:3px 6px;text-align:left;vertical-align:top}
+  th{color:#5a6475;font-weight:600}
+  button{font:inherit;font-size:13px;margin:3px;padding:5px 10px;border:1px solid #3557c9;background:#fff;color:#3557c9;border-radius:5px;cursor:pointer}
+  button.primary{background:#3557c9;color:#fff}
+  .tabs button.active{background:#3557c9;color:#fff}
+  .bad{color:#b42318;font-weight:600} .ok{color:#067647}
+  .log{font-size:12px;max-height:260px;overflow:auto;font-family:Consolas,monospace;white-space:pre-wrap}
+  .muted{color:#6b7380;font-size:12px}
+</style>
+</head>
+<body>
+<h1>可丟棄整合原型 v3：宿主交接看管範圍 × UI 暫停／恢復</h1>
+<div class="warn"><b>用完即丟、純模擬。</b>不是框架程式碼，也不是 API 提案；沒有真實執行緒、宿主迴圈、GPU 或程序終止。所有動作在模擬的擁有者執行緒上依序執行。容量數字（普通佇列 3、結果 6、交接 3、控制 4、送方重送票 8、回條 9、途徑表 6、服務表 5、別名 24、恢復每片 2）都是 fixture，不是預設值、記憶體或效能保證。控制通道、重送票、回條與憑證格式都是 fixture 安排，不是已核定的公開介面。</div>
+<div class="q"><b>要回答的問題：</b>宿主明確持有的交接看管範圍，和 UI 的暫停／恢復能不能合作做到：視覺關閉後仍安全收尾；擋住不安全的共享資源被重用；普通容量滿時仍能遞送控制訊息；每一筆容量預留只歸還一次？</div>
+
+<script id="prototype-model">
+(function(){
+'use strict';
+// ---------------- DOM-free core (fixture, throwaway) ----------------
+const CAP={ordinary:3,result:6,handoff:3,control:4,retry:8,receipt:9,routes:6,services:5,alias:24,batch:2,log:40,ended:4,assignments:3};
+const PUMP_FREE=new Set(['postControl','retryRetained','stopPump','startPump']); // producer side + pump control only
+let WORLD_SEQ=0;
+class Pool{ // identity-based issuance/release audit, one per pool
+  constructor(name,cap){this.name=name;this.cap=cap;this.live=new Map();this.issued=0;this.returned=0;this.refused=0;this.ignoredRelease=0;}
+  full(){return this.live.size>=this.cap;}
+  take(id,owner){if(this.full()){this.refused++;return false;}if(this.live.has(id))throw new Error('duplicate issue '+id);this.live.set(id,owner);this.issued++;return true;}
+  release(id){if(!this.live.has(id)){this.ignoredRelease++;return false;}this.live.delete(id);this.returned++;return true;}
+  audit(){const e=[];if(this.live.size!==this.issued-this.returned)e.push(`${this.name}: 使用中≠發出−歸還`);if(this.live.size>this.cap)e.push(`${this.name}: 超過上限`);return e;}
+  view(){return{name:this.name,cap:this.cap,live:[...this.live.entries()].map(([k,v])=>`${k}(${v})`),liveCount:this.live.size,issued:this.issued,returned:this.returned,refused:this.refused,ignoredRelease:this.ignoredRelease};}
+}
+class World{
+  constructor(){
+    this.id=`W${++WORLD_SEQ}`;this.seq=0;this.pumpRunning=true;this.step=0;this.alias=new Map();this.log=[];
+    this.pools={ordinary:new Pool('普通佇列',CAP.ordinary),result:new Pool('結果預留',CAP.result),handoff:new Pool('交接額度',CAP.handoff),
+      control:new Pool('控制通道',CAP.control),retry:new Pool('送方重送票',CAP.retry),receipt:new Pool('回條',CAP.receipt)};
+    this.slots=Array.from({length:CAP.result},()=>({gen:1,cmd:null}));
+    this.controlQ=[];this.retained=[];this.commands=new Map();this.handoffs=new Map();this.receipts=new Map();
+    this.counters={notExecuted:0,cancelRequests:0,terminal:0,applied:0,notApplicable:0,noResult:0,ignoredMsgs:0,revokedAck:0,handoffsReleased:0,
+      envFinalized:0,commits:0,cancels:0,tooLate:0,stale:0,noProgress:0,notAccepted:0,notRetained:0,retries:0,incomplete:0,collected:0,refusedRegistry:0};
+    // custody exists BEFORE any environment is enabled (ADR0003 Q133/Q134); handoffs are fixed to it from inception
+    this.custody={id:this.next('K'),alive:true};
+    this.receivers={host1:{alive:true},host2:{alive:true}};this.activeReceiver='host1';
+    this.routes=[];this.services=new Map();this.envs={};
+    const rA=this.addRoute('routeA'),rB=this.addRoute('routeB'),rC=this.addRoute('routeC');
+    const s1=this.addService('共享服務X'),s2=this.addService('服務Y');
+    for(const [n,r,sv] of [['A',rA,[s1]],['B',rB,[s1]],['C',rC,[s2]]])this.enableEnv(n,r,sv);
+  }
+  next(p){return `${this.id}.${p}${++this.seq}`;} // monotonic, world-qualified: no cross-world collision, no reuse
+  // ---- bounded registries ----
+  referenced(rid){return Object.values(this.envs).some(e=>e.route===rid||(e.attempt&&e.attempt.route===rid));}
+  addRoute(name){if(this.routes.length>=CAP.routes){const i=this.routes.findIndex(r=>!r.alive&&!this.referenced(r.id));if(i>=0)this.routes.splice(i,1);}
+    if(this.routes.length>=CAP.routes){this.counters.refusedRegistry++;return null;}
+    const r={id:this.next('R'),name,version:++this.routeSeq||(this.routeSeq=1),alive:true};this.routes.push(r);return r.id;}
+  addService(name){if(this.services.size>=CAP.services){for(const [id,s] of this.services)if(!s.trustworthy&&!s.leases.size&&!Object.values(this.envs).some(e=>e.services.includes(id))){this.services.delete(id);break;}}
+    if(this.services.size>=CAP.services){this.counters.refusedRegistry++;return null;}
+    const id=this.next('S');this.services.set(id,{id,name,trustworthy:true,leases:new Map()});return id;}
+  enableEnv(name,route,services){ // custody + active receiver + reserved fault-report credit BEFORE enabling
+    const credit=this.next('H');if(!this.custody.alive||!this.receivers[this.activeReceiver].alive||!this.pools.handoff.take(credit,`${name} 啟用預留`))throw new Error('fixture: cannot enable');
+    this.envs[name]={name,state:'執行中',control:'執行中',visuals:true,closed:false,route,services:[...services],isolation:'未宣告',dataVersion:1,value:0,queue:[],attempt:null,ended:[],
+      credit,cleanupSafe:true,needsProof:false,applied:0,notApplicable:0,notExecuted:0,pauseReason:''};}
+  route(id){return this.routes.find(r=>r.id===id);}
+  aliasSet(k,v){if(!this.alias.has(k)&&this.alias.size>=CAP.alias)this.alias.delete(this.alias.keys().next().value);this.alias.set(k,v);}
+  resolve(v){if(typeof v==='string'&&v.startsWith('@')){const [k,f]=v.slice(1).split('.');const x=this.alias.get(k);return f?x&&x[f]:x;}
+    if(v&&typeof v==='object'&&!Array.isArray(v)){const o={};for(const k in v)o[k]=this.resolve(v[k]);return o;}return v;}
+  note(text){this.log.push(`#${this.step} ${text}`);if(this.log.length>CAP.log)this.log.shift();}
+
+  // ---------------- single entry point ----------------
+  dispatch(action){
+    this.step++;const a={};for(const k in action)a[k]=k==='as'?action[k]:this.resolve(action[k]);
+    let r;
+    if(!this.pumpRunning&&!PUMP_FREE.has(a.type)){this.counters.noProgress++;r={result:'沒有進展：宿主停止派送（狀態、資源、額度都不變）'};}
+    else{const fn=this['do_'+a.type];r=fn?(fn.call(this,a)||{result:'成功'}):{result:'未知動作'};
+      if(action.as&&r.value!==undefined)this.aliasSet(action.as,r.value);
+      if(this.pumpRunning)this.finalizeClosed();}
+    const errors=this.invariants();this.note(`${a.type}${a.env?' '+a.env:''} → ${r.result}${errors.length?' ⚠'+errors.join('；'):''}`);
+    return{step:this.step,type:a.type,result:r.result,errors};
+  }
+  do_stopPump(){this.pumpRunning=false;return{result:'宿主停止派送'};}
+  do_startPump(){this.pumpRunning=true;return{result:'宿主恢復派送（需逐步明確推進；不會自動重新開放 UI）'};}
+
+  // ---- ordinary work: receipt reserved BEFORE acceptance / worker start ----
+  newReceipt(id,env,kind){this.pools.receipt.take(id,env);this.receipts.set(id,{id,env,kind,terminal:null,disp:null});}
+  do_submit(a){const e=this.envs[a.env];if(e.state!=='執行中'||!e.visuals)return{result:'不受理：環境非執行中'};
+    if(this.pools.receipt.full())return{result:'不受理：回條額度已滿（先收取已結清回條）'};if(this.pools.ordinary.full())return{result:'不受理：普通佇列已滿（呼叫端自行決定重送）'};
+    const id=this.next('Q');this.newReceipt(id,e.name,'動作');this.pools.ordinary.take(id,e.name);e.queue.push(id);return{result:`受理 ${id}（未開始）`,value:id};}
+  do_startCommand(a){const e=this.envs[a.env];if(e.state!=='執行中'||!e.visuals)return{result:'不受理：環境非執行中'};
+    if(this.pools.receipt.full())return{result:'不受理：回條額度已滿'};if(this.pools.result.full())return{result:'不受理：結果預留已滿'};
+    const id=this.next('C');this.newReceipt(id,e.name,'命令');return this.reserveCommand(e,!!a.allowContinue,id);}
+  do_runQueued(a){const e=this.envs[a.env];if(!e.queue.length)return{result:'沒有未開始動作'};if(e.state!=='執行中')return{result:'不受理'};if(this.pools.result.full())return{result:'不受理：結果預留已滿（動作仍排隊）'};
+    const id=e.queue.shift();this.pools.ordinary.release(id);this.receipts.get(id).kind='動作→命令';return this.reserveCommand(e,false,id);}
+  reserveCommand(e,allow,id){const slot=this.slots.findIndex(s=>!s.cmd);this.pools.result.take(id,e.name);this.slots[slot].cmd=id;
+    const tok={world:this.id,slot,gen:this.slots[slot].gen,cmd:id};
+    this.commands.set(id,{id,env:e.name,token:tok,state:'執行中',allowContinue:allow,cancelRequested:false,terminal:null,disp:null,value:null,dataVersion:e.dataVersion});
+    return{result:`開始命令 ${id}（槽位 ${slot} 世代 ${tok.gen}）`,value:tok};}
+  stopOrdinary(e,why){ // unstarted -> per-id NotExecuted; started -> cancellation REQUEST (not completion)
+    while(e.queue.length){const q=e.queue.shift();this.pools.ordinary.release(q);const rc=this.receipts.get(q);rc.terminal='未執行';rc.disp='—（不重放）';e.notExecuted++;this.counters.notExecuted++;}
+    for(const c of this.commands.values())if(c.env===e.name&&c.state==='執行中'&&!c.allowContinue&&!c.cancelRequested){c.cancelRequested=true;this.counters.cancelRequests++;}
+    e.pauseReason=why;}
+
+  // ---- routes / faults / resources ----
+  do_loseRoute(a){const r=this.route(a.route);if(!r||!r.alive)return{result:'途徑無效'};r.alive=false;const hit=[];
+    for(const e of Object.values(this.envs)){if(e.route!==r.id)continue;
+      if(e.state==='執行中'){this.stopOrdinary(e,'接收途徑失效');e.state='已暫停';hit.push(e.name);}
+      else if(e.state==='恢復處理中'){this.endAttempt(e,'失效');e.state='已暫停';hit.push(e.name+'(恢復失效)');}}
+    return{result:`途徑 ${r.id} 失效；受影響：${hit.join('、')||'無'}`};}
+  do_installRoute(a){const id=this.addRoute(a.name);if(!id)return{result:'不受理：途徑表已滿（只回收已失效且無人引用的項目）'};return{result:`安裝 ${a.name} ${id}（不會自動恢復）`,value:id};}
+  do_fault(a){const e=this.envs[a.env];if(e.state==='故障'||e.closed)return{result:'不受理：已故障或已關閉（不建立新交接）'};if(!e.credit)return{result:'不受理：沒有預留的故障回報額度'};
+    if(e.attempt){this.endAttempt(e,'失效（故障）');}
+    this.stopOrdinary(e,'故障，只能另行重建');e.state='故障';
+    if(a.unsafeService){const s=this.services.get(a.unsafeService);s.trustworthy=false;
+      for(const o of Object.values(this.envs)){if(o===e||!o.services.includes(s.id))continue;
+        // shared failure: every dependent now needs an explicit isolation proof; any earlier proof is invalidated
+        o.needsProof=true;if(o.isolation==='已證實')o.isolation='未宣告';
+        if(o.state==='執行中'||o.state==='恢復處理中'){if(o.attempt)this.endAttempt(o,'失效');this.stopOrdinary(o,'共享服務不可信');o.state='已暫停';}}}
+    const h={id:this.next('HO'),env:e.name,credit:e.credit,custody:this.custody.id,assignments:[{id:this.next('AS'),receiver:this.activeReceiver,authority:true,callbackActive:false,delivered:false}],
+      acked:false,works:new Map(),leases:new Map(),pending:null};
+    e.credit=null;this.pools.handoff.live.set(h.credit,`交接 ${h.id}`); // same reservation transferred to the handoff (not re-issued)
+    this.handoffs.set(h.id,h);return{result:`${e.name} 故障 → 交接 ${h.id} 隸屬看管範圍（額度 ${h.credit} 自啟用前預留）`,value:h.id};}
+  do_declareIsolation(a){this.envs[a.env].isolation=a.value;return{result:`${a.env} 隔離宣告：${a.value}（fixture 宣告，不是偵測）`};}
+  do_bindNewService(a){const e=this.envs[a.env];const nid=this.addService(a.name);if(!nid)return{result:'不受理：服務表已滿'};e.services=e.services.filter(x=>x!==a.from).concat(nid);
+    if(e.needsProof&&e.isolation==='已證實')e.isolation='未宣告'; // a new resource id is not itself an isolation proof
+    return{result:`${a.env} 改用新的可信服務 ${nid}；舊服務仍由其租用者持有${e.needsProof?'；仍需明確證實隔離':''}`,value:nid};}
+  do_setCleanupSafe(a){this.envs[a.env].cleanupSafe=!!a.safe;return{result:`${a.env} 收尾安全宣告：${a.safe?'安全':'不安全'}（fixture 宣告）`};}
+
+  // ---- handoff (custody-owned) ----
+  do_deliverHandoff(a){const h=this.handoffs.get(a.handoff);if(!h)return{result:'交接不存在'};
+    const as=h.assignments[h.assignments.length-1];if(!as.authority||as.delivered)return{result:'沒有可遞送的有效指派'};
+    as.delivered=true;as.callbackActive=true;const svc=this.envs[h.env].services[0];const lease=this.next('L'),work=this.next('WK');
+    this.services.get(svc).leases.set(lease,`${as.receiver} 回呼`);h.leases.set(lease,{svc,as:as.id});h.works.set(work,as.id);
+    return{result:`遞送 ${h.id} 給 ${as.receiver}：回呼中，租用 ${lease}、列管工作 ${work}`,value:{world:this.id,handoff:h.id,assignment:as.id,lease,work}};}
+  do_reassign(a){const h=this.handoffs.get(a.handoff);if(!h)return{result:'交接不存在'};
+    if(h.acked)return{result:'不受理：已有效確認，不能重開交接資格'};if(h.pending)return{result:'不受理：已有未完成改派'};
+    if(h.assignments.length>=CAP.assignments)return{result:'不受理：指派紀錄已滿（舊租用未歸還）'};
+    for(const x of h.assignments)x.authority=false;h.pending={id:this.next('AS'),receiver:a.receiver};
+    return{result:`改派受理：舊確認資格立即撤銷；新指派 ${h.pending.id} 等舊回呼與工作結束（租用另計）`};}
+  do_activateReassign(a){const h=this.handoffs.get(a.handoff);if(!h||!h.pending)return{result:'沒有待生效改派'};
+    if(h.assignments.some(x=>x.callbackActive)||h.works.size)return{result:'不能生效：舊回呼或列管工作未結束'};
+    if(!this.receivers[h.pending.receiver].alive){h.pending=null;return{result:'改派失敗：候選失效；舊資格不恢復'};}
+    h.assignments=h.assignments.filter(x=>[...h.leases.values()].some(l=>l.as===x.id)); // keep only records still owning leases
+    h.assignments.push({id:h.pending.id,receiver:h.pending.receiver,authority:true,callbackActive:false,delivered:false});h.pending=null;return{result:'改派生效'};}
+  tryRelease(h){if(h.acked&&!h.assignments.some(x=>x.callbackActive)&&!h.works.size&&!h.leases.size){
+      if(this.pools.handoff.release(h.credit))this.counters.handoffsReleased++;this.handoffs.delete(h.id);this.note(`${h.id} 額度 ${h.credit} 歸還（只此一次）`);}}
+
+  // ---- bounded control channel + producer retry tickets (fixture arrangement) ----
+  do_postControl(a){const msg={id:this.next('M'),kind:a.kind,body:a.body};
+    if(this.pools.control.take(msg.id,msg.kind)){this.controlQ.push(msg);return{result:`控制訊息 ${msg.id}（${msg.kind}）已受理`};}
+    this.counters.notAccepted++;
+    const ticket=this.next('T');
+    if(this.pools.retry.take(ticket,msg.kind)){this.retained.push({ticket,msg});return{result:`控制通道已滿：未受理；送方以重送票 ${ticket} 保留原訊息（之後需明確重送）`};}
+    this.counters.notRetained++;return{result:`控制通道與送方重送票都滿：未受理，也「未保留」——訊息仍歸呼叫端，需自行之後再送`};}
+  do_retryRetained(){let n=0;while(this.retained.length&&!this.pools.control.full()){const {ticket,msg}=this.retained.shift();this.pools.retry.release(ticket);this.pools.control.take(msg.id,msg.kind);this.controlQ.push(msg);n++;this.counters.retries++;}
+    return{result:`送方重送 ${n} 則；仍保留 ${this.retained.length}`};}
+  do_processControls(a){const budget=Math.max(0,Math.min(a.budget??2,CAP.control));const out=[];
+    while(out.length<budget&&this.controlQ.length){const m=this.controlQ.shift();this.pools.control.release(m.id);out.push(`${m.kind}:${this.apply(m)}`);}
+    return{result:`處理 ${out.length} 則（剩 ${this.controlQ.length}）：${out.join('；')||'無'}`};}
+  locate(b){if(!b||b.world!==this.id)return null;const h=this.handoffs.get(b.handoff);if(!h)return null;const as=h.assignments.find(x=>x.id===b.assignment);return as?{h,as}:null;}
+  apply(m){const b=m.body||{};const ign=w=>{this.counters.ignoredMsgs++;return w;};
+    switch(m.kind){
+    case 'ack':{const x=this.locate(b);if(!x)return ign('忽略：外來／已釋放／未知指派');if(!x.as.authority){this.counters.revokedAck++;return ign('拒絕：資格已撤銷');}
+      if(x.h.acked)return ign('忽略：重複確認');x.h.acked=true;this.tryRelease(x.h);return this.handoffs.has(x.h.id)?'已確認（額度仍保留：回呼／工作／租用未結束）':'已確認並釋放';}
+    case 'callbackEnd':{const x=this.locate(b);if(!x||!x.as.callbackActive)return ign('忽略：外來、偽造或重複');x.as.callbackActive=false;this.tryRelease(x.h);return '回呼安全結束';}
+    case 'workEnd':{const x=this.locate(b);if(!x||x.h.works.get(b.work)!==x.as.id)return ign('忽略：外來、偽造或重複工作');x.h.works.delete(b.work);this.tryRelease(x.h);return `列管工作 ${b.work} 結束`;}
+    case 'leaseEnd':{const x=this.locate(b);const l=x&&x.h.leases.get(b.lease);if(!l||l.as!==x.as.id)return ign('忽略：外來、偽造或重複租用');
+      x.h.leases.delete(b.lease);this.services.get(l.svc).leases.delete(b.lease);this.tryRelease(x.h);return `租用 ${b.lease} 歸還`;}
+    case 'result':return this.settle(b);
+    case 'cancelResume':return this.cancelResume(b.attempt);
+    case 'commitResume':return this.commitResume(b.attempt);}
+    return ign('忽略：未知種類');}
+  settle(b){const t=(b&&b.token)||{};const c=this.commands.get(t.cmd);const sl=this.slots[t.slot];
+    if(t.world!==this.id||!c||!sl||sl.gen!==t.gen||sl.cmd!==t.cmd||c.state!=='執行中'){this.counters.ignoredMsgs++;return '忽略：重複／過期／外來結果';}
+    c.state='已結算';c.terminal=b.cancelled?'已取消':'已完成';c.value=b.value;this.counters.terminal++;this.receipts.get(c.id).terminal=c.terminal;
+    const e=this.envs[c.env];
+    if(e.closed&&!e.cleanupSafe){this.counters.incomplete++;return `終態：${c.terminal}；收尾不安全 → 保留結果與預留（未完成）`;}
+    if(b.cancelled){this.dispose(c,'無結果');return '終態：已取消（沒有 UI 內容）';}
+    if(e.closed){this.dispose(c,'不適用');return '終態：已完成；目標已關閉 → 安全判定不適用';}
+    if(e.state==='執行中'){this.dispose(c,c.dataVersion===e.dataVersion?'已套用':'不適用');return `終態：已完成 → ${c.disp}`;}
+    return '終態：已完成；環境暫停中 → 留存，不套用 UI';}
+  dispose(c,d){if(c.disp)throw new Error('disposition repeated');c.disp=d;const e=this.envs[c.env];
+    if(d==='已套用'){e.value=c.value;e.applied++;this.counters.applied++;}else if(d==='不適用'){e.notApplicable++;this.counters.notApplicable++;}else this.counters.noResult++;
+    this.receipts.get(c.id).disp=d;const sl=this.slots[c.token.slot];sl.cmd=null;sl.gen++;this.pools.result.release(c.id);this.commands.delete(c.id);}
+  do_collectReceipts(a){const got=[];for(const r of [...this.receipts.values()])if((!a.env||r.env===a.env)&&r.terminal&&r.disp){this.receipts.delete(r.id);this.pools.receipt.release(r.id);got.push(`${r.id}:${r.terminal}/${r.disp}`);this.counters.collected++;}
+    return{result:`收取 ${got.length} 張已結清回條：${got.join('、')||'無'}`};}
+
+  // ---- recovery ----
+  conditions(e){const r=this.route(e.route);if(!r||!r.alive)return '接收途徑無效';if(e.closed)return '環境已關閉';if(e.state==='故障')return '故障實例';
+    if(e.isolation==='未知')return '隔離未知';const bad=e.services.map(s=>this.services.get(s)).find(s=>!s||!s.trustworthy);if(bad)return `依賴不可信的 ${bad?bad.name:'服務'}（換途徑不能修復）`;
+    if(e.needsProof&&e.isolation!=='已證實')return '共享故障後尚未明確證實隔離（換新資源不等於證實）';return null;}
+  do_beginResume(a){const e=this.envs[a.env];if(e.state!=='已暫停')return{result:`拒絕：${e.state}`};
+    const old=e.route;e.route=a.route;const why=this.conditions(e);if(why){e.route=old;return{result:`拒絕恢復：${why}`};}
+    const batch=[...this.commands.values()].filter(c=>c.env===e.name&&c.state==='已結算').map(c=>c.id);
+    e.attempt={id:this.next('AT'),route:a.route,batch,cursor:0};e.state='恢復處理中';return{result:`恢復嘗試 ${e.attempt.id}：固定本批 ${batch.length} 份`,value:e.attempt.id};}
+  liveAttempt(id){return Object.values(this.envs).find(e=>e.attempt&&e.attempt.id===id);}
+  do_resumeStep(a){const e=this.liveAttempt(a.attempt);if(!e){this.counters.stale++;return{result:'過期：沒有這個進行中的嘗試'};}
+    let n=0;const budget=Math.min(a.budget??CAP.batch,CAP.batch);
+    while(n<budget&&e.attempt.cursor<e.attempt.batch.length){const why=this.conditions(e);if(why){this.endAttempt(e,'失效');e.state='已暫停';return{result:`嘗試失效：${why}`};}
+      const c=this.commands.get(e.attempt.batch[e.attempt.cursor++]);if(c&&!c.disp)this.dispose(c,c.terminal==='已取消'?'無結果':c.dataVersion===e.dataVersion?'已套用':'不適用');n++;}
+    return{result:`處理 ${n} 份（${e.attempt.cursor}/${e.attempt.batch.length}）`};}
+  commitResume(id){const e=this.liveAttempt(id);if(!e){const x=this.findEnded(id);if(x)return x;this.counters.stale++;return '過期';}
+    if(e.attempt.cursor<e.attempt.batch.length)return '本批未完成（不算勝出）';const why=this.conditions(e);if(why){this.endAttempt(e,'失效');e.state='已暫停';return `提交失敗：${why}`;}
+    this.endAttempt(e,'已提交');e.state='執行中';e.pauseReason='';this.counters.commits++;return '提交成功：重新開放';}
+  cancelResume(id){const e=this.liveAttempt(id);if(e){this.endAttempt(e,'已取消');e.state='已暫停';this.counters.cancels++;return '取消成功：維持暫停，已處置結果保持終態';}
+    const x=this.findEnded(id);if(x==='已結束：已提交'){this.counters.tooLate++;return '太晚：已提交';}if(x)return x;this.counters.stale++;return '過期';}
+  findEnded(id){for(const e of Object.values(this.envs)){const r=e.ended.find(x=>x.id===id);if(r)return `已結束：${r.how}`;}return null;}
+  endAttempt(e,how){e.ended.push({id:e.attempt.id,how});if(e.ended.length>CAP.ended)e.ended.shift();e.attempt=null;}
+  // Fixture rule (experimental): results settled outside the frozen batch are disposed AFTER reopening,
+  // in bounded normal rounds, re-validated each time. Not a general scheduler.
+  do_processPendingResults(a){const e=this.envs[a.env];if(e.state!=='執行中')return{result:`拒絕：${e.state}（只在執行中處理）`};
+    const why=this.conditions(e);if(why)return{result:`拒絕：${why}；結果保留`};
+    let n=0;const budget=Math.min(a.budget??CAP.batch,CAP.batch);
+    for(const c of [...this.commands.values()]){if(n>=budget)break;if(c.env!==e.name||c.state!=='已結算')continue;
+      this.dispose(c,c.terminal==='已取消'?'無結果':c.dataVersion===e.dataVersion?'已套用':'不適用');n++;}
+    return{result:`一般處理輪：處置 ${n} 份；仍待處置 ${[...this.commands.values()].filter(c=>c.env===e.name&&c.state==='已結算').length} 份`};}
+  do_commitResume(a){return{result:this.commitResume(a.attempt)};}
+  do_cancelResume(a){return{result:this.cancelResume(a.attempt)};}
+
+  // ---- close visuals; control lifecycle continues until its own obligations end ----
+  do_closeVisuals(a){const e=this.envs[a.env];if(e.closed)return{result:'已關閉'};if(e.attempt)this.endAttempt(e,'失效（關閉）');
+    const faulted=e.state==='故障';this.stopOrdinary(e,faulted?e.pauseReason:'已關閉');
+    e.visuals=false;e.closed=true;e.state=faulted?'故障（視覺已關閉）':'已關閉';e.control='收尾中';return{result:`${e.name} 視覺已安全移除；控制生命週期進入收尾中`};}
+  do_disposeClosed(a){const e=this.envs[a.env];if(!e.closed)return{result:'環境未關閉'};
+    if(!e.cleanupSafe){this.counters.incomplete++;return{result:'收尾不安全：保留結果與資源，回報未完成（不強制）'};}
+    let n=0;for(const c of [...this.commands.values()])if(c.env===e.name&&c.state==='已結算'){this.dispose(c,c.terminal==='已取消'?'無結果':'不適用');n++;}
+    return{result:`安全處置 ${n} 份；仍在執行的命令 ${[...this.commands.values()].filter(c=>c.env===e.name).length} 個`};}
+  // Runs only inside an owner action while the pump runs; an unsafe-cleanup scope is retained even when idle.
+  finalizeClosed(){for(const e of Object.values(this.envs)){if(!e.closed||e.control==='已結束'||!e.cleanupSafe)continue;
+      if(e.queue.length||e.attempt||[...this.commands.values()].some(c=>c.env===e.name))continue; // workers/results still owned by its scope
+      if(e.credit){this.pools.handoff.release(e.credit);this.note(`${e.name} 啟用預留 ${e.credit} 歸還（只此一次）`);e.credit=null;}
+      e.control='已結束';this.counters.envFinalized++;}}
+
+  // ---------------- views ----------------
+  invariants(){const err=[];for(const p of Object.values(this.pools))err.push(...p.audit());
+    const used=this.slots.filter(s=>s.cmd);if(used.length!==this.pools.result.live.size)err.push('結果槽位與預留不一致');
+    for(const s of used){const c=this.commands.get(s.cmd);if(!c||c.token.gen!==s.gen||!this.pools.result.live.has(c.id))err.push('槽位懸空或世代不一致');}
+    for(const c of this.commands.values()){if(!this.receipts.has(c.id))err.push(`命令 ${c.id} 沒有回條`);if(!this.slots[c.token.slot]||this.slots[c.token.slot].cmd!==c.id)err.push(`命令 ${c.id} 槽位懸空`);}
+    let q=0;for(const e of Object.values(this.envs)){q+=e.queue.length;for(const id of e.queue){const r=this.receipts.get(id);if(!r||r.terminal||!this.pools.ordinary.live.has(id))err.push(`動作 ${id} 擁有關係不一致`);}
+      if(e.closed&&e.state==='執行中')err.push(`${e.name} 已關閉卻執行中`);if((e.state==='恢復處理中')!==!!e.attempt)err.push(`${e.name} 恢復狀態不一致`);
+      if(e.ended.length>CAP.ended)err.push('結局紀錄超過上限');if(e.control==='已結束'&&(e.credit||[...this.commands.values()].some(c=>c.env===e.name)))err.push(`${e.name} 已結束卻仍有義務`);}
+    if(q!==this.pools.ordinary.live.size)err.push('普通佇列與額度不一致');
+    if(this.receipts.size!==this.pools.receipt.live.size)err.push('回條與回條額度不一致');
+    for(const r of this.receipts.values())if(!r.terminal&&!this.commands.has(r.id)&&!Object.values(this.envs).some(e=>e.queue.includes(r.id)))err.push(`回條 ${r.id} 沒有對應義務`);
+    if(this.controlQ.length!==this.pools.control.live.size)err.push('控制佇列與額度不一致');if(this.retained.length!==this.pools.retry.live.size)err.push('送方保留與重送票不一致');
+    const owners=[...Object.values(this.envs).filter(e=>e.credit).map(e=>e.credit),...[...this.handoffs.values()].map(h=>h.credit)];
+    if(new Set(owners).size!==owners.length||owners.length!==this.pools.handoff.live.size||owners.some(id=>!this.pools.handoff.live.has(id)))err.push('交接額度擁有者不一致');
+    for(const h of this.handoffs.values())if(h.custody!==this.custody.id)err.push(`交接 ${h.id} 不在看管範圍`);
+    if(this.routes.length>CAP.routes)err.push('途徑表超過上限');if(this.services.size>CAP.services)err.push('服務表超過上限');if(this.alias.size>CAP.alias)err.push('別名超過上限');
+    if(this.log.length>CAP.log)err.push('日誌超過上限');return err;}
+  snapshot(){return{world:this.id,pumpRunning:this.pumpRunning,custody:{...this.custody},activeReceiver:this.activeReceiver,
+    envs:Object.values(this.envs).map(e=>({name:e.name,state:e.state,control:e.control,visuals:e.visuals,closed:e.closed,credit:e.credit,route:e.route,routeAlive:!!(this.route(e.route)||{}).alive,
+      services:e.services.map(s=>{const x=this.services.get(s);return x?`${x.name}(${s}${x.trustworthy?'':' 不可信'})`:s;}),isolation:e.isolation,needsProof:e.needsProof,value:e.value,
+      queued:[...e.queue],attempt:e.attempt?{...e.attempt,batch:[...e.attempt.batch]}:null,ended:e.ended.map(x=>`${x.id}:${x.how}`),applied:e.applied,notApplicable:e.notApplicable,notExecuted:e.notExecuted,pauseReason:e.pauseReason,cleanupSafe:e.cleanupSafe})),
+    commands:[...this.commands.values()].map(c=>({id:c.id,env:c.env,state:c.state,slot:c.token.slot,gen:c.token.gen,cancelRequested:c.cancelRequested,allowContinue:c.allowContinue,terminal:c.terminal,disp:c.disp})),
+    receipts:[...this.receipts.values()].map(r=>({...r})),
+    handoffs:[...this.handoffs.values()].map(h=>({id:h.id,env:h.env,credit:h.credit,custody:h.custody,acked:h.acked,
+      assignments:h.assignments.map(x=>({id:x.id,receiver:x.receiver,authority:x.authority,callbackActive:x.callbackActive})),pending:h.pending&&h.pending.id,works:[...h.works.keys()],leases:[...h.leases.keys()]})),
+    services:[...this.services.values()].map(s=>({id:s.id,name:s.name,trustworthy:s.trustworthy,leases:[...s.leases.keys()]})),
+    routes:this.routes.map(r=>({...r})),pools:Object.fromEntries(Object.entries(this.pools).map(([k,p])=>[k,p.view()])),
+    controlQueue:this.controlQ.map(m=>`${m.id}:${m.kind}`),retained:this.retained.map(x=>`${x.ticket}→${x.msg.id}:${x.msg.kind}`),aliasCount:this.alias.size,counters:{...this.counters},log:[...this.log]};}
+}
+
+// ---------------- guides (same action objects as free play) ----------------
+const P=(kind,body)=>({type:'postControl',kind,body});
+const live=(s,k)=>s.pools[k].liveCount;
+const allZero=s=>Object.keys(s.pools).every(k=>live(s,k)===0);
+const stable=s=>{const c={...s,counters:{...s.counters}};delete c.log;delete c.counters.noProgress;return JSON.stringify(c);};
+const rep=(n,f)=>Array.from({length:n},(_,i)=>f(i+1)).flat();
+let saved=null;
+const guides=[
+ {id:'g1',title:'1 最後一個 UI 關閉',desc:'A 有進行中的命令與恢復批次，C 故障且交接回呼仍持有服務租用。三個視覺全部關閉後：恢復嘗試過期；晚到結果只結算一次並安全判定不適用；回呼仍執行時確認不會提早歸還；各環境自己的啟用預留在其義務結束後各歸還一次；最後明確收取回條，所有池才歸零。',
+  steps:[
+   {label:'A 開始命令 c1（宣告可繼續）',action:{type:'startCommand',env:'A',allowContinue:true,as:'c1'}},
+   {label:'A 開始命令 c2（預設會被請求取消）',action:{type:'startCommand',env:'A',as:'c2'},expect:s=>live(s,'receipt')===2&&live(s,'result')===2,why:'回條與結果預留在開始前取得'},
+   {label:'C 故障 → 看管範圍內的交接',action:{type:'fault',env:'C',as:'h'}},
+   {label:'遞送交接給 host1（回呼開始、租用服務）',action:{type:'deliverHandoff',handoff:'@h',as:'t'},expect:s=>s.handoffs[0].leases.length===1&&s.handoffs[0].works.length===1},
+   {label:'A 的接收途徑失效',action:{type:'loseRoute',route:'@rA'},expect:s=>s.envs[0].state==='已暫停'&&s.commands.find(c=>!c.allowContinue).cancelRequested,why:'c2 只是取消請求，不是完成'},
+   {label:'worker：c2 完成',action:P('result',{token:'@c2',value:7})},
+   {label:'處理控制訊息',action:{type:'processControls'},expect:s=>s.receipts.some(r=>r.terminal==='已完成'&&!r.disp)&&s.envs[0].value===0,why:'終態已完成、UI 處置仍待定'},
+   {label:'安裝新 A 途徑',action:{type:'installRoute',name:'routeA',as:'rA2'}},
+   {label:'A 請求恢復（固定本批）',action:{type:'beginResume',env:'A',route:'@rA2',as:'a1'},expect:s=>s.envs[0].attempt&&s.envs[0].attempt.batch.length===1},
+   {label:'關閉 A 的視覺',action:{type:'closeVisuals',env:'A'},expect:s=>!s.envs[0].visuals&&!s.envs[0].attempt&&s.envs[0].control==='收尾中'&&s.envs[0].credit,why:'恢復失效；A 仍有命令，啟用預留保留'},
+   {label:'關閉 B（閒置）',action:{type:'closeVisuals',env:'B'},expect:s=>s.envs[1].control==='已結束'&&s.pools.handoff.returned===1,why:'B 沒有義務 → 自己的啟用預留歸還一次'},
+   {label:'關閉 C（最後一個 UI）',action:{type:'closeVisuals',env:'C'},expect:s=>s.envs.every(e=>!e.visuals)&&s.handoffs.length===1&&live(s,'handoff')===2,why:'交接仍在看管範圍；A 的預留仍在'},
+   {label:'舊恢復嘗試處理一份（應過期）',action:{type:'resumeStep',attempt:'@a1'},expectResult:r=>r.startsWith('過期')},
+   {label:'host1 確認（回呼仍在執行）',action:P('ack','@t')},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.handoffs[0].acked&&live(s,'handoff')===2,why:'已確認但不提早歸還'},
+   {label:'worker：c1 晚到完成',action:P('result',{token:'@c1',value:9})},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.counters.notApplicable===1&&s.envs[0].value===0},
+   {label:'A 安全收尾：留存的 c2 判定不適用',action:{type:'disposeClosed',env:'A'},expect:s=>live(s,'result')===0&&s.envs[0].control==='已結束'&&live(s,'handoff')===1,why:'A 義務結束 → A 啟用預留歸還'},
+   {label:'host1：回呼結束',action:P('callbackEnd','@t')},
+   {label:'host1：列管工作結束',action:P('workEnd','@t')},
+   {label:'host1：租用歸還',action:P('leaseEnd','@t')},
+   {label:'處理（預算 2）',action:{type:'processControls'}},
+   {label:'處理剩下的',action:{type:'processControls'},expect:s=>s.handoffs.length===0&&s.pools.handoff.returned===3&&s.pools.handoff.ignoredRelease===0,why:'三筆交接額度（A、B 啟用、C 交接）各歸還一次'},
+   {label:'重複確認',action:P('ack','@t')},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.pools.handoff.returned===3&&s.pools.handoff.ignoredRelease===0},
+   {label:'檢查回條（尚未收取）',action:{type:'processControls',budget:0},expect:s=>s.receipts.length===2&&s.receipts.every(r=>r.terminal==='已完成'&&r.disp==='不適用')&&live(s,'receipt')===2&&!allZero(s),why:'每個已受理執行各一張回條；未收取前不歸零'},
+   {label:'明確收取回條',action:{type:'collectReceipts'},expect:s=>allZero(s)&&s.counters.collected===2,why:'收取後所有池歸零'}]},
+ {id:'g2',title:'2 共享不安全服務',desc:'A、B 共用「共享服務X」。B 的途徑先失效；A 故障並宣告服務X 不可信。fixture 假設：B 的資料仍健康，只是資源被擋。新途徑不能讓 B 恢復；隔離未知也被拒。B 改綁可信服務並宣告已隔離後，可在 A 的交接未結清時恢復。改派撤銷舊確認資格，但舊回呼的租用另外歸還；確認後不能再改派。',
+  steps:[
+   {label:'B 的接收途徑失效',action:{type:'loseRoute',route:'@rB'}},
+   {label:'A 故障，共享服務X 不可信',action:{type:'fault',env:'A',unsafeService:'@s1',as:'h'}},
+   {label:'遞送交接給 host1（回呼租用服務X）',action:{type:'deliverHandoff',handoff:'@h',as:'t'}},
+   {label:'安裝新 B 途徑',action:{type:'installRoute',name:'routeB',as:'rB2'}},
+   {label:'B 請求恢復（應被拒：服務不可信）',action:{type:'beginResume',env:'B',route:'@rB2'},expectResult:r=>r.includes('不可信')},
+   {label:'宣告 B 隔離未知',action:{type:'declareIsolation',env:'B',value:'未知'}},
+   {label:'B 請求恢復（應被拒：隔離未知）',action:{type:'beginResume',env:'B',route:'@rB2'},expectResult:r=>r.includes('隔離未知')},
+   {label:'改派 A 的交接給 host2',action:{type:'reassign',handoff:'@h',receiver:'host2'}},
+   {label:'host1 用舊憑證確認',action:P('ack','@t')},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.counters.revokedAck===1&&!s.handoffs[0].acked&&s.services[0].leases.length===1,why:'舊確認被拒；舊租用仍在'},
+   {label:'B 改綁新的可信服務',action:{type:'bindNewService',env:'B',from:'@s1',name:'新服務X2'}},
+   {label:'撤回「隔離未知」（改為未宣告，不是證實）',action:{type:'declareIsolation',env:'B',value:'未宣告'}},
+   {label:'B 請求恢復（應被拒：換新服務不等於證實隔離）',action:{type:'beginResume',env:'B',route:'@rB2'},expect:s=>s.envs[1].state==='已暫停'&&s.envs[1].needsProof&&s.envs[1].services.every(x=>!x.includes('不可信')),expectResult:r=>r.includes('尚未明確證實隔離'),why:'資源已修復、途徑有效，仍缺隔離證明'},
+   {label:'宣告 B 已證實隔離',action:{type:'declareIsolation',env:'B',value:'已證實'}},
+   {label:'B 請求恢復',action:{type:'beginResume',env:'B',route:'@rB2',as:'b1'},expect:s=>s.envs[1].state==='恢復處理中'&&s.handoffs.length===1},
+   {label:'B 提交恢復',action:{type:'commitResume',attempt:'@b1'},expect:s=>s.envs[1].state==='執行中'},
+   {label:'host1：列管工作結束',action:P('workEnd','@t')},
+   {label:'重複送同一工作結束',action:P('workEnd','@t')},
+   {label:'host1：回呼結束',action:P('callbackEnd','@t')},
+   {label:'處理',action:{type:'processControls'}},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.handoffs[0].works.length===0&&s.counters.ignoredMsgs>=2&&s.services[0].leases.length===1},
+   {label:'改派生效',action:{type:'activateReassign',handoff:'@h'}},
+   {label:'遞送給 host2',action:{type:'deliverHandoff',handoff:'@h',as:'t2'}},
+   {label:'host2 確認',action:P('ack','@t2')},
+   {label:'處理',action:{type:'processControls'}},
+   {label:'確認後再改派（應被拒）',action:{type:'reassign',handoff:'@h',receiver:'host1'},expectResult:r=>r.includes('已有效確認')},
+   {label:'host2 回呼結束',action:P('callbackEnd','@t2')},
+   {label:'host2 工作結束',action:P('workEnd','@t2')},
+   {label:'host1 舊回呼租用歸還',action:P('leaseEnd','@t')},
+   {label:'處理',action:{type:'processControls'}},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.handoffs.length===1,why:'host2 的租用未歸還前仍保留'},
+   {label:'host2 租用歸還',action:P('leaseEnd','@t2')},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.handoffs.length===0&&s.pools.handoff.returned===1&&live(s,'handoff')===2,why:'A 交接歸還一次；B、C 健康環境仍持有啟用預留'}]},
+ {id:'g3',title:'3 普通佇列滿載 vs 控制通道',desc:'普通佇列滿了不影響控制通道。控制通道滿時未受理，送方以重送票保留原訊息；重送票也滿時明確回報「未保留」，訊息仍歸呼叫端。每次處理有預算。確認、工作、租用、結果都不需要普通佇列空位。',
+  steps:[
+   {label:'C 開始命令 c1',action:{type:'startCommand',env:'C',as:'c1'}},
+   {label:'B 故障 → 交接',action:{type:'fault',env:'B',as:'h'}},
+   {label:'遞送交接',action:{type:'deliverHandoff',handoff:'@h',as:'t'}},
+   ...rep(3,i=>[{label:`C 送入普通動作 ${i}`,action:{type:'submit',env:'C'}}]),
+   {label:'C 送入普通動作 4（應不受理）',action:{type:'submit',env:'C'},expectResult:r=>r.includes('已滿')},
+   {label:'host 確認',action:P('ack','@t'),expectResult:r=>r.includes('已受理'),why:'普通佇列滿不影響控制通道'},
+   {label:'回呼結束',action:P('callbackEnd','@t')},{label:'工作結束',action:P('workEnd','@t')},
+   {label:'c1 結果',action:P('result',{token:'@c1',value:3})},
+   ...rep(8,i=>[{label:`無效訊息 ${i}（控制滿 → 送方保留）`,action:P('workEnd',{world:'W0',work:'X'+i})}]),
+   {label:'租用歸還（控制與重送票都滿）',action:P('leaseEnd','@t'),expect:s=>s.retained.length===8&&s.counters.notRetained===1&&s.handoffs[0].leases.length===1,expectResult:r=>r.includes('未保留'),why:'明確回報未保留；租用義務仍在'},
+   ...rep(3,i=>[{label:`第 ${i} 次：處理 4 則`,action:{type:'processControls',budget:4}},{label:'送方重送',action:{type:'retryRetained'}}]),
+   {label:'處理剩下的',action:{type:'processControls',budget:4},expect:s=>s.controlQueue.length===0&&s.retained.length===0&&s.envs[2].value===3},
+   {label:'呼叫端之後重送租用歸還',action:P('leaseEnd','@t')},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.handoffs.length===0&&live(s,'ordinary')===3&&live(s,'control')===0&&live(s,'retry')===0,why:'交接釋放；普通佇列仍滿'},
+   ...rep(3,i=>[...rep(5,j=>[{label:`第 ${i} 輪 訊息 ${j}`,action:P('workEnd',{world:'W0',work:`Y${i}.${j}`})}]),
+     {label:'處理',action:{type:'processControls',budget:4}},{label:'重送',action:{type:'retryRetained'}},
+     {label:'處理',action:{type:'processControls'},expect:s=>s.controlQueue.length===0&&s.retained.length===0&&s.log.length<=40&&s.aliasCount<=24}])]},
+ {id:'g4',title:'4 取消 vs 提交、舊訊息與槽位重用',desc:'本批處理完後，取消先 → 提交回報已結束；新嘗試提交先 → 取消太晚。之後槽位被新命令重用，舊結果、重複結果、外來工作都不影響新身分；同一預留只釋放一次。',
+  steps:[
+   {label:'A 開始命令 c1',action:{type:'startCommand',env:'A',allowContinue:true,as:'c1'}},
+   {label:'A 開始命令 c2',action:{type:'startCommand',env:'A',allowContinue:true,as:'c2'}},
+   {label:'A 的途徑失效',action:{type:'loseRoute',route:'@rA'}},
+   {label:'c1 結果',action:P('result',{token:'@c1',value:1})},{label:'c2 結果',action:P('result',{token:'@c2',value:2})},
+   {label:'處理',action:{type:'processControls'}},
+   {label:'安裝新途徑',action:{type:'installRoute',name:'routeA',as:'rA2'}},
+   {label:'請求恢復',action:{type:'beginResume',env:'A',route:'@rA2',as:'a1'}},
+   {label:'處理本批（2 份）',action:{type:'resumeStep',attempt:'@a1'},expect:s=>s.envs[0].applied===2&&s.envs[0].state==='恢復處理中',why:'本批處理完 ≠ 已提交'},
+   {label:'送：取消 a1',action:P('cancelResume',{attempt:'@a1'})},{label:'送：提交 a1',action:P('commitResume',{attempt:'@a1'})},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.envs[0].state==='已暫停'&&s.counters.cancels===1&&s.counters.commits===0&&s.envs[0].applied===2},
+   {label:'再次請求恢復（空本批）',action:{type:'beginResume',env:'A',route:'@rA2',as:'a2'}},
+   {label:'送：提交 a2',action:P('commitResume',{attempt:'@a2'})},{label:'送：取消 a2',action:P('cancelResume',{attempt:'@a2'})},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.envs[0].state==='執行中'&&s.counters.tooLate===1},
+   {label:'A 開始命令 c3（重用槽位）',action:{type:'startCommand',env:'A',as:'c3'},expect:s=>s.commands[0].slot===0&&s.commands[0].gen===2},
+   {label:'舊 c1 結果重送',action:P('result',{token:'@c1',value:99})},{label:'外來工作結束',action:P('workEnd',{world:'W0',handoff:'x',assignment:'y',work:'z'})},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.commands.length===1&&s.commands[0].state==='執行中'&&s.envs[0].value===2},
+   {label:'c3 結果',action:P('result',{token:'@c3',value:5})},{label:'c3 結果重複',action:P('result',{token:'@c3',value:6})},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.envs[0].value===5&&s.envs[0].applied===3&&s.pools.result.returned===3&&s.pools.result.ignoredRelease===0},
+   {label:'收取回條',action:{type:'collectReceipts'},expect:s=>live(s,'receipt')===0&&s.counters.collected===3}]},
+ {id:'g5',title:'5 反例與邊界',desc:'有界途徑表、不安全收尾（含已取消結果）、偽造的回呼／工作／租用完成、確認後改派、停止派送時所有擁有者動作都不變更狀態、恢復中故障。',
+  steps:[
+   ...rep(10,i=>[{label:`第 ${i} 輪：A 途徑失效`,action:{type:'loseRoute',route:'@rA'}},{label:'安裝新 A 途徑',action:{type:'installRoute',name:'routeA',as:'rA'}},
+     {label:'恢復',action:{type:'beginResume',env:'A',route:'@rA',as:'aA'}},{label:'提交',action:{type:'commitResume',attempt:'@aA'},expect:s=>s.envs[0].state==='執行中'&&s.routes.length<=6}]),
+   {label:'A 開始命令 cx（預設取消請求）',action:{type:'startCommand',env:'A',as:'cx'}},
+   {label:'A 收尾宣告不安全',action:{type:'setCleanupSafe',env:'A',safe:false}},
+   {label:'關閉 A',action:{type:'closeVisuals',env:'A'}},
+   {label:'worker：cx 以取消結束',action:P('result',{token:'@cx',cancelled:true})},
+   {label:'處理',action:{type:'processControls'},expect:s=>live(s,'result')===1&&s.envs[0].control==='收尾中'&&s.envs[0].credit,why:'已取消也不立即處置：資源保留'},
+   {label:'A 嘗試收尾（不安全）',action:{type:'disposeClosed',env:'A'},expectResult:r=>r.includes('不安全')},
+   {label:'A 收尾宣告安全',action:{type:'setCleanupSafe',env:'A',safe:true}},
+   {label:'A 安全收尾',action:{type:'disposeClosed',env:'A'},expect:s=>live(s,'result')===0&&s.envs[0].control==='已結束'&&s.receipts.some(r=>r.disp==='無結果')},
+   {label:'C 故障',action:{type:'fault',env:'C',as:'h'}},{label:'遞送',action:{type:'deliverHandoff',handoff:'@h',as:'t'}},
+   {label:'偽造：外來 World 的回呼結束',action:P('callbackEnd',{world:'W999',handoff:'@t.handoff',assignment:'@t.assignment'})},
+   {label:'偽造：錯誤指派的工作結束',action:P('workEnd',{world:'@t.world',handoff:'@t.handoff',assignment:'BAD',work:'@t.work'})},
+   {label:'偽造：外來 World 的租用歸還',action:P('leaseEnd',{world:'W999',handoff:'@t.handoff',assignment:'@t.assignment',lease:'@t.lease'})},
+   {label:'處理',action:{type:'processControls',budget:3},expect:s=>s.handoffs[0].assignments[0].callbackActive&&s.handoffs[0].works.length===1&&s.handoffs[0].leases.length===1,why:'真正的義務都沒變'},
+   {label:'host1 確認',action:P('ack','@t')},{label:'處理',action:{type:'processControls'}},
+   {label:'確認後改派（應被拒）',action:{type:'reassign',handoff:'@h',receiver:'host2'},expectResult:r=>r.includes('已有效確認')},
+   {label:'停止派送',action:{type:'stopPump'},expect:s=>{saved=stable(s);return true;}},
+   {label:'關閉 B（應無進展）',action:{type:'closeVisuals',env:'B'}},{label:'B 開始命令',action:{type:'startCommand',env:'B'}},{label:'B 送入動作',action:{type:'submit',env:'B'}},
+   {label:'安裝途徑',action:{type:'installRoute',name:'routeX'}},{label:'B 故障',action:{type:'fault',env:'B'}},{label:'處理控制',action:{type:'processControls'}},{label:'收取回條',action:{type:'collectReceipts'}},
+   {label:'檢查：狀態未變',action:{type:'resumeStep',attempt:'none'},expect:s=>stable(s)===saved&&s.counters.noProgress===8,why:'只有「沒有進展」計數與日誌改變'},
+   {label:'送：回呼結束（停止時仍可投遞）',action:P('callbackEnd','@t'),expectResult:r=>r.includes('已受理')},
+   {label:'恢復派送',action:{type:'startPump'},expect:s=>s.envs[0].closed&&s.envs[1].state==='執行中'&&s.handoffs[0].assignments[0].callbackActive,why:'不自動推進或重新開放'},
+   {label:'B 途徑失效',action:{type:'loseRoute',route:'@rB'}},{label:'安裝 B 途徑',action:{type:'installRoute',name:'routeB',as:'rB2'}},
+   {label:'B 請求恢復',action:{type:'beginResume',env:'B',route:'@rB2'}},
+   {label:'恢復中 B 故障',action:{type:'fault',env:'B'},expect:s=>s.envs[1].state==='故障'&&!s.envs[1].attempt&&s.handoffs.length===2},
+   ...rep(10,i=>[{label:`安裝未使用的途徑 ${i}`,action:{type:'installRoute',name:'spare'}}]),
+   {label:'再安裝一次（應不受理）',action:{type:'installRoute',name:'spare'},expect:s=>s.routes.length===6&&s.counters.refusedRegistry>=1,expectResult:r=>r.includes('已滿')}]},
+ {id:'g6',title:'6 晚到結果與不安全的閒置關閉',desc:'B 閒置但收尾宣告不安全：關閉後仍保留預留與「收尾中」，直到宣告安全並由擁有者明確收尾。A 恢復期間晚到的結果不進入固定本批；提交時它仍被保留，之後的一般處理輪才處置一次。最後示範提交前途徑失效：不重新開放，未處置結果的義務保留。',
+  steps:[
+   {label:'B 收尾宣告不安全',action:{type:'setCleanupSafe',env:'B',safe:false}},
+   {label:'關閉 B（閒置）',action:{type:'closeVisuals',env:'B'},expect:s=>s.envs[1].control==='收尾中'&&s.envs[1].credit&&s.pools.handoff.returned===0,why:'不安全時即使閒置也不歸還'},
+   {label:'B 嘗試收尾（不安全）',action:{type:'disposeClosed',env:'B'},expect:s=>s.envs[1].control==='收尾中'&&s.counters.incomplete===1},
+   {label:'B 收尾宣告安全',action:{type:'setCleanupSafe',env:'B',safe:true}},
+   {label:'B 明確收尾',action:{type:'disposeClosed',env:'B'},expect:s=>s.envs[1].control==='已結束'&&!s.envs[1].credit&&s.pools.handoff.returned===1},
+   {label:'A 開始命令 c1',action:{type:'startCommand',env:'A',allowContinue:true,as:'c1'}},
+   {label:'A 開始命令 c2',action:{type:'startCommand',env:'A',allowContinue:true,as:'c2'}},
+   {label:'A 開始命令 c3',action:{type:'startCommand',env:'A',allowContinue:true,as:'c3'}},
+   {label:'A 開始命令 c4',action:{type:'startCommand',env:'A',allowContinue:true,as:'c4'}},
+   {label:'A 的途徑失效',action:{type:'loseRoute',route:'@rA'}},
+   {label:'c1 完成',action:P('result',{token:'@c1',value:11})},{label:'處理',action:{type:'processControls'}},
+   {label:'安裝新 A 途徑',action:{type:'installRoute',name:'routeA',as:'rA2'}},
+   {label:'A 請求恢復（本批只有 c1）',action:{type:'beginResume',env:'A',route:'@rA2',as:'a1'},expect:s=>s.envs[0].attempt.batch.length===1},
+   {label:'恢復期間 c2 晚到',action:P('result',{token:'@c2',value:22})},{label:'處理',action:{type:'processControls'}},
+   {label:'處理本批',action:{type:'resumeStep',attempt:'@a1'},expect:s=>s.envs[0].attempt.batch.length===1&&s.envs[0].value===11&&s.commands.some(c=>c.state==='已結算'),why:'c2 不加入本批'},
+   {label:'提交恢復',action:{type:'commitResume',attempt:'@a1'},expect:s=>s.envs[0].state==='執行中'&&s.commands.filter(c=>c.state==='已結算').length===1,why:'提交時晚到的 c2 仍被保留'},
+   {label:'一般處理輪',action:{type:'processPendingResults',env:'A'},expect:s=>s.envs[0].value===22&&s.envs[0].applied===2&&!s.commands.some(c=>c.state==='已結算')},
+   {label:'c2 重複完成',action:P('result',{token:'@c2',value:99})},{label:'處理',action:{type:'processControls'}},
+   {label:'再跑一般處理輪',action:{type:'processPendingResults',env:'A'},expect:s=>s.envs[0].value===22&&s.envs[0].applied===2&&s.receipts.filter(r=>r.disp==='已套用').length===2,why:'只套用一次；逐筆回條保留'},
+   {label:'A 的途徑再失效',action:{type:'loseRoute',route:'@rA2'}},
+   {label:'c3 完成',action:P('result',{token:'@c3',value:33})},{label:'處理',action:{type:'processControls'}},
+   {label:'安裝新 A 途徑',action:{type:'installRoute',name:'routeA',as:'rA3'}},
+   {label:'A 請求恢復（本批 c3）',action:{type:'beginResume',env:'A',route:'@rA3',as:'a2'}},
+   {label:'恢復期間 c4 晚到',action:P('result',{token:'@c4',value:44})},{label:'處理',action:{type:'processControls'}},
+   {label:'處理本批',action:{type:'resumeStep',attempt:'@a2'}},
+   {label:'提交前途徑失效',action:{type:'loseRoute',route:'@rA3'}},
+   {label:'提交（應不重新開放）',action:{type:'commitResume',attempt:'@a2'},expect:s=>s.envs[0].state==='已暫停'&&s.commands.some(c=>c.state==='已結算')&&s.receipts.some(r=>r.terminal==='已完成'&&!r.disp),expectResult:r=>r.includes('已結束'),why:'c4 的結果與回條義務保留'},
+   {label:'暫停中跑一般處理輪（應拒絕）',action:{type:'processPendingResults',env:'A'},expectResult:r=>r.startsWith('拒絕')}]}];
+function prepare(w){w.aliasSet('rA',w.envs.A.route);w.aliasSet('rB',w.envs.B.route);w.aliasSet('rC',w.envs.C.route);w.aliasSet('s1',w.envs.A.services[0]);}
+function newWorld(){const w=new World();prepare(w);return w;}
+function run(w,step){return w.dispatch(step.action);}
+function runGuides(){return guides.map(g=>{const w=newWorld();saved=null;const steps=g.steps.map((st,i)=>{const o=run(w,st);const s=w.snapshot();
+    let expectation=null;if(st.expect||st.expectResult){let ok=false;try{ok=(st.expect?st.expect(s):true)&&(st.expectResult?st.expectResult(o.result):true);}catch(e){ok=false;}expectation={ok:!!ok,why:st.why||st.label};}
+    return{index:i+1,label:st.label,result:o.result,errors:o.errors,expectation};});
+  return{guide:g.title,steps,invariantErrors:steps.reduce((n,s)=>n+s.errors.length,0),expectationsChecked:steps.filter(s=>s.expectation).length,expectationsFailed:steps.filter(s=>s.expectation&&!s.expectation.ok).length};});}
+globalThis.IntegrationPrototype={World,guides,runGuides,newWorld,run,CAP};
+})();
+</script>
+
+<div class="tabs" id="tabs"></div>
+<div class="card" id="guide"></div>
+<h2>自由操作</h2>
+<div class="card" id="free"></div>
+<div class="grid">
+  <div><h2>目前狀態</h2><div class="card" id="state"></div></div>
+  <div><h2>容量池（逐池稽核）</h2><div class="card" id="pools"></div><h2>最近紀錄（上限 40 行）</h2><div class="card log" id="log"></div></div>
+</div>
+
+<script id="shell">
+(function(){
+const M=globalThis.IntegrationPrototype;let w=M.newWorld(),g=null,gi=0,last='';
+const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function act(step){const o=M.run(w,step);last=`${step.label}：${o.result}${o.errors.length?'　⚠ 不變式：'+o.errors.join('；'):''}`;return o;}
+const P=(kind,body)=>({type:'postControl',kind,body});
+const free=[
+ ['A 開始命令',{type:'startCommand',env:'A',as:'cA'}],['A 送入普通動作',{type:'submit',env:'A'}],['C 送入普通動作',{type:'submit',env:'C'}],['A 執行一個排隊動作',{type:'runQueued',env:'A',as:'cA'}],
+ ['A 途徑失效',{type:'loseRoute',route:'@rA'}],['安裝新 A 途徑',{type:'installRoute',name:'routeA',as:'rA'}],['A 請求恢復',{type:'beginResume',env:'A',route:'@rA',as:'aA'}],
+ ['A 恢復處理一片',{type:'resumeStep',attempt:'@aA'}],['A 一般處理輪（晚到結果）',{type:'processPendingResults',env:'A'}],['送：提交 A 恢復',P('commitResume',{attempt:'@aA'})],['送：取消 A 恢復',P('cancelResume',{attempt:'@aA'})],
+ ['worker：A 最近命令完成',P('result',{token:'@cA',value:4})],['worker：A 最近命令以取消結束',P('result',{token:'@cA',cancelled:true})],
+ ['C 故障',{type:'fault',env:'C',as:'h'}],['遞送交接',{type:'deliverHandoff',handoff:'@h',as:'t'}],
+ ['送：確認',P('ack','@t')],['送：回呼結束',P('callbackEnd','@t')],['送：工作結束',P('workEnd','@t')],['送：租用歸還',P('leaseEnd','@t')],
+ ['處理控制訊息（預算 2）',{type:'processControls',budget:2}],['送方重送',{type:'retryRetained'}],['收取已結清回條',{type:'collectReceipts'}],
+ ['關閉 A 視覺',{type:'closeVisuals',env:'A'}],['關閉 B 視覺',{type:'closeVisuals',env:'B'}],['A 安全收尾',{type:'disposeClosed',env:'A'}],
+ ['A 收尾宣告不安全',{type:'setCleanupSafe',env:'A',safe:false}],['A 收尾宣告安全',{type:'setCleanupSafe',env:'A',safe:true}],
+ ['停止派送',{type:'stopPump'}],['恢復派送',{type:'startPump'}]];
+function renderFree(){$('free').innerHTML='<button class="primary" id="reset">重設全部狀態</button>'+free.map((f,i)=>`<button data-f="${i}">${f[0]}</button>`).join('')+`<div class="muted">最近動作：${esc(last)}</div>`;
+  $('reset').onclick=()=>{w=M.newWorld();g=null;last='重設';renderTabs();render();};
+  $('free').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{g=null;act({label:free[b.dataset.f][0],action:free[b.dataset.f][1]});renderTabs();render();});}
+function renderTabs(){$('tabs').innerHTML=M.guides.map((x,i)=>`<button data-g="${i}" class="${g===x?'active':''}">${x.title}</button>`).join('');
+  $('tabs').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{g=M.guides[b.dataset.g];gi=0;w=M.newWorld();last=`開始 ${g.title}（狀態已重設）`;renderTabs();render();});}
+function renderGuide(){if(!g){$('guide').innerHTML='<span class="muted">選擇上方的引導情境；開始時會重設狀態，步驟使用和自由操作相同的動作。</span>';return;}
+  const st=g.steps[gi];$('guide').innerHTML=`<b>${g.title}</b><p>${g.desc}</p><div>步驟 ${Math.min(gi+1,g.steps.length)} / ${g.steps.length}</div>`+
+   (st?`<button class="primary" id="nx">▶ ${esc(st.label)}</button>${st.why?`<div class="muted">檢查重點：${esc(st.why)}</div>`:''}`:'<div class="ok">引導結束，可自由操作。</div>');
+  if(st)$('nx').onclick=()=>{const o=act(st);gi++;if(st.expect||st.expectResult){let ok=false;try{ok=(st.expect?st.expect(w.snapshot()):true)&&(st.expectResult?st.expectResult(o.result):true);}catch(e){}last+=ok?'　✓ 符合預期':'　✗ 與預期不符';}render();};}
+const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
+function render(){const s=w.snapshot();const h=[];
+  h.push(`<table>${row('World',s.world)}${row('宿主派送',s.pumpRunning?'執行中':'<span class="bad">已停止：擁有者動作沒有進展，資源保留</span>')}${row('交接看管範圍',`${s.custody.id}（宿主持有，先於環境建立）`)}${row('主動接收者',s.activeReceiver)}</table>`);
+  h.push('<table><tr><th>環境</th><th>UI 狀態</th><th>控制生命週期</th><th>途徑</th><th>服務／隔離</th><th>UI 值</th><th>恢復嘗試</th><th>處置</th></tr>'+s.envs.map(e=>`<tr><td>${e.name}</td><td>${e.state}<br><span class="muted">視覺：${e.visuals?'有':'已移除'}${e.pauseReason?'；'+e.pauseReason:''}</span></td><td>${e.control}<br><span class="muted">啟用預留：${e.credit||'無（已歸還或已轉給交接）'}</span></td><td>${e.route}${e.routeAlive?'':' <span class="bad">失效</span>'}</td><td>${e.services.join('<br>')}<br><span class="muted">隔離：${e.isolation}${e.needsProof?'（共享故障後需明確證實）':''}；收尾：${e.cleanupSafe?'安全':'不安全'}</span></td><td>${e.value}</td><td>${e.attempt?`進行中 ${e.attempt.id}：本批 ${e.attempt.batch.length}，已處理 ${e.attempt.cursor}，等待提交=${e.attempt.cursor===e.attempt.batch.length?'是（提交時再檢查）':'否'}`:'無進行中的嘗試'}${e.ended.length?'<br><span class="muted">結局：'+e.ended.join('、')+'</span>':''}</td><td>套用 ${e.applied}／不適用 ${e.notApplicable}／未執行 ${e.notExecuted}</td></tr>`).join('')+'</table>');
+  h.push('<h3>命令（持有結果預留）</h3>'+(s.commands.length?'<table><tr><th>命令</th><th>環境</th><th>狀態</th><th>槽位/世代</th><th>取消</th><th>終態</th><th>UI 處置</th></tr>'+s.commands.map(c=>`<tr><td>${c.id}</td><td>${c.env}</td><td>${c.state}</td><td>${c.slot}/${c.gen}</td><td>${c.allowContinue?'宣告可繼續':c.cancelRequested?'已請求（非完成）':'—'}</td><td>${c.terminal||'—'}</td><td>${c.disp||'待處置'}</td></tr>`).join('')+'</table>':'<span class="muted">無</span>'));
+  h.push('<h3>回條（每個已受理請求一張；需明確收取）</h3>'+(s.receipts.length?'<table><tr><th>請求</th><th>環境</th><th>種類</th><th>終態</th><th>目前 UI 處置</th></tr>'+s.receipts.map(r=>`<tr><td>${r.id}</td><td>${r.env}</td><td>${r.kind}</td><td>${r.terminal||'未結束'}</td><td>${r.disp||'待處置'}</td></tr>`).join('')+'</table>':'<span class="muted">無</span>'));
+  h.push('<h3>交接（看管範圍持有）</h3>'+(s.handoffs.length?'<table><tr><th>交接</th><th>額度</th><th>確認</th><th>指派</th><th>列管工作</th><th>租用</th></tr>'+s.handoffs.map(x=>`<tr><td>${x.id}（${x.env}）</td><td>${x.credit}</td><td>${x.acked?'已確認':'未確認'}</td><td>${x.assignments.map(a=>`${a.id}@${a.receiver}${a.authority?' 有資格':' 已撤銷'}${a.callbackActive?' 回呼中':''}`).join('<br>')}${x.pending?'<br>待生效 '+x.pending:''}</td><td>${x.works.join('、')||'—'}</td><td>${x.leases.join('、')||'—'}</td></tr>`).join('')+'</table>':'<span class="muted">無未結清交接</span>'));
+  h.push('<h3>共享服務與租用</h3><table>'+s.services.map(x=>row(`${x.name}<br><span class="muted">${x.id}</span>`,`${x.trustworthy?'可信':'<span class="bad">不可信</span>'}；租用：${x.leases.join('、')||'無'}`)).join('')+'</table>');
+  $('state').innerHTML=h.join('');
+  $('pools').innerHTML='<table><tr><th>池</th><th>使用中/上限</th><th>發出</th><th>歸還</th><th>拒絕</th><th>忽略的重複歸還</th></tr>'+Object.values(s.pools).map(p=>`<tr><td>${p.name}</td><td>${p.liveCount}/${p.cap}<br><span class="muted">${p.live.join(' ')}</span></td><td>${p.issued}</td><td>${p.returned}</td><td>${p.refused}</td><td>${p.ignoredRelease}</td></tr>`).join('')+'</table>'+
+   `<table>${row('控制佇列（FIFO）',s.controlQueue.join('、')||'空')}${row('送方保留（重送票→訊息）',s.retained.join('、')||'無')}${row('途徑表／別名',`${s.routes.length}/${M.CAP.routes}　${s.aliasCount}/${M.CAP.alias}`)}${row('累計計數',Object.entries(s.counters).map(([k,v])=>`${k}=${v}`).join('　'))}</table>`;
+  const errs=w.invariants();$('log').innerHTML=(errs.length?`<div class="bad">不變式錯誤：${esc(errs.join('；'))}</div>`:'<div class="ok">不變式：全部成立</div>')+esc(s.log.join('\n'));
+  renderFree();renderGuide();}
+renderTabs();render();
+})();
+</script>
+</body>
+</html>

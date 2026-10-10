@@ -1,0 +1,5 @@
+closed_idle_handoff_live 3
+route_count 23 invariants [ '途徑表無界成長' ]
+last_post 不受理：控制通道已滿；送方保留 workEnd（共 8） retained 8 queue 4
+start_while_stopped 開始命令 C10（槽位 0 世代 1）
+foreign_callback_changed [ 'AS11@host1 有資格' ]

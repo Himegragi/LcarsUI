@@ -1,0 +1,15 @@
+PASS idle closure returns all enable reservations
+PASS repeat close no extra return
+PASS unsafe idle keeps scope and credit
+PASS safe explicit cleanup finalizes once
+PASS route flood bounded
+PASS service flood bounded
+PASS both levels full explicitly not retained
+PASS stopped pump no start or close
+PASS foreign controls cannot change real obligations
+PASS duplicate controls cannot release twice
+PASS new resource is not isolation proof
+PASS proven independent B resumes during A pending handoff
+PASS receipt reservation precedes worker start
+PASS explicit collection returns receipts once
+Checks 14 failures 0
