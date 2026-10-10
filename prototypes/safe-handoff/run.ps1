@@ -1,7 +1,7 @@
-param([switch]$BuildOnly,[switch]$Scenarios,[switch]$Interactive)
+param([switch]$BuildOnly,[switch]$Scenarios,[switch]$Interactive,[switch]$ResumeScenarios,[switch]$ResumeInteractive)
 # THROWAWAY safe-handoff logic prototype. Standalone build in prototypes/safe-handoff/build.
 $ErrorActionPreference='Stop'
-if((@($BuildOnly,$Scenarios,$Interactive)|Where-Object{$_}).Count -ne 1){throw 'Use exactly one of -BuildOnly, -Scenarios, -Interactive'}
+if((@($BuildOnly,$Scenarios,$Interactive,$ResumeScenarios,$ResumeInteractive)|Where-Object{$_}).Count -ne 1){throw 'Use exactly one of -BuildOnly, -Scenarios, -Interactive, -ResumeScenarios, -ResumeInteractive'}
 $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if(-not $vsRoot){throw 'C++ Build Tools required'}
@@ -20,6 +20,6 @@ $out=Join-Path $PSScriptRoot 'evidence'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 Push-Location $out
 try{
-  if($Scenarios){& $exe --scenarios}else{& $exe --interactive}
+  if($Scenarios){& $exe --scenarios}elseif($ResumeScenarios){& $exe --resume-scenarios}elseif($ResumeInteractive){& $exe --resume-interactive}else{& $exe --interactive}
   if($LASTEXITCODE){throw "safe_handoff failed (exit $LASTEXITCODE)"}
 }finally{Pop-Location}

@@ -523,10 +523,13 @@ static int interactive(){
     live.reset();return 0;
 }
 
+int resume_scenarios_main();int resume_interactive();
 int main(int argc,char** argv){
     SetConsoleOutputCP(CP_UTF8);std::string mode=argc>1?argv[1]:"";
     if(mode=="--scenarios"){const char* log_name="scenarios-v5.log";std::ofstream f(log_name,std::ios::binary);try{scenarios(f);}catch(const std::exception& e){f<<"FAIL exception "<<e.what()<<'\n';++failures;}
         std::cout<<"scenarios failures="<<failures<<" invariant_checks="<<inv_checks<<" -> "<<log_name<<"\n";return failures?1:0;}
     if(mode=="--interactive")return interactive();
-    std::cerr<<"use --scenarios | --interactive\n";return 2;
+    if(mode=="--resume-scenarios")return resume_scenarios_main();   // companion pause/resume model (resume_main.cpp)
+    if(mode=="--resume-interactive")return resume_interactive();
+    std::cerr<<"use --scenarios | --interactive | --resume-scenarios | --resume-interactive\n";return 2;
 }

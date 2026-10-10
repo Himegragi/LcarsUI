@@ -1,0 +1,7 @@
+SUPERSEDED: resume-scenarios-v1.log (companion v1, R1-R6, 52 PASS, failures=0 at the time) is not current.
+Review added R7-R9. resume-scenarios-v1-red-review.log is the v1 model with R7/R8: failures=1 (60 PASS)
+  - route registry grew to 22 entries after 20 lose/install/resume cycles (no reclamation)
+  R7 (independent B refilling freed slots during A's recovery) already passed on v1.
+  R9 (per-request receipts) has no v1 API, so it is not claimed as a red reproduction.
+The draft free-slot capacity gate was removed before v1 delivery; no red evidence exists for it.
+Current evidence: resume-scenarios-v2.log (failures=0).
