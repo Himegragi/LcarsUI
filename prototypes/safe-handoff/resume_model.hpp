@@ -1,5 +1,5 @@
 #pragma once
-// THROWAWAY COMPANION MODEL v2 (v2: per-request receipts, bounded route registry): pause/resume after loss of a required receiving route (ADR 0003, route-loss paragraphs).
+// THROWAWAY COMPANION MODEL v4 (v2: receipts, bounded routes; v3: owner cancel vs commit, mailbox; v4: bounded control processing): pause/resume after loss of a required receiving route (ADR 0003, route-loss paragraphs).
 // Separate from the v5 host-confirmation model (handoff_model.hpp). Not proof that subsystems are integrated, not an API.
 // Questions: route loss DURING recovery, continuously arriving results not blocking recovery, no duplicate application.
 // Fixture/experimental choices (NOT approved policy): late results after reopen go to following bounded normal rounds;
@@ -21,11 +21,12 @@ namespace resume {
 inline std::uint64_t next_id(){static std::atomic<std::uint64_t> n{0};return ++n;}   // never reused
 
 enum class R{Ok,RefusedPaused,RefusedFaulted,RefusedNoRoute,RefusedNoCapacity,RefusedQueueFull,RefusedWrongThread,RefusedStale,
-    RefusedNotPaused,RefusedNotDone,RefusedEmpty,Invalidated,RefusedUnknown};
+    RefusedNotPaused,RefusedNotDone,RefusedEmpty,Invalidated,RefusedUnknown,TooLate,AlreadyEnded,RefusedMailboxFull};
 inline const char* name(R r){switch(r){case R::Ok:return "成功";case R::RefusedPaused:return "拒絕：已暫停";case R::RefusedFaulted:return "拒絕：故障需重建";
     case R::RefusedNoRoute:return "拒絕：接收途徑無效";case R::RefusedNoCapacity:return "拒絕：容量不足";case R::RefusedQueueFull:return "拒絕：待辦已滿";
     case R::RefusedWrongThread:return "拒絕：非擁有者執行緒";case R::RefusedStale:return "拒絕：過期的恢復嘗試";case R::RefusedNotPaused:return "拒絕：不在暫停狀態";
-    case R::RefusedNotDone:return "拒絕：本批尚未處理完";case R::RefusedEmpty:return "拒絕：沒有項目";case R::Invalidated:return "恢復嘗試失效";default:return "拒絕：未知";}}
+    case R::RefusedNotDone:return "拒絕：本批尚未處理完";case R::RefusedEmpty:return "拒絕：沒有項目";case R::Invalidated:return "恢復嘗試失效";
+    case R::TooLate:return "太晚：已提交";case R::AlreadyEnded:return "已結束：此嘗試先前已取消或失效";case R::RefusedMailboxFull:return "拒絕：信箱已滿";default:return "拒絕：未知";}}
 enum class EnvState{Running,Paused,Resuming,Faulted};
 inline const char* name(EnvState s){switch(s){case EnvState::Running:return "執行中";case EnvState::Paused:return "已暫停";case EnvState::Resuming:return "恢復處理中（仍暫停普通操作）";default:return "故障（需重建）";}}
 enum class Status{None,Completed,Cancelled};            // command terminal status (worker-reported)
@@ -57,10 +58,22 @@ struct Record{std::uint64_t result=0;Disp disp=Disp::None;int applied_count=0;};
 // ui_pending: snapshot taken at terminal settlement ("UI disposition still pending then"); it is NOT updated later.
 struct Receipt{enum K{NotExecuted,Completed,Cancelled} kind;std::uint64_t id=0;int env=-1;bool ui_pending=false;};
 inline const char* name(Receipt::K k){switch(k){case Receipt::NotExecuted:return "未執行";case Receipt::Completed:return "已完成";default:return "已取消";}}
+// v3: bounded ring of ended attempts so a late cancel can report TooLate (committed) vs AlreadyEnded (cancelled/invalidated).
+// Experimental retention: last outcome_cap attempts only; older ids report RefusedStale (harmless).
+struct Outcome{enum K{Committed,Cancelled,Invalidated} kind;std::uint64_t id=0;};
+// v3: bounded owner-thread control mailbox; producers post, the owner applies in FIFO order (first legal transition wins).
+struct Control{enum K{Cancel,Commit} kind;std::uint64_t attempt=0;};
+struct ControlBox{std::mutex m;std::deque<Control> q;static constexpr size_t cap=4;
+    bool post(const Control& c){std::lock_guard l(m);if(q.size()>=cap)return false;q.push_back(c);return true;}   // refuse before acceptance
+    bool pop(Control& c){std::lock_guard l(m);if(q.empty())return false;c=q.front();q.pop_front();return true;}
+    std::vector<Control> peek(){std::lock_guard l(m);return {q.begin(),q.end()};}   // scenario inspection only (<= cap items)
+    size_t size(){std::lock_guard l(m);return q.size();}};
 
 struct World{
     static constexpr size_t slot_cap=6,queue_cap=3,env_cap=2,trace_cap=16,log_cap=120,route_cap=4,receipt_cap=slot_cap+env_cap*queue_cap;
     std::deque<Receipt> outbox;size_t receipt_credits=0;unsigned route_seq=0;
+    static constexpr size_t outcome_cap=8;std::deque<Outcome> outcomes;std::shared_ptr<ControlBox> control=std::make_shared<ControlBox>();
+    int cancels=0,too_late=0;
     const std::uint64_t id=next_id();std::thread::id owner=std::this_thread::get_id();
     std::shared_ptr<Ledger> ledger=std::make_shared<Ledger>(id,slot_cap);
     std::vector<Route> routes;std::vector<Env> envs;std::vector<Attempt> attempts;   // attempts[i] belongs to envs[i]
@@ -81,7 +94,7 @@ struct World{
         if(c.applied+c.not_applicable+c.no_result!=c.freed)return false;
         int queued=0;for(auto& e:envs){queued+=int(e.queue.size());if(e.queue.size()>queue_cap)return false;
             if(e.state==EnvState::Running&&e.attempt)return false;if(e.state!=EnvState::Running&&!e.queue.empty())return false;}
-        if(routes.size()>route_cap||outbox.size()>receipt_cap)return false;
+        if(routes.size()>route_cap||outbox.size()>receipt_cap||outcomes.size()>outcome_cap||control->size()>ControlBox::cap)return false;
         // every receipt credit is an unreceipted obligation (queued action, running/published command) or an untaken receipt
         if(receipt_credits!=size_t(queued)+count_all(Slot::Running)+count_all(Slot::Published)+outbox.size())return false;
         return c.accepted_actions==c.started_from_queue+c.not_executed+queued&&c.double_apply==0;}
@@ -156,13 +169,30 @@ struct World{
     R commit_resume(std::uint64_t aid){if(!on_owner())return R::RefusedWrongThread;Env* e=by_attempt(aid);if(!e)return R::RefusedStale;
         Attempt& a=attempts[idx(e)];if(a.cursor<a.batch.size())return R::RefusedNotDone;
         if(!conditions(*e,a)){invalidate(*e,"提交時檢查失敗");return R::Invalidated;}
-        e->state=EnvState::Running;e->attempt=0;a.live=false;++c.commits;
+        e->state=EnvState::Running;e->attempt=0;a.live=false;++c.commits;remember(Outcome::Committed,aid);
         L(e->name+" 提交恢復 #"+std::to_string(aid)+" → 重新開放普通操作；仍留存的晚到結果 "+std::to_string(retained(idx(e)))+" 份交給後續一般處理輪");return R::Ok;}
+    // Owner cancel at a safe boundary (between items/slices; no callback preemption in this fixture).
+    // Stops the remaining batch; keeps Paused; undisposed results, their slots and receipts are untouched.
+    R cancel_resume(std::uint64_t aid){if(!on_owner())return R::RefusedWrongThread;
+        if(Env* e=by_attempt(aid)){Attempt& a=attempts[idx(e)];a.live=false;e->attempt=0;e->state=EnvState::Paused;++cancels;remember(Outcome::Cancelled,aid);
+            L(e->name+" 取消恢復嘗試 #"+std::to_string(aid)+"：停在第 "+std::to_string(a.cursor)+"/"+std::to_string(a.batch.size())+" 份；維持暫停，未處理結果繼續留存");return R::Ok;}
+        for(auto& o:outcomes)if(o.id==aid){if(o.kind==Outcome::Committed){++too_late;L("取消恢復 #"+std::to_string(aid)+" 太晚：已提交，不再暫停");return R::TooLate;}return R::AlreadyEnded;}
+        return R::RefusedStale;}   // unknown, foreign world, or reclaimed from the bounded outcome ring
+    // v4: bounded per call. At most `budget` messages are applied (fixture default 2, clamped to the mailbox cap);
+    // the rest stay queued in FIFO order for a later call. Never drops an accepted message.
+    struct Applied{Control::K kind;std::uint64_t attempt;R result;};
+    static constexpr int control_budget=2;
+    std::vector<Applied> process_control(int budget=control_budget){std::vector<Applied> r;if(!on_owner()||budget<=0)return r;
+        budget=std::min(budget,int(ControlBox::cap));r.reserve(size_t(budget));Control m;
+        while(int(r.size())<budget&&control->pop(m)){R x=m.kind==Control::Cancel?cancel_resume(m.attempt):commit_resume(m.attempt);
+            L(std::string("信箱：")+(m.kind==Control::Cancel?"取消":"提交")+" #"+std::to_string(m.attempt)+" → "+name(x));r.push_back({m.kind,m.attempt,x});}
+        return r;}
     Attempt* attempt_of(const std::string& n){Env* e=env(n);return e?&attempts[idx(e)]:nullptr;}
 private:
     Env* by_attempt(std::uint64_t aid){if(!aid)return nullptr;for(size_t i=0;i<envs.size();++i)if(envs[i].attempt==aid&&attempts[i].live&&attempts[i].id==aid&&envs[i].state==EnvState::Resuming)return &envs[i];return nullptr;}
     bool conditions(Env& e,const Attempt& a){Route* x=route(a.route);return x&&x->alive&&x->version==a.route_version&&e.route==a.route&&e.state==EnvState::Resuming;}
-    void invalidate(Env& e,const char* why){Attempt& a=attempts[idx(&e)];a.live=false;e.attempt=0;if(e.state==EnvState::Resuming)e.state=EnvState::Paused;++c.invalidated;
+    void remember(Outcome::K k,std::uint64_t id){if(outcomes.size()>=outcome_cap)outcomes.pop_front();outcomes.push_back({k,id});}
+    void invalidate(Env& e,const char* why){Attempt& a=attempts[idx(&e)];a.live=false;e.attempt=0;if(e.state==EnvState::Resuming)e.state=EnvState::Paused;++c.invalidated;remember(Outcome::Invalidated,a.id);
         L(e.name+" 恢復嘗試 #"+std::to_string(a.id)+" 失效（"+why+"）：維持暫停；已處置結果保持終態");}
     void pause(Env& e){e.state=EnvState::Paused;
         while(!e.queue.empty()){outbox.push_back({Receipt::NotExecuted,e.queue.front(),idx(&e),false});e.queue.pop_front();++e.not_executed;++c.not_executed;}   // one receipt each

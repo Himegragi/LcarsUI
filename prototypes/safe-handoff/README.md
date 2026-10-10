@@ -44,16 +44,27 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/safe-handoff/
   - 共享服務必須由宿主**明確**替換，不會被默默修復。
 - 未宣告安全交接路徑時，標記為「超出範圍」：不通知、不宣稱恢復、不重建。致命路徑不在本原型的範圍內。
 
-## 伴隨原型：暫停／恢復 v2（`resume_model.hpp`、`resume_main.cpp`）
+## 伴隨原型：暫停／恢復 v4（`resume_model.hpp`、`resume_main.cpp`）
 
 **這是獨立的伴隨模型，不是 v5 主機確認狀態機的延伸，也不證明各子系統已經整合。** 它只回答：恢復途中接收途徑失效、恢復期間持續有結果到達，會不會讓恢復卡住或重複套用結果。
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/safe-handoff/run.ps1 -ResumeScenarios     # → evidence/resume-scenarios-v2.log
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/safe-handoff/run.ps1 -ResumeInteractive   # 「暫停／恢復原型 v2」視窗（多了「取回回條」按鈕）
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/safe-handoff/run.ps1 -ResumeScenarios     # → evidence/resume-scenarios-v4.log
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/safe-handoff/run.ps1 -ResumeInteractive   # 「暫停／恢復原型 v4」視窗
 ```
 
-目前證據：`evidence/resume-scenarios-v2.log`，failures=0，70 PASS，不變式檢查 31 次（R1–R9）。
+目前證據：`evidence/resume-scenarios-v4.log`，failures=0，117 PASS，不變式檢查 73 次（R1–R15b）。
+
+v4 修正（紅燈→綠燈）：紅燈 `evidence/resume-scenarios-v3-red-review.log`（v3 模型＋新情境 R15，failures=1，107 PASS）：`process_control()` 一次呼叫就把預填的 4 則全部處理完。信箱上限只限制排隊數，不限制單次工作量。現在 `process_control(budget)` 每次最多處理 `budget` 則（fixture 預設 2，上限為信箱容量）；其餘依 FIFO 留在信箱，不丟棄；回傳結果帶嘗試編號。R15b 用預填信箱、預算 0／1／預設分段處理，驗證取消先與提交先的勝出者、剩餘順序，以及之後的過期／太晚／已結束結果，沒有重複轉換或重複釋放。
+
+以下 v3 說明的證據 `resume-scenarios-v3.log`（failures=0，107 PASS，不變式 71 次）保留為舊版證據。`resume-scenarios-v2.log`（70 PASS）是 v2 當時的證據，v3 只新增功能、沒有改 v2 行為；v3 第一次執行就通過，**沒有**紅燈紀錄（取消功能在 v2 不存在，不能捏造「功能前」的紅燈）。
+
+v3 新增（擁有者取消 vs 提交，ADR 0003 對應段落）：
+- `cancel_resume(attempt)`：只在項目／片段之間的安全邊界生效（本 fixture 不支援中斷正在執行的回呼）。停止剩下的本批、維持暫停；未處置結果、它們的槽位、回條與回條額度都不動；已套用／不適用的結果保持終態；不取消其他已開始的命令；不需要額外空槽位。
+- 先後以擁有者執行緒上第一個**合法**轉換為準：取消先 → 之後的片段／提交回報過期；提交先 → 取消回報 `TooLate`，不再暫停。本批處理完不等於提交；未完成（`RefusedNotDone`）或途徑無效（`Invalidated`）的提交不算勝出。
+- 結局紀錄（實驗性保留範圍）：只保留最近 8 個結束的嘗試，用來區分 `TooLate`（已提交）和 `AlreadyEnded`（已取消或失效）；更舊、外來 World 或未知的身分回報 `RefusedStale`，不產生任何效果。沒有無上限的歷史。
+- 控制信箱：上限 4 則，滿了在受理前拒絕；worker 只投遞，擁有者用 `process_control()` 依 FIFO 處理。R14 的 worker 先 join 再處理，正確性來自投遞順序，不靠睡眠或計時。
+- 互動視窗 v3：新增「取消恢復」按鈕，以及引導 4（取消先）、5（提交先）、6（取消後重新恢復）；沒有進行中的嘗試時，顯示上次嘗試的結局（已提交／已取消／已失效／結局紀錄已回收）。
 - v1（`resume-scenarios-v1.log`，52 PASS）第一次執行就通過，沒有紅燈；已被 v2 取代（`evidence/SUPERSEDED-resume-v1.txt`）。
 - 審查紅燈：`resume-scenarios-v1-red-review.log`，用 v1 模型跑新增的 R7、R8：failures=1（60 PASS）。失敗的是途徑表：20 次循環後長到 22 項。R7（獨立的 B 補滿槽位）在 v1 就通過，不是錯誤。
 - 逐筆回條（R9）在 v1 **沒有對應 API**，無法誠實寫成紅燈；v1 只有計數，沒有逐筆終態。
@@ -87,6 +98,10 @@ v2 新增：
 - 重複處置偵測用的是有上限的軌跡環（16 筆），只當輔助；正確性主要靠槽位世代與結果 id。
 - 回條只在擁有者呼叫 `take_receipts()` 時交付；呼叫端一直不取，就會停止受理新工作（刻意的背壓，不是遺失）。
 - 途徑表上限 4 是 fixture 數字；如果 4 個項目同時被引用，安裝會被拒絕。
+- v3：取消只在片段之間生效，沒有驗證「中斷正在執行的回呼」；嘗試本身的安全收尾沒有模型化。
+- v3：結局紀錄只留 8 筆；更舊的身分只能回報過期，無法再區分太晚或已結束。
+- v3：信箱只承載取消／提交兩種控制訊息，不是一般排程器，也沒有時間保證。
+- v4：每次處理預算 2 是 fixture 數字；沒有做「生產者持續補滿」的即時實驗，只用預填信箱分段驗證。
 - 沒有真實宿主、沒有 GPU、沒有和 v5 交接模型串接。
 
 舊的 v5 段落仍然適用於它當時回答的問題（宿主確認與改派），但不是整合後的恢復保證。
