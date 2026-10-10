@@ -1,0 +1,8 @@
+SUPERSEDED BY CHANGED SEMANTICS: scenarios-v3.log (v3 model, 21 scenarios, failures=0 at the time) is not current.
+It was correct for v3 rules, but ADR 0003 Q111-Q124 changed the contract:
+  - v3 returned the handoff credit on any delivery attempt (incl. host throw / no receiver); v4 keeps it until an
+    explicit valid confirmation, safe callback end and safe-release conditions hold
+  - v3 allowed enabling environments without a receiver; v4 refuses admission without an active receiving route
+  - v3 had no acknowledgment, assignment identity or reassignment
+This is not a red->green defect fix, so there is no v3 red-review log.
+scenarios-v4.log is in turn superseded (see SUPERSEDED-v4.txt). Current evidence: scenarios-v5.log (failures=0).

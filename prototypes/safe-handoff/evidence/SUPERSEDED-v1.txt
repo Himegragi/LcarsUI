@@ -12,4 +12,5 @@ added scenarios 19-21: failures=5
   - after a later unsafe-handoff marker, deliver() still called the host for an earlier pending notice and returned credits
   - with no host registered, deliver() counted delivered and implied KeepProcess
   - add_env accepted an existing name and overwrote the current mapping
-Current evidence: scenarios-v3.log (failures=0).
+scenarios-v3.log is in turn superseded by changed semantics (see SUPERSEDED-v3.txt).
+scenarios-v4.log is superseded too (see SUPERSEDED-v4.txt). Current evidence: scenarios-v5.log (failures=0).

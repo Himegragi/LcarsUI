@@ -1,0 +1,9 @@
+SUPERSEDED: scenarios-v4.log (v4 model, 28 scenarios, failures=0 at the time) is not current.
+Review found gaps v4 did not test. scenarios-v4-red-review.log is the v4 model run with added scenarios 29-33: failures=14
+  - duplicate end_work on the first of two tracked jobs decremented the second (WorkToken had no per-work identity)
+  - unsafe post-throw before ack did not mark out of scope; deliver() continued into the next callback; activation,
+    end_work, cancel and mailbox processing kept working; unsafe after ack also continued into the next callback
+  - off-owner reassign() incremented reassign_refused
+  - an empty std::function was accepted as an active receiver and admitted an environment
+  - repeated service_fault with a full handoff table threw "handoff table capacity invariant violated"
+Current evidence: scenarios-v5.log (failures=0).
