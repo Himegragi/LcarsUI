@@ -31,7 +31,7 @@
 // ---------------- DOM-free core (fixture, throwaway) ----------------
 const CAP={ordinary:3,result:6,handoff:3,control:4,retry:8,receipt:9,routes:6,services:5,alias:24,batch:2,log:40,ended:4,assignments:3,report:10,outcomes:40};
 const CONTRACTS={handover:'交出即承接',explicitAck:'逐筆明確確認'}; // Q137 fixture: each receiving contract must name its acceptance point
-const PUMP_FREE=new Set(['postControl','retryRetained','stopPump','startPump']); // producer side + pump control only
+const PUMP_FREE=new Set(['postControl','ackHandedOver','retryRetained','stopPump','startPump']); // producer side + pump control only
 let WORLD_SEQ=0;
 class Pool{ // identity-based issuance/release audit, one per pool
   constructor(name,cap){this.name=name;this.cap=cap;this.live=new Map();this.issued=0;this.returned=0;this.refused=0;this.ignoredRelease=0;}
@@ -68,7 +68,7 @@ class World{
     if(this.services.size>=CAP.services){this.counters.refusedRegistry++;return null;}
     const id=this.next('S');this.services.set(id,{id,name,trustworthy:true,leases:new Map()});return id;}
   enableEnv(name,route,services,contract){ // Q137: receiving contract must state its acceptance point; checked first
-    if(!CONTRACTS[contract])throw new Error('框架拒絕：接收契約未寫明承接成立點');
+    if(typeof contract!=='string'||!Object.hasOwn(CONTRACTS,contract))throw new Error('框架拒絕：接收契約未寫明承接成立點');
     // custody + active receiver + reserved fault-report credit BEFORE enabling
     const credit=this.next('H');if(!this.custody.alive||!this.receivers[this.activeReceiver].alive||!this.pools.handoff.take(credit,`${name} 啟用預留`))throw new Error('fixture: cannot enable');
     this.envs[name]={name,state:'執行中',control:'執行中',visuals:true,closed:false,route,services:[...services],isolation:'未宣告',dataVersion:1,value:0,queue:[],attempt:null,ended:[],
@@ -168,6 +168,7 @@ class World{
     if(kind==='callbackEnd')return x.as.callbackActive?'RP.cb.'+x.as.id:null;
     if(kind==='workEnd')return x.h.works.get(b.work)===x.as.id?'RP.wk.'+b.work:null;
     if(kind==='leaseEnd'){const l=x.h.leases.get(b.lease);return l&&l.as===x.as.id?'RP.ls.'+b.lease:null;}return null;}
+  releaseReport(key){if(this.reportFilled.has(key)){this.reportFilled.delete(key);this.reportQ=this.reportQ.filter(x=>x.key!==key);}this.pools.report.release(key);}
   obligationLive(k){const m=/^RP\.(?:(cb|wk|ls)\.)?(.+)$/.exec(k);const kind=m[1],id=m[2];const hs=[...this.handoffs.values()];
     if(kind==='cb')return hs.some(h=>h.assignments.some(x=>x.id===id&&x.callbackActive));if(kind==='wk')return hs.some(h=>h.works.has(id));if(kind==='ls')return hs.some(h=>h.leases.has(id));
     const c=this.commands.get(id);return!!c&&c.state==='執行中';}
@@ -183,7 +184,7 @@ class World{
   do_retryRetained(){let n=0;while(this.retained.length&&!this.pools.control.full()){const {ticket,msg}=this.retained.shift();this.pools.retry.release(ticket);this.pools.control.take(msg.id,msg.kind);this.controlQ.push(msg);n++;this.counters.retries++;}
     return{result:`送方重送 ${n} 則；仍保留 ${this.retained.length}`};}
   do_processControls(a){const budget=Math.max(0,Math.min(a.budget??2,CAP.control));const out=[];
-    while(out.length<budget&&this.reportQ.length){const {key,msg}=this.reportQ.shift();this.reportFilled.delete(key);const r=this.apply(msg);this.pools.report.release(key);out.push(`${msg.kind}(預留):${r}`);}
+    while(out.length<budget&&this.reportQ.length){const {key,msg}=this.reportQ.shift();this.reportFilled.delete(key);const r=this.apply(msg);out.push(`${msg.kind}(預留):${r}`);}
     while(out.length<budget&&this.controlQ.length){const m=this.controlQ.shift();this.pools.control.release(m.id);out.push(`${m.kind}:${this.apply(m)}`);}
     return{result:`處理 ${out.length} 則（剩 ${this.controlQ.length}，預留 ${this.reportQ.length}）：${out.join('；')||'無'}`};}
   locate(b){if(!b||b.world!==this.id)return null;const h=this.handoffs.get(b.handoff);if(!h)return null;const as=h.assignments.find(x=>x.id===b.assignment);return as?{h,as}:null;}
@@ -191,10 +192,10 @@ class World{
     switch(m.kind){
     case 'ack':{const x=this.locate(b);if(!x)return ign('忽略：外來／已釋放／未知指派');if(!x.as.authority){this.counters.revokedAck++;return ign('拒絕：資格已撤銷');}
       if(x.h.acked)return ign('忽略：重複確認');x.h.acked=true;this.tryRelease(x.h);return this.handoffs.has(x.h.id)?'已確認（額度仍保留：回呼／工作／租用未結束）':'已確認並釋放';}
-    case 'callbackEnd':{const x=this.locate(b);if(!x||!x.as.callbackActive)return ign('忽略：外來、偽造或重複');x.as.callbackActive=false;this.tryRelease(x.h);return '回呼安全結束';}
-    case 'workEnd':{const x=this.locate(b);if(!x||x.h.works.get(b.work)!==x.as.id)return ign('忽略：外來、偽造或重複工作');x.h.works.delete(b.work);this.tryRelease(x.h);return `列管工作 ${b.work} 結束`;}
+    case 'callbackEnd':{const x=this.locate(b);if(!x||!x.as.callbackActive)return ign('忽略：外來、偽造或重複');x.as.callbackActive=false;this.releaseReport('RP.cb.'+x.as.id);this.tryRelease(x.h);return '回呼安全結束';}
+    case 'workEnd':{const x=this.locate(b);if(!x||x.h.works.get(b.work)!==x.as.id)return ign('忽略：外來、偽造或重複工作');x.h.works.delete(b.work);this.releaseReport('RP.wk.'+b.work);this.tryRelease(x.h);return `列管工作 ${b.work} 結束`;}
     case 'leaseEnd':{const x=this.locate(b);const l=x&&x.h.leases.get(b.lease);if(!l||l.as!==x.as.id)return ign('忽略：外來、偽造或重複租用');
-      x.h.leases.delete(b.lease);this.services.get(l.svc).leases.delete(b.lease);this.tryRelease(x.h);return `租用 ${b.lease} 歸還`;}
+      x.h.leases.delete(b.lease);this.releaseReport('RP.ls.'+b.lease);this.services.get(l.svc).leases.delete(b.lease);this.tryRelease(x.h);return `租用 ${b.lease} 歸還`;}
     case 'result':return this.settle(b);
     case 'resultAck':return this.acceptAck(b);
     case 'cancelResume':return this.cancelResume(b.attempt);
@@ -202,7 +203,7 @@ class World{
     return ign('忽略：未知種類');}
   settle(b){const t=(b&&b.token)||{};const c=this.commands.get(t.cmd);const sl=this.slots[t.slot];
     if(t.world!==this.id||!c||!sl||sl.gen!==t.gen||sl.cmd!==t.cmd||c.state!=='執行中'){this.counters.ignoredMsgs++;return '忽略：重複／過期／外來結果';}
-    c.state='已結算';c.terminal=b.cancelled?'已取消':'已完成';c.value=b.value;this.counters.terminal++;this.receipts.get(c.id).terminal=c.terminal;
+    c.state='已結算';this.releaseReport('RP.'+c.id);c.terminal=b.cancelled?'已取消':'已完成';c.value=b.value;this.counters.terminal++;this.receipts.get(c.id).terminal=c.terminal;
     const e=this.envs[c.env];
     if(e.closed&&!e.cleanupSafe){this.counters.incomplete++;return `終態：${c.terminal}；收尾不安全 → 保留結果與預留（未完成）`;}
     if(b.cancelled){this.dispose(c,'無結果');return '終態：已取消（沒有 UI 內容）';}
@@ -218,10 +219,17 @@ class World{
   do_collectReceipts(a){const got=[],wait=[];let tok;for(const r of [...this.receipts.values()])if((!a.env||r.env===a.env)&&r.terminal&&r.disp&&!r.handedOver){
       if(this.envs[r.env].contract==='handover'){this.accept(r);got.push(`${r.id}:${r.terminal}/${r.disp}`);}
       else{r.handedOver=true;this.counters.handedOver++;wait.push(r.id);tok=tok||{world:this.id,receipt:r.id};}}
+    // value keeps the first token for '@rk' aliasing; every handed-over receipt is acked individually via ackHandedOver
     return{result:`交出即承接 ${got.length} 張：${got.join('、')||'無'}；已交出、待逐筆確認 ${wait.length} 張：${wait.join('、')||'無'}`,value:tok};}
   acceptAck(b){const r=b&&b.world===this.id&&this.receipts.get(b.receipt);if(!r||!r.handedOver||this.envs[r.env].contract!=='explicitAck'){this.counters.ignoredMsgs++;return '忽略：外來、重複或尚未交出的結果確認';}
     this.accept(r);return `結果 ${r.id} 已確認承接`;}
   // Q138: only this explicit owner action may abandon undelivered results; close/timeout/unload never do.
+  // Receiver side: posts one resultAck per handed-over, unaccepted receipt of env (each through the ordinary control path).
+  do_ackHandedOver(a){const out=[];for(const r of [...this.receipts.values()])if(r.env===a.env&&r.handedOver)out.push(`${r.id}→${this.do_postControl({kind:'resultAck',body:{world:this.id,receipt:r.id}}).result}`);
+    return{result:`逐筆送出 ${out.length} 則結果確認：${out.join('；')||'無'}`};}
+  // Fixture probe (Codex finding 1): post a result for the command id the next startCommand will create.
+  do_forgeNextResult(a){const slot=this.slots.findIndex(s=>!s.cmd);const token={world:this.id,slot,gen:this.slots[slot].gen,cmd:`${this.id}.C${this.seq+2}`};
+    return this.do_postControl({kind:'result',body:{token,value:a.value}});}
   do_abandonResults(a){const e=this.envs[a.env];if(!e.cleanupSafe)return{result:'拒絕放棄：收尾不安全，結果與資源保留'};
     const got=[];let running=0;for(const r of [...this.receipts.values()]){if(r.env!==e.name)continue;if(!r.terminal){running++;continue;}
       const c=this.commands.get(r.id);if(c&&c.state==='已結算'&&!c.disp)this.dispose(c,'已放棄');
@@ -282,7 +290,7 @@ class World{
     for(const c of this.commands.values()){if(!this.receipts.has(c.id))err.push(`命令 ${c.id} 沒有回條`);if(!this.slots[c.token.slot]||this.slots[c.token.slot].cmd!==c.id)err.push(`命令 ${c.id} 槽位懸空`);}
     let q=0;for(const e of Object.values(this.envs)){q+=e.queue.length;for(const id of e.queue){const r=this.receipts.get(id);if(!r||r.terminal||!this.pools.ordinary.live.has(id))err.push(`動作 ${id} 擁有關係不一致`);}
       if(e.closed&&e.state==='執行中')err.push(`${e.name} 已關閉卻執行中`);if((e.state==='恢復處理中')!==!!e.attempt)err.push(`${e.name} 恢復狀態不一致`);
-      if(e.ended.length>CAP.ended)err.push('結局紀錄超過上限');if(!CONTRACTS[e.contract])err.push(`${e.name} 接收契約未寫明承接成立點`);
+      if(e.ended.length>CAP.ended)err.push('結局紀錄超過上限');if(typeof e.contract!=='string'||!Object.hasOwn(CONTRACTS,e.contract))err.push(`${e.name} 接收契約未寫明承接成立點`);
       if(e.control==='已結束'&&[...this.receipts.values()].some(r=>r.env===e.name))err.push(`${e.name} 已結束卻有未結清結果`);if(e.control==='已結束'&&(e.credit||[...this.commands.values()].some(c=>c.env===e.name)))err.push(`${e.name} 已結束卻仍有義務`);}
     if(q!==this.pools.ordinary.live.size)err.push('普通佇列與額度不一致');
     if(this.receipts.size!==this.pools.receipt.live.size)err.push('回條與回條額度不一致');
@@ -537,7 +545,27 @@ const guides=[
    {label:'擁有者明確放棄',action:{type:'abandonResults',env:'A'},expect:s=>s.counters.abandoned===1&&s.outcomes.some(o=>o.outcome==='已放棄'&&o.env==='A')&&s.commands.length===1&&s.envs[0].control==='收尾中'&&s.handoffs.length===1,expectResult:r=>r.includes('尚未終態 1'),why:'c1 放棄並留紀錄；c2 仍在執行，範圍仍收尾中；B 的必要交接不受影響'},
    {label:'c2 晚到結果',action:P('result',{token:'@c2',value:2})},{label:'處理',action:{type:'processControls'},expect:s=>s.envs[0].control==='收尾中'&&s.receipts.some(r=>r.env==='A'&&r.disp==='不適用')},
    {label:'擁有者再次明確放棄',action:{type:'abandonResults',env:'A'},expect:s=>s.counters.abandoned===2&&s.envs[0].control==='已結束'&&!s.envs[0].credit&&s.handoffs.length===1&&s.counters.delivered===0&&live(s,'result')===0&&live(s,'report')===0,why:'放棄與交付可區分；範圍結束、預留歸還一次'},
-   {label:'接收方再取結果（沒有可取的）',action:{type:'collectReceipts'},expect:s=>s.counters.delivered===0&&s.outcomes.filter(o=>o.env==='A').every(o=>o.outcome==='已放棄')}]}];
+   {label:'接收方再取結果（沒有可取的）',action:{type:'collectReceipts'},expect:s=>s.counters.delivered===0&&s.outcomes.filter(o=>o.env==='A').every(o=>o.outcome==='已放棄')}]},
+ {id:'g10',title:'10 Codex 反例回歸',desc:'Codex 審查找到的三項：提前偽造的結果不得讓必要回報預留外漏；繼承屬性名稱不算寫明的契約；一次交出多份結果時，每份都能逐筆確認。',
+  steps:[
+   ...rep(10,i=>[{label:`第 ${i} 輪：先送偽造的未來結果`,action:{type:'forgeNextResult',value:70+i}},
+     {label:'A 開始命令（剛好用到該編號）',action:{type:'startCommand',env:'A'}},
+     {label:'處理',action:{type:'processControls',budget:4}},
+     {label:'接收方取走',action:{type:'collectReceipts',env:'A'},expect:s=>live(s,'report')===0&&s.commands.length===0,why:'結果經一般通道結算也歸還預留'}]),
+   {label:'外洩後仍可開始新命令',action:{type:'startCommand',env:'A',allowContinue:true,as:'n1'},expect:s=>s.pools.report.returned===s.pools.report.issued-1&&s.pools.report.ignoredRelease===0,expectResult:r=>r.startsWith('開始命令')},
+   {label:'n1 結果（預留位置）',action:P('result',{token:'@n1',value:1})},
+   {label:'n1 同一結果再送（一般通道）',action:P('result',{token:'@n1',value:2})},
+   {label:'處理',action:{type:'processControls',budget:4},expect:s=>s.envs[0].value===1&&live(s,'report')===0&&s.pools.report.ignoredRelease===0,why:'只結算一次、只歸還一次'},
+   {label:'契約 toString（應被拒）',action:{type:'enableExtra',name:'D',contract:'toString'},expectResult:r=>r.includes('承接成立點')},
+   {label:'契約 constructor（應被拒）',action:{type:'enableExtra',name:'D',contract:'constructor'},expectResult:r=>r.includes('承接成立點')},
+   {label:'契約 __proto__（應被拒）',action:{type:'enableExtra',name:'D',contract:'__proto__'},expect:s=>s.envs.length===3,expectResult:r=>r.includes('承接成立點')},
+   {label:'C 開始命令 k1',action:{type:'startCommand',env:'C',allowContinue:true,as:'k1'}},
+   {label:'C 開始命令 k2',action:{type:'startCommand',env:'C',allowContinue:true,as:'k2'}},
+   {label:'k1 結果',action:P('result',{token:'@k1',value:1})},{label:'k2 結果',action:P('result',{token:'@k2',value:2})},
+   {label:'處理',action:{type:'processControls'}},
+   {label:'接收方取走 C 的兩份結果',action:{type:'collectReceipts',env:'C'},expect:s=>s.receipts.filter(r=>r.env==='C'&&r.handedOver).length===2},
+   {label:'C 接收方逐筆確認',action:{type:'ackHandedOver',env:'C'}},
+   {label:'處理',action:{type:'processControls'},expect:s=>s.receipts.filter(r=>r.env==='C').length===0&&s.outcomes.filter(o=>o.env==='C'&&o.outcome==='已交付').length===2,why:'兩份都承接，各一次'}]}];
 function prepare(w){w.aliasSet('rA',w.envs.A.route);w.aliasSet('rB',w.envs.B.route);w.aliasSet('rC',w.envs.C.route);w.aliasSet('s1',w.envs.A.services[0]);}
 function newWorld(){const w=new World();prepare(w);return w;}
 function run(w,step){return w.dispatch(step.action);}
@@ -571,7 +599,7 @@ const free=[
  ['worker：A 最近命令完成',P('result',{token:'@cA',value:4})],['worker：A 最近命令以取消結束',P('result',{token:'@cA',cancelled:true})],
  ['C 故障',{type:'fault',env:'C',as:'h'}],['遞送交接',{type:'deliverHandoff',handoff:'@h',as:'t'}],
  ['送：確認',P('ack','@t')],['送：回呼結束',P('callbackEnd','@t')],['送：工作結束',P('workEnd','@t')],['送：租用歸還',P('leaseEnd','@t')],
- ['處理控制訊息（預算 2）',{type:'processControls',budget:2}],['送方重送',{type:'retryRetained'}],['接收方取走結果（依契約承接）',{type:'collectReceipts',as:'rk'}],['送：C 逐筆確認結果',P('resultAck','@rk')],['A 擁有者明確放棄未交付結果',{type:'abandonResults',env:'A'}],
+ ['處理控制訊息（預算 2）',{type:'processControls',budget:2}],['送方重送',{type:'retryRetained'}],['接收方取走結果（依契約承接）',{type:'collectReceipts',as:'rk'}],['送：C 逐筆確認全部已交出結果',{type:'ackHandedOver',env:'C'}],['A 擁有者明確放棄未交付結果',{type:'abandonResults',env:'A'}],
  ['關閉 A 視覺',{type:'closeVisuals',env:'A'}],['關閉 B 視覺',{type:'closeVisuals',env:'B'}],['A 安全收尾',{type:'disposeClosed',env:'A'}],
  ['A 收尾宣告不安全',{type:'setCleanupSafe',env:'A',safe:false}],['A 收尾宣告安全',{type:'setCleanupSafe',env:'A',safe:true}],
  ['停止派送',{type:'stopPump'}],['恢復派送',{type:'startPump'}]];

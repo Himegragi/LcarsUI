@@ -7,4 +7,5 @@
 7 Q135 必要回報預留: steps=41 checks=8 failed=0 inv=0
 8 Q136／Q137 交付成立點: steps=15 checks=6 failed=0 inv=0
 9 Q138 擁有者明確放棄: steps=18 checks=7 failed=0 inv=0
-TOTAL steps=330 checks=93 failed=0 invariantErrors=0
+10 Codex 反例回歸: steps=55 checks=17 failed=0 inv=0
+TOTAL steps=385 checks=110 failed=0 invariantErrors=0
