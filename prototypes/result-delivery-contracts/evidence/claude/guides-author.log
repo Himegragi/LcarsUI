@@ -1,0 +1,10 @@
+1 最後一個 UI 關閉: steps=27 checks=16 failed=0 inv=0
+2 共享不安全服務: steps=33 checks=10 failed=0 inv=0
+3 普通佇列滿載 vs 控制通道: steps=56 checks=8 failed=0 inv=0
+4 取消 vs 提交、舊訊息與槽位重用: steps=24 checks=7 failed=0 inv=0
+5 反例與邊界: steps=83 checks=21 failed=0 inv=0
+6 晚到結果與不安全的閒置關閉: steps=33 checks=10 failed=0 inv=0
+7 Q135 必要回報預留: steps=41 checks=8 failed=0 inv=0
+8 Q136／Q137 交付成立點: steps=15 checks=6 failed=0 inv=0
+9 Q138 擁有者明確放棄: steps=18 checks=7 failed=0 inv=0
+TOTAL steps=330 checks=93 failed=0 invariantErrors=0
