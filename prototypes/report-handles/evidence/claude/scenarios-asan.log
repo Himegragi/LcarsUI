@@ -15,7 +15,7 @@
   PASS 用過的把手再回報 → 空把手
   PASS 容量滿時拒絕新命令，最後預留全部歸還
   PASS Q143a：丟棄的結果把手自動結算為提供者失效
-  started=400 refused=1081 accepted=360 dropped=40
+  started=400 refused=1824 accepted=360 dropped=40
   PASS S4 結束
 == S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==
   PASS 改派：撤銷舊確認資格
@@ -46,7 +46,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=810 outcomes=810 providerLost=114
+  issued=833 outcomes=833 providerLost=127
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==
@@ -81,13 +81,23 @@
   PASS 宣告後改派繼續：新指派取得把手（舊租用仍在，不另發）
   PASS 新接管者完成後交接釋放
   PASS S12b 結束
-  PASS 通知接收者內部宣告 → 拒絕重入，狀態不變
-  PASS settle 返回後才能宣告
+  PASS Q150：批次結束後才通知，接收者可直接宣告結束
+  PASS 已由接收者宣告的項目不能再宣告
   PASS S12c 結束
   PASS 接收者拋例外：記錄失敗、不重送，遺失狀態仍可查詢
-  PASS 未登記接收者：計數為未通知，仍可查詢
-  PASS 接收者在結算中呼叫任何會改狀態的方法 → 一律拒絕
-  PASS 外層結算完整：三個結果各結算一次，狀態未被接收者改動
+  PASS Q149：未登記接收者 → 不受理遞送，不留預留
+  PASS Q149：空接收者不算登記
+  PASS Q149：登記後可遞送
+  PASS Q150：接收者內宣告結束
+  PASS 通知送出中不可更換接收者
+  PASS Q150：接收者呼叫任何方法都被受理，外層結算不受影響
+  PASS 三個結果各結算一次；接收者的關閉與改派生效
   PASS S12d 結束
+== S13 拒絕原因、診斷上限、通知時機 (Q146/Q147/Q150) ==
+  PASS Q146：三個固定大類
+  PASS Q147：計數準確（5 次）
+  PASS Q147：詳細紀錄只留最新 3 筆，由舊到新
+  PASS Q147：N=0 時只計數
+  PASS 接收者第一則拋例外：計數，其餘通知照送
 
-failures=0 pass=75
+failures=0 pass=84

@@ -1,4 +1,4 @@
-# 可丟棄 C++ 原型：回報把手（ADR 0003 Q135–Q145）
+# 可丟棄 C++ 原型：回報把手（ADR 0003 Q135–Q150）
 
 **用完即丟。**不是框架程式碼，也不是 API 提案。只有主控台情境，沒有視窗。
 
@@ -18,7 +18,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handle
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handles/run.ps1 -Asan   # AddressSanitizer
 wsl.exe -e bash prototypes/report-handles/run-tsan.sh                                               # ThreadSanitizer（WSL clang）
 ```
-檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S12）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
+檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S13）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
 
 ## 結構（fixture 安排，未核定為公開介面）
 - `Ledger`：背景執行緒與擁有者共用，建構時配好全部槽位；`reserve`／`fill`／`drop`／`revoke`／`peek`／`complete` 都不配置記憶體。外部只拿得到唯讀檢視。槽位有世代，撤權或結算後世代加一，舊把手因此失效。
@@ -26,7 +26,8 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - `World`：擁有者執行緒狀態，不可複製；每個變更呼叫都檢查執行緒。`settle()` 每次最多結算 8 筆，先處理再歸還槽位：處理途中拋例外時，回報留在帳本，下次結算再處理。每筆處理先完成所有配置，再做不會失敗的變更。
 - 交接遞送一次預留 4 個位置（回呼結束、工作結束、租用歸還、交接確認），不足則全部不承擔。舊確認把手未用掉時拒絕再遞送，須先改派撤權。
 - 「逐筆明確確認」契約下，`collect()` 對每份結果各發一個確認把手。
-- 遺失回報（Q144／Q145）：擁有者以 `set_lost_receiver` 登記一個接收者；`settle()` 偵測到回呼／工作／租用把手遺失時，在擁有者執行緒送出 `LostNotice{交接, 種類}`（純資料，不配置記憶體）。接收者拋例外只計數、不重送；未登記時計為未通知。`lost_parts()` 查詢目前遺失項。擁有者以 `declare_ended(交接, 種類)` 逐項宣告已安全結束：只接受「仍有效且已遺失」的項目，另記於 `declarations`，與正常回報結束分開；在接收者內部呼叫會被拒絕（`Reentrant`），避免結算途中改動交接。
+- 遺失回報（Q144／Q145／Q148–Q150）：每個 World 一個接收者（`set_lost_receiver`），未登記時不受理需要回報者的交接遞送；空接收者與通知送出中更換接收者都被拒絕。`settle()` 先處理整批，把遺失通知暫存在固定大小的堆疊陣列，批次結束後才送出，因此接收者可直接呼叫任何 `World` 方法（例如 `declare_ended`、改派）。批次中途拋例外時，已完成項目的通知仍先送出再重拋。接收者拋例外只計數，其餘通知照送。`lost_parts()` 查詢目前遺失項。`declare_ended(交接, 種類)` 逐項宣告已安全結束，只接受「仍有效且已遺失」的項目，另記於 `declarations`。
+- 拒絕原因與診斷（Q146／Q147）：回傳三個固定大類（把手已用過或為空、已撤權或已失效、所屬環境已結束）。各類計數準確；詳細紀錄是建構時配好的環形空間，保留最新 N 筆（`World(容量, N)`，預設 16），記錄時不配置記憶體；`recent_rejects()` 由舊到新回傳。
 
 ## 證據狀態（誠實紀錄）
 - **第一版 `67f7f65`**：作者 41 項通過、ASan 39 項通過；變異測試（丟棄把手不通知 → 7 項失敗；關閉不等交付 → 3 項失敗）證明情境有抓錯能力。
@@ -41,6 +42,9 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - **Q144／Q145（本版）**：以 `declare_ended` 逐項宣告取代原本以整個交接為單位、需收尾安全旗標的 `resolve_lost`；遺失通知改為擁有者執行緒上的接收者與查詢。S12 涵蓋：通知在擁有者執行緒送達、逐項宣告與交接釋放、已正常回報或仍有人持有把手的項目不能宣告、宣告後改派繼續、接收者重入被拒、接收者拋例外、未登記接收者、偵測與通知 0 次配置（指框架路徑搭配不配置記憶體的接收者；接收者本身、`lost_parts()` 查詢與例外建構仍可能配置）。原先 F8 的配置失敗注入在此路徑已找不到配置點（改為檢查此事）。
   - 變異測試：拿掉重入防護 → 2 項失敗；允許宣告未遺失項目 → 起初**未被抓到**，補上「仍有人持有把手的項目不能宣告」後 → 1 項失敗。
   - 作者執行：Release 78、ASan 72、TSan 72 項通過，TSan 0 則競爭報告。
+- **Q146–Q150（本版）**：取代 `08763e8` 的「結算中送通知、拒絕重入」與「未登記仍可承擔」。S12 依新規則改寫（接收者內可宣告、可呼叫 9 個方法且外層不受影響、未登記被拒），新增 S13（拒絕大類、環形詳細紀錄與 0 次配置、批次中途配置失敗時通知不遺失也不重送、接收者例外不影響其餘通知）。
+  - 變異測試 5 項全部被抓到：批次例外時丟掉已收集通知 → 1 項失敗；在批次中送通知 → 1 項；未登記也能遞送 → 2 項；不記詳細紀錄 → 1 項；通知中允許更換接收者 → 1 項。
+  - 作者執行：Release 92、ASan 84、TSan 84 項通過，TSan 0 則競爭報告。
 - **Codex 驗證 `08763e8`**（`evidence/codex/review-08763e8.md`）：Release 81、ASan 75 項重現通過；Codex 自寫補測 Release 3,649、ASan 3,603 次檢查通過，涵蓋 192 組完成順序、11 個方法的重入（接收者自行捕捉與讓例外逸出兩種）、批次重試時通知不重複、9 個遺失項 0 次配置。發現：接收者內 `invariants()` 的暫態不一致（低，已寫入限制）；README 三處宣稱過廣（已修）。**WSL 被拒，TSan 仍未經獨立驗證。**
 - **其後修正（未再驗證）**：只改 README。
 - **Codex 審查 `c0abf3a`（中斷）**：重現作者情境（Release 78、ASan 72），WSL 被拒、未驗證 TSan；其後被 OpenAI 內容過濾誤判中止，沒有產出報告。中止前指出重入防護只涵蓋 `declare_ended`。

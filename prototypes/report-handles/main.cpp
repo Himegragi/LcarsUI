@@ -35,6 +35,8 @@ static void inv(World& w, const char* at) {
     check(e.empty(), at);
 }
 static void settle_all(World& w) { while (w.settle()) {} }
+// Q149: callback/work/lease obligations need a registered lost receiver.
+static void quiet(World& w) { w.set_lost_receiver([](const LostNotice&) {}); }
 
 int main() {
     std::printf("== S1 型別：只能移動、不能複製、不能由公開資料拼出 (Q140/Q142) ==\n");
@@ -45,7 +47,7 @@ int main() {
 
     std::printf("== S2 預留不足就不承擔 (Q135) ==\n");
     {
-        World w(3); auto a = *w.add_env("A", Contract::Handover);
+        World w(3); quiet(w); auto a = *w.add_env("A", Contract::Handover);
         std::vector<ReportHandle> hs;
         for (int i = 0; i < 3; ++i) hs.push_back(*w.start_command(a));
         auto r = w.start_command(a);
@@ -111,7 +113,7 @@ int main() {
 
     std::printf("== S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==\n");
     {
-        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        World w(16); quiet(w); auto a = *w.add_env("A", Contract::Handover);
         auto h = w.fault(a);
         auto d1 = *w.deliver(h);
         check(w.reassign(h), "改派：撤銷舊確認資格");
@@ -223,7 +225,7 @@ int main() {
         check(!canFillDirectly, "F3：外部拿不到可寫的 Ledger，回報只能經過把手");
     }
     {
-        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        World w(16); quiet(w); auto a = *w.add_env("A", Contract::Handover);
         auto h = w.fault(a); auto d = *w.deliver(h);
         d.callback.report(); d.work.report(); d.lease.report(); settle_all(w);
         auto again = w.deliver(h);
@@ -274,7 +276,7 @@ int main() {
     {
         bool allOk = true; int threw = 0;
         for (int k = 0; k < 40; ++k) {
-            World w(16); auto a = *w.add_env("A", Contract::Handover);
+            World w(16); quiet(w); auto a = *w.add_env("A", Contract::Handover);
             auto h = w.fault(a);
             auto d = *w.deliver(h);
             { ReportHandle c = std::move(d.callback), wk = std::move(d.work); }
@@ -283,8 +285,8 @@ int main() {
             g_failAfter = -1;
             settle_all(w);
             auto& x = w.handoffs.at(h);
-            const bool ok = x.cb.lost && x.work.lost && x.cb.active && x.work.active && w.lost_parts().size() == 2 && w.lostUnnotified == 2 && w.invariants().empty();
-            if (!ok) { allOk = false; std::printf("  F8 k=%d cbLost=%d workLost=%d lost=%zu unnotified=%zu inv=%zu\n", k, x.cb.lost, x.work.lost, w.lost_parts().size(), w.lostUnnotified, w.invariants().size()); }
+            const bool ok = x.cb.lost && x.work.lost && x.cb.active && x.work.active && w.lost_parts().size() == 2 && w.lostNotified == 2 && w.invariants().empty();
+            if (!ok) { allOk = false; std::printf("  F8 k=%d cbLost=%d workLost=%d lost=%zu notified=%zu inv=%zu\n", k, x.cb.lost, x.work.lost, w.lost_parts().size(), w.lostNotified, w.invariants().size()); }
         }
         check(allOk, "F8：配置失敗注入後，遺失回報都被標記、可查詢、帳目一致");
         check(threw == 0, "Q145 之後：結算遺失回報的路徑不再配置記憶體，沒有可失敗的配置點");
@@ -307,7 +309,7 @@ int main() {
         check(w.declare_ended(h, Kind::WorkEnd) == Declare::NotLost, "Q144：已正常回報的項目不能宣告");
     }
     {
-        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        World w(16); quiet(w); auto a = *w.add_env("A", Contract::Handover);
         auto h = w.fault(a); auto d = *w.deliver(h);
         check(w.declare_ended(h, Kind::CallbackEnd) == Declare::NotLost && w.handoffs.at(h).cb.active, "Q144：把手仍有人持有的正常項目不能宣告");
         check(d.callback.report() == Reject::None, "Q144：持有者之後仍能正常回報");
@@ -329,7 +331,7 @@ int main() {
         inv(w, "S12a 結束");
     }
     {
-        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        World w(16); quiet(w); auto a = *w.add_env("A", Contract::Handover);
         auto h = w.fault(a); auto d1 = *w.deliver(h);
         w.reassign(h);
         { ReportHandle gone = std::move(d1.callback); }
@@ -349,8 +351,8 @@ int main() {
         h = w.fault(a); auto d = *w.deliver(h);
         { ReportHandle gone = std::move(d.lease); }
         settle_all(w);
-        check(inside == Declare::Reentrant && w.handoffs.at(h).lease.lost, "通知接收者內部宣告 → 拒絕重入，狀態不變");
-        check(w.declare_ended(h, Kind::LeaseEnd) == Declare::Done, "settle 返回後才能宣告");
+        check(inside == Declare::Done && !w.handoffs.at(h).lease.lost && !w.handoffs.at(h).lease.active, "Q150：批次結束後才通知，接收者可直接宣告結束");
+        check(w.declare_ended(h, Kind::LeaseEnd) == Declare::NotLost, "已由接收者宣告的項目不能再宣告");
         d.callback.report(); d.work.report(); d.ack.report(); settle_all(w);
         inv(w, "S12c 結束");
     }
@@ -366,38 +368,98 @@ int main() {
     }
     {
         World w(16); auto a = *w.add_env("A", Contract::Handover);
-        auto h = w.fault(a); auto d = *w.deliver(h);
-        { ReportHandle gone = std::move(d.callback); }
-        settle_all(w);
-        check(w.lostUnnotified == 1 && w.lost_parts().size() == 1, "未登記接收者：計數為未通知，仍可查詢");
-        (void)h;
+        auto h = w.fault(a);
+        check(!w.deliver(h) && w.refusedNoReceiver == 1 && w.ledger().live() == 0, "Q149：未登記接收者 → 不受理遞送，不留預留");
+        check(!w.set_lost_receiver(nullptr) && !w.deliver(h), "Q149：空接收者不算登記");
+        quiet(w);
+        check(w.deliver(h).has_value(), "Q149：登記後可遞送");
     }
     {
-        // The receiver runs inside settle(); any World mutation from there would edit state the outer batch still uses.
+        // Q150: notices arrive after the batch, so the receiver may change state; the batch it came from is already done.
         World w(32); auto a = *w.add_env("A", Contract::Handover);
-        std::vector<ReportHandle> later;
-        for (int i = 0; i < 3; ++i) later.push_back(*w.start_command(a));
-        auto h = w.fault(a); auto d = *w.deliver(h);
-        std::size_t refused = 0, calls = 0;
-        w.set_lost_receiver([&](const LostNotice&) {
+        std::uint64_t h = 0; std::size_t threw = 0, calls = 0;
+        w.set_lost_receiver([&](const LostNotice& n) {
             ++calls;
-            auto attempt = [&](auto f) { try { f(); } catch (const std::logic_error&) { ++refused; } };
+            auto attempt = [&](auto f) { try { f(); } catch (...) { ++threw; } };
             attempt([&] { w.settle(); });
             attempt([&] { w.collect(a); });
             attempt([&] { w.abandon(a); });
             attempt([&] { w.reassign(h); });
             attempt([&] { w.start_command(a); });
+            attempt([&] { check(w.declare_ended(n.handoff, n.kind) == Declare::Done, "Q150：接收者內宣告結束"); });
+            attempt([&] { check(!w.set_lost_receiver([](const LostNotice&) {}), "通知送出中不可更換接收者"); });
             attempt([&] { w.close(a); });
             attempt([&] { w.set_cleanup_safe(a, true); });
         });
-        { ReportHandle gone = std::move(d.callback); }  // lowest slot index after the commands: lands mid-batch
+        std::vector<ReportHandle> later;
+        for (int i = 0; i < 3; ++i) later.push_back(*w.start_command(a));
+        h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle gone = std::move(d.callback); }
         for (int i = 0; i < 3; ++i) later[i].report({i + 1});
-        bool threw = false;
-        try { settle_all(w); } catch (...) { threw = true; }
-        check(!threw && calls == 1 && refused == 7, "接收者在結算中呼叫任何會改狀態的方法 → 一律拒絕");
+        bool outerThrew = false;
+        try { settle_all(w); } catch (...) { outerThrew = true; }
         std::size_t done = 0; for (auto& [id, c] : w.commands) if (c.terminal == "已完成") ++done;
-        check(done == 3 && !w.envs[a].closed && w.handoffs.at(h).ack.has_value(), "外層結算完整：三個結果各結算一次，狀態未被接收者改動");
+        check(!outerThrew && calls == 1 && threw == 0, "Q150：接收者呼叫任何方法都被受理，外層結算不受影響");
+        check(done == 3 && w.envs[a].closed && !w.handoffs.at(h).ack, "三個結果各結算一次；接收者的關閉與改派生效");
         inv(w, "S12d 結束");
+    }
+    std::printf("== S13 拒絕原因、診斷上限、通知時機 (Q146/Q147/Q150) ==\n");
+    {
+        check(std::string(name(Reject::Empty)) == "把手已用過或為空" && std::string(name(Reject::Revoked)) == "已撤權或已失效" && std::string(name(Reject::WorldGone)) == "所屬環境已結束", "Q146：三個固定大類");
+    }
+    {
+        World w(8, 3); auto a = *w.add_env("A", Contract::Handover);
+        std::vector<ReportHandle> hs;
+        for (int i = 0; i < 5; ++i) hs.push_back(*w.start_command(a));
+        for (auto& x : hs) { x.report({1}); x.report({2}); }
+        const auto d = w.ledger().recent_rejects();
+        check(w.ledger().rejected(Reject::Empty) == 5, "Q147：計數準確（5 次）");
+        check(d.size() == 3 && d[0].seq == 2 && d[2].seq == 4 && d[2].reason == Reject::Empty, "Q147：詳細紀錄只留最新 3 筆，由舊到新");
+        World none(4, 0); auto b = *none.add_env("B", Contract::Handover);
+        auto k = *none.start_command(b); k.report(); k.report();
+        check(none.ledger().rejected(Reject::Empty) == 1 && none.ledger().recent_rejects().empty(), "Q147：N=0 時只計數");
+        settle_all(w); settle_all(none);
+    }
+#ifndef RH_ASAN
+    {
+        World w(8, 4); auto a = *w.add_env("A", Contract::Handover);
+        auto k = *w.start_command(a);
+        const auto before = g_allocs;
+        k.report(); for (int i = 0; i < 20; ++i) k.report();
+        check(g_allocs == before, "Q147：記錄拒絕細節 0 次配置（環形空間事先配置）");
+        settle_all(w);
+    }
+    {
+        // Notices for items already completed must still go out when a later item in the same batch throws.
+        bool allOk = true; int threw = 0;
+        for (int k = 0; k < 12; ++k) {
+            World w(16); auto c = *w.add_env("C", Contract::ExplicitAck);
+            std::size_t got = 0; w.set_lost_receiver([&](const LostNotice&) { ++got; });
+            auto h = w.fault(c); auto d = *w.deliver(h);        // slots 0-3: callback, work, lease, ack
+            auto cmd = *w.start_command(c); cmd.report({1}); settle_all(w);
+            auto acks = w.collect(c);                           // result ack in slot 4 (after the handoff slots)
+            { ReportHandle x = std::move(d.callback), y = std::move(d.lease); }
+            acks[0].report();                                   // record() of this ack allocates
+            g_failAfter = k;
+            try { w.settle(); } catch (const std::bad_alloc&) { ++threw; }
+            g_failAfter = -1;
+            settle_all(w);
+            const bool ok = got == 2 && w.lostNotified == 2 && w.outcomes.size() == 1 && w.invariants().empty();
+            if (!ok) { allOk = false; std::printf("  S13 k=%d got=%zu outcomes=%zu inv=%zu\n", k, got, w.outcomes.size(), w.invariants().size()); }
+            (void)h;
+        }
+        check(allOk && threw > 0, "Q150：批次中途配置失敗，已完成項目的通知仍各送一次，重試不重送");
+    }
+#endif
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        std::size_t calls = 0;
+        w.set_lost_receiver([&](const LostNotice&) { if (++calls == 1) throw std::runtime_error("receiver bug"); });
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle x = std::move(d.callback), y = std::move(d.work); }
+        settle_all(w);
+        check(calls == 2 && w.receiverFailures == 1 && w.lostNotified == 1, "接收者第一則拋例外：計數，其餘通知照送");
+        (void)h;
     }
 #ifndef RH_ASAN
     {
