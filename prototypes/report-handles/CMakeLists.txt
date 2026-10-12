@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.25)
+project(LcarsReportHandlesPrototype LANGUAGES CXX)
+# Throwaway report-handle prototype; standalone, console only.
+option(RH_ASAN "Build with AddressSanitizer" OFF)
+add_executable(report_handles main.cpp report_model.hpp)
+set_target_properties(report_handles PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_definitions(report_handles PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(report_handles PRIVATE /utf-8 /EHsc /W4)
+if(RH_ASAN)
+  target_compile_options(report_handles PRIVATE /fsanitize=address /Zi)
+  # lld-link does not pull the clang ASan runtime by itself; use the dynamic runtime + its thunk.
+  file(GLOB RH_ASAN_DIR "C:/Program Files/LLVM/lib/clang/*/lib/windows")
+  target_link_directories(report_handles PRIVATE ${RH_ASAN_DIR})
+  target_link_libraries(report_handles PRIVATE clang_rt.asan_dynamic-x86_64 clang_rt.asan_dynamic_runtime_thunk-x86_64)
+  set_property(TARGET report_handles PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+  target_link_options(report_handles PRIVATE /DEBUG)
+endif()
