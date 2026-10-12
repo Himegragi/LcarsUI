@@ -47,7 +47,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=848 outcomes=848 providerLost=109
+  issued=822 outcomes=822 providerLost=124
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==
@@ -89,6 +89,9 @@
   PASS S12c 結束
   PASS 接收者拋例外：記錄失敗、不重送，遺失狀態仍可查詢
   PASS 未登記接收者：計數為未通知，仍可查詢
+  PASS 接收者在結算中呼叫任何會改狀態的方法 → 一律拒絕
+  PASS 外層結算完整：三個結果各結算一次，狀態未被接收者改動
+  PASS S12d 結束
   PASS Q145：偵測遺失並送出通知，0 次配置
 
-failures=0 pass=78
+failures=0 pass=81

@@ -372,6 +372,33 @@ int main() {
         check(w.lostUnnotified == 1 && w.lost_parts().size() == 1, "未登記接收者：計數為未通知，仍可查詢");
         (void)h;
     }
+    {
+        // The receiver runs inside settle(); any World mutation from there would edit state the outer batch still uses.
+        World w(32); auto a = *w.add_env("A", Contract::Handover);
+        std::vector<ReportHandle> later;
+        for (int i = 0; i < 3; ++i) later.push_back(*w.start_command(a));
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        std::size_t refused = 0, calls = 0;
+        w.set_lost_receiver([&](const LostNotice&) {
+            ++calls;
+            auto attempt = [&](auto f) { try { f(); } catch (const std::logic_error&) { ++refused; } };
+            attempt([&] { w.settle(); });
+            attempt([&] { w.collect(a); });
+            attempt([&] { w.abandon(a); });
+            attempt([&] { w.reassign(h); });
+            attempt([&] { w.start_command(a); });
+            attempt([&] { w.close(a); });
+            attempt([&] { w.set_cleanup_safe(a, true); });
+        });
+        { ReportHandle gone = std::move(d.callback); }  // lowest slot index after the commands: lands mid-batch
+        for (int i = 0; i < 3; ++i) later[i].report({i + 1});
+        bool threw = false;
+        try { settle_all(w); } catch (...) { threw = true; }
+        check(!threw && calls == 1 && refused == 7, "接收者在結算中呼叫任何會改狀態的方法 → 一律拒絕");
+        std::size_t done = 0; for (auto& [id, c] : w.commands) if (c.terminal == "已完成") ++done;
+        check(done == 3 && !w.envs[a].closed && w.handoffs.at(h).ack.has_value(), "外層結算完整：三個結果各結算一次，狀態未被接收者改動");
+        inv(w, "S12d 結束");
+    }
 #ifndef RH_ASAN
     {
         World w(16); auto a = *w.add_env("A", Contract::Handover);

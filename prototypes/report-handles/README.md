@@ -41,6 +41,8 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - **Q144／Q145（本版）**：以 `declare_ended` 逐項宣告取代原本以整個交接為單位、需收尾安全旗標的 `resolve_lost`；遺失通知改為擁有者執行緒上的接收者與查詢。S12 涵蓋：通知在擁有者執行緒送達、逐項宣告與交接釋放、已正常回報或仍有人持有把手的項目不能宣告、宣告後改派繼續、接收者重入被拒、接收者拋例外、未登記接收者、偵測與通知 0 次配置。原先 F8 的配置失敗注入在此路徑已找不到配置點（改為檢查此事）。
   - 變異測試：拿掉重入防護 → 2 項失敗；允許宣告未遺失項目 → 起初**未被抓到**，補上「仍有人持有把手的項目不能宣告」後 → 1 項失敗。
   - 作者執行：Release 78、ASan 72、TSan 72 項通過，TSan 0 則競爭報告。
+- **Codex 審查 `c0abf3a`（中斷）**：重現作者情境（Release 78、ASan 72），WSL 被拒、未驗證 TSan；其後被 OpenAI 內容過濾誤判中止，沒有產出報告。中止前指出重入防護只涵蓋 `declare_ended`。
+- **重入修正（本版）**：作者確認此問題成立：接收者在結算中呼叫 `abandon`／`collect`／`settle` 等，會刪掉或重複處理外層批次仍要用的資料。S12 先重現（紅燈 `evidence/claude/scenarios-red-c0abf3a-reentry.log`，2 項失敗），再改為結算期間拒絕所有會改狀態的 `World` 呼叫（拋 `logic_error`；`declare_ended` 回傳 `Reentrant`），唯讀查詢仍可用。作者執行：Release 81、ASan 75、TSan 75 項通過。
 
 ## 限制
 - TSan 在 Linux（libstdc++）上跑，不涵蓋 Windows 標準函式庫或 Windows 特有的執行緒行為；TSan 只能報告實際執行到的交錯，不證明不存在競爭。

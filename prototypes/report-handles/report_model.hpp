@@ -247,8 +247,8 @@ public:
     // Q144: per-obligation owner declaration. The framework cannot verify it; it only records it apart
     // from reported ends. Refused while settle() is delivering notices (the receiver must not re-enter).
     Declare declare_ended(std::uint64_t h, Kind k) {
-        owner();
-        if (inSettle_) return Declare::Reentrant;
+        owner(false);
+        if (inSettle_) { ++reentryRefused; return Declare::Reentrant; }
         auto it = handoffs.find(h);
         if (it == handoffs.end()) return Declare::Unknown;
         Part* p = part(it->second, k);
@@ -298,12 +298,17 @@ public:
     std::vector<Outcome> outcomes;  // fixture: unbounded within one scenario
     struct OwnerDeclaration { std::uint64_t handoff; Kind kind; };
     std::vector<OwnerDeclaration> declarations;  // Q144: "擁有者宣告結束", kept apart from reported ends
-    std::size_t lostNotified = 0, lostUnnotified = 0, receiverFailures = 0, reportedEnds = 0;
+    std::size_t lostNotified = 0, lostUnnotified = 0, receiverFailures = 0, reportedEnds = 0, reentryRefused = 0;
     std::size_t refusedContracts = 0, refusedObligations = 0, providerLost = 0;
     std::atomic<std::size_t> ownerThreadViolations{0};  // the only field written by non-owner threads
 
 private:
-    void owner() { if (std::this_thread::get_id() != ownerThread_) { ++ownerThreadViolations; throw std::logic_error("非擁有者執行緒"); } }
+    // Every World call runs on the owner thread. Mutating calls are also refused while settle() is
+    // delivering lost notices: the receiver must not edit state the outer batch is still applying.
+    void owner(bool mutating = true) {
+        if (std::this_thread::get_id() != ownerThread_) { ++ownerThreadViolations; throw std::logic_error("非擁有者執行緒"); }
+        if (mutating && inSettle_) { ++reentryRefused; throw std::logic_error("結算中不可重入"); }
+    }
     std::uint64_t next() { return ++seq_; }
     // Grow geometrically before the push so push_back cannot reallocate (keeps record() strong).
     template <class V> static void make_room(V& v) { if (v.size() == v.capacity()) v.reserve(v.empty() ? 8 : v.size() * 2); }
