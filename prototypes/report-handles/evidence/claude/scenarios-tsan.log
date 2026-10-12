@@ -46,7 +46,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=850 outcomes=850 providerLost=109
+  issued=814 outcomes=814 providerLost=114
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==
@@ -99,5 +99,9 @@
   PASS Q147：詳細紀錄只留最新 3 筆，由舊到新
   PASS Q147：N=0 時只計數
   PASS 接收者第一則拋例外：計數，其餘通知照送
+  PASS Q147：被移走的空殼回報也計數
+  PASS Q147：移動指派後的空殼回報也計數
+  PASS 從未綁定帳本的把手：回報被拒但無處計數（已知限制）
+  PASS S13 空殼計數
 
-failures=0 pass=84
+failures=0 pass=88

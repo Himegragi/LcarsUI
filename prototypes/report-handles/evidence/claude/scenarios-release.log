@@ -16,7 +16,7 @@
   PASS 用過的把手再回報 → 空把手
   PASS 容量滿時拒絕新命令，最後預留全部歸還
   PASS Q143a：丟棄的結果把手自動結算為提供者失效
-  started=400 refused=42 accepted=360 dropped=40
+  started=400 refused=170 accepted=360 dropped=40
   PASS S4 結束
 == S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==
   PASS 改派：撤銷舊確認資格
@@ -47,7 +47,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=833 outcomes=833 providerLost=121
+  issued=820 outcomes=820 providerLost=119
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==
@@ -105,5 +105,9 @@
   PASS Q150：批次中途配置失敗，已完成項目的通知仍各送一次，重試不重送
   PASS 接收者第一則拋例外：計數，其餘通知照送
   PASS Q145：偵測遺失並送出通知，0 次配置
+  PASS Q147：被移走的空殼回報也計數
+  PASS Q147：移動指派後的空殼回報也計數
+  PASS 從未綁定帳本的把手：回報被拒但無處計數（已知限制）
+  PASS S13 空殼計數
 
-failures=0 pass=92
+failures=0 pass=96

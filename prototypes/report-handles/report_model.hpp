@@ -122,16 +122,18 @@ public:
     ReportHandle() = default;
     ReportHandle(const ReportHandle&) = delete;
     ReportHandle& operator=(const ReportHandle&) = delete;
-    ReportHandle(ReportHandle&& o) noexcept : l_(std::move(o.l_)), r_(o.r_), live_(std::exchange(o.live_, false)) {}
+    // A moved-from handle keeps a weak reference to its ledger (copying a weak_ptr only bumps a counter),
+    // so a later report on the shell is still counted (Q147).
+    ReportHandle(ReportHandle&& o) noexcept : l_(o.l_), r_(o.r_), live_(std::exchange(o.live_, false)) {}
     ReportHandle& operator=(ReportHandle&& o) noexcept {
-        if (this != &o) { drop_if_live(); l_ = std::move(o.l_); r_ = o.r_; live_ = std::exchange(o.live_, false); }
+        if (this != &o) { drop_if_live(); l_ = o.l_; r_ = o.r_; live_ = std::exchange(o.live_, false); }
         return *this;
     }
     ~ReportHandle() { drop_if_live(); }
 
     // Single use: after this call the handle is empty whatever the outcome.
     Reject report(Payload p = {}) {
-        if (!live_) {  // used handles still know their ledger; moved-from ones do not
+        if (!live_) {  // used and moved-from handles still know their ledger; never-bound ones do not
             if (auto l = l_.lock()) l->count_reject(Reject::Empty, r_);
             return Reject::Empty;
         }

@@ -1,0 +1,95 @@
+DECLARATIONS 192 completion permutations plus refusal and reassign cases
+REENTRY settle mode=caught calls=3 refused=0 failures=0
+REENTRY deliver mode=caught calls=3 refused=0 failures=0
+REENTRY reassign mode=caught calls=3 refused=0 failures=0
+REENTRY collect mode=caught calls=3 refused=0 failures=0
+REENTRY abandon mode=caught calls=3 refused=0 failures=0
+REENTRY start_command mode=caught calls=3 refused=0 failures=0
+REENTRY close mode=caught calls=3 refused=0 failures=0
+REENTRY set_cleanup_safe mode=caught calls=3 refused=0 failures=0
+REENTRY set_lost_receiver mode=caught calls=3 refused=0 failures=0
+REENTRY add_env mode=caught calls=3 refused=0 failures=0
+REENTRY fault mode=caught calls=3 refused=0 failures=0
+REENTRY settle mode=uncaught calls=3 refused=0 failures=0
+REENTRY deliver mode=uncaught calls=3 refused=0 failures=0
+REENTRY reassign mode=uncaught calls=3 refused=0 failures=0
+REENTRY collect mode=uncaught calls=3 refused=0 failures=0
+REENTRY abandon mode=uncaught calls=3 refused=0 failures=0
+REENTRY start_command mode=uncaught calls=3 refused=0 failures=0
+REENTRY close mode=uncaught calls=3 refused=0 failures=0
+REENTRY set_cleanup_safe mode=uncaught calls=3 refused=0 failures=0
+REENTRY set_lost_receiver mode=uncaught calls=3 refused=0 failures=0
+REENTRY add_env mode=uncaught calls=3 refused=0 failures=0
+REENTRY fault mode=uncaught calls=3 refused=0 failures=0
+SKIP allocator replacement and bad_alloc injection under ASan
+OBS receiver_invariant_errors=0 after_settle=0
+expanded_checks=3647 expanded_failures=0
+PASS handle copy/forge types rejected
+PASS self move preserves report
+PASS second report empty
+PASS move onto live handle transfers
+PASS overwritten live handle dropped exactly once
+PASS result drop provider lost
+PASS result ack drop retries delivery
+PASS result ack retry settles once
+PASS all delivery kinds drop; ack not accepted; three lost obligations
+PASS per-item declaration independent of cleanup flag
+PASS remaining lost parts declared separately
+PASS handoff ack retry completes
+PASS revoked handoff ack drop inert
+PASS revoked result ack drop inert
+PASS Revoked preserves obligation state except diagnostic and consumed handle
+PASS rejected handle then empty
+PASS WorldGone and subsequent Empty
+PASS ack capacity failure keeps receipt undelivered
+PASS close retains pending obligations
+PASS unsafe abandon refused
+PASS explicit abandon only terminal result
+PASS late result accepted and finalizes once
+F1 redeliver=0 live=1 invariant_errors=0
+F1 old_ack=0 acked=1 new_ack_tracked=0
+F4 cancelled_env_value=0
+F5 unsafe_collect_receipts=1 outcomes=0 ended=0
+F6 duplicate_reason=1 empty_diagnostic=1
+PASS concurrent reports/drop/settle/new obligations accounting
+STRESS issued=4000 accepted=2666 lost=1334 bad=0 max_drain=8 allocations=0
+LIFETIME path_allocations=0
+LIFETIME rounds=300 handles=1800 report_accepted=594 world_gone=306 drops=900
+PASS all six kinds concurrent settle/destruction safe in finite run
+probe_unexpected_failures=0
+RING N=0 events=80 wrap-and-reason checked
+RING N=1 events=80 wrap-and-reason checked
+RING N=2 events=80 wrap-and-reason checked
+RING N=3 events=80 wrap-and-reason checked
+RING N=16 events=80 wrap-and-reason checked
+Q147_GAP moved_from_return=1 Empty_count=0 details=0 world_alive=1
+NESTED notices=15 outer=8 nested=7 depth=2 throwing=0
+NESTED notices=15 outer=8 nested=7 depth=2 throwing=1
+MUTATIONS successful settle/deliver/reassign/collect/abandon/declare/close/cleanup/start/add/fault
+SKIP exhaustive allocation under ASan
+SKIP repeated failure injection under ASan
+q150_checks=3183 q150_failures=0
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\probe.cpp(8,26): warning: unused variable 'failAt' [-Wunused-variable]
+    8 | static thread_local long failAt=-1;
+      |                          ^~~~~~
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\probe.cpp(9,28): warning: unused variable 'allocations' [-Wunused-variable]
+    9 | static thread_local size_t allocations=0;
+      |                            ^~~~~~~~~~~
+2 warnings generated.
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\original.cpp(44,55): warning: explicitly moving variable of type 'rh::ReportHandle' to itself [-Wself-move]
+   44 |  {World w(4);int a=env(w);auto h=*w.start_command(a);h=std::move(h);ck(h.valid()&&h.report({5})==Reject::None,"self move preserves report");ck(h.report()==Reject::Empty,"second report empty");auto x=*w.start_command(a);auto y=*w.start_command(a);x=std::move(y);ck(!y.valid()&&x.report()==Reject::None,"move onto live handle transfers");drain(w);ck(w.providerLost==1&&w.ledger().live()==0&&w.invariants().empty(),"overwritten live handle dropped exactly once");}
+      |                                                      ~^          ~
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\original.cpp(11,63): warning: unused variable 'failNew' [-Wunused-variable]
+   11 | static thread_local size_t allocs=0; static thread_local bool failNew=false;
+      |                                                               ^~~~~~~
+2 warnings generated.
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\q150.cpp(8,26): warning: unused variable 'failAt' [-Wunused-variable]
+    8 | static thread_local long failAt=-1;
+      |                          ^~~~~~
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\q150.cpp(9,28): warning: unused variable 'allocations' [-Wunused-variable]
+    9 | static thread_local size_t allocations=0;
+      |                            ^~~~~~~~~~~
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-930c49b\q150.cpp(23,16): warning: unused variable 'kinds' [-Wunused-const-variable]
+   23 | constexpr Kind kinds[]={Kind::CallbackEnd,Kind::WorkEnd,Kind::LeaseEnd};
+      |                ^~~~~
+3 warnings generated.

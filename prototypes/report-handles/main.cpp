@@ -474,6 +474,20 @@ int main() {
     }
 #endif
 
+    {
+        // Codex 930c49b: a moved-from handle still belongs to a live World, so its rejection must be counted.
+        World w(4, 4); auto a = *w.add_env("A", Contract::Handover);
+        auto source = *w.start_command(a);
+        auto destination = std::move(source);
+        check(source.report() == Reject::Empty && w.ledger().rejected(Reject::Empty) == 1 && w.ledger().recent_rejects().size() == 1, "Q147：被移走的空殼回報也計數");
+        ReportHandle other = *w.start_command(a);
+        other = std::move(destination);  // the old obligation of `other` is dropped; destination becomes a shell
+        check(destination.report() == Reject::Empty && w.ledger().rejected(Reject::Empty) == 2, "Q147：移動指派後的空殼回報也計數");
+        ReportHandle never;
+        check(never.report() == Reject::Empty && w.ledger().rejected(Reject::Empty) == 2, "從未綁定帳本的把手：回報被拒但無處計數（已知限制）");
+        other.report(); settle_all(w);
+        inv(w, "S13 空殼計數");
+    }
     std::printf("\nfailures=%d pass=%d\n", g_fail, g_pass);
     return g_fail ? 1 : 0;
 }
