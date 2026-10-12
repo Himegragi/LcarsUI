@@ -15,7 +15,7 @@
   PASS 用過的把手再回報 → 空把手
   PASS 容量滿時拒絕新命令，最後預留全部歸還
   PASS Q143a：丟棄的結果把手自動結算為提供者失效
-  started=400 refused=1028 accepted=360 dropped=40
+  started=400 refused=2026 accepted=360 dropped=40
   PASS S4 結束
 == S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==
   PASS 改派：撤銷舊確認資格
@@ -46,7 +46,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=855 outcomes=855 providerLost=130
+  issued=828 outcomes=828 providerLost=134
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==
@@ -103,5 +103,50 @@
   PASS Q147：移動指派後的空殼回報也計數
   PASS 從未綁定帳本的把手：回報被拒但無處計數（已知限制）
   PASS S13 空殼計數
+== S14 暫停／恢復與接收途徑（自 JS 模型移植）==
+  PASS B 途徑失效 → 暫停
+  PASS A 故障、共享服務不可信 → B 需要隔離證明
+  PASS 新途徑不能修好不可信的服務
+  PASS 隔離未知 → 拒絕
+  PASS 換新服務不等於證實隔離
+  PASS 證實隔離後恢復；A 的交接仍未結清
+  PASS B 可接新工作；故障的 A 不行
+  PASS A 的交接結清
+  PASS S14a 結束
+  PASS 執行中的 B 被暫停，先前的隔離證明作廢
+  PASS S14 證明作廢
+  PASS 暫停：只有未宣告可繼續的命令收到取消請求（不是完成）
+  PASS 暫停中不接新工作
+  PASS 暫停中結果只結算、不套用、不可交出
+  PASS S14 暫停
+  PASS 本批處理完 ≠ 已提交
+  PASS 取消先到：提交回報已結束
+  PASS 提交先到：取消太晚
+  PASS 舊嘗試已過期
+  PASS 兩份結果交付
+  PASS S14 取消對提交
+  PASS 晚到的 c2 不加入本批
+  PASS 提交：c2 仍保留未套用
+  PASS 一般處理輪處置 c2 一次
+  PASS 提交前途徑失效：嘗試失效、不重新開放
+  PASS 暫停中一般處理輪被拒，c4 仍保留
+  PASS S14 晚到結果
+  PASS 反覆失效／安裝／恢復：途徑表不超過上限
+  PASS 全部有效時拒絕安裝
+  PASS S14 途徑表
+== S15 暫停／恢復 × 回報把手 ==
+  PASS 暫停中提供者失效：終態已定，處置保留
+  PASS 恢復時處置為無結果
+  PASS 處置後才發確認把手
+  PASS 逐筆確認後交付
+  PASS S15 提供者失效
+  PASS 暫停中擁有者可明確放棄已終態結果
+  PASS 已放棄的結果不進入本批、不套用
+  PASS S15 放棄
+  PASS 恢復中關閉：嘗試失效；收尾不安全時結果保留
+  PASS 宣告安全：判定不適用、交付、範圍結束
+  PASS S15 恢復中關閉
+  PASS B 暫停期間，A 交接的遺失通知照送並可宣告結清
+  PASS S15 遺失通知
 
-failures=0 pass=88
+failures=0 pass=131

@@ -488,6 +488,148 @@ int main() {
         other.report(); settle_all(w);
         inv(w, "S13 空殼計數");
     }
+    std::printf("== S14 暫停／恢復與接收途徑（自 JS 模型移植）==\n");
+    {   // JS guide 2: shared untrusted service; recovery needs an explicit isolation proof
+        World w(32); quiet(w);
+        auto s1 = w.add_service(); auto rA = *w.add_route(), rB = *w.add_route();
+        auto A = *w.add_env("A", Contract::Handover, rA, {s1}), B = *w.add_env("B", Contract::Handover, rB, {s1});
+        w.lose_route(rB);
+        check(w.envs[B].state == EnvState::Paused, "B 途徑失效 → 暫停");
+        auto h = w.fail_env(A, s1); auto d = *w.deliver(h);
+        check(w.envs[A].state == EnvState::Faulted && w.envs[B].needsProof, "A 故障、共享服務不可信 → B 需要隔離證明");
+        auto rB2 = *w.add_route();
+        check(!w.begin_resume(B, rB2) && std::string(w.resume_blocker(B, rB2)) == "依賴不可信的服務", "新途徑不能修好不可信的服務");
+        w.declare_isolation(B, Isolation::Unknown);
+        check(std::string(w.resume_blocker(B, rB2)) == "隔離未知", "隔離未知 → 拒絕");
+        w.bind_new_service(B, s1); w.declare_isolation(B, Isolation::Undeclared);
+        check(!w.begin_resume(B, rB2) && std::string(w.resume_blocker(B, rB2)) == "共享故障後尚未證實隔離", "換新服務不等於證實隔離");
+        w.declare_isolation(B, Isolation::Proven);
+        auto at = w.begin_resume(B, rB2);
+        check(at && w.commit_resume(*at) == Commit::Committed && w.envs[B].state == EnvState::Running && w.handoffs.count(h) == 1, "證實隔離後恢復；A 的交接仍未結清");
+        check(w.start_command(B).has_value() && !w.start_command(A).has_value(), "B 可接新工作；故障的 A 不行");
+        d.callback.report(); d.work.report(); d.lease.report(); d.ack.report(); settle_all(w);
+        check(w.handoffs.count(h) == 0, "A 的交接結清");
+        inv(w, "S14a 結束");
+    }
+    {   // proof is voided by a later shared fault
+        World w(16); quiet(w);
+        auto s1 = w.add_service();
+        auto A = *w.add_env("A", Contract::Handover, std::nullopt, {s1}), B = *w.add_env("B", Contract::Handover, std::nullopt, {s1});
+        w.declare_isolation(B, Isolation::Proven);
+        w.fail_env(A, s1);
+        check(w.envs[B].state == EnvState::Paused && w.envs[B].isolation == Isolation::Undeclared, "執行中的 B 被暫停，先前的隔離證明作廢");
+        inv(w, "S14 證明作廢");
+    }
+    {   // pause: cancellation requests, no new work, held results
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto keep = *w.start_command(a, true), stop = *w.start_command(a);
+        w.lose_route(w.envs[a].route);
+        std::size_t req = 0; for (auto& [id, c] : w.commands) if (c.cancelRequested) ++req;
+        check(req == 1 && w.cancelRequests == 1, "暫停：只有未宣告可繼續的命令收到取消請求（不是完成）");
+        check(!w.start_command(a) && w.refusedNotRunning == 1, "暫停中不接新工作");
+        keep.report({7}); stop.report({0, true}); settle_all(w);
+        check(w.envs[a].value == 0 && w.collect(a).empty() && w.receipts.size() == 2, "暫停中結果只結算、不套用、不可交出");
+        inv(w, "S14 暫停");
+    }
+    {   // JS guide 4: cancel vs commit, first legal settlement wins
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto c1 = *w.start_command(a, true), c2 = *w.start_command(a, true);
+        w.lose_route(w.envs[a].route);
+        c1.report({1}); c2.report({2}); settle_all(w);
+        auto r2 = *w.add_route(); auto a1 = *w.begin_resume(a, r2);
+        check(w.resume_step(a1) == 2 && w.envs[a].state == EnvState::Resuming && w.envs[a].value == 2, "本批處理完 ≠ 已提交");
+        check(w.cancel_resume(a1) == Commit::Cancelled && w.commit_resume(a1) == Commit::AlreadyEnded && w.envs[a].state == EnvState::Paused, "取消先到：提交回報已結束");
+        auto a2 = *w.begin_resume(a, r2);
+        check(w.commit_resume(a2) == Commit::Committed && w.cancel_resume(a2) == Commit::TooLate, "提交先到：取消太晚");
+        check(w.resume_step(a1) == 0 && w.staleAttempts == 1, "舊嘗試已過期");
+        check(w.collect(a).empty() && w.outcomes.size() == 2, "兩份結果交付");
+        inv(w, "S14 取消對提交");
+    }
+    {   // JS guide 6: late results are not added to the frozen batch
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        std::vector<ReportHandle> c; for (int i = 0; i < 4; ++i) c.push_back(*w.start_command(a, true));
+        w.lose_route(w.envs[a].route);
+        c[0].report({11}); settle_all(w);
+        auto r2 = *w.add_route(); auto at = *w.begin_resume(a, r2);
+        c[1].report({22}); settle_all(w);
+        check(w.envs[a].attempt->batch.size() == 1, "晚到的 c2 不加入本批");
+        w.resume_step(at);
+        check(w.commit_resume(at) == Commit::Committed && w.envs[a].value == 11, "提交：c2 仍保留未套用");
+        check(w.process_pending(a) == 1 && w.envs[a].value == 22 && w.process_pending(a) == 0, "一般處理輪處置 c2 一次");
+        w.lose_route(r2);
+        c[2].report({33}); settle_all(w);
+        auto r3 = *w.add_route(); auto at2 = *w.begin_resume(a, r3);
+        c[3].report({44}); settle_all(w);
+        w.resume_step(at2);
+        w.lose_route(r3);
+        check(w.envs[a].state == EnvState::Paused && w.commit_resume(at2) == Commit::AlreadyEnded, "提交前途徑失效：嘗試失效、不重新開放");
+        check(w.process_pending(a) == 0 && w.receipts.rbegin()->second.disp.empty() && w.receipts.rbegin()->second.terminal == "已完成", "暫停中一般處理輪被拒，c4 仍保留");
+        inv(w, "S14 晚到結果");
+    }
+    {   // bounded route table
+        World w(8); auto a = *w.add_env("A", Contract::Handover);
+        bool ok = true;
+        for (int i = 0; i < 10; ++i) {
+            w.lose_route(w.envs[a].route);
+            auto r = w.add_route(); auto at = r ? w.begin_resume(a, *r) : std::nullopt;
+            ok = ok && at && w.commit_resume(*at) == Commit::Committed && w.routes.size() <= World::kRouteCap;
+        }
+        check(ok, "反覆失效／安裝／恢復：途徑表不超過上限");
+        for (int i = 0; i < 10; ++i) w.add_route();
+        check(w.routes.size() == World::kRouteCap && w.refusedRegistry >= 1, "全部有效時拒絕安裝");
+        inv(w, "S14 途徑表");
+    }
+    std::printf("== S15 暫停／恢復 × 回報把手 ==\n");
+    {   // dropped result handle while paused: provider-lost result is held, then disposed by recovery
+        World w(16); auto a = *w.add_env("A", Contract::ExplicitAck);
+        auto k = *w.start_command(a, true);
+        w.lose_route(w.envs[a].route);
+        { ReportHandle gone = std::move(k); }
+        settle_all(w);
+        check(w.receipts.begin()->second.terminal == "提供者失效" && w.receipts.begin()->second.disp.empty(), "暫停中提供者失效：終態已定，處置保留");
+        auto at = *w.begin_resume(a, *w.add_route()); w.resume_step(at); w.commit_resume(at);
+        check(w.receipts.begin()->second.disp == "無結果", "恢復時處置為無結果");
+        auto acks = w.collect(a);
+        check(acks.size() == 1, "處置後才發確認把手");
+        if (!acks.empty()) acks[0].report();
+        settle_all(w);
+        check(w.receipts.empty(), "逐筆確認後交付");
+        inv(w, "S15 提供者失效");
+    }
+    {   // abandon while paused; recovery skips the abandoned result
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto k1 = *w.start_command(a, true), k2 = *w.start_command(a, true);
+        w.lose_route(w.envs[a].route);
+        k1.report({1}); k2.report({2}); settle_all(w);
+        check(w.abandon(a) == 2u && w.receipts.empty(), "暫停中擁有者可明確放棄已終態結果");
+        auto at = *w.begin_resume(a, *w.add_route());
+        check(w.envs[a].attempt->batch.empty() && w.commit_resume(at) == Commit::Committed && w.envs[a].value == 0, "已放棄的結果不進入本批、不套用");
+        inv(w, "S15 放棄");
+    }
+    {   // close during resume: attempt invalidated, held results become 不適用; unsafe close keeps them
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto k1 = *w.start_command(a, true), k2 = *w.start_command(a, true);
+        w.lose_route(w.envs[a].route);
+        k1.report({1}); k2.report({2}); settle_all(w);
+        auto at = *w.begin_resume(a, *w.add_route());
+        w.set_cleanup_safe(a, false); w.close(a);
+        check(!w.envs[a].attempt && w.resume_step(at) == 0 && w.receipts.begin()->second.disp.empty() && !w.envs[a].ended, "恢復中關閉：嘗試失效；收尾不安全時結果保留");
+        w.set_cleanup_safe(a, true);
+        check(w.receipts.begin()->second.disp == "不適用" && w.collect(a).empty() && w.envs[a].ended, "宣告安全：判定不適用、交付、範圍結束");
+        inv(w, "S15 恢復中關閉");
+    }
+    {   // lost reporter notices keep working while dependants are paused; owner can declare from the receiver
+        World w(16);
+        auto s1 = w.add_service();
+        auto A = *w.add_env("A", Contract::Handover, std::nullopt, {s1}), B = *w.add_env("B", Contract::Handover, std::nullopt, {s1});
+        std::size_t got = 0;
+        w.set_lost_receiver([&](const LostNotice& n) { ++got; w.declare_ended(n.handoff, n.kind); });
+        auto h = w.fail_env(A, s1); auto d = *w.deliver(h);
+        { ReportHandle x = std::move(d.lease); }
+        d.callback.report(); d.work.report(); d.ack.report(); settle_all(w);
+        check(got == 1 && w.handoffs.count(h) == 0 && w.envs[B].state == EnvState::Paused, "B 暫停期間，A 交接的遺失通知照送並可宣告結清");
+        inv(w, "S15 遺失通知");
+    }
     std::printf("\nfailures=%d pass=%d\n", g_fail, g_pass);
     return g_fail ? 1 : 0;
 }

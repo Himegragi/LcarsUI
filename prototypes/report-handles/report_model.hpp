@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -157,14 +158,28 @@ struct DeliveryHandles { ReportHandle callback, work, lease, ack; };
 struct LostNotice { std::uint64_t handoff; Kind kind; };
 // Q144: result of an owner declaration that a lost reporter's obligation has safely ended.
 enum class Declare : std::uint8_t { Done, NotLost, Unknown };
+// Pause/resume (ported from the JS model; ADR 0003 receive routes, shared-service isolation, recovery).
+enum class EnvState : std::uint8_t { Running, Paused, Resuming, Faulted };
+enum class Isolation : std::uint8_t { Undeclared, Unknown, Proven };
+enum class ResumeEnd : std::uint8_t { Committed, Cancelled, Invalidated };
+enum class Commit : std::uint8_t { Committed, Cancelled, BatchNotDone, Failed, TooLate, AlreadyEnded, Stale };
 
 // Owner-thread state. Every mutating call checks the calling thread.
 class World {
 public:
-    struct Command { int env; bool running = true; std::string terminal; int value = 0; Ledger::Ref ref; };
-    struct Receipt { int env; std::string terminal; bool handedOver = false; std::optional<Ledger::Ref> ack; std::uint64_t ackOb = 0; };
+    struct Command { int env; bool running = true; std::string terminal; int value = 0; Ledger::Ref ref; bool allowContinue = false, cancelRequested = false, cancelled = false; };
+    // disp empty = UI disposition still pending (result held while its env is paused or cleanup is unsafe).
+    struct Receipt { int env; std::string terminal; bool handedOver = false; std::optional<Ledger::Ref> ack; std::uint64_t ackOb = 0; std::string disp; };
     struct Outcome { std::uint64_t id; int env; std::string outcome; };
-    struct Env { std::string name; Contract contract; bool closed = false, ended = false, cleanupSafe = true; int value = 0; };
+    struct Attempt { std::uint64_t id, route; std::vector<std::uint64_t> batch; std::size_t cursor = 0; };
+    struct Env {
+        std::string name; Contract contract; bool closed = false, ended = false, cleanupSafe = true; int value = 0;
+        EnvState state = EnvState::Running; std::uint64_t route = 0; std::vector<std::uint64_t> services;
+        Isolation isolation = Isolation::Undeclared; bool needsProof = false;
+        std::optional<Attempt> attempt; std::deque<std::pair<std::uint64_t, ResumeEnd>> ended_attempts;  // bounded: 4
+    };
+    struct Route { std::uint64_t id; bool alive = true; };
+    struct Service { std::uint64_t id; bool trustworthy = true; };
     struct Part { bool active = false, lost = false; Ledger::Ref ref; std::uint64_t ob = 0; };
     struct Handoff { int env; bool acked = false; std::uint64_t assignment = 0; Part cb, work, lease; std::optional<Ledger::Ref> ack; std::uint64_t ackOb = 0; };
 
@@ -173,19 +188,23 @@ public:
     World& operator=(const World&) = delete;
 
     // Q137: an env without a valid acceptance point is refused.
-    std::optional<int> add_env(std::string n, std::optional<Contract> c) {
+    // Without a route the env gets a dedicated one (keeps single-env scenarios short).
+    std::optional<int> add_env(std::string n, std::optional<Contract> c, std::optional<std::uint64_t> route = std::nullopt,
+                               std::vector<std::uint64_t> svcs = {}) {
         owner();
         if (!c || (*c != Contract::Handover && *c != Contract::ExplicitAck)) { ++refusedContracts; return std::nullopt; }
-        envs.push_back({std::move(n), *c}); return static_cast<int>(envs.size() - 1);
+        if (!route) { route = add_route(); if (!route) return std::nullopt; }
+        Env e{std::move(n), *c}; e.route = *route; e.services = std::move(svcs);
+        envs.push_back(std::move(e)); return static_cast<int>(envs.size() - 1);
     }
     // Q135: reserve the report place before taking the obligation; no place, no obligation.
-    std::optional<ReportHandle> start_command(int env) {
+    std::optional<ReportHandle> start_command(int env, bool allowContinue = false) {
         owner();
-        if (envs[env].closed) return std::nullopt;
+        if (envs[env].closed || envs[env].state != EnvState::Running) { ++refusedNotRunning; return std::nullopt; }
         const auto id = next();
         auto r = ledger_->reserve(Kind::Result, id);
         if (!r) { ++refusedObligations; return std::nullopt; }
-        try { commands[id] = Command{env, true, {}, 0, *r}; receipts[id] = Receipt{env, {}, false, std::nullopt, 0}; }
+        try { commands[id] = Command{env, true, {}, 0, *r, allowContinue}; receipts[id] = Receipt{env, {}, false, std::nullopt, 0, {}}; }
         catch (...) { commands.erase(id); receipts.erase(id); ledger_->revoke(*r); throw; }
         return ReportHandle(ledger_, *r);
     }
@@ -235,8 +254,13 @@ public:
         deliver_lost(pending, np);  // the batch is finished: the receiver may change state
         return n;
     }
-    void close(int env) { owner(); envs[env].closed = true; finalize(); }
-    void set_cleanup_safe(int env, bool s) { owner(); envs[env].cleanupSafe = s; finalize(); }
+    void close(int env) {
+        owner(); auto& e = envs[env];
+        if (e.attempt) { end_attempt(e, ResumeEnd::Invalidated); e.state = EnvState::Paused; }
+        request_cancel(env); e.closed = true;
+        dispose_closed(env); finalize();
+    }
+    void set_cleanup_safe(int env, bool s) { owner(); envs[env].cleanupSafe = s; dispose_closed(env); finalize(); }
     // Receiver takes settled results; acceptance follows the env contract (Q137).
     std::vector<ReportHandle> collect(int env) {
         owner(); std::vector<ReportHandle> acks;
@@ -244,7 +268,7 @@ public:
         acks.reserve(receipts.size());  // push_back below cannot reallocate
         for (auto it = receipts.begin(); it != receipts.end();) {
             auto& [id, r] = *it;
-            if (r.env != env || r.terminal.empty() || r.handedOver) { ++it; continue; }
+            if (r.env != env || r.terminal.empty() || r.disp.empty() || r.handedOver) { ++it; continue; }  // held results wait
             if (envs[env].contract == Contract::Handover) { record(id, env, "已交付"); it = receipts.erase(it); continue; }  // record: strong
             const auto ob = next(); auto ref = ledger_->reserve(Kind::ResultAck, ob);
             if (!ref) { ++refusedObligations; ++it; continue; }  // stays undelivered; try later
@@ -266,6 +290,113 @@ public:
         }
         finalize(); return n;
     }
+    // ---------------- receive routes, shared services, pause/resume ----------------
+    // Bounded route table: only dead, unreferenced routes are reclaimed; full table refuses.
+    std::optional<std::uint64_t> add_route() {
+        owner();
+        if (routes.size() >= kRouteCap)
+            for (auto it = routes.begin(); it != routes.end(); ++it)
+                if (!it->alive && !route_referenced(it->id)) { routes.erase(it); break; }
+        if (routes.size() >= kRouteCap) { ++refusedRegistry; return std::nullopt; }
+        const auto id = next(); routes.push_back({id, true}); return id;
+    }
+    std::uint64_t add_service() { owner(); const auto id = next(); services.push_back({id, true}); return id; }
+    // The route is gone: dependants stop taking ordinary work; a running recovery is invalidated.
+    void lose_route(std::uint64_t r) {
+        owner(); auto* x = route(r); if (!x || !x->alive) return;
+        x->alive = false;
+        for (std::size_t i = 0; i < envs.size(); ++i) {
+            auto& e = envs[i]; if (e.route != r || e.closed) continue;
+            if (e.state == EnvState::Running) pause(static_cast<int>(i));
+            else if (e.state == EnvState::Resuming) { end_attempt(e, ResumeEnd::Invalidated); e.state = EnvState::Paused; }
+        }
+    }
+    // Full fault path: env stops for good and a handoff opens. An untrusted shared service pauses every
+    // other dependant and voids earlier isolation proofs.
+    std::uint64_t fail_env(int env, std::optional<std::uint64_t> unsafeService = std::nullopt) {
+        owner(); auto& e = envs[env];
+        if (e.attempt) end_attempt(e, ResumeEnd::Invalidated);
+        request_cancel(env); e.state = EnvState::Faulted;
+        if (unsafeService) {
+            service(*unsafeService)->trustworthy = false;
+            for (std::size_t i = 0; i < envs.size(); ++i) {
+                auto& o = envs[i];
+                if (static_cast<int>(i) == env || o.closed || !depends_on(o, *unsafeService)) continue;
+                o.needsProof = true; if (o.isolation == Isolation::Proven) o.isolation = Isolation::Undeclared;
+                if (o.state == EnvState::Resuming) { end_attempt(o, ResumeEnd::Invalidated); o.state = EnvState::Paused; }
+                if (o.state == EnvState::Running) pause(static_cast<int>(i));
+            }
+        }
+        return fault(env);
+    }
+    void declare_isolation(int env, Isolation v) { owner(); envs[env].isolation = v; }
+    // A new trusted resource is not by itself an isolation proof.
+    std::uint64_t bind_new_service(int env, std::uint64_t from) {
+        owner(); auto& e = envs[env]; const auto id = add_service();
+        for (auto& s : e.services) if (s == from) s = id;
+        if (e.needsProof && e.isolation == Isolation::Proven) e.isolation = Isolation::Undeclared;
+        return id;
+    }
+    // Why resuming on `route` is not allowed now; nullptr when it is.
+    const char* resume_blocker(int env, std::uint64_t r) const {
+        const auto& e = envs[env];
+        const auto* x = route(r); if (!x || !x->alive) return "接收途徑無效";
+        if (e.closed) return "環境已關閉";
+        if (e.state == EnvState::Faulted) return "故障實例";
+        if (e.isolation == Isolation::Unknown) return "隔離未知";
+        for (auto s : e.services) { const auto* v = service(s); if (!v || !v->trustworthy) return "依賴不可信的服務"; }
+        if (e.needsProof && e.isolation != Isolation::Proven) return "共享故障後尚未證實隔離";
+        return nullptr;
+    }
+    // Freezes the held results of this env as the batch; results settled later are not added.
+    std::optional<std::uint64_t> begin_resume(int env, std::uint64_t r) {
+        owner(); auto& e = envs[env];
+        if (e.state != EnvState::Paused || resume_blocker(env, r)) { ++refusedResume; return std::nullopt; }
+        Attempt a{next(), r, {}, 0};
+        for (auto& [id, rc] : receipts) if (rc.env == env && !rc.terminal.empty() && rc.disp.empty()) a.batch.push_back(id);
+        e.route = r; e.attempt = std::move(a); e.state = EnvState::Resuming;
+        return e.attempt->id;
+    }
+    // Disposes up to `budget` batch results, re-checking conditions before each one.
+    std::size_t resume_step(std::uint64_t attempt, std::size_t budget = 2) {
+        owner(); auto* e = live_attempt(attempt); if (!e) { ++staleAttempts; return 0; }
+        const int env = static_cast<int>(e - envs.data());
+        std::size_t n = 0;
+        while (n < budget && e->attempt->cursor < e->attempt->batch.size()) {
+            if (resume_blocker(env, e->attempt->route)) { end_attempt(*e, ResumeEnd::Invalidated); e->state = EnvState::Paused; return n; }
+            dispose_held(e->attempt->batch[e->attempt->cursor++], env); ++n;
+        }
+        return n;
+    }
+    // First legal settlement wins: commit and cancel race on the owner thread.
+    Commit commit_resume(std::uint64_t attempt) {
+        owner(); auto* e = live_attempt(attempt);
+        if (!e) return ended_as(attempt) ? Commit::AlreadyEnded : Commit::Stale;
+        const int env = static_cast<int>(e - envs.data());
+        if (e->attempt->cursor < e->attempt->batch.size()) return Commit::BatchNotDone;
+        if (resume_blocker(env, e->attempt->route)) { end_attempt(*e, ResumeEnd::Invalidated); e->state = EnvState::Paused; return Commit::Failed; }
+        end_attempt(*e, ResumeEnd::Committed); e->state = EnvState::Running; ++commits;
+        return Commit::Committed;
+    }
+    Commit cancel_resume(std::uint64_t attempt) {
+        owner(); auto* e = live_attempt(attempt);
+        if (!e) { auto h = ended_as(attempt); if (!h) return Commit::Stale; return *h == ResumeEnd::Committed ? Commit::TooLate : Commit::AlreadyEnded; }
+        end_attempt(*e, ResumeEnd::Cancelled); e->state = EnvState::Paused; ++cancels;
+        return Commit::Cancelled;
+    }
+    // Results that settled outside a frozen batch are disposed after reopening, in bounded rounds.
+    std::size_t process_pending(int env, std::size_t budget = 2) {
+        owner(); auto& e = envs[env];
+        if (e.state != EnvState::Running || e.closed || resume_blocker(env, e.route)) { ++refusedResume; return 0; }
+        std::size_t n = 0;
+        for (auto& [id, rc] : receipts) {
+            if (n >= budget) break;
+            if (rc.env != env || rc.terminal.empty() || !rc.disp.empty()) continue;
+            dispose_held(id, env); ++n;
+        }
+        return n;
+    }
+
     // Q145/Q148/Q149: one receiver per World, required before callback/work/lease obligations are taken.
     // Q150: called on the owner thread after a settle() batch has finished.
     // Refused for an empty receiver (Q149 must not be bypassed) and while notices are being delivered
@@ -315,6 +446,13 @@ public:
             for (auto& [id, r] : receipts) if (r.env == static_cast<int>(i)) e.push_back(envs[i].name + " 已結束卻有未結清結果");
             for (auto& [id, c] : commands) if (c.env == static_cast<int>(i) && c.running) e.push_back(envs[i].name + " 已結束卻有執行中命令");
         }
+        for (auto& v : envs) {
+            if ((v.state == EnvState::Resuming) != v.attempt.has_value()) e.push_back(v.name + " 恢復狀態與嘗試不一致");
+            if (v.closed && v.attempt) e.push_back(v.name + " 已關閉卻有恢復嘗試");
+            if (v.ended_attempts.size() > 4) e.push_back("結局紀錄超過上限");
+        }
+        for (auto& [id, rc] : receipts) if (!rc.disp.empty() && rc.terminal.empty()) e.push_back("未終態卻已處置");
+        if (routes.size() > kRouteCap) e.push_back("途徑表超過上限");
         std::map<std::uint64_t, int> seen; for (auto& o : outcomes) if (++seen[o.id] > 1) e.push_back("同一結果兩筆結清紀錄");
         for (auto& o : outcomes) if (receipts.count(o.id)) e.push_back("已結清卻仍有回條");
         return e;
@@ -330,6 +468,9 @@ public:
     std::vector<OwnerDeclaration> declarations;  // Q144: "擁有者宣告結束", kept apart from reported ends
     std::size_t lostNotified = 0, lostUnnotified = 0, receiverFailures = 0, reportedEnds = 0, refusedNoReceiver = 0, refusedReceiverChange = 0;
     std::size_t refusedContracts = 0, refusedObligations = 0, providerLost = 0;
+    std::size_t refusedNotRunning = 0, refusedResume = 0, refusedRegistry = 0, staleAttempts = 0, commits = 0, cancels = 0, cancelRequests = 0;
+    std::vector<Route> routes; std::vector<Service> services;
+    static constexpr std::size_t kRouteCap = 6;
     std::atomic<std::size_t> ownerThreadViolations{0};  // the only field written by non-owner threads
 
 private:
@@ -350,10 +491,14 @@ private:
             auto& r = receipts.at(d.obligation);
             const bool lost = d.st == SlotState::Dropped;
             std::string t1 = lost ? "提供者失效" : d.p.cancelled ? "已取消" : "已完成", t2 = t1;
-            c.running = false; c.terminal.swap(t1); r.terminal.swap(t2);
-            if (lost) { ++providerLost; return notice; }  // Q143 a
-            c.value = d.p.value;
-            if (!d.p.cancelled && !envs[c.env].closed) envs[c.env].value = d.p.value;  // F4
+            const auto& e = envs[c.env];
+            // Running: apply now. Paused/resuming/faulted, or closed with unsafe cleanup: hold (disp stays empty).
+            const bool hold = e.closed ? !e.cleanupSafe : e.state != EnvState::Running;
+            std::string disp = hold ? std::string{} : (lost || d.p.cancelled) ? "無結果" : e.closed ? "不適用" : "已套用";
+            c.running = false; c.terminal.swap(t1); r.terminal.swap(t2); r.disp.swap(disp);
+            c.cancelled = lost || d.p.cancelled; c.value = d.p.value;
+            if (lost) ++providerLost;  // Q143 a
+            if (!hold && !lost && !d.p.cancelled && !e.closed) envs[c.env].value = d.p.value;  // F4
             return notice;
         }
         if (d.kind == Kind::ResultAck) {
@@ -379,6 +524,44 @@ private:
         partOwner.erase(d.obligation);
         try_release(h);
         return notice;
+    }
+    Route* route(std::uint64_t id) { for (auto& r : routes) if (r.id == id) return &r; return nullptr; }
+    const Route* route(std::uint64_t id) const { for (auto& r : routes) if (r.id == id) return &r; return nullptr; }
+    Service* service(std::uint64_t id) { for (auto& s : services) if (s.id == id) return &s; return nullptr; }
+    const Service* service(std::uint64_t id) const { for (auto& s : services) if (s.id == id) return &s; return nullptr; }
+    bool route_referenced(std::uint64_t id) const {
+        for (auto& e : envs) if (e.route == id || (e.attempt && e.attempt->route == id)) return true;
+        return false;
+    }
+    static bool depends_on(const Env& e, std::uint64_t s) { for (auto x : e.services) if (x == s) return true; return false; }
+    // Stop taking ordinary work; started commands without allowContinue get a cancellation REQUEST (not an end).
+    void pause(int env) { request_cancel(env); envs[env].state = EnvState::Paused; }
+    void request_cancel(int env) {
+        for (auto& [id, c] : commands)
+            if (c.env == env && c.running && !c.allowContinue && !c.cancelRequested) { c.cancelRequested = true; ++cancelRequests; }
+    }
+    Env* live_attempt(std::uint64_t id) { for (auto& e : envs) if (e.attempt && e.attempt->id == id) return &e; return nullptr; }
+    std::optional<ResumeEnd> ended_as(std::uint64_t id) const {
+        for (auto& e : envs) for (auto& [a, how] : e.ended_attempts) if (a == id) return how;
+        return std::nullopt;
+    }
+    void end_attempt(Env& e, ResumeEnd how) {
+        e.ended_attempts.emplace_back(e.attempt->id, how);
+        if (e.ended_attempts.size() > 4) e.ended_attempts.pop_front();
+        e.attempt.reset();
+    }
+    // Owner-side disposition of a held result (strings built first, then non-throwing swaps).
+    void dispose_held(std::uint64_t id, int env) {
+        auto it = receipts.find(id);
+        if (it == receipts.end() || !it->second.disp.empty() || it->second.terminal.empty()) return;  // abandoned or already disposed
+        const auto& c = commands.at(id);
+        std::string disp = c.cancelled ? "無結果" : envs[env].closed ? "不適用" : "已套用";
+        it->second.disp.swap(disp);
+        if (!c.cancelled && !envs[env].closed) envs[env].value = c.value;
+    }
+    void dispose_closed(int env) {  // a closed env with safe cleanup turns held results into "不適用"
+        if (!envs[env].closed || !envs[env].cleanupSafe) return;
+        for (auto& [id, rc] : receipts) if (rc.env == env && !rc.terminal.empty() && rc.disp.empty()) dispose_held(id, env);
     }
     static Part* part(Handoff& x, Kind k) {
         return k == Kind::CallbackEnd ? &x.cb : k == Kind::WorkEnd ? &x.work : k == Kind::LeaseEnd ? &x.lease : nullptr;

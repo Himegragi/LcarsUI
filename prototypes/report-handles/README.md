@@ -1,4 +1,4 @@
-# 可丟棄 C++ 原型：回報把手（ADR 0003 Q135–Q150）
+# 可丟棄 C++ 原型：回報把手與暫停／恢復（ADR 0003 Q135–Q150）
 
 **用完即丟。**不是框架程式碼，也不是 API 提案。只有主控台情境，沒有視窗。
 
@@ -18,7 +18,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handle
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handles/run.ps1 -Asan   # AddressSanitizer
 wsl.exe -e bash prototypes/report-handles/run-tsan.sh                                               # ThreadSanitizer（WSL clang）
 ```
-檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S13）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
+檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S15）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
 
 ## 結構（fixture 安排，未核定為公開介面）
 - `Ledger`：背景執行緒與擁有者共用，建構時配好全部槽位；`reserve`／`fill`／`drop`／`revoke`／`peek`／`complete` 都不配置記憶體。外部只拿得到唯讀檢視。槽位有世代，撤權或結算後世代加一，舊把手因此失效。
@@ -28,6 +28,9 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - 「逐筆明確確認」契約下，`collect()` 對每份結果各發一個確認把手。
 - 遺失回報（Q144／Q145／Q148–Q150）：每個 World 一個接收者（`set_lost_receiver`），未登記時不受理需要回報者的交接遞送；空接收者與通知送出中更換接收者都被拒絕。`settle()` 先處理整批，把遺失通知暫存在固定大小的堆疊陣列，批次結束後才送出，因此接收者可直接呼叫任何 `World` 方法（例如 `declare_ended`、改派）。批次中途拋例外時，已完成項目的通知仍先送出再重拋。接收者拋例外只計數，其餘通知照送。`lost_parts()` 查詢目前遺失項。`declare_ended(交接, 種類)` 逐項宣告已安全結束，只接受「仍有效且已遺失」的項目，另記於 `declarations`。
 - 拒絕原因與診斷（Q146／Q147）：回傳三個固定大類（把手已用過或為空、已撤權或已失效、所屬環境已結束）。各類計數涵蓋所有仍有存活帳本的無效回報；詳細紀錄是建構時配好的環形空間，保留最新 N 筆（`World(容量, N)`，預設 16），記錄時不配置記憶體；`recent_rejects()` 由舊到新回傳。
+
+- 暫停／恢復與接收途徑（自 `prototypes/handoff-recovery-integration/` 的 JS 模型移植）：環境狀態為執行中、已暫停、恢復處理中、故障；`close` 另以旗標表示。接收途徑失效時，依賴它的執行中環境暫停，未宣告可繼續的已開始命令只收到取消請求；恢復中的嘗試失效。`fail_env(環境, 不可信服務)` 讓環境故障並開交接；共享服務不可信時，其他依賴者暫停並作廢先前的隔離證明，換新服務不等於證明。暫停、恢復中或故障時到達的結果只結算終態，UI 處置保留；`begin_resume` 固定當下保留的結果為本批，`resume_step` 有界處置並每筆重查條件，`commit_resume`／`cancel_resume` 以先到者為準，晚到結果在重新開放後由 `process_pending` 處置。途徑表有上限，只回收已失效且無人引用的項目。關閉時保留的結果在收尾安全時判定不適用。
+- 為不改動既有情境：`add_env` 未指定途徑時自動建立專用途徑；原本的 `fault()` 只開交接、不改環境狀態，完整故障流程用 `fail_env()`。
 
 ## 證據狀態（誠實紀錄，依時間順序）
 - **`67f7f65` 首版**：作者 41 項、ASan 39 項通過；變異測試（丟棄把手不通知 → 7 項失敗；關閉不等交付 → 3 項失敗）。
@@ -42,6 +45,7 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - **`930c49b` Q146–Q150**：結算中送通知改為批次結束後送；拿掉結算中拒絕重入；未登記接收者不受理遞送；拒絕原因三大類；環形詳細紀錄。S12 依新規則改寫，新增 S13。變異測試 5 項全部被抓到。作者 Release 92、ASan 84、TSan 84 項通過。作者情境中「接收者可呼叫的方法」只測了 8 個會生效的方法（另 1 個 `set_lost_receiver` 是預期被拒），沒有 `deliver`，`settle` 當時是空批次；配置失敗只注入在單一確認結果。這些範圍由下一項 Codex 補測擴充。
 - **Codex 驗證 `930c49b`**（`evidence/codex/review-930c49b.md`、`evidence/codex/review-930c49b/`）：Q149／Q150 通過；自寫補測 Release 4,654、ASan 3,183 次，含 15 則通知的真正巢狀批次、實際觸發 20 次 `bad_alloc`、N＝0／1／2／3／16 的環形紀錄。發現：被移走的把手回報時沒有計數，與 Q147「計數準確」不符（中）；README 過期與過廣描述（低）。
 - **本版（其後修正，未經 Codex 再驗證）**：被移走的把手保留指向帳本的弱參考，回報時計數；新增測試先失敗（3 項）後通過。README 依 Codex 意見重寫證據與限制。作者 Release 96、ASan 88、TSan 88 項通過。
+- **暫停／恢復合併（本版，未經 Codex 驗證）**：新增 S14（JS 引導 2、4、6 的共享不可信服務、取消對提交、晚到結果，以及暫停時取消請求、途徑表上限）與 S15（暫停中提供者失效、暫停中放棄、恢復中關閉、暫停期間的遺失通知與宣告）。不變式抓到一個作者錯誤：`close()` 讓恢復嘗試失效卻沒把狀態改回已暫停，已修正。變異測試 6 項全部被抓到：共享故障不作廢舊證明 → 1 項；不要求隔離證明 → 3 項；暫停中直接套用結果 → 5 項以上；提交後取消不回報太晚 → 1 項；途徑失效不讓恢復失效 → 1 項；本批固定為空 → 5 項以上。其中「本批為空」起初讓程式存取越界而崩潰（測試未檢查確認把手數量），補上檢查後改為正常失敗。作者 Release 139、ASan 131、TSan 131 項通過。
 - **TSan**：所有版本只由作者在 WSL 執行；Codex 沙箱無法存取 WSL。依使用者決定，不另行獨立驗證。
 
 ## 限制
@@ -55,5 +59,7 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - 每筆回報的處理是強保證（失敗即不變）；整批 `settle`／`collect`／`abandon` 不是交易，前面成功的不因後面失敗而回滾。
 - 結清紀錄、`commands` 歷史在單一情境內不設上限。
 - 防護範圍依 Q139：只防程式錯誤。同程序內的程式碼仍可直接改寫 `World` 的公開欄位。
-- 沒有暫停／恢復、接收途徑、共享服務隔離；這些由 JavaScript 模型涵蓋，兩者未整合。
+- 未移植 JS 模型的：宿主停止派送（C++ 由擁有者主動呼叫 `settle()`，不呼叫即等於停止）、環境啟用時的交接額度預留（容量改由回報預留管理）、普通動作佇列與逐筆「未執行」回條。
+- 隔離與收尾安全仍是宣告，不是偵測；資料版本（重建後內容是否相符）沒有建模，恢復時一律判定已套用。
+- 較早的情境（S6、S7）仍直接取用 `acks[0]`，模型行為改變時可能存取越界而非正常失敗。
 - 沒有真實宿主事件迴圈、GPU、低記憶體注入或程序終止。
