@@ -1,0 +1,84 @@
+-- The CXX compiler identification is Clang 22.1.8 with MSVC-like command-line
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/LLVM/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (1.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-codex/08763e8-probes
+[1/4] Building CXX object CMakeFiles\original.dir\original.cpp.obj
+C:\Users\user\.codex\worktrees\lcars-build-prototype\LcarsUI\prototypes\report-handles\build-codex\review-08763e8\original.cpp(44,55): warning: explicitly moving variable of type 'rh::ReportHandle' to itself [-Wself-move]
+   44 |  {World w(4);int a=env(w);auto h=*w.start_command(a);h=std::move(h);ck(h.valid()&&h.report({5})==Reject::None,"self move preserves report");ck(h.report()==Reject::Empty,"second report empty");auto x=*w.start_command(a);auto y=*w.start_command(a);x=std::move(y);ck(!y.valid()&&x.report()==Reject::None,"move onto live handle transfers");drain(w);ck(w.providerLost==1&&w.ledger().live()==0&&w.invariants().empty(),"overwritten live handle dropped exactly once");}
+      |                                                      ~^          ~
+1 warning generated.
+[2/4] Building CXX object CMakeFiles\report_handles.dir\probe.cpp.obj
+[3/4] Linking CXX executable original.exe
+[4/4] Linking CXX executable report_handles.exe
+DECLARATIONS 192 completion permutations plus refusal and reassign cases
+REENTRY settle mode=caught calls=3 refused=3 failures=0
+REENTRY deliver mode=caught calls=3 refused=3 failures=0
+REENTRY reassign mode=caught calls=3 refused=3 failures=0
+REENTRY collect mode=caught calls=3 refused=3 failures=0
+REENTRY abandon mode=caught calls=3 refused=3 failures=0
+REENTRY start_command mode=caught calls=3 refused=3 failures=0
+REENTRY close mode=caught calls=3 refused=3 failures=0
+REENTRY set_cleanup_safe mode=caught calls=3 refused=3 failures=0
+REENTRY set_lost_receiver mode=caught calls=3 refused=3 failures=0
+REENTRY add_env mode=caught calls=3 refused=3 failures=0
+REENTRY fault mode=caught calls=3 refused=3 failures=0
+REENTRY settle mode=uncaught calls=3 refused=0 failures=3
+REENTRY deliver mode=uncaught calls=3 refused=0 failures=3
+REENTRY reassign mode=uncaught calls=3 refused=0 failures=3
+REENTRY collect mode=uncaught calls=3 refused=0 failures=3
+REENTRY abandon mode=uncaught calls=3 refused=0 failures=3
+REENTRY start_command mode=uncaught calls=3 refused=0 failures=3
+REENTRY close mode=uncaught calls=3 refused=0 failures=3
+REENTRY set_cleanup_safe mode=uncaught calls=3 refused=0 failures=3
+REENTRY set_lost_receiver mode=uncaught calls=3 refused=0 failures=3
+REENTRY add_env mode=uncaught calls=3 refused=0 failures=3
+REENTRY fault mode=uncaught calls=3 refused=0 failures=3
+ALLOC mode=0 slots=9 batches=8+1 allocations=0
+ALLOC mode=1 slots=9 batches=8+1 allocations=0
+ALLOC mode=2 slots=9 batches=8+1 allocations=0
+RETRY allocation_failures=1 scans=8
+OBS receiver_invariant_errors=1 after_settle=0
+expanded_checks=3649 expanded_failures=0
+PASS handle copy/forge types rejected
+PASS self move preserves report
+PASS second report empty
+PASS move onto live handle transfers
+PASS overwritten live handle dropped exactly once
+PASS result drop provider lost
+PASS result ack drop retries delivery
+PASS result ack retry settles once
+PASS all delivery kinds drop; ack not accepted; three lost obligations
+PASS per-item declaration independent of cleanup flag
+PASS remaining lost parts declared separately
+PASS handoff ack retry completes
+PASS revoked handoff ack drop inert
+PASS revoked result ack drop inert
+PASS Revoked preserves obligation state except diagnostic and consumed handle
+PASS rejected handle then empty
+PASS WorldGone and subsequent Empty
+PASS ack capacity failure keeps receipt undelivered
+PASS close retains pending obligations
+PASS unsafe abandon refused
+PASS explicit abandon only terminal result
+PASS late result accepted and finalizes once
+F1 redeliver=0 live=1 invariant_errors=0
+F1 old_ack=0 acked=1 new_ack_tracked=0
+F4 cancelled_env_value=0
+F5 unsafe_collect_receipts=1 outcomes=0 ended=0
+F6 duplicate_reason=1 empty_diagnostic=1
+F7 failed_start live=0 commands=0 receipts=0 inv=0
+F8 failed_settle caught=0 live=2 cb_lost=1 work_lost=1 inv=0 next_settle=0
+PASS concurrent reports/drop/settle/new obligations accounting
+STRESS issued=4000 accepted=2666 lost=1334 bad=0 max_drain=8 allocations=0
+PASS Release concurrent report/drop new/new[]/aligned allocation count zero
+LIFETIME path_allocations=0
+LIFETIME rounds=300 handles=1800 report_accepted=497 world_gone=403 drops=900
+PASS all six kinds concurrent settle/destruction safe in finite run
+probe_unexpected_failures=0
+
+exit=0
