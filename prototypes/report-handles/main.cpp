@@ -8,20 +8,25 @@
 #include <type_traits>
 
 #if defined(__has_feature)
-#  if __has_feature(address_sanitizer)
-#    define RH_ASAN 1
+#  if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#    define RH_ASAN 1  // any sanitizer that owns operator new
 #  endif
 #endif
 
-// Allocation counter for "report path does not allocate" (disabled under ASan, which owns operator new).
+// Allocation counter for "report path does not allocate" (disabled under ASan/TSan, which own operator new).
 static thread_local std::size_t g_allocs = 0;
+static thread_local int g_failAfter = -1;  // >=0: that many allocations succeed, then one throws bad_alloc
 #ifndef RH_ASAN
-void* operator new(std::size_t n) { ++g_allocs; if (void* p = std::malloc(n ? n : 1)) return p; throw std::bad_alloc(); }
+void* operator new(std::size_t n) {
+    if (g_failAfter == 0) { g_failAfter = -1; throw std::bad_alloc(); }
+    if (g_failAfter > 0) --g_failAfter;
+    ++g_allocs; if (void* p = std::malloc(n ? n : 1)) return p; throw std::bad_alloc(); }
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 #endif
 
 using namespace rh;
+template <class W> constexpr bool can_fill_directly = requires(W& w, Ledger::Ref r) { w.ledger().fill(r, Payload{}); };
 static int g_fail = 0, g_pass = 0;
 static void check(bool ok, const char* what) { std::printf("  %s %s\n", ok ? "PASS" : "FAIL", what); ok ? ++g_pass : ++g_fail; }
 static void inv(World& w, const char* at) {
@@ -212,6 +217,83 @@ int main() {
         check(w.outcomes.size() == issued, "每個命令剛好一筆結清紀錄");
         inv(w, "S10 結束");
     }
+
+    std::printf("== S11 Codex 審查 67f7f65 的反例回歸 ==\n");
+    {
+        constexpr bool worldCopyable = std::is_copy_constructible_v<World> || std::is_copy_assignable_v<World> || std::is_move_constructible_v<World>;
+        check(!worldCopyable, "F2：World 不可複製、不可移動（避免兩個 World 共用一本帳）");
+        constexpr bool canFillDirectly = can_fill_directly<World>;
+        check(!canFillDirectly, "F3：外部拿不到可寫的 Ledger，回報只能經過把手");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        d.callback.report(); d.work.report(); d.lease.report(); settle_all(w);
+        auto again = w.deliver(h);
+        check(!again, "F1：舊確認把手還沒用掉時，拒絕再次遞送");
+        check(d.ack.report() == Reject::None, "F1：舊確認把手仍是唯一有效確認");
+        settle_all(w);
+        check(w.handoffs.count(h) == 0, "F1：確認後交接釋放");
+        inv(w, "F1 結束");
+    }
+    {
+        World w(4); auto a = *w.add_env("A", Contract::Handover);
+        auto k = *w.start_command(a); k.report({123, true}); settle_all(w);
+        check(w.envs[a].value == 0, "F4：已取消的結果不寫回環境");
+        auto k2 = *w.start_command(a);
+        w.set_cleanup_safe(a, false); w.close(a); k2.report({5}); settle_all(w);
+        w.collect(a);
+        check(w.receipts.size() == 2 && w.outcomes.empty(), "F5：收尾不安全時不交出結果");
+        w.set_cleanup_safe(a, true); w.collect(a);
+        check(w.receipts.empty() && w.envs[a].ended, "F5：宣告安全後交付並結束");
+        inv(w, "F4/F5 結束");
+    }
+    {
+        World w(4); auto a = *w.add_env("A", Contract::Handover);
+        auto k = *w.start_command(a); k.report({1});
+        check(k.report({2}) == Reject::Empty && w.ledger().rejected(Reject::Empty) == 1, "F6：同一把手回報兩次也記入診斷");
+        settle_all(w);
+    }
+    {
+        World w(4);
+        std::thread t1([&] { try { w.settle(); } catch (const std::logic_error&) {} });
+        std::thread t2([&] { try { w.settle(); } catch (const std::logic_error&) {} });
+        t1.join(); t2.join();
+        check(w.ownerThreadViolations == 2, "兩個背景執行緒同時違規：計數正確（atomic）");
+    }
+#ifndef RH_ASAN
+    {
+        bool allOk = true; int threw = 0;
+        for (int k = 0; k < 40; ++k) {
+            World w(4); auto a = *w.add_env("A", Contract::Handover);
+            g_failAfter = k;
+            try { auto h = w.start_command(a); if (h) h->report({1}); } catch (const std::bad_alloc&) { ++threw; }
+            g_failAfter = -1;
+            settle_all(w);
+            if (!w.invariants().empty() || w.ledger().live() != 0) { allOk = false; std::printf("  F7 k=%d live=%zu inv=%zu\n", k, w.ledger().live(), w.invariants().size()); }
+        }
+        check(allOk && threw > 0, "F7：建立命令途中配置失敗，不留下預留或半套義務");
+    }
+    {
+        bool allOk = true; int threw = 0;
+        for (int k = 0; k < 40; ++k) {
+            World w(16); auto a = *w.add_env("A", Contract::Handover);
+            auto h = w.fault(a);
+            auto d = *w.deliver(h);
+            { ReportHandle c = std::move(d.callback), wk = std::move(d.work); }
+            g_failAfter = k;
+            try { w.settle(); } catch (const std::bad_alloc&) { ++threw; }
+            g_failAfter = -1;
+            settle_all(w);
+            auto& x = w.handoffs.at(h);
+            const bool ok = x.cb.lost && x.work.lost && x.cb.active && x.work.active && w.ownerNotices.size() == 2 && w.invariants().empty();
+            if (!ok) { allOk = false; std::printf("  F8 k=%d cbLost=%d workLost=%d notices=%zu inv=%zu\n", k, x.cb.lost, x.work.lost, w.ownerNotices.size(), w.invariants().size()); }
+        }
+        check(allOk && threw > 0, "F8：結算途中配置失敗，回報仍留在帳本，下次結算不遺失");
+    }
+#else
+    std::printf("  SKIP F7/F8 配置失敗注入需要替換 operator new\n");
+#endif
 
     std::printf("\nfailures=%d pass=%d\n", g_fail, g_pass);
     return g_fail ? 1 : 0;

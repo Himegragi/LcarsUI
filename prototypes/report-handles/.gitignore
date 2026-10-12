@@ -1,2 +1,4 @@
 ﻿build/
 build-asan/
+build-tsan/
+build-codex*/

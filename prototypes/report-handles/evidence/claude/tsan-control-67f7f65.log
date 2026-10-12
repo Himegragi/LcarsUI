@@ -1,0 +1,108 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=21485)
+  Write of size 8 at 0x7ffefb8d5410 by thread T864:
+    #0 rh::World::owner() /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/report_model.hpp:261:70 (old+0xf9d2c) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #1 rh::World::settle() /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/report_model.hpp:190:9 (old+0xf9d2c)
+    #2 main::$_7::operator()() const /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/main.cpp:260:38 (old+0xf665f) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #3 void std::__invoke_impl<void, main::$_7>(std::__invoke_other, main::$_7&&) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/invoke.h:63:14 (old+0xf665f)
+    #4 std::__invoke_result<main::$_7>::type std::__invoke<main::$_7>(main::$_7&&) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/invoke.h:98:14 (old+0xf665f)
+    #5 void std::thread::_Invoker<std::tuple<main::$_7>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:303:13 (old+0xf665f)
+    #6 std::thread::_Invoker<std::tuple<main::$_7>>::operator()() /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:310:11 (old+0xf665f)
+    #7 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::$_7>>>::_M_run() /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:255:13 (old+0xf665f)
+    #8 <null> <null> (libstdc++.so.6+0xf5ef8) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+
+  Previous write of size 8 at 0x7ffefb8d5410 by thread T863:
+    #0 rh::World::owner() /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/report_model.hpp:261:70 (old+0xf9d2c) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #1 rh::World::settle() /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/report_model.hpp:190:9 (old+0xf9d2c)
+    #2 main::$_6::operator()() const /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/main.cpp:259:38 (old+0xf65df) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #3 void std::__invoke_impl<void, main::$_6>(std::__invoke_other, main::$_6&&) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/invoke.h:63:14 (old+0xf65df)
+    #4 std::__invoke_result<main::$_6>::type std::__invoke<main::$_6>(main::$_6&&) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/invoke.h:98:14 (old+0xf65df)
+    #5 void std::thread::_Invoker<std::tuple<main::$_6>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:303:13 (old+0xf65df)
+    #6 std::thread::_Invoker<std::tuple<main::$_6>>::operator()() /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:310:11 (old+0xf65df)
+    #7 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::$_6>>>::_M_run() /usr/lib/gcc/x86_64-linux-gnu/15/../../../../include/c++/15/bits/std_thread.h:255:13 (old+0xf65df)
+    #8 <null> <null> (libstdc++.so.6+0xf5ef8) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+
+  Location is stack of main thread.
+
+  Thread T864 (tid=22350, running) created by main thread at:
+    #0 pthread_create <null> (old+0x6671e) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xf5ff0) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+    #2 <null> <null> (libc.so.6+0x2a600) (BuildId: 066527e430a32768d82741e00b81eebb1a872294)
+
+  Thread T863 (tid=22349, finished) created by main thread at:
+    #0 pthread_create <null> (old+0x6671e) (BuildId: 304be62aa6784f398c598b54cad0d60436dbc95d)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xf5ff0) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+    #2 <null> <null> (libc.so.6+0x2a600) (BuildId: 066527e430a32768d82741e00b81eebb1a872294)
+
+SUMMARY: ThreadSanitizer: data race /mnt/c/Users/user/.codex/worktrees/lcars-build-prototype/LcarsUI/prototypes/report-handles/build-tsan/old/report_model.hpp:261:70 in rh::World::owner()
+==================
+== S1 型別：只能移動、不能複製、不能由公開資料拼出 (Q140/Q142) ==
+  PASS 不可複製
+  PASS 可移動且不拋例外
+  PASS 外部無法由 ledger＋編號建構把手
+  PASS 預設把手回報 → 空把手（比命令先到的結果無從送出）
+== S2 預留不足就不承擔 (Q135) ==
+  PASS 第 4 個命令被拒，沒有留下命令或回條
+  PASS 交接需要 4 個位置：不足時全部不承擔，已預留的退回
+  PASS 回報結算後位置歸還，可再承擔
+  PASS S2 結束
+== S3 回報路徑不配置記憶體 (Q135) ==
+  SKIP ASan 建置下不替換 operator new
+== S4 多執行緒：轉交、回報、丟棄、重複 (Q140/Q142/Q143a) ==
+  PASS 每個命令剛好一個終態：完成數＝受理數，提供者失效＝丟棄數
+  PASS 用過的把手再回報 → 空把手
+  PASS 容量滿時拒絕新命令，最後預留全部歸還
+  PASS Q143a：丟棄的結果把手自動結算為提供者失效
+  started=400 refused=42 accepted=360 dropped=40
+  PASS S4 結束
+== S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==
+  PASS 改派：撤銷舊確認資格
+  PASS 舊接管者確認 → 已撤權，並記診斷
+  PASS 租用把手遺失：不推定已歸還，標記並通知擁有者
+  PASS 舊租用未結清：新指派不另發租用把手
+  PASS 已確認但遺失的租用未處置 → 交接不釋放
+  PASS 收尾不安全：擁有者不能處置遺失
+  PASS 宣告安全後擁有者處置 → 交接釋放
+  PASS S5 結束
+== S6 交付成立點 (Q136/Q137) ==
+  PASS 沒寫或不合法的承接成立點 → 拒絕
+  PASS 關閉不等於交付：兩者收尾中
+  PASS A 交出即承接 → 結束
+  PASS C 每份結果各一個確認把手，未確認前收尾中
+  PASS 確認一份：C 仍收尾中
+  PASS 被移走的把手 → 空把手
+  PASS 兩份都確認 → C 結束
+  PASS S6 結束
+== S7 擁有者明確放棄 (Q138) ==
+  PASS 收尾不安全 → 拒絕放棄
+  PASS 放棄已終態結果並留紀錄；仍執行的命令不受影響
+  PASS 已放棄結果的舊確認把手 → 已撤權
+  PASS 晚到結果仍可正常交付；放棄與交付分開紀錄
+  PASS S7 結束
+== S8 世界先銷毀，背景執行緒才回報 ==
+  PASS 回報 → 世界已銷毀；丟棄把手不崩潰
+== S9 非擁有者執行緒不能改狀態 ==
+  PASS 背景執行緒呼叫 settle → 拒絕
+== S10 壓力：隨機交錯 (ASan 用) ==
+  PASS 全部結果最終交付，預留全部歸還
+  issued=850 outcomes=850 providerLost=109
+  PASS 每個命令剛好一筆結清紀錄
+  PASS S10 結束
+== S11 Codex 審查 67f7f65 的反例回歸 ==
+  FAIL F2：World 不可複製、不可移動（避免兩個 World 共用一本帳）
+  FAIL F3：外部拿不到可寫的 Ledger，回報只能經過把手
+  FAIL F1：舊確認把手還沒用掉時，拒絕再次遞送
+  PASS F1：舊確認把手仍是唯一有效確認
+  FAIL F1：確認後交接釋放
+  INVARIANT(F1 結束): 預留數 4 ≠ 存活義務 3
+  FAIL F1 結束
+  FAIL F4：已取消的結果不寫回環境
+  FAIL F5：收尾不安全時不交出結果
+  PASS F5：宣告安全後交付並結束
+  PASS F4/F5 結束
+  FAIL F6：同一把手回報兩次也記入診斷
+  PASS 兩個背景執行緒同時違規：計數正確（atomic）
+  SKIP F7/F8 配置失敗注入需要替換 operator new
+
+failures=8 pass=43
+ThreadSanitizer: reported 1 warnings

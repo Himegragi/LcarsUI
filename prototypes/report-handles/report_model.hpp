@@ -53,22 +53,27 @@ public:
         auto& s = slots_[r.index];
         if (s.gen == r.gen && s.st == SlotState::Reserved) s.st = SlotState::Dropped;
     }
-    void revoke(Ref r) {  // owner: invalidate an outstanding handle (reassign, abandon)
+    void revoke(Ref r) noexcept {  // owner: invalidate an outstanding handle (reassign, abandon)
         std::lock_guard g(m_);
         auto& s = slots_[r.index];
         if (s.gen == r.gen && s.st != SlotState::Free) { s.st = SlotState::Free; ++s.gen; --live_; }
     }
-    // Owner drains up to N filled/dropped slots; each slot is returned exactly once here.
-    template <std::size_t N> std::size_t drain(std::array<Drained, N>& out) {
+    // Owner copies up to N filled/dropped slots without freeing them. Workers cannot change a
+    // filled/dropped slot, so it stays put until the owner calls complete() after applying it.
+    template <std::size_t N> std::size_t peek(std::array<Drained, N>& out) const {
         std::lock_guard g(m_);
         std::size_t n = 0;
         for (std::uint32_t i = 0; i < slots_.size() && n < N; ++i) {
             auto& s = slots_[i];
             if (s.st != SlotState::Filled && s.st != SlotState::Dropped) continue;
             out[n++] = {Ref{i, s.gen}, s.kind, s.ob, s.st, s.p};
-            s.st = SlotState::Free; ++s.gen; --live_;
         }
         return n;
+    }
+    void complete(Ref r) noexcept {  // each settled slot is returned exactly once here
+        std::lock_guard g(m_);
+        auto& s = slots_[r.index];
+        if (s.gen == r.gen && (s.st == SlotState::Filled || s.st == SlotState::Dropped)) { s.st = SlotState::Free; ++s.gen; --live_; }
     }
     bool holds(Ref r, std::uint64_t ob) const {
         std::lock_guard g(m_);
@@ -110,7 +115,10 @@ public:
 
     // Single use: after this call the handle is empty whatever the outcome.
     Reject report(Payload p = {}) {
-        if (!live_) return Reject::Empty;  // nothing to count against: no ledger known
+        if (!live_) {  // used handles still know their ledger; moved-from ones do not
+            if (auto l = l_.lock()) l->count_reject(Reject::Empty);
+            return Reject::Empty;
+        }
         live_ = false;
         auto l = l_.lock();
         if (!l) return Reject::WorldGone;
@@ -139,6 +147,8 @@ public:
     struct Handoff { int env; bool acked = false; std::uint64_t assignment = 0; Part cb, work, lease; std::optional<Ledger::Ref> ack; std::uint64_t ackOb = 0; };
 
     explicit World(std::size_t reportCap) : ledger_(std::make_shared<Ledger>(reportCap)) {}
+    World(const World&) = delete;
+    World& operator=(const World&) = delete;
 
     // Q137: an env without a valid acceptance point is refused.
     std::optional<int> add_env(std::string n, std::optional<Contract> c) {
@@ -153,7 +163,8 @@ public:
         const auto id = next();
         auto r = ledger_->reserve(Kind::Result, id);
         if (!r) { ++refusedObligations; return std::nullopt; }
-        commands[id] = Command{env, true, {}, 0, *r}; receipts[id] = Receipt{env, {}, false, std::nullopt, 0};
+        try { commands[id] = Command{env, true, {}, 0, *r}; receipts[id] = Receipt{env, {}, false, std::nullopt, 0}; }
+        catch (...) { commands.erase(id); receipts.erase(id); ledger_->revoke(*r); throw; }
         return ReportHandle(ledger_, *r);
     }
     std::uint64_t fault(int env) { owner(); const auto id = next(); handoffs[id] = Handoff{env, false, 0, {}, {}, {}, std::nullopt, 0}; return id; }
@@ -161,7 +172,7 @@ public:
     std::optional<DeliveryHandles> deliver(std::uint64_t h) {
         owner();
         auto& x = handoffs.at(h);
-        if (x.acked || x.cb.active || x.work.active) return std::nullopt;
+        if (x.acked || x.cb.active || x.work.active || x.ack) return std::nullopt;
         x.assignment = next();
         std::array<std::optional<Ledger::Ref>, 4> rs; std::array<std::uint64_t, 4> obs{};
         const Kind kinds[4] = {Kind::CallbackEnd, Kind::WorkEnd, Kind::LeaseEnd, Kind::HandoffAck};
@@ -170,26 +181,27 @@ public:
             obs[i] = next(); rs[i] = ledger_->reserve(kinds[i], obs[i]);
             if (!rs[i]) { for (auto& r : rs) if (r) ledger_->revoke(*r); ++refusedObligations; return std::nullopt; }
         }
+        try { for (int i = 0; i < 4; ++i) if (rs[i]) partOwner[obs[i]] = h; }
+        catch (...) { for (int i = 0; i < 4; ++i) if (rs[i]) { partOwner.erase(obs[i]); ledger_->revoke(*rs[i]); } throw; }
         DeliveryHandles d;
         x.cb = {true, false, *rs[0], obs[0]}; d.callback = ReportHandle(ledger_, *rs[0]);
         x.work = {true, false, *rs[1], obs[1]}; d.work = ReportHandle(ledger_, *rs[1]);
         if (rs[2]) { x.lease = {true, false, *rs[2], obs[2]}; d.lease = ReportHandle(ledger_, *rs[2]); }
         x.ack = rs[3]; x.ackOb = obs[3]; d.ack = ReportHandle(ledger_, *rs[3]);
-        partOwner[obs[0]] = partOwner[obs[1]] = partOwner[obs[3]] = h; if (rs[2]) partOwner[obs[2]] = h;
         return d;
     }
     // Revokes the current ack right; old callback/work/lease obligations stay with their handles.
     bool reassign(std::uint64_t h) {
         owner(); auto& x = handoffs.at(h);
         if (x.acked) return false;
-        if (x.ack) { ledger_->revoke(*x.ack); x.ack.reset(); }
+        if (x.ack) { ledger_->revoke(*x.ack); partOwner.erase(x.ackOb); x.ack.reset(); }
         return true;
     }
     // Owner settles at most N reports per call.
     std::size_t settle() {
         owner();
-        std::array<Ledger::Drained, 8> buf; const auto n = ledger_->drain(buf);
-        for (std::size_t i = 0; i < n; ++i) apply(buf[i]);
+        std::array<Ledger::Drained, 8> buf; const auto n = ledger_->peek(buf);
+        for (std::size_t i = 0; i < n; ++i) { apply(buf[i]); ledger_->complete(buf[i].ref); }
         finalize();
         return n;
     }
@@ -198,13 +210,16 @@ public:
     // Receiver takes settled results; acceptance follows the env contract (Q137).
     std::vector<ReportHandle> collect(int env) {
         owner(); std::vector<ReportHandle> acks;
+        if (envs[env].closed && !envs[env].cleanupSafe) return acks;  // F5: unsafe cleanup keeps results
+        acks.reserve(receipts.size());  // push_back below cannot reallocate
         for (auto it = receipts.begin(); it != receipts.end();) {
             auto& [id, r] = *it;
             if (r.env != env || r.terminal.empty() || r.handedOver) { ++it; continue; }
-            if (envs[env].contract == Contract::Handover) { record(id, env, "已交付"); it = receipts.erase(it); continue; }
+            if (envs[env].contract == Contract::Handover) { record(id, env, "已交付"); it = receipts.erase(it); continue; }  // record: strong
             const auto ob = next(); auto ref = ledger_->reserve(Kind::ResultAck, ob);
             if (!ref) { ++refusedObligations; ++it; continue; }  // stays undelivered; try later
-            r.handedOver = true; r.ack = *ref; r.ackOb = ob; ackOwner[ob] = id; acks.push_back(ReportHandle(ledger_, *ref)); ++it;
+            try { ackOwner[ob] = id; } catch (...) { ledger_->revoke(*ref); throw; }
+            r.handedOver = true; r.ack = *ref; r.ackOb = ob; acks.push_back(ReportHandle(ledger_, *ref)); ++it;
         }
         finalize(); return acks;
     }
@@ -215,8 +230,9 @@ public:
         for (auto it = receipts.begin(); it != receipts.end();) {
             auto& [id, r] = *it;
             if (r.env != env || r.terminal.empty()) { ++it; continue; }
-            if (r.ack) ledger_->revoke(*r.ack);
-            record(id, env, "已放棄"); it = receipts.erase(it); ++n;
+            record(id, env, "已放棄");
+            if (r.ack) { ledger_->revoke(*r.ack); ackOwner.erase(r.ackOb); }
+            it = receipts.erase(it); ++n;
         }
         finalize(); return n;
     }
@@ -247,7 +263,7 @@ public:
         for (auto& o : outcomes) if (receipts.count(o.id)) e.push_back("已結清卻仍有回條");
         return e;
     }
-    Ledger& ledger() { return *ledger_; }
+    const Ledger& ledger() const { return *ledger_; }
 
     std::vector<Env> envs;
     std::map<std::uint64_t, Command> commands;
@@ -255,30 +271,38 @@ public:
     std::map<std::uint64_t, Handoff> handoffs;
     std::vector<Outcome> outcomes;  // fixture: unbounded within one scenario
     std::vector<std::string> ownerNotices;  // Q143 b: reporter-lost notices
-    std::size_t refusedContracts = 0, refusedObligations = 0, providerLost = 0, ownerThreadViolations = 0;
+    std::size_t refusedContracts = 0, refusedObligations = 0, providerLost = 0;
+    std::atomic<std::size_t> ownerThreadViolations{0};  // the only field written by non-owner threads
 
 private:
     void owner() { if (std::this_thread::get_id() != ownerThread_) { ++ownerThreadViolations; throw std::logic_error("非擁有者執行緒"); } }
     std::uint64_t next() { return ++seq_; }
-    void record(std::uint64_t id, int env, const char* o) { outcomes.push_back({id, env, o}); }
+    void record(std::uint64_t id, int env, const char* o) {
+        Outcome x{id, env, o}; outcomes.reserve(outcomes.size() + 1); outcomes.push_back(std::move(x));
+    }
     void apply(const Ledger::Drained& d) {
         if (d.kind == Kind::Result) {
-            auto& c = commands.at(d.obligation); c.running = false;
+            auto& c = commands.at(d.obligation);
             auto& r = receipts.at(d.obligation);
-            if (d.st == SlotState::Dropped) { c.terminal = r.terminal = "提供者失效"; ++providerLost; }  // Q143 a
-            else { c.terminal = r.terminal = d.p.cancelled ? "已取消" : "已完成"; c.value = d.p.value; if (!envs[c.env].closed) envs[c.env].value = d.p.value; }
+            const bool lost = d.st == SlotState::Dropped;
+            std::string t1 = lost ? "提供者失效" : d.p.cancelled ? "已取消" : "已完成", t2 = t1;
+            c.running = false; c.terminal.swap(t1); r.terminal.swap(t2);
+            if (lost) { ++providerLost; return; }  // Q143 a
+            c.value = d.p.value;
+            if (!d.p.cancelled && !envs[c.env].closed) envs[c.env].value = d.p.value;  // F4
             return;
         }
         if (d.kind == Kind::ResultAck) {
-            const auto id = ackOwner.at(d.obligation); ackOwner.erase(d.obligation);
+            const auto id = ackOwner.at(d.obligation);
             auto it = receipts.find(id);
-            if (it == receipts.end()) return;
-            it->second.ack.reset();
-            if (d.st == SlotState::Filled) { record(id, it->second.env, "已交付"); receipts.erase(it); }
-            else it->second.handedOver = false;  // ack handle dropped: hand over again later
+            if (it != receipts.end()) {
+                if (d.st == SlotState::Filled) { record(id, it->second.env, "已交付"); receipts.erase(it); }
+                else { it->second.ack.reset(); it->second.handedOver = false; }  // ack handle dropped: hand over again later
+            }
+            ackOwner.erase(d.obligation);
             return;
         }
-        const auto h = partOwner.at(d.obligation); partOwner.erase(d.obligation);
+        const auto h = partOwner.at(d.obligation);
         auto& x = handoffs.at(h);
         if (d.kind == Kind::HandoffAck) {
             x.ack.reset();
@@ -286,8 +310,13 @@ private:
         } else {
             Part& p = d.kind == Kind::CallbackEnd ? x.cb : d.kind == Kind::WorkEnd ? x.work : x.lease;
             if (d.st == SlotState::Filled) p.active = false;
-            else { p.lost = true; ownerNotices.push_back("回報者遺失：交接 " + std::to_string(h)); }  // Q143 b: not assumed ended
+            else {  // Q143 b: not assumed ended
+                std::string notice = "回報者遺失：交接 " + std::to_string(h);
+                ownerNotices.reserve(ownerNotices.size() + 1);
+                p.lost = true; ownerNotices.push_back(std::move(notice));
+            }
         }
+        partOwner.erase(d.obligation);
         try_release(h);
     }
     void try_release(std::uint64_t h) {
