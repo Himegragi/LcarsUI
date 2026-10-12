@@ -35,7 +35,8 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
   F7／F8 以配置失敗注入驗證：讓第 0～39 次 `operator new` 各失敗一次，每次都檢查帳目與不變式。
 - **作者執行（本版）**：Release 55 項通過；ASan 51 項通過（配置計數與配置失敗注入共 4 項跳過，因 ASan 接管 `operator new`）；TSan 51 項通過且 0 則資料競爭報告（`evidence/claude/scenarios-{release,asan,tsan}.log`）。
 - **TSan 對照組**：以同一份情境搭配修正前的模型，TSan 回報 `World::owner()` 的資料競爭，即 Codex 原始碼審查指出的位置（`evidence/claude/tsan-control-67f7f65.log`）。證明 TSan 在此設定下確實能抓到競爭。
-- **尚未做**：Codex 再驗證本版。
+- **Codex 再驗證 `b534d90`**（`evidence/codex/reverify-b534d90.md`）：F1–F8、atomic 計數、撤權登記清除均判定已修正；擴大配置失敗注入（遞送、交出、放棄、紀錄、通知，共觸發 24 次 `bad_alloc`）無遺失或重複。新發現兩項低嚴重度：`record()` 每次只多預留 1 格造成累計配置量平方成長；README 診斷宣稱過廣。**Codex 沙箱無法存取 WSL，TSan 未經獨立驗證。**
+- **其後修正（未再驗證）**：`record()` 與通知改為容量倍增；README 補上 moved-from 不計數與整批非交易的限制。作者重跑 Release／ASan／TSan。
 
 ## 限制
 - TSan 在 Linux（libstdc++）上跑，不涵蓋 Windows 標準函式庫或 Windows 特有的執行緒行為；TSan 只能報告實際執行到的交錯，不證明不存在競爭。
@@ -45,6 +46,8 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - 「收尾安全」仍是宣告，不是偵測；擁有者處置遺失回報（`resolve_lost`）是 fixture 介面，ADR 尚未核定。
 - 診斷只有計數，沒有有上限的明細紀錄；拒絕原因只有三種。
 - 結清紀錄、`commands` 歷史在單一情境內不設上限。
+- 診斷計數只涵蓋知道所屬帳本的無效回報：已用過的把手再回報、已撤權、世界已銷毀。被移走（moved-from）的把手不知道帳本，回報得到「空把手」但不計數。
+- 每筆回報的處理是強保證（失敗即不變）；整批 `settle`／`collect`／`abandon` 不是交易，前面成功的不因後面失敗而回滾。
 - 防護範圍依 Q139：只防程式錯誤。同程序內的程式碼仍可直接改寫 `World` 的公開欄位。
 - 沒有暫停／恢復、接收途徑、共享服務隔離；這些由 JavaScript 模型涵蓋，兩者未整合。
 - 沒有真實宿主事件迴圈、GPU、低記憶體注入或程序終止。

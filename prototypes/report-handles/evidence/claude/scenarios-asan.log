@@ -15,7 +15,7 @@
   PASS 用過的把手再回報 → 空把手
   PASS 容量滿時拒絕新命令，最後預留全部歸還
   PASS Q143a：丟棄的結果把手自動結算為提供者失效
-  started=400 refused=1212 accepted=360 dropped=40
+  started=400 refused=689 accepted=360 dropped=40
   PASS S4 結束
 == S5 交接：改派撤權、回報者遺失 (Q140/Q141/Q143b) ==
   PASS 改派：撤銷舊確認資格
@@ -47,7 +47,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=819 outcomes=819 providerLost=139
+  issued=821 outcomes=821 providerLost=134
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==

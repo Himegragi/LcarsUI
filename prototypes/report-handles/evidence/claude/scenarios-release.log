@@ -48,7 +48,7 @@
   PASS 背景執行緒呼叫 settle → 拒絕
 == S10 壓力：隨機交錯 (ASan 用) ==
   PASS 全部結果最終交付，預留全部歸還
-  issued=819 outcomes=819 providerLost=117
+  issued=821 outcomes=821 providerLost=125
   PASS 每個命令剛好一筆結清紀錄
   PASS S10 結束
 == S11 Codex 審查 67f7f65 的反例回歸 ==

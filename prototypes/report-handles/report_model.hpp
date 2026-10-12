@@ -277,8 +277,10 @@ public:
 private:
     void owner() { if (std::this_thread::get_id() != ownerThread_) { ++ownerThreadViolations; throw std::logic_error("非擁有者執行緒"); } }
     std::uint64_t next() { return ++seq_; }
+    // Grow geometrically before the push so push_back cannot reallocate (keeps record() strong).
+    template <class V> static void make_room(V& v) { if (v.size() == v.capacity()) v.reserve(v.empty() ? 8 : v.size() * 2); }
     void record(std::uint64_t id, int env, const char* o) {
-        Outcome x{id, env, o}; outcomes.reserve(outcomes.size() + 1); outcomes.push_back(std::move(x));
+        Outcome x{id, env, o}; make_room(outcomes); outcomes.push_back(std::move(x));
     }
     void apply(const Ledger::Drained& d) {
         if (d.kind == Kind::Result) {
@@ -312,7 +314,7 @@ private:
             if (d.st == SlotState::Filled) p.active = false;
             else {  // Q143 b: not assumed ended
                 std::string notice = "回報者遺失：交接 " + std::to_string(h);
-                ownerNotices.reserve(ownerNotices.size() + 1);
+                make_room(ownerNotices);
                 p.lost = true; ownerNotices.push_back(std::move(notice));
             }
         }
