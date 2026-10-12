@@ -120,16 +120,13 @@ int main() {
         { ReportHandle lostLease = std::move(d1.lease); }  // lease reporter lost
         settle_all(w);
         auto& x = w.handoffs.at(h);
-        check(!x.cb.active && !x.work.active && x.lease.active && x.lease.lost && w.ownerNotices.size() == 1, "租用把手遺失：不推定已歸還，標記並通知擁有者");
+        check(!x.cb.active && !x.work.active && x.lease.active && x.lease.lost && w.lost_parts().size() == 1, "租用把手遺失：不推定已歸還，標記並可查詢");
         auto d2 = *w.deliver(h);
         check(!d2.lease.valid(), "舊租用未結清：新指派不另發租用把手");
         d2.callback.report(); d2.work.report(); d2.ack.report();
         settle_all(w);
         check(w.handoffs.count(h) == 1, "已確認但遺失的租用未處置 → 交接不釋放");
-        w.set_cleanup_safe(a, false);
-        check(!w.resolve_lost(h), "收尾不安全：擁有者不能處置遺失");
-        w.set_cleanup_safe(a, true);
-        check(w.resolve_lost(h) && w.handoffs.count(h) == 0, "宣告安全後擁有者處置 → 交接釋放");
+        check(w.declare_ended(h, Kind::LeaseEnd) == Declare::Done && w.handoffs.count(h) == 0, "Q144：擁有者宣告租用已結束 → 交接釋放");
         inv(w, "S5 結束");
     }
 
@@ -286,13 +283,106 @@ int main() {
             g_failAfter = -1;
             settle_all(w);
             auto& x = w.handoffs.at(h);
-            const bool ok = x.cb.lost && x.work.lost && x.cb.active && x.work.active && w.ownerNotices.size() == 2 && w.invariants().empty();
-            if (!ok) { allOk = false; std::printf("  F8 k=%d cbLost=%d workLost=%d notices=%zu inv=%zu\n", k, x.cb.lost, x.work.lost, w.ownerNotices.size(), w.invariants().size()); }
+            const bool ok = x.cb.lost && x.work.lost && x.cb.active && x.work.active && w.lost_parts().size() == 2 && w.lostUnnotified == 2 && w.invariants().empty();
+            if (!ok) { allOk = false; std::printf("  F8 k=%d cbLost=%d workLost=%d lost=%zu unnotified=%zu inv=%zu\n", k, x.cb.lost, x.work.lost, w.lost_parts().size(), w.lostUnnotified, w.invariants().size()); }
         }
-        check(allOk && threw > 0, "F8：結算途中配置失敗，回報仍留在帳本，下次結算不遺失");
+        check(allOk, "F8：配置失敗注入後，遺失回報都被標記、可查詢、帳目一致");
+        check(threw == 0, "Q145 之後：結算遺失回報的路徑不再配置記憶體，沒有可失敗的配置點");
     }
 #else
     std::printf("  SKIP F7/F8 配置失敗注入需要替換 operator new\n");
+#endif
+
+
+    std::printf("== S12 擁有者處置遺失回報 (Q144/Q145) ==\n");
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        std::vector<LostNotice> got; std::thread::id where{};
+        w.set_lost_receiver([&](const LostNotice& n) { got.push_back(n); where = std::this_thread::get_id(); });
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        std::thread([cb = std::move(d.callback), ls = std::move(d.lease), wk = std::move(d.work)]() mutable { wk.report(); }).join();
+        d.ack.report(); settle_all(w);
+        check(got.size() == 2 && where == std::this_thread::get_id(), "Q145：兩則遺失通知，都在擁有者執行緒送達");
+        check(w.lost_parts().size() == 2 && w.handoffs.count(h) == 1, "Q145：可查詢目前遺失項；交接未釋放");
+        check(w.declare_ended(h, Kind::WorkEnd) == Declare::NotLost, "Q144：已正常回報的項目不能宣告");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        check(w.declare_ended(h, Kind::CallbackEnd) == Declare::NotLost && w.handoffs.at(h).cb.active, "Q144：把手仍有人持有的正常項目不能宣告");
+        check(d.callback.report() == Reject::None, "Q144：持有者之後仍能正常回報");
+        d.work.report(); d.lease.report(); d.ack.report(); settle_all(w);
+        inv(w, "S12 未遺失項目");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        std::vector<LostNotice> got; std::thread::id where{};
+        w.set_lost_receiver([&](const LostNotice& n) { got.push_back(n); where = std::this_thread::get_id(); });
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        std::thread([cb = std::move(d.callback), ls = std::move(d.lease), wk = std::move(d.work)]() mutable { wk.report(); }).join();
+        d.ack.report(); settle_all(w);
+        check(w.declare_ended(h, Kind::HandoffAck) == Declare::Unknown && w.declare_ended(999, Kind::CallbackEnd) == Declare::Unknown, "Q144：非回呼／工作／租用或不存在的交接 → 拒絕");
+        check(w.declare_ended(h, Kind::CallbackEnd) == Declare::Done && w.handoffs.count(h) == 1 && w.lost_parts().size() == 1, "Q144：逐項宣告回呼結束；租用仍遺失，交接保留");
+        check(w.declare_ended(h, Kind::CallbackEnd) == Declare::NotLost, "Q144：同一項不能宣告兩次");
+        check(w.declare_ended(h, Kind::LeaseEnd) == Declare::Done && w.handoffs.count(h) == 0, "Q144：最後一項宣告後交接釋放");
+        check(w.declarations.size() == 2 && w.reportedEnds == 1, "Q144：擁有者宣告結束與正常回報分開記錄");
+        inv(w, "S12a 結束");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto h = w.fault(a); auto d1 = *w.deliver(h);
+        w.reassign(h);
+        { ReportHandle gone = std::move(d1.callback); }
+        d1.work.report(); settle_all(w);
+        check(!w.deliver(h), "改派等待舊回呼結束：回呼把手遺失時無法再遞送");
+        check(w.declare_ended(h, Kind::CallbackEnd) == Declare::Done, "擁有者宣告舊回呼已結束");
+        auto d2 = w.deliver(h);
+        check(d2.has_value() && !d2->lease.valid(), "宣告後改派繼續：新指派取得把手（舊租用仍在，不另發）");
+        d2->callback.report(); d2->work.report(); d2->ack.report(); d1.lease.report(); settle_all(w);
+        check(w.handoffs.count(h) == 0, "新接管者完成後交接釋放");
+        inv(w, "S12b 結束");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        Declare inside = Declare::Done; std::uint64_t h = 0;
+        w.set_lost_receiver([&](const LostNotice& n) { inside = w.declare_ended(n.handoff, n.kind); });
+        h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle gone = std::move(d.lease); }
+        settle_all(w);
+        check(inside == Declare::Reentrant && w.handoffs.at(h).lease.lost, "通知接收者內部宣告 → 拒絕重入，狀態不變");
+        check(w.declare_ended(h, Kind::LeaseEnd) == Declare::Done, "settle 返回後才能宣告");
+        d.callback.report(); d.work.report(); d.ack.report(); settle_all(w);
+        inv(w, "S12c 結束");
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        int calls = 0;
+        w.set_lost_receiver([&](const LostNotice&) { ++calls; throw std::runtime_error("receiver bug"); });
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle gone = std::move(d.work); }
+        settle_all(w);
+        check(calls == 1 && w.receiverFailures == 1 && w.handoffs.at(h).work.lost && w.lost_parts().size() == 1, "接收者拋例外：記錄失敗、不重送，遺失狀態仍可查詢");
+        (void)h;
+    }
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle gone = std::move(d.callback); }
+        settle_all(w);
+        check(w.lostUnnotified == 1 && w.lost_parts().size() == 1, "未登記接收者：計數為未通知，仍可查詢");
+        (void)h;
+    }
+#ifndef RH_ASAN
+    {
+        World w(16); auto a = *w.add_env("A", Contract::Handover);
+        std::size_t seen = 0;
+        w.set_lost_receiver([&](const LostNotice&) { ++seen; });
+        auto h = w.fault(a); auto d = *w.deliver(h);
+        { ReportHandle c = std::move(d.callback), wk = std::move(d.work), ls = std::move(d.lease); }
+        const auto before = g_allocs; settle_all(w); const auto used = g_allocs - before;
+        check(seen == 3 && used == 0, "Q145：偵測遺失並送出通知，0 次配置");
+        (void)h;
+    }
 #endif
 
     std::printf("\nfailures=%d pass=%d\n", g_fail, g_pass);

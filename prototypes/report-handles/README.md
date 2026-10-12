@@ -1,4 +1,4 @@
-# 可丟棄 C++ 原型：回報把手（ADR 0003 Q135–Q143）
+# 可丟棄 C++ 原型：回報把手（ADR 0003 Q135–Q145）
 
 **用完即丟。**不是框架程式碼，也不是 API 提案。只有主控台情境，沒有視窗。
 
@@ -18,7 +18,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handle
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File prototypes/report-handles/run.ps1 -Asan   # AddressSanitizer
 wsl.exe -e bash prototypes/report-handles/run-tsan.sh                                               # ThreadSanitizer（WSL clang）
 ```
-檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S11）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
+檔案：`report_model.hpp`（模型）、`main.cpp`（情境 S1–S12）、`CMakeLists.txt`（C++20、clang-cl）、`run.ps1`、`run-tsan.sh`。`build*/` 不納入版本控制。Windows 版 clang 沒有 TSan，因此 TSan 在 WSL（Ubuntu 26.04、clang 21.1.8）編譯同一份原始碼。
 
 ## 結構（fixture 安排，未核定為公開介面）
 - `Ledger`：背景執行緒與擁有者共用，建構時配好全部槽位；`reserve`／`fill`／`drop`／`revoke`／`peek`／`complete` 都不配置記憶體。外部只拿得到唯讀檢視。槽位有世代，撤權或結算後世代加一，舊把手因此失效。
@@ -26,6 +26,7 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - `World`：擁有者執行緒狀態，不可複製；每個變更呼叫都檢查執行緒。`settle()` 每次最多結算 8 筆，先處理再歸還槽位：處理途中拋例外時，回報留在帳本，下次結算再處理。每筆處理先完成所有配置，再做不會失敗的變更。
 - 交接遞送一次預留 4 個位置（回呼結束、工作結束、租用歸還、交接確認），不足則全部不承擔。舊確認把手未用掉時拒絕再遞送，須先改派撤權。
 - 「逐筆明確確認」契約下，`collect()` 對每份結果各發一個確認把手。
+- 遺失回報（Q144／Q145）：擁有者以 `set_lost_receiver` 登記一個接收者；`settle()` 偵測到回呼／工作／租用把手遺失時，在擁有者執行緒送出 `LostNotice{交接, 種類}`（純資料，不配置記憶體）。接收者拋例外只計數、不重送；未登記時計為未通知。`lost_parts()` 查詢目前遺失項。擁有者以 `declare_ended(交接, 種類)` 逐項宣告已安全結束：只接受「仍有效且已遺失」的項目，另記於 `declarations`，與正常回報結束分開；在接收者內部呼叫會被拒絕（`Reentrant`），避免結算途中改動交接。
 
 ## 證據狀態（誠實紀錄）
 - **第一版 `67f7f65`**：作者 41 項通過、ASan 39 項通過；變異測試（丟棄把手不通知 → 7 項失敗；關閉不等交付 → 3 項失敗）證明情境有抓錯能力。
@@ -37,13 +38,16 @@ wsl.exe -e bash prototypes/report-handles/run-tsan.sh                           
 - **TSan 對照組**：以同一份情境搭配修正前的模型，TSan 回報 `World::owner()` 的資料競爭，即 Codex 原始碼審查指出的位置（`evidence/claude/tsan-control-67f7f65.log`）。證明 TSan 在此設定下確實能抓到競爭。
 - **Codex 再驗證 `b534d90`**（`evidence/codex/reverify-b534d90.md`）：F1–F8、atomic 計數、撤權登記清除均判定已修正；擴大配置失敗注入（遞送、交出、放棄、紀錄、通知，共觸發 24 次 `bad_alloc`）無遺失或重複。新發現兩項低嚴重度：`record()` 每次只多預留 1 格造成累計配置量平方成長；README 診斷宣稱過廣。**Codex 沙箱無法存取 WSL，TSan 未經獨立驗證。**
 - **其後修正（未再驗證）**：`record()` 與通知改為容量倍增；README 補上 moved-from 不計數與整批非交易的限制。作者重跑 Release／ASan／TSan。
+- **Q144／Q145（本版）**：以 `declare_ended` 逐項宣告取代原本以整個交接為單位、需收尾安全旗標的 `resolve_lost`；遺失通知改為擁有者執行緒上的接收者與查詢。S12 涵蓋：通知在擁有者執行緒送達、逐項宣告與交接釋放、已正常回報或仍有人持有把手的項目不能宣告、宣告後改派繼續、接收者重入被拒、接收者拋例外、未登記接收者、偵測與通知 0 次配置。原先 F8 的配置失敗注入在此路徑已找不到配置點（改為檢查此事）。
+  - 變異測試：拿掉重入防護 → 2 項失敗；允許宣告未遺失項目 → 起初**未被抓到**，補上「仍有人持有把手的項目不能宣告」後 → 1 項失敗。
+  - 作者執行：Release 78、ASan 72、TSan 72 項通過，TSan 0 則競爭報告。
 
 ## 限制
 - TSan 在 Linux（libstdc++）上跑，不涵蓋 Windows 標準函式庫或 Windows 特有的執行緒行為；TSan 只能報告實際執行到的交錯，不證明不存在競爭。
 - 同一個把手不能被兩條執行緒同時操作（單一持有者的前提）；這不是框架能偵測的錯誤。
 - 配置失敗注入只攔截 C++ `operator new`，不涵蓋 CRT 或系統配置。
 - Ledger 用單一 mutex；沒有測公平性、延遲或大量執行緒下的效能。
-- 「收尾安全」仍是宣告，不是偵測；擁有者處置遺失回報（`resolve_lost`）是 fixture 介面，ADR 尚未核定。
+- 「收尾安全」仍是宣告，不是偵測；`declare_ended` 的屬實與否框架無法驗證（Q139）。通知介面、送達時機、未登記接收者的處理仍是原型安排，ADR 尚未核定。
 - 診斷只有計數，沒有有上限的明細紀錄；拒絕原因只有三種。
 - 結清紀錄、`commands` 歷史在單一情境內不設上限。
 - 診斷計數只涵蓋知道所屬帳本的無效回報：已用過的把手再回報、已撤權、世界已銷毀。被移走（moved-from）的把手不知道帳本，回報得到「空把手」但不計數。

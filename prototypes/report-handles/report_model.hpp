@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -135,6 +136,10 @@ private:
 };
 
 struct DeliveryHandles { ReportHandle callback, work, lease, ack; };
+// Q145: delivered on the owner thread; POD so sending it needs no allocation.
+struct LostNotice { std::uint64_t handoff; Kind kind; };
+// Q144: result of an owner declaration that a lost reporter's obligation has safely ended.
+enum class Declare : std::uint8_t { Done, NotLost, Unknown, Reentrant };
 
 // Owner-thread state. Every mutating call checks the calling thread.
 class World {
@@ -201,6 +206,7 @@ public:
     std::size_t settle() {
         owner();
         std::array<Ledger::Drained, 8> buf; const auto n = ledger_->peek(buf);
+        struct Guard { bool& f; explicit Guard(bool& b) : f(b) { f = true; } ~Guard() { f = false; } } guard(inSettle_);
         for (std::size_t i = 0; i < n; ++i) { apply(buf[i]); ledger_->complete(buf[i].ref); }
         finalize();
         return n;
@@ -236,13 +242,33 @@ public:
         }
         finalize(); return n;
     }
-    // Fixture owner decision after a lost reporter (Q143 b): only when cleanup is declared safe.
-    bool resolve_lost(std::uint64_t h) {
-        owner(); auto& x = handoffs.at(h);
-        if (!envs[x.env].cleanupSafe) return false;
-        bool any = false;
-        for (Part* p : {&x.cb, &x.work, &x.lease}) if (p->active && p->lost) { p->active = p->lost = false; any = true; }
-        try_release(h); return any;
+    // Q145: the owner registers one receiver; it runs on the owner thread inside settle() and must not throw.
+    void set_lost_receiver(std::function<void(const LostNotice&)> r) { owner(); lostReceiver_ = std::move(r); }
+    // Q144: per-obligation owner declaration. The framework cannot verify it; it only records it apart
+    // from reported ends. Refused while settle() is delivering notices (the receiver must not re-enter).
+    Declare declare_ended(std::uint64_t h, Kind k) {
+        owner();
+        if (inSettle_) return Declare::Reentrant;
+        auto it = handoffs.find(h);
+        if (it == handoffs.end()) return Declare::Unknown;
+        Part* p = part(it->second, k);
+        if (!p) return Declare::Unknown;
+        if (!p->active || !p->lost) return Declare::NotLost;
+        OwnerDeclaration d{h, k};
+        make_room(declarations);  // allocate before any change
+        p->active = p->lost = false; declarations.push_back(d);
+        try_release(h);
+        return Declare::Done;
+    }
+    // Q145: queryable current state.
+    std::vector<LostNotice> lost_parts() const {
+        std::vector<LostNotice> v;
+        for (auto& [id, h] : handoffs) {
+            if (h.cb.lost) v.push_back({id, Kind::CallbackEnd});
+            if (h.work.lost) v.push_back({id, Kind::WorkEnd});
+            if (h.lease.lost) v.push_back({id, Kind::LeaseEnd});
+        }
+        return v;
     }
 
     std::vector<std::string> invariants() const {
@@ -270,7 +296,9 @@ public:
     std::map<std::uint64_t, Receipt> receipts;
     std::map<std::uint64_t, Handoff> handoffs;
     std::vector<Outcome> outcomes;  // fixture: unbounded within one scenario
-    std::vector<std::string> ownerNotices;  // Q143 b: reporter-lost notices
+    struct OwnerDeclaration { std::uint64_t handoff; Kind kind; };
+    std::vector<OwnerDeclaration> declarations;  // Q144: "擁有者宣告結束", kept apart from reported ends
+    std::size_t lostNotified = 0, lostUnnotified = 0, receiverFailures = 0, reportedEnds = 0;
     std::size_t refusedContracts = 0, refusedObligations = 0, providerLost = 0;
     std::atomic<std::size_t> ownerThreadViolations{0};  // the only field written by non-owner threads
 
@@ -311,15 +339,18 @@ private:
             if (d.st == SlotState::Filled) x.acked = true;
         } else {
             Part& p = d.kind == Kind::CallbackEnd ? x.cb : d.kind == Kind::WorkEnd ? x.work : x.lease;
-            if (d.st == SlotState::Filled) p.active = false;
-            else {  // Q143 b: not assumed ended
-                std::string notice = "回報者遺失：交接 " + std::to_string(h);
-                make_room(ownerNotices);
-                p.lost = true; ownerNotices.push_back(std::move(notice));
-            }
+            if (d.st == SlotState::Filled) { p.active = false; ++reportedEnds; }
+            else if (!p.lost) { p.lost = true; notify_lost({h, d.kind}); }  // Q143 b: not assumed ended
         }
         partOwner.erase(d.obligation);
         try_release(h);
+    }
+    static Part* part(Handoff& x, Kind k) {
+        return k == Kind::CallbackEnd ? &x.cb : k == Kind::WorkEnd ? &x.work : k == Kind::LeaseEnd ? &x.lease : nullptr;
+    }
+    void notify_lost(const LostNotice& n) noexcept {  // no allocation; a throwing receiver is counted, not retried
+        if (!lostReceiver_) { ++lostUnnotified; return; }
+        try { lostReceiver_(n); ++lostNotified; } catch (...) { ++receiverFailures; }
     }
     void try_release(std::uint64_t h) {
         auto& x = handoffs.at(h);
@@ -337,6 +368,8 @@ private:
     std::shared_ptr<Ledger> ledger_;
     std::thread::id ownerThread_ = std::this_thread::get_id();
     std::uint64_t seq_ = 0;
+    bool inSettle_ = false;
+    std::function<void(const LostNotice&)> lostReceiver_;
     std::map<std::uint64_t, std::uint64_t> partOwner, ackOwner;
 };
 
