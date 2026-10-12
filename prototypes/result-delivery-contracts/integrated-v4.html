@@ -228,7 +228,7 @@ class World{
   do_ackHandedOver(a){const out=[];for(const r of [...this.receipts.values()])if(r.env===a.env&&r.handedOver)out.push(`${r.id}→${this.do_postControl({kind:'resultAck',body:{world:this.id,receipt:r.id}}).result}`);
     return{result:`逐筆送出 ${out.length} 則結果確認：${out.join('；')||'無'}`};}
   // Fixture probe (Codex finding 1): post a result for the command id the next startCommand will create.
-  do_forgeNextResult(a){const slot=this.slots.findIndex(s=>!s.cmd);const token={world:this.id,slot,gen:this.slots[slot].gen,cmd:`${this.id}.C${this.seq+2}`};
+  do_forgeNextResult(a){const slot=this.slots.findIndex(s=>!s.cmd);if(slot<0)return{result:"不受理：沒有空的結果槽位可預測"};const token={world:this.id,slot,gen:this.slots[slot].gen,cmd:`${this.id}.C${this.seq+2}`};
     return this.do_postControl({kind:'result',body:{token,value:a.value}});}
   do_abandonResults(a){const e=this.envs[a.env];if(!e.cleanupSafe)return{result:'拒絕放棄：收尾不安全，結果與資源保留'};
     const got=[];let running=0;for(const r of [...this.receipts.values()]){if(r.env!==e.name)continue;if(!r.terminal){running++;continue;}
