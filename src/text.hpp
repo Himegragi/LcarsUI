@@ -1,0 +1,42 @@
+#pragma once
+#include "lcars/appearance.hpp"
+#include <map>
+#include <memory>
+#include <string_view>
+#include <vector>
+namespace lcars::detail {
+struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; };
+struct TextLayout {
+    std::vector<Glyph> glyphs;
+    std::map<unsigned,float> carets;
+    float width=0;
+    unsigned missing=0;
+    int size=18;
+    float at(unsigned offset) const;
+    unsigned hit(float x) const;
+};
+class Canvas {
+public:
+    int width, height;
+    std::vector<unsigned char> pixels;
+    Rect clip;
+    Canvas(int width,int height,Color background);
+    void fill(Rect rect,Color color);
+    void rounded(Rect rect,int radius,Color color);
+    void blend(int x,int y,Color color,unsigned alpha);
+};
+class Text {
+public:
+    Text();
+    ~Text();
+    Text(const Text&)=delete;
+    Text& operator=(const Text&)=delete;
+    void set_ming(bool ming);
+    TextLayout shape(std::u16string_view text,int pixels);
+    void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
+    void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+}
