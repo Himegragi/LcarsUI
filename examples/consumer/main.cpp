@@ -57,7 +57,8 @@ int main() {
     ui.focus("profile.save");
     ui.key_down({.key = Key::enter});
     expect(profile.alias == u"abcdef" && profile.saves == 1, "consumer callback writes its existing data model once");
-    expect(ui.text_input(u"x").status == Status::invalid_value || ui.focused() == "profile.save", "button focus does not take text");
+    expect(ui.focused() == "profile.save" && ui.text_input(u"x").status == Status::invalid_value && ui.text("profile.alias") == u"abcdef",
+           "a focused button refuses typed text and the field is untouched");
     ui.focus("profile.alias");
     expect(ui.paste("profile.alias", u"0123456789").status == Status::invalid_value, "consumer-chosen length limit is enforced");
 

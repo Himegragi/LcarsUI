@@ -33,10 +33,6 @@ std::u16string composition(HIMC imc, DWORD kind) {
     std::u16string value(static_cast<std::size_t>(bytes) / 2, u'\0');
     return ImmGetCompositionStringW(imc, kind, value.data(), bytes) == bytes ? value : std::u16string{};
 }
-Rect intersect(Rect a, Rect b) {
-    int x = std::max(a.x, b.x), y = std::max(a.y, b.y);
-    return {x, y, std::max(0, std::min(a.x + a.w, b.x + b.w) - x), std::max(0, std::min(a.y + a.h, b.y + b.h) - y)};
-}
 Rect offset(Rect r, Rect origin) { return {r.x + origin.x, r.y + origin.y, r.w, r.h}; }
 std::wstring wide(std::u16string_view text) { return std::wstring(text.begin(), text.end()); }
 
@@ -48,14 +44,16 @@ LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(host));
     }
     if (!host) return DefWindowProcW(window, msg, w, l);
-    try { return host->message(msg, w, l); }
-    catch (const std::exception& e) {
-        // Extension or backend failure: stop this UI instead of letting C++ unwind into Win32.
-        std::cerr << "LcarsUI host: " << e.what() << '\n';
+    // Extension or backend failure: stop this UI instead of letting C++ unwind into Win32.
+    auto stop = [&](const char* what) {
+        std::cerr << "LcarsUI host: " << what << '\n';
         SetWindowLongPtrW(window, GWLP_USERDATA, 0);
         PostQuitMessage(1);
-        return 0;
-    }
+        return LRESULT{0};
+    };
+    try { return host->message(msg, w, l); }
+    catch (const std::exception& e) { return stop(e.what()); }
+    catch (...) { return stop("unknown exception"); }
 }
 }
 
@@ -104,24 +102,33 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Window registration failed");
     auto title = wide(options.title);
-    window_ = CreateWindowExW(background ? WS_EX_NOACTIVATE : 0, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, nullptr, nullptr, wc.hInstance, this);
-    if (!window_) throw std::runtime_error("Window creation failed");
-    input_context_ = ImmGetContext(window_);
-    if (input_context_) ImmReleaseContext(window_, input_context_);
-    clipboard_ = std::make_unique<WindowsClipboard>(window_);
-    ui_.set_clipboard(clipboard_.get());
-    renderer_ = std::make_unique<Renderer>(window_);
-    client_size(options.width, options.height);
-}
-DesktopHost::~DesktopHost() {
-    ui_.set_clipboard(nullptr);
-    if (window_) {
-        ImmAssociateContext(window_, input_context_);
-        SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
-        renderer_.reset();
-        DestroyWindow(window_);
+    HWND window = CreateWindowExW(background ? WS_EX_NOACTIVATE : 0, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+                                  CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, nullptr, nullptr, wc.hInstance, this);
+    if (!window) {
+        window_ = nullptr;  // WM_NCCREATE may have attached a window that creation then destroyed
+        throw std::runtime_error("Window creation failed");
     }
+    try {
+        input_context_ = ImmGetContext(window_);
+        if (input_context_) ImmReleaseContext(window_, input_context_);
+        clipboard_ = std::make_unique<WindowsClipboard>(window_);
+        ui_.set_clipboard(clipboard_.get());
+        renderer_ = std::make_unique<Renderer>(window_);
+        client_size(options.width, options.height);
+    } catch (...) {
+        release();  // the destructor will not run for a half-built host
+        throw;
+    }
+}
+DesktopHost::~DesktopHost() { release(); }
+void DesktopHost::release() {
+    ui_.set_clipboard(nullptr);
+    if (!window_) return;
+    ImmAssociateContext(window_, input_context_);
+    SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
+    renderer_.reset();
+    DestroyWindow(window_);
+    window_ = nullptr;
 }
 float DesktopHost::scale() const { return forced_scale_ > 0 ? forced_scale_ : GetDpiForWindow(window_) / 96.f; }
 void DesktopHost::client_size(int width_dip, int height_dip) {
@@ -212,7 +219,7 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
         bool focused = semantics->focused, enabled = semantics->enabled;
         if (item.kind == Kind::label) {
             lines(item.lines, item.text_size, p.text);
-        } else if (item.kind == Kind::button) {
+        } else if (item.kind != Kind::text) {  // button, toggle, navigation
             int ring = focused ? d(3) : d(1);
             canvas.rounded(item.bounds, d(appearance_.radius()), focused ? p.accent : enabled ? p.border : p.background);
             Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
@@ -230,14 +237,14 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
             } else {
                 canvas.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge);
             }
-            int caption = std::max(1, item.text_size * 7 / 8);
+            int caption = item.caption_size;
             lines(item.label_lines, caption, semantics->invalid ? p.error : p.muted);
             lines(item.description_lines, caption, p.muted);
             lines(item.error_lines, caption, p.error);
             const auto* session = ui_.edit(item.id);
             canvas.clip = intersect(canvas.clip, editor);
-            auto x0 = editor.x - static_cast<int>(std::lround(item.offset));
-            auto at = [&](unsigned offset) { return x0 + static_cast<int>(std::lround(item.run.x(offset))); };
+            auto x0 = item.caret_x(0);
+            auto at = [&](unsigned offset) { return item.caret_x(offset); };
             if (focused) {
                 unsigned first = session->begin();
                 unsigned last = session->composing ? first + static_cast<unsigned>(session->preedit.size()) : session->end();
@@ -264,7 +271,7 @@ void DesktopHost::log_ime(const wchar_t* event, std::u16string_view detail) {
     line += L"\t" + wide(detail) + L"\tfocus=" + std::wstring(ui_.focused().begin(), ui_.focused().end());
     if (session) line += L"\ttext=" + wide(session->text) + L"\tcomposing=" + (session->composing ? L"1" : L"0") +
                          L"\tpreedit=" + wide(session->preedit);
-    ime_log_.push_back(std::move(line));
+    if (tracing_) ime_log_.push_back(std::move(line));  // bounded by the verification run
 }
 void DesktopHost::finish_composition() {
     const auto* session = ui_.edit(ui_.focused());
@@ -301,7 +308,7 @@ void DesktopHost::sync_ime() {
     const auto* field = writable ? frame_.find(id) : nullptr;
     if (!field || GetFocus() != window_) return;
     const auto* session = ui_.edit(id);
-    int x = field->bounds.x + field->field.editor.x + static_cast<int>(field->run.x(session->visible_caret()) - field->offset);
+    int x = field->caret_x(session->visible_caret());
     int y = field->bounds.y + field->field.editor.y, h = field->field.editor.h;
     if (auto imc = ImmGetContext(window_)) {
         CANDIDATEFORM candidate{};
@@ -499,7 +506,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))
                                          : session->selection.caret;
-            info->pt = {field->bounds.x + field->field.editor.x + static_cast<LONG>(field->run.x(at) - field->offset),
+            info->pt = {field->caret_x(at),
                         field->bounds.y + field->field.editor.y};
             ClientToScreen(window_, &info->pt);
             info->cLineHeight = static_cast<UINT>(field->field.editor.h);

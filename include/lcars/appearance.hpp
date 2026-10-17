@@ -7,6 +7,11 @@ struct Rect {
     bool contains(int px, int py) const { return px >= x && py >= y && px < x + w && py < y + h; }
     bool operator==(const Rect&) const = default;
 };
+inline Rect intersect(Rect a, Rect b) {
+    int x = a.x > b.x ? a.x : b.x, y = a.y > b.y ? a.y : b.y;
+    int right = a.x + a.w < b.x + b.w ? a.x + a.w : b.x + b.w, bottom = a.y + a.h < b.y + b.h ? a.y + a.h : b.y + b.h;
+    return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
+}
 struct FieldParts { Rect label, surface, editor; bool underline = false; };
 struct Palette { Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; };
 // Measured text blocks a field must host. Heights are physical pixels from the text backend.

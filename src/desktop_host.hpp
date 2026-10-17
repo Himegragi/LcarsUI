@@ -69,6 +69,7 @@ private:
     bool tracing_ = false;
 
     Frame arrange(int width, int height, float scale);
+    void release();
     void draw(Canvas& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();

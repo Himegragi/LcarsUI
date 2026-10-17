@@ -1,7 +1,8 @@
 #pragma once
 // B01-B03 minimal layout: column/row, grid and one scroll region, measured through a host
-// text backend. Arrangement is pure: the same inputs give the same frame, which the host both
-// draws and hit-tests, so measurement, painting and pointer targets cannot disagree.
+// text backend. The same inputs give the same frame, which the host both draws and hit-tests,
+// so measurement, painting and pointer targets cannot disagree. arrange settles view state as it
+// goes: it clamps the scroll offset and each field's display offset before placing anything.
 #include "lcars/appearance.hpp"
 #include "lcars/core.hpp"
 #include <string>
@@ -49,11 +50,13 @@ struct Placement {
     Kind kind = Kind::label;
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
     int text_size = 0;            // physical pixels
-    std::vector<Line> lines;      // labels and button titles
+    int caption_size = 0;         // text fields: label, description and error text size
+    std::vector<Line> lines;      // labels and command titles
     FieldLayout field;            // text fields, translated to frame coordinates
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
     float offset = 0;             // text fields: horizontal display offset in pixels
+    int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
 };
 struct ScrollState { int offset = 0; };  // physical pixels, clamped by every arrange
 struct Frame {

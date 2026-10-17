@@ -37,6 +37,16 @@ void latin_words_wrap_at_spaces() {
     check((lines == std::vector<std::u16string>{u"中文Ctrl", u"說明"}), "CJK characters remain break opportunities");
 }
 
+void command_kinds_are_placed_like_buttons() {
+    Ui ui({{.id = "tips", .kind = Kind::toggle, .label = u"啟用提示"}, {.id = "next", .kind = Kind::navigation, .label = u"下一頁"}});
+    FakeMeasure measure;
+    ScrollState scroll;
+    auto frame = arrange(layout::column({layout::control("tips"), layout::control("next")}), ui, web_appearance(), measure, 400, 300, 1.f, scroll);
+    auto tips = frame.find("tips"), next = frame.find("next");
+    check(tips && next && tips->lines.size() == 1 && tips->lines[0].text == u"啟用提示" && next->lines[0].text == u"下一頁",
+          "Toggle and navigation carry their titles instead of being treated as text fields");
+}
+
 std::vector<Control> field_controls() {
     return {{.id = "name.label", .kind = Kind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
             {.id = "name", .kind = Kind::text, .value = u"測試使用者"},
@@ -87,11 +97,12 @@ layout::Node page_layout() {
 void narrow_window_moves_results_below() {
     Ui ui(page_controls());
     FakeMeasure measure;
+    for (const auto* appearance : appearances)
     for (float scale : {1.f, 1.5f}) {
         ScrollState scroll;
         auto d = [&](int v) { return static_cast<int>(v * scale); };
-        auto wide = arrange(page_layout(), ui, web_appearance(), measure, d(960), d(720), scale, scroll);
-        auto narrow = arrange(page_layout(), ui, web_appearance(), measure, d(640), d(480), scale, scroll);
+        auto wide = arrange(page_layout(), ui, *appearance, measure, d(960), d(720), scale, scroll);
+        auto narrow = arrange(page_layout(), ui, *appearance, measure, d(640), d(480), scale, scroll);
         auto beside = wide.find("result")->bounds, below = narrow.find("result")->bounds;
         check(beside.x > wide.find("name")->bounds.x && beside.y == wide.find("name")->bounds.y, "960 DIP: results sit beside the form");
         check(below.x == narrow.find("name")->bounds.x && below.y > narrow.find("apply")->bounds.y, "640 DIP: results move below the form");
@@ -134,7 +145,7 @@ void resize_after_deep_scroll_settles_in_the_first_frame() {
         check(first.items[i].bounds == second.items[i].bounds, "Every control sits where the next frame puts it");
     auto name = first.find("name")->bounds;
     auto hit = second.hit(name.x + 4, name.y + name.h - 4);
-    check(name.y + name.h <= 900 ? hit && hit->id == "name" : true, "Hit target matches the first painted position");
+    check(name.y >= 0 && name.y + name.h <= 900 && hit && hit->id == "name", "Name is visible and hit where the first frame painted it");
 }
 
 void pointer_hits_map_to_the_painted_caret_positions() {
@@ -179,6 +190,7 @@ int main() {
     const test::Case cases[] = {
         {"AC05 long label wraps and pushes following controls down", long_label_wraps_and_pushes_following_controls_down},
         {"AC05 Latin words wrap at spaces", latin_words_wrap_at_spaces},
+        {"B01 command kinds are placed like buttons", command_kinds_are_placed_like_buttons},
         {"AC12 field roles stay with their field in both appearances", field_roles_stay_with_their_field_in_both_appearances},
         {"AC13 narrow window moves results below", narrow_window_moves_results_below},
         {"AC13 scrolling reveals focus and clips hits", scrolling_reveals_focus_and_clips_hits},

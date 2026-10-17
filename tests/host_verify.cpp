@@ -154,6 +154,14 @@ void pointer_activation_rules(const Appearance& appearance, Report& report) {
                  "press+move out+release=" + std::to_string(moved_out) + ", click=" + std::to_string(clicked) +
                  ", press+WM_CANCELMODE+release=" + std::to_string(canceled) + ", Space+WM_KILLFOCUS+release=" + std::to_string(deactivated) +
                  ", disabled click total=" + std::to_string(f.form.applies()));
+    // AC10: with the data area disabled, the native pointer and keyboard cannot reach the name either.
+    auto before = f.form.ui.text(f.ids.name);
+    f.mouse(WM_LBUTTONDOWN, f.center(f.ids.name), MK_LBUTTON);
+    f.mouse(WM_LBUTTONUP, f.center(f.ids.name));
+    f.tap('X');
+    report.check("AC10-native-disabled", f.form.ui.focused() != f.ids.name && f.form.ui.text(f.ids.name) == before,
+                 "click on the disabled name then typing: focus=" + f.form.ui.focused() + ", text unchanged=" +
+                     (f.form.ui.text(f.ids.name) == before ? "yes" : "NO"));
 }
 
 void pointer_selection_and_clipboard(const Appearance& appearance, Report& report) {
@@ -228,8 +236,9 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
                      (visible ? "yes" : "NO") + ", unfocused reset ring is not=" + (distinct ? "yes" : "NO") + " (" + tag + "-focus-apply.bmp)");
 }
 
-void resize_first_frame_matches_next(const Appearance& appearance, Report& report) {
+void resize_first_frame_matches_next(const Appearance& appearance, Report& report, float scale) {
     Fixture f(appearance);
+    f.host.force_scale(scale);
     f.form.ui.invoke(f.ids.long_text);
     f.host.client_size(640, 480);
     f.host.pump();
@@ -251,8 +260,8 @@ void resize_first_frame_matches_next(const Appearance& appearance, Report& repor
     for (std::size_t i = 0; same && i < first.items.size(); ++i) same = first.items[i].bounds == second.items[i].bounds;
     auto target = first.find(f.ids.apply)->bounds;
     const auto* hit = second.hit(target.x + target.w / 2, target.y + target.h / 2);
-    bool visible = target.y >= 0 && target.y + target.h <= 540;
-    report.check("R06-native", deep > 0 && deep == deep_max && painted == 1 && first.viewport.w == 720 && first.maximum > 0 && first.offset == first.maximum && first.offset < deep && same && visible && hit && hit->id == f.ids.apply,
+    bool visible = target.y >= 0 && target.y + target.h <= static_cast<int>(540 * scale);
+    report.check(scale > 1 ? "R06-native-150" : "R06-native-100", deep > 0 && deep == deep_max && painted == 1 && first.viewport.w == static_cast<int>(720 * scale) && first.maximum > 0 && first.offset == first.maximum && first.offset < deep && same && visible && hit && hit->id == f.ids.apply,
                  "640x480 wheel to offset " + std::to_string(deep) + "/" + std::to_string(deep_max) + "; SetWindowPos 720x540 -> " +
                      std::to_string(painted) + " WM_PAINT, first frame offset " + std::to_string(first.offset) + " max " +
                      std::to_string(first.maximum) + ", identical to the next frame=" + (same ? "yes" : "NO") + ", apply at " + str(target) +
@@ -479,14 +488,9 @@ struct Profiles {
 };
 }
 
-int run_ime(const std::filesystem::path& folder) {
-    std::filesystem::create_directories(folder);
-    Report report(folder / "ime.tsv");
-    report.appearance = "web";
-    std::ofstream events(folder / "ime-events.log");
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+void ime_session(const Appearance& appearance, Report& report, std::ofstream& events) {
     try {
-        Live live(web_appearance());
+        Live live(appearance);
         auto& ui = live.form.ui;
         const auto& ids = live.ids;
         Profiles profiles;
@@ -576,29 +580,48 @@ int run_ime(const std::filesystem::path& folder) {
 
         live.start_in_name();
         live.type("JI3");
+        auto before = live.state();
         live.click(ids.long_text);
-        record("E01-pointer", !session->composing && live.form.applies() == 0, "Clicking another control during composition: record commit/cancel and focus");
+        record("E01-pointer", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && ui.focused() == ids.long_text && live.form.applies() == 0,
+               "Clicking another control commits the preedit once, then focus moves; before: " + before);
 
         live.start_in_name();
         live.type("JI3");
+        before = live.state();
         SetForegroundWindow(live.helper);
         live.wait(500);
         auto away = live.state();
-        report.check("E01-window-deactivate", !session->composing && live.form.applies() == 0, "Native window loses foreground during composition => " + away);
+        report.check("E01-window-deactivate", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && live.form.applies() == 0,
+                     "The IME commits on native deactivation, once; before: " + before + " => " + away);
         events << "E01-window-deactivate\t" << live.events() << '\n';
         live.foreground(live.host.window());
-        record("E01-window-return", !session->composing && live.form.applies() == 0, "Back in the window after deactivation");
+        record("E01-window-return", !session->composing && ui.focused() == ids.name && ui.text(ids.name) == u"測試使用者我" && live.history() == 1,
+               "Back in the window: focus kept on the name, nothing composing, the commit kept");
 
         live.start_in_name();
         live.type("JI3");
+        before = live.state();
         live.click(ids.name, -100);
-        record("E01-pointer-same-field", !session->composing && live.form.applies() == 0, "Clicking inside the composing field: record commit and caret");
+        record("E01-pointer-same-field", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && ui.focused() == ids.name && live.form.applies() == 0,
+               "Clicking inside the composing field commits once, then places the caret; before: " + before);
 
         profiles.us();
         live.wait(200);
     } catch (const Blocked& blocked) {
         report.check("BLOCKED", false, blocked.what());
         events << "BLOCKED\t" << blocked.what() << '\n';
+    }
+}
+
+int run_ime(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "ime.tsv");
+    std::ofstream events(folder / "ime-events.log");
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        events << "=== " << report.appearance << " ===\n";
+        ime_session(*appearance, report, events);
     }
     CoUninitialize();
     std::cout << report.checks << " real-input checks, " << report.failures << " not passing\n";
@@ -616,7 +639,8 @@ int run(const std::filesystem::path& folder) {
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
-        resize_first_frame_matches_next(*appearance, report);
+        resize_first_frame_matches_next(*appearance, report, 1.f);
+        resize_first_frame_matches_next(*appearance, report, 1.5f);
         layout_matrix(*appearance, report, folder, tag);
     }
     std::cout << report.checks << " native checks, " << report.failures << " failures\n";

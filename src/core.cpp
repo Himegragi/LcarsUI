@@ -1,6 +1,14 @@
 #include "lcars/core.hpp"
 #include <stdexcept>
 namespace lcars {
+namespace {
+// Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
+std::u16string without_controls(std::u16string_view text) {
+    std::u16string result;
+    for (auto ch : text) if (ch >= 0x20 && ch != 0x7f) result += ch;
+    return result;
+}
+}
 bool valid_single_line(std::u16string_view text, std::size_t max_length) {
     if (text.size() > max_length) return false;
     for (std::size_t i = 0; i < text.size(); ++i) {
@@ -177,8 +185,7 @@ Result Ui::notify() {
     return {};
 }
 Result Ui::text_input(std::u16string_view text) {
-    std::u16string committed;
-    for (auto ch : text) if (ch >= 0x20 && ch != 0x7f) committed += ch;
+    auto committed = without_controls(text);
     if (committed.empty()) return {};
     Field* field = nullptr;
     if (auto result = writable(focus_, field); !result) return result;
@@ -254,14 +261,30 @@ std::vector<Id> Ui::focus_order() const {
         if (focusable(control)) order.push_back(control.id);
     return order;
 }
-void Ui::move_focus(Id next) {
-    if (next == focus_) return;
+// The new focus is readable at once; owner notifications queue behind the one being delivered
+// (ADR 0003: no direct recursion into subscribers).
+Result Ui::move_focus(Id next) {
+    if (next == focus_) return {};
     key_armed_.clear(); pointer_armed_.clear();
-    composition_cancel();
+    if (!composing_.empty()) {
+        // E01 default, matching the native IME on blur: leftover preedit is committed once.
+        auto preedit = edits_.at(composing_).session.preedit;
+        composition_commit(preedit);
+    }
     auto previous = std::exchange(focus_, std::move(next));
-    if (!focus_moved_) return;
-    try { focus_moved_(previous, focus_); }
-    catch (...) { stopped_ = true; }
+    if (!focus_moved_) return {};
+    pending_focus_.emplace_back(std::move(previous), focus_);
+    if (notifying_focus_) return {};
+    notifying_focus_ = true;
+    Result result;
+    for (std::size_t i = 0; i < pending_focus_.size(); ++i) {
+        auto [from, to] = pending_focus_[i];
+        try { focus_moved_(from, to); }
+        catch (...) { stopped_ = true; result = {Status::failed, u"焦點通知失敗，介面已停止"}; break; }
+    }
+    pending_focus_.clear();
+    notifying_focus_ = false;
+    return result;
 }
 Result Ui::composition_update(std::u16string preedit, unsigned caret) {
     if (composing_.empty()) {
@@ -276,8 +299,7 @@ Result Ui::composition_commit(std::u16string_view text) {
     auto target = composing_.empty() ? focus_ : composing_;
     composition_cancel();
     if (!edits_.contains(target)) return {Status::invalid_value, u"沒有接收組字的文字欄位"};
-    std::u16string committed;
-    for (auto ch : text) if (ch >= 0x20 && ch != 0x7f) committed += ch;
+    auto committed = without_controls(text);
     Field* field = nullptr;
     if (auto result = writable(target, field); !result) return result;
     if (committed.empty()) return {};
@@ -293,8 +315,7 @@ Result Ui::focus(std::string_view id) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"找不到元件"};
     if (auto result = focusable(*control); !result) return result;
-    move_focus(control->id);
-    return {};
+    return move_focus(control->id);
 }
 Result Ui::key_down(KeyPress key) {
     if (key.key == Key::tab) {
@@ -304,18 +325,15 @@ Result Ui::key_down(KeyPress key) {
         auto n = static_cast<long>(order.size());
         long index = it == order.end() ? (key.shift ? 0 : -1) : static_cast<long>(it - order.begin());
         index = (index + (key.shift ? -1 : 1) + n) % n;
-        move_focus(order[static_cast<std::size_t>(index)]);
-        return {};
+        return move_focus(order[static_cast<std::size_t>(index)]);
     }
     const auto* control = find(focus_);
     if (!control) return {};
+    if (auto result = available(focus_); !result) return result;
     if (control->kind == Kind::text) return edit_key(key);
     if (control->kind != Kind::button || key.repeat) return {};
     if (key.key == Key::enter) return invoke(focus_);
-    if (key.key == Key::space) {
-        if (auto result = available(focus_); !result) return result;
-        key_armed_ = focus_;
-    }
+    if (key.key == Key::space) key_armed_ = focus_;
     return {};
 }
 namespace {
@@ -379,7 +397,7 @@ Result Ui::pointer_down(std::string_view id) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"找不到元件"};
     if (auto result = focusable(*control); !result) return result;
-    move_focus(control->id);
+    if (auto result = move_focus(control->id); !result) return result;
     if (control->kind == Kind::button) pointer_armed_ = control->id;
     return {};
 }

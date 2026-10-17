@@ -8,6 +8,7 @@ using test::check;
 
 namespace {
 edit_form::Ids ids = edit_form::default_ids();
+const Appearance* appearance = &web_appearance();  // every case is rerun under each appearance
 
 edit_form::Ids alternate_ids() {
     edit_form::Ids i;
@@ -18,6 +19,17 @@ edit_form::Ids alternate_ids() {
 }
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
 KeyPress ctrl(char16_t letter) { return {.ctrl = true, .letter = letter}; }
+// Arrange the page with the current appearance and check the role carriers follow the state.
+void settle(edit_form::Form& form) {
+    test::FakeMeasure measure;
+    for (int width : {960, 640}) {
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, width, 480, 1.f, form.scroll, form.ui.focused());
+        auto field = frame.find(ids.name);
+        bool invalid = form.ui.describe(ids.name)->invalid;
+        check(field && field->label_lines.size() == 1 && field->error_lines.empty() != invalid,
+              "Under this appearance the name carries its label, and an error exactly when invalid");
+    }
+}
 
 void initial_values_apply_and_reset() {
     edit_form::Form form(ids);
@@ -29,13 +41,17 @@ void initial_values_apply_and_reset() {
     check(ui.text(ids.draft).find(u"工作站 A") != std::u16string::npos, "Current draft is displayed");
     check(bool(ui.invoke(ids.apply)) && form.applied() == u"工作站 A" && form.applies() == 1, "Valid apply updates result once");
     ui.focus(ids.name);
-    ui.text_input(u"!");
+    ui.select(ids.name, 6, 6);
+    ui.text_input(u"，這是一段會超出欄位寬度的很長很長的名稱");
+    test::FakeMeasure measure;
+    arrange(form.page(), ui, *appearance, measure, 360, 240, 1.f, form.scroll, ids.apply);
+    check(ui.text_offset(ids.name) > 0 && form.scroll.offset > 0, "Long draft and small window scroll the field and the page");
     ui.invoke(ids.disabled);
-    form.scroll.offset = 300;
     check(bool(ui.invoke(ids.reset)), "Reset works while the data area is disabled");
     check(ui.text(ids.name) == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Reset restores initial values");
     check(!ui.undo(ids.name) && ui.text_offset(ids.name) == 0 && form.scroll.offset == 0, "Reset clears history and display offsets");
     check(ui.focused() == ids.reset && ui.describe(ids.name)->enabled, "Focus stays on reset; the data area is enabled again");
+    settle(form);
 }
 
 void blank_name_error_follows_blur_and_apply() {
@@ -58,6 +74,7 @@ void blank_name_error_follows_blur_and_apply() {
     ui.focus(ids.name);
     ui.key_down(key(Key::enter));
     check(form.applies() == 1, "Enter in the name field does not apply");
+    settle(form);
 }
 
 void apply_button_starts_once() {
@@ -74,6 +91,7 @@ void apply_button_starts_once() {
     ui.key_down(key(Key::enter));
     ui.key_down({.key = Key::enter, .repeat = true});
     check(form.applies() == 3, "Click, Space and Enter each apply once; holding a key does not repeat");
+    settle(form);
 }
 
 void paste_undo_redo_never_touches_applied() {
@@ -88,6 +106,7 @@ void paste_undo_redo_never_touches_applied() {
     ui.key_down(ctrl(u'Y'));
     check(ui.text(ids.name) == u"Alpha Beta" && form.applied() == u"測試使用者" && form.applies() == 0,
           "Redo restores the paste; the applied result never changes");
+    settle(form);
 }
 
 void read_only_and_disabled_fixtures_restrict_and_recover() {
@@ -111,6 +130,7 @@ void read_only_and_disabled_fixtures_restrict_and_recover() {
           "Recovery entry stays reachable while the name leaves the Tab order");
     ui.invoke(ids.normal);
     check(ui.text(ids.name) == u"!測試使用者" && bool(ui.undo(ids.name)), "Recovery keeps the draft and its history");
+    settle(form);
 }
 
 void keyboard_reaches_every_entry_and_semantics_answer() {
@@ -130,23 +150,32 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     check(!ui.describe(ids.title)->focusable && !ui.describe(ids.result)->focusable, "Display text stays out of the Tab order");
     ui.invoke(ids.error);
     check(ui.describe(ids.name)->invalid && ui.focused() == ids.name, "Error fixture shows the name error and focuses it");
+    settle(form);
 }
 
 void both_appearances_give_same_results() {
     std::vector<std::vector<Semantics>> runs;
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+    std::vector<std::vector<int>> outcomes;
+    for (const auto* each : {&web_appearance(), &material_appearance()}) {
         edit_form::Form form(ids);
         auto& ui = form.ui;
         test::FakeMeasure measure;
-        ui.focus(ids.name);
-        ui.key_down(ctrl(u'A'));
-        ui.paste(ids.name, u"Alpha\r\nBeta");
-        ui.invoke(ids.apply);
-        ui.focus(ids.name);
-        ui.key_down(ctrl(u'A'));
-        ui.text_input(u" ");
-        ui.invoke(ids.apply);
-        auto frame = arrange(form.page(), ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+        std::vector<int> statuses;
+        auto step = [&](Result r) { statuses.push_back(static_cast<int>(r.status)); arrange(form.page(), ui, *each, measure, 640, 480, 1.f, form.scroll, ui.focused()); };
+        step(ui.focus(ids.name));
+        step(ui.key_down(ctrl(u'A')));
+        step(ui.paste(ids.name, u"Alpha\r\nBeta"));
+        step(ui.invoke(ids.apply));
+        step(ui.invoke(ids.read_only));
+        step(ui.paste(ids.name, u"x"));
+        step(ui.invoke(ids.disabled));
+        step(ui.invoke(ids.apply));
+        step(ui.invoke(ids.normal));
+        step(ui.focus(ids.name));
+        step(ui.key_down(ctrl(u'A')));
+        step(ui.text_input(u" "));
+        step(ui.invoke(ids.apply));
+        auto frame = arrange(form.page(), ui, *each, measure, 960, 720, 1.f, form.scroll);
         auto field = frame.find(ids.name);
         check(field && !field->error_lines.empty() && field->label_lines.front().text == u"顯示名稱",
               "Each appearance carries the name label and error with the field");
@@ -157,7 +186,12 @@ void both_appearances_give_same_results() {
         applied.value = form.applied() + u"/" + std::u16string(1, char16_t(u'0' + form.applies()));
         snapshot.push_back(applied);
         runs.push_back(std::move(snapshot));
+        int depth = 0;  // measured last: walking history re-runs the form's fix-clears-error policy
+        while (ui.undo(ids.name)) ++depth;
+        statuses.push_back(depth);
+        outcomes.push_back(statuses);
     }
+    check(outcomes[0] == outcomes[1], "Every operation result and the undo depth agree across appearances");
     check(runs[0].size() == runs[1].size(), "Same controls under both appearances");
     for (std::size_t i = 0; i < runs[0].size(); ++i) {
         const auto &a = runs[0][i], &b = runs[1][i];
@@ -178,8 +212,13 @@ int main() {
         {"AC11 keyboard reaches every entry and semantics answer", keyboard_reaches_every_entry_and_semantics_answer},
         {"AC12 both appearances give same results", both_appearances_give_same_results},
     };
-    int failed = test::run("edit_form (shipped IDs)", cases);
-    ids = alternate_ids();
-    failed |= test::run("edit_form (alternate IDs)", cases);
+    int failed = 0;
+    for (const auto* each : {&web_appearance(), &material_appearance()}) {
+        appearance = each;
+        ids = edit_form::default_ids();
+        failed |= test::run(each == &web_appearance() ? "edit_form (web, shipped IDs)" : "edit_form (material, shipped IDs)", cases);
+        ids = alternate_ids();
+        failed |= test::run(each == &web_appearance() ? "edit_form (web, alternate IDs)" : "edit_form (material, alternate IDs)", cases);
+    }
     return failed;
 }

@@ -79,6 +79,9 @@ unsigned Frame::text_offset(std::string_view id, int x) const {
     if (!p || p->kind != Kind::text) return 0;
     return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
 }
+int Placement::caret_x(unsigned offset) const {
+    return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
+}
 int Frame::offset_for_thumb(int thumb_top) const {
     int travel = track.h - thumb.h;
     if (maximum <= 0 || travel <= 0) return 0;
@@ -87,17 +90,14 @@ int Frame::offset_for_thumb(int thumb_top) const {
 
 namespace {
 using layout::Node;
+// Buttons and the other command kinds share one presentation: a titled, naturally sized target.
+bool command(Kind kind) { return kind == Kind::button || kind == Kind::toggle || kind == Kind::navigation; }
 void translate(Placement& p, int dx, int dy) {
     auto move = [&](Rect& r) { r.x += dx; r.y += dy; };
     move(p.bounds);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
         for (auto& line : *lines) move(line.bounds);
 }
-Rect intersect(Rect a, Rect b) {
-    int x = std::max(a.x, b.x), y = std::max(a.y, b.y);
-    return {x, y, std::max(0, std::min(a.x + a.w, b.x + b.w) - x), std::max(0, std::min(a.y + a.h, b.y + b.h) - y)};
-}
-
 struct Arranger {
     Ui& ui;
     const Appearance& appearance;
@@ -124,7 +124,7 @@ struct Arranger {
     }
     bool natural_width(const Node& node) const {
         auto c = node.type == Node::Type::control ? ui.find(node.id) : nullptr;
-        return c && c->kind == Kind::button;
+        return c && command(c->kind);
     }
     int button_width(const Node& node) {
         auto c = ui.find(node.id);
@@ -141,13 +141,13 @@ struct Arranger {
         if (control->kind == Kind::label) {
             p.lines = block(ui.text(control->id), p.text_size, 0, 0, width);
             p.bounds = {0, 0, width, height_of(p.lines)};
-        } else if (control->kind == Kind::button) {
+        } else if (command(control->kind)) {
             int w = std::min(width, button_width(node)), h = appearance.button_height(line, scale);
             p.bounds = {0, 0, w, h};
             auto title = measure.measure(control->label, p.text_size);
             p.lines.push_back({{(w - static_cast<int>(title.width)) / 2, (h - line) / 2, static_cast<int>(std::ceil(title.width)), line}, control->label});
         } else {
-            field(p, *control, width, line);
+            field(p, *control, width, line);  // Kind::text
         }
         return p;
     }
@@ -156,15 +156,15 @@ struct Arranger {
         auto name = semantics.name;
         if (control.read_only) name += u"（唯讀）";
         if (!control.enabled) name += u"（停用）";
-        int caption = std::max(1, p.text_size * 7 / 8);
+        int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
         // First pass learns each role carrier's width from the appearance, second fixes heights.
         auto probe = appearance.arrange_field(width, {line, line, line, line}, scale);
         auto label = block(name, caption, 0, 0, probe.label.w);
         auto description = block(semantics.description, caption, 0, 0, probe.description.w);
         auto error = block(semantics.error, caption, 0, 0, probe.error.w);
         p.field = appearance.arrange_field(width, {height_of(label), height_of(description), height_of(error), line}, scale);
-        auto place = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
-        place(label, p.field.label); place(description, p.field.description); place(error, p.field.error);
+        auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
+        anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
         p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
         p.bounds = {0, 0, width, p.field.height};
         const auto* session = ui.edit(control.id);

@@ -135,7 +135,8 @@ public:
     void set_clipboard(Clipboard* clipboard) { clipboard_ = clipboard; }
     // IME composition targets the field focused when it starts. Preedit stays separate from
     // committed text; one commit is one undo entry; editing keys and commands wait while composing.
-    // Focus leaving drops any leftover preedit: hosts must finalize with the IME before moving focus.
+    // E01 default: focus leaving commits leftover preedit once, as Microsoft Bopomofo does on blur.
+    // Hosts finalize with the IME first, so the IME and core never both commit.
     Result composition_update(std::u16string preedit, unsigned caret);
     Result composition_commit(std::u16string_view text);
     Result composition_cancel();
@@ -167,7 +168,9 @@ private:
     Id focus_, key_armed_, pointer_armed_, composing_;
     Clipboard* clipboard_ = nullptr;
     Result focusable(const Control& control) const;
-    void move_focus(Id next);
+    Result move_focus(Id next);
+    std::vector<std::pair<Id, Id>> pending_focus_;  // focus notifications queued behind the current one
+    bool notifying_focus_ = false;
     Result writable(std::string_view id, Field*& field);
     Result replace_selection(std::string_view id, Field& field, std::u16string_view insertion);
     Result travel(std::string_view id, bool forward);

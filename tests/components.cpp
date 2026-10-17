@@ -274,12 +274,56 @@ void composition_commits_once_and_never_applies() {
     ui.composition_cancel();
     check(ui.text("name") == u"測試使用者" && ui.redo("name") && ui.text("name") == u"工作使用者",
           "Cancel keeps committed text and history, including redo");
-    ui.composition_update(u"ㄅ", 1);
+    ui.select("name", 5, 5);
+    ui.composition_update(u"我", 1);
     ui.focus("apply");
-    check(ui.text("name") == u"工作使用者" && !ui.edit("name")->composing,
-          "Leftover preedit is dropped when focus leaves; the host finalizes with the IME first");
+    check(ui.text("name") == u"工作使用者我" && !ui.edit("name")->composing && applies == 0,
+          "E01: focus leaving commits the preedit once, the same default the native IME showed");
+    ui.focus("name");
+    ui.undo("name");
+    check(ui.text("name") == u"工作使用者", "The blur commit is one undo entry");
+    ui.focus("apply");
     check(ui.composition_commit(u"遲到").status == Status::invalid_value && ui.text("name") == u"工作使用者",
           "A commit with no composition and no focused field lands nowhere");
+}
+
+void focus_notifications_queue_instead_of_recursing() {
+    Ui ui(form_with_buttons());
+    std::vector<std::pair<Id, Id>> heard;
+    int depth = 0, deepest = 0;
+    ui.on_focus([&](const Id& from, const Id& to) {
+        deepest = std::max(deepest, ++depth);
+        heard.emplace_back(from, to);
+        if (to == "apply") check(bool(ui.focus("reset")) && ui.focused() == "reset", "A write inside the callback is readable at once");
+        --depth;
+    });
+    ui.focus("apply");
+    check(deepest == 1, "The focus callback is never re-entered");
+    check((heard == std::vector<std::pair<Id, Id>>{{"", "apply"}, {"apply", "reset"}}) && ui.focused() == "reset",
+          "The nested move is delivered after the current notification, in order");
+    ui.on_focus([](const Id&, const Id&) { throw std::runtime_error("owner bug"); });
+    check(ui.focus("name").status == Status::failed && ui.stopped(), "A throwing focus callback is reported, not hidden");
+}
+
+void keyboard_editing_obeys_the_same_admission() {
+    Ui ui(form_with_buttons());
+    ui.focus("name");
+    ui.select("name", 2, 2);
+    ui.modal(true);
+    check(ui.key_down(press(Key::right)).status == Status::blocked_by_modal && at(ui, 2, 2), "Caret keys respect the modal block");
+    check(ui.key_down(ctrl(u'A')).status == Status::blocked_by_modal && at(ui, 2, 2), "Select-all respects the modal block");
+    ui.modal(false);
+    MemoryClipboard clipboard;
+    ui.set_clipboard(&clipboard);
+    ui.text_input(u"!");
+    ui.undo("name");
+    ui.set_read_only("name", true);
+    clipboard.content = u"x";
+    std::vector<Status> refused{ui.key_down(ctrl(u'Y')).status, ui.key_down(press(Key::del)).status,
+                                ui.paste("name", u"x").status, ui.cut("name").status, ui.undo("name").status, ui.redo("name").status};
+    check(refused == std::vector<Status>(refused.size(), Status::read_only), "Read-only refuses redo, Delete and semantic edits alike");
+    ui.set_read_only("name", false);
+    check(ui.redo("name") && ui.text("name") == u"測試!使用者", "The redo position survived");
 }
 
 void over_limit_edit_is_rejected_whole() {
@@ -346,6 +390,8 @@ int main() {
         {"AC10 read-only allows viewing and copying only", read_only_allows_viewing_and_copying_only},
         {"AC10 disabled field refuses every entry and keeps data", disabled_field_refuses_every_entry_and_keeps_data},
         {"AC14 composition commits once and never applies", composition_commits_once_and_never_applies},
+        {"G07 focus notifications queue instead of recursing", focus_notifications_queue_instead_of_recursing},
+        {"AC10 keyboard editing obeys the same admission", keyboard_editing_obeys_the_same_admission},
         {"AC08 over-limit edit is rejected whole", over_limit_edit_is_rejected_whole},
         {"AC11 owner hears focus moves and semantics list actions", owner_hears_focus_moves_and_semantics_list_actions},
     };
