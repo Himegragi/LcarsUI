@@ -8,6 +8,8 @@ $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe
 $vsRoot = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $vsRoot) { throw 'Visual Studio C++ Build Tools not found' }
 $devCmd = Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
+# VsDevCmd calls vswhere.exe by name; the installer folder is not on PATH by default.
+$env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
 # Import the native developer environment only into this PowerShell process.
 $envLines = & cmd.exe /d /c "call `"$devCmd`" -no_logo -arch=x64 -host_arch=x64 >nul && set"
 if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
