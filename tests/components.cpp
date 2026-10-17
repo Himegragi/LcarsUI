@@ -256,6 +256,8 @@ void composition_commits_once_and_never_applies() {
     check(ui.key_down(ctrl(u'Z')).status == Status::busy && ui.key_down(press(Key::backspace)).status == Status::busy,
           "Editing keys belong to the IME while composing");
     check(ui.invoke("apply").status == Status::busy && applies == 0, "No command runs while composing");
+    check(ui.select("name", 0, 0).status == Status::busy && ui.edit("name")->composing,
+          "Moving the selection cannot silently drop a composition the IME still holds");
     ui.composition_update(u"我", 1);
     ui.composition_commit(u"我");
     ui.key_down(press(Key::enter));

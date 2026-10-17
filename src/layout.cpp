@@ -27,14 +27,22 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
         auto end = text.find(u'\n', start);
         auto paragraph = text.substr(start, end == std::u16string_view::npos ? std::u16string_view::npos : end - start);
         auto run = measure.measure(paragraph, pixels);
+        // A break may follow a space or touch a non-ASCII (CJK) character; Latin words stay whole
+        // unless a single word is wider than the line.
+        auto breakable = [&](unsigned k) {
+            return paragraph[k - 1] == u' ' || paragraph[k - 1] >= 0x80 || (k < paragraph.size() && paragraph[k] >= 0x80);
+        };
         unsigned line_start = 0, previous = 0;
         float base = 0;
         for (const auto& [stop, x] : run.stops) {
             if (stop == 0) continue;
             if (x - base > width && previous > line_start) {
-                lines.emplace_back(paragraph.substr(line_start, previous - line_start));
-                line_start = previous;
-                base = run.x(previous);
+                unsigned cut = previous;  // hard cut unless a caret stop on this line may break
+                for (auto it = run.stops.rbegin(); it != run.stops.rend(); ++it)
+                    if (it->first > line_start && it->first <= previous && breakable(it->first)) { cut = it->first; break; }
+                lines.emplace_back(paragraph.substr(line_start, cut - line_start));
+                line_start = cut;
+                base = run.x(cut);
             }
             previous = stop;
         }
@@ -210,11 +218,18 @@ struct Arranger {
             }
             int total_gap = gap * std::max(0, static_cast<int>(node.children.size()) - 1);
             int share = flexible ? std::max(0, (r.w - fixed - total_gap) / flexible) : 0;
+            std::vector<int> widths, heights;
             int x = r.x, tallest = 0;
             for (const auto& child : node.children) {
-                int w = natural_width(child) ? std::min(button_width(child), std::max(0, r.x + r.w - x)) : share;
-                tallest = std::max(tallest, place(child, {x, r.y, w, 0}, out));
-                x += w + gap;
+                widths.push_back(natural_width(child) ? std::min(button_width(child), std::max(0, r.x + r.w - x)) : share);
+                heights.push_back(height(child, widths.back()));
+                tallest = std::max(tallest, heights.back());
+                x += widths.back() + gap;
+            }
+            x = r.x;
+            for (std::size_t i = 0; i < node.children.size(); ++i) {  // centered on the cross axis
+                place(node.children[i], {x, r.y + (tallest - heights[i]) / 2, widths[i], 0}, out);
+                x += widths[i] + gap;
             }
             return tallest;
         }

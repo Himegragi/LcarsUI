@@ -132,6 +132,13 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         }
     }
 }
+TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {
+    auto layout = text_.shape(text, pixels);
+    TextRun run;
+    run.stops.assign(layout.carets.begin(), layout.carets.end());
+    run.width = layout.width;
+    return run;
+}
 void Text::label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color){
     auto old=canvas.clip;
     int x=std::max(old.x,rect.x),y=std::max(old.y,rect.y);

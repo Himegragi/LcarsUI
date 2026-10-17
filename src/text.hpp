@@ -1,5 +1,6 @@
 #pragma once
 #include "lcars/appearance.hpp"
+#include "lcars/layout.hpp"
 #include <map>
 #include <memory>
 #include <string_view>
@@ -38,5 +39,16 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+};
+// Layout measurement from the same HarfBuzz shaping that draws, so caret stops, wrapping and
+// painted glyphs agree. Fonts: Segoe UI with Microsoft JhengHei fallback (see Text).
+class ShapedMeasure final : public TextMeasure {
+public:
+    explicit ShapedMeasure(Text& text) : text_(text) {}
+    TextRun measure(std::u16string_view text, int pixels) override;
+    int line_height(int pixels) override { return (pixels * 3 + 1) / 2; }
+    static int baseline(int pixels) { return pixels * 23 / 20; }  // from the top of a line box
+private:
+    Text& text_;
 };
 }

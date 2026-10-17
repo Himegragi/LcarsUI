@@ -27,6 +27,16 @@ void long_label_wraps_and_pushes_following_controls_down() {
     check(!overlap(intro->bounds, apply->bounds), "Wrapped label never covers its neighbour");
 }
 
+void latin_words_wrap_at_spaces() {
+    FakeMeasure measure;
+    // 16 px ASCII is 8 px per character: 80 px holds 10 characters.
+    auto lines = wrap(measure, u"Ctrl+Z and Ctrl+Shift+Z", 16, 80);
+    check((lines == std::vector<std::u16string>{u"Ctrl+Z ", u"and ", u"Ctrl+Shift", u"+Z"}),
+          "Break after spaces; only a word longer than the line is cut");
+    lines = wrap(measure, u"中文Ctrl說明", 16, 72);
+    check((lines == std::vector<std::u16string>{u"中文Ctrl", u"說明"}), "CJK characters remain break opportunities");
+}
+
 std::vector<Control> field_controls() {
     return {{.id = "name.label", .kind = Kind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
             {.id = "name", .kind = Kind::text, .value = u"測試使用者"},
@@ -168,6 +178,7 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
 int main() {
     const test::Case cases[] = {
         {"AC05 long label wraps and pushes following controls down", long_label_wraps_and_pushes_following_controls_down},
+        {"AC05 Latin words wrap at spaces", latin_words_wrap_at_spaces},
         {"AC12 field roles stay with their field in both appearances", field_roles_stay_with_their_field_in_both_appearances},
         {"AC13 narrow window moves results below", narrow_window_moves_results_below},
         {"AC13 scrolling reveals focus and clips hits", scrolling_reveals_focus_and_clips_hits},

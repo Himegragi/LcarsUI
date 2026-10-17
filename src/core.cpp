@@ -225,6 +225,7 @@ Result Ui::select(std::string_view id, unsigned anchor, unsigned caret) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    if (it->second.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
     it->second.session.select(anchor, caret);
     return {};
 }
