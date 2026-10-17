@@ -139,11 +139,15 @@ public:
     Result composition_update(std::u16string preedit, unsigned caret);
     Result composition_commit(std::u16string_view text);
     Result composition_cancel();
+    // Horizontal display offset of a field in DIP. View state owned here so owner resets clear it.
+    float text_offset(std::string_view id) const;
+    void set_text_offset(std::string_view id, float offset);
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
     void set_read_only(std::string_view id, bool read_only);
     void check(std::string_view id, bool checked);
+    // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; }
     bool modal() const { return modal_; }
@@ -155,6 +159,7 @@ private:
     struct Field {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
+        float offset = 0;
     };
     std::map<Id, Field, std::less<>> edits_;
     std::map<Id, Action, std::less<>> actions_;

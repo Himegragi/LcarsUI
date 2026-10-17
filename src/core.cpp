@@ -214,6 +214,13 @@ Result Ui::cut(std::string_view id) {
     if (auto result = copy(id); !result) return result;
     return replace_selection(id, *field, u"");
 }
+float Ui::text_offset(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it == edits_.end() ? 0.f : it->second.offset;
+}
+void Ui::set_text_offset(std::string_view id, float offset) {
+    if (auto it = edits_.find(id); it != edits_.end()) it->second.offset = std::max(0.f, offset);
+}
 Result Ui::select(std::string_view id, unsigned anchor, unsigned caret) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
@@ -402,10 +409,15 @@ void Ui::check(std::string_view id, bool checked) {
     if (auto* control = const_cast<Control*>(find(id))) control->checked = checked;
 }
 void Ui::replace_text(std::string_view id, std::u16string value) {
-    auto* control = const_cast<Control*>(find(id)); auto* session = edit(id);
-    if (!control || !session || !valid_single_line(value)) throw std::invalid_argument("Invalid owner refresh");
-    session->cancel_composition(); session->text = std::move(value);
-    session->select(session->selection.anchor, session->selection.caret);
-    control->value = session->text;
+    auto* control = const_cast<Control*>(find(id));
+    auto it = edits_.find(id);
+    if (!control || it == edits_.end() || !valid_single_line(value, control->max_length)) throw std::invalid_argument("Invalid owner refresh");
+    if (composing_ == control->id) composition_cancel();
+    auto& field = it->second;
+    field.session.cancel_composition();
+    field.session.text = std::move(value);
+    field.session.select(field.session.selection.anchor, field.session.selection.caret);
+    field.past.clear(); field.future.clear(); field.offset = 0;
+    control->value = field.session.text;
 }
 }
