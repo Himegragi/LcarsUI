@@ -1,6 +1,18 @@
 # LcarsUI
 
-C++26 桌面 UI 框架的第一個可執行 MVP，以 Windows 設定管理程式驗證核心、元件外觀、文字與應用邏輯的分離。現階段介面仍可調整，尚未宣告穩定 API 或完成整份架構決策地圖。
+C++20 桌面 UI 框架。框架、公開標頭與範例一律以 required C++20 建置（`CXX_STANDARD 20`、不允許編譯器擴充、不默默降級）；使用端可採較新的語言模式。現階段介面仍可調整，尚未宣告穩定 API 或完成整份架構決策地圖。
+
+## 第一批元件 S1：最小編輯表單
+
+[examples/edit_form](examples/edit_form/README.md) 以 C01 標籤、C02 按鈕、C03 單行文字欄位組成 V01 最小編輯表單，分別以 Minimal Web 與 Material-inspired 外觀啟動，兩套外觀共用同一份表單邏輯與驗收案例（[#15](https://github.com/Himegragi/LcarsUI/issues/15)）。建置、啟動、驗證方式與驗收紀錄都在該目錄。
+
+~~~powershell
+.\build.ps1 -Configuration Release
+.\build\Release\lcars_edit_form_web.exe
+.\build\Release\lcars_edit_form_material.exe
+~~~
+
+以下保留設定管理程式 MVP 的說明。它是較早的可執行 MVP，以 Windows 設定管理程式驗證核心、元件外觀、文字與應用邏輯的分離。
 
 ## 執行
 
@@ -82,7 +94,7 @@ auto saved = app.ui.invoke("save");
 .\build.ps1 -Configuration Release -CoreOnly
 ~~~
 
--CoreOnly 完全跳過 OpenGL、Win32 視窗宿主及字型相依的配置／建置。一般 CMake 使用端也可設定 -DLCARS_BUILD_DESKTOP=OFF。C++26 模式設為 required，不默默退回較舊語言模式；本次沒有使用 reflection 等尚未驗證的特性。
+-CoreOnly 完全跳過 OpenGL、Win32 視窗宿主及字型相依的配置／建置。一般 CMake 使用端也可設定 -DLCARS_BUILD_DESKTOP=OFF。C++20 模式設為 required，不默默退回較舊語言模式。
 
 測試分為：
 
