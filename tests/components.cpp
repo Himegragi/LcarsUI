@@ -378,8 +378,21 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
 }
 }
 
+void handles_expire_with_their_component_tree() {
+    TextHandle field;
+    {
+        Ui ui({});
+        field = ui.add_text({.id = "handle.field", .kind = Kind::text, .value = u"initial"});
+        check(bool(field.set_value(u"edited")) && field.describe()->value == u"edited",
+              "Typed handle edits and describes its field");
+    }
+    check(field.set_value(u"late").status == Status::not_found && !field.describe(),
+          "A retained handle cannot keep the component tree alive or operate after its end");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G10 typed handles expire with their component tree", handles_expire_with_their_component_tree},
         {"C01 labels associate by target id", labels_associate_by_target_id},
         {"C01 field error has one source", field_error_has_one_source},
         {"AC11 tab order skips labels and disabled", tab_order_skips_labels_and_disabled},

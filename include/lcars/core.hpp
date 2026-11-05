@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -87,11 +88,28 @@ public:
 };
 // Well-formed UTF-16, no control characters, within the given length.
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
+class Ui;
+// A handle identifies a component without owning it. Each operation validates its lifetime.
+class TextHandle {
+public:
+    TextHandle() = default;
+    Result set_value(std::u16string value) const;
+    std::optional<Semantics> describe() const;
+private:
+    friend class Ui;
+    TextHandle(Ui* ui, std::weak_ptr<void> lifetime, Id id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    Ui* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    Id id_;
+};
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class Ui {
 public:
     using Action = std::function<Result()>;
     explicit Ui(std::vector<Control> controls);
+    ~Ui();
+    TextHandle add_text(Control control);
     Ui(const Ui&)=delete;
     Ui& operator=(const Ui&)=delete;
     const std::vector<Control>& controls() const { return controls_; }
@@ -154,6 +172,7 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
 private:
+    std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
     struct Snapshot { std::u16string text; Selection selection; };

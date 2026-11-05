@@ -60,6 +60,26 @@ Ui::Ui(std::vector<Control> controls) : controls_(std::move(controls)) {
         if (!control.target.empty() && (control.kind != Kind::label || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
+Ui::~Ui() { lifetime_.reset(); }
+TextHandle Ui::add_text(Control control) {
+    if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
+        !valid_single_line(control.value, control.max_length))
+        throw std::invalid_argument("Invalid text component");
+    Field field;
+    field.session.text = control.value;
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    edits_.emplace(id, std::move(field));
+    return TextHandle(this, lifetime_, std::move(id));
+}
+Result TextHandle::set_value(std::u16string value) const {
+    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    return ui_->set_value(id_, std::move(value));
+}
+std::optional<Semantics> TextHandle::describe() const {
+    if (lifetime_.expired()) return std::nullopt;
+    return ui_->describe(id_);
+}
 std::optional<Semantics> Ui::describe(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return std::nullopt;
