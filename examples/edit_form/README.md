@@ -1,6 +1,6 @@
 # V01 最小編輯表單（S1）
 
-> **Rework status (2026-11-05): incomplete.** The form and independent consumer now use typed handles, source connections and a confirmation group. The legacy string-ID operations remain public, so this branch does not yet satisfy G10. See [rework verification](evidence/rework-verification.md) for current results and limitations. The original [verification](evidence/verification.md) records the earlier S1 revision.
+> **Rework status (2026-11-05): verified.** Applications use typed handles and data connections; host and regression drivers use a separate internal interface. See [rework verification](evidence/rework-verification.md) for the results and limits. The original [verification](evidence/verification.md) records the earlier S1 revision.
 
 
 [S1 實作票 #15](https://github.com/Himegragi/LcarsUI/issues/15) 的交付：以正式的 C01 標籤、C02 按鈕、C03 單行文字欄位組成最小 V01 編輯表單，分別以 Minimal Web 與 Material-inspired 外觀啟動。兩套外觀共用同一份表單邏輯、編輯狀態及驗收案例；差異只在呈現與部件安排。資料只在記憶體。
@@ -35,17 +35,20 @@
 | 貼上換行 | CRLF 算一個換行，單獨 CR／LF 各算一個，每個換行轉成一個空白；其他控制字元（如 Tab）使整次貼上被拒絕，原文字與歷史不變。 |
 | 歷史粒度 | 一般輸入／刪除每次一筆；一次貼上（含選取取代）、一次剪下、一次 IME 確認各一筆；新編輯清除該欄位的 redo。 |
 | 文字長度上限 | 保留為**公開**的每欄位設定 `Control::max_length`，預設 `lcars::default_max_text_length = 4096` UTF-16 單位。數值沿用 MVP，但現在寫在公開標頭、可由使用端改；超限的整筆編輯被拒絕，不破壞舊文字及歷史。理由：單行欄位需要有界的輸入，S1 不打算為此另訂數值研究。 |
-| E01 單欄位失焦 | **離焦即提交組字**。依真實微軟注音事件確定：點別的元件或同一欄位，宿主先請 IME 完成組字（`CPS_COMPLETE`），IME 同步送回結果；視窗失去前景時注音自行提交。組字中按 Tab 由 IME 處理（焦點不動、組字保留）；Esc 取消。核心的公開 `focus()` 在組字中也採同一政策。原型的「離焦取消」不採用。 |
+| E01 單欄位失焦 | **離焦即提交組字**。依真實微軟注音事件確定：點別的元件或同一欄位，宿主先請 IME 完成組字（`CPS_COMPLETE`），IME 同步送回結果；視窗失去前景時注音自行提交。組字中按 Tab 由 IME 處理（焦點不動、組字保留）；Esc 取消。欄位 Handle 的 `focus()` 在組字中也採同一政策。原型的「離焦取消」不採用。 |
 | 文字支援邊界（T01） | 單行、由左至右。游標與刪除以 Unicode 碼位為單位，不切開 UTF-16 代理對；繪製與命中以 HarfBuzz cluster 為停駐點。字型：Segoe UI 為主，缺字時改用微軟正黑體（逐碼位選字型），兩者都沒有的字形畫成缺字記號。不支援完整 grapheme cluster、RTL、彩色 emoji、多行。 |
 | 版面（B01–B03） | 只提供本表單需要的直排／橫排、依最小欄寬自動決定欄數的格線、單一捲動區。窄窗（640 DIP）時結果區移到表單下方。 |
 
 ## 驗證
 
+The behavior drivers use the internal host/test interface; the independent consumer exercises the application-facing handles and checks that string-ID operations are unavailable.
+
 | 入口 | 內容 |
 | --- | --- |
 | CTest `components`、`layout`、`edit_form` | 核心公開操作、版面與表單驗收；不建立視窗、不需要字型或 GPU。表單案例以「兩套外觀 × 兩組不同邏輯識別」各跑一次。 |
+| Clipboard stress | `lcars_host_verify --clipboard-only --repeat 100 --evidence DIR` repeats the native copy/paste case and a short forced-contention case for both appearances. |
 | CTest `consumer_example` | 以獨立 CMake 專案（[examples/consumer](../consumer)）只透過公開 target 與 `include/` 組出另一張表單並執行。 |
 | CTest `host_native` | `lcars_host_verify --evidence DIR`：真實 Win32 視窗，鍵盤與滑鼠訊息經宿主自己的 `TranslateMessage`／`DispatchMessage` 派送；兩套外觀；960×720／640×480 DIP × 100%／150% 離屏排版與截圖。不會搶前景。 |
 | 手動執行 | `lcars_host_verify --ime --evidence DIR`：以 `SendInput` 驅動**真實微軟注音**與真實鍵盤，約 3 分鐘內會接管鍵盤與滑鼠；只要前景視窗不是測試視窗就立即停止送鍵。需要已安裝繁體中文（注音）輸入法。 |
 
-驗收紀錄、工具鏈與代表畫面見 [evidence/verification.md](evidence/verification.md)。
+驗收紀錄、工具鏈與代表畫面見 [evidence/rework-verification.md](evidence/rework-verification.md)。
