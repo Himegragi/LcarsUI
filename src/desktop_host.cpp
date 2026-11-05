@@ -58,8 +58,21 @@ LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 }
 }
 
+namespace {
+// Clipboard managers can hold the global clipboard briefly after a change. Bound the wait
+// on the UI thread; report failure rather than waiting indefinitely if another owner stalls.
+bool open_clipboard(HWND window) {
+    constexpr int attempts = 40;
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (OpenClipboard(window)) return true;
+        if (attempt + 1 < attempts) Sleep(5);
+    }
+    return false;
+}
+}
+
 bool WindowsClipboard::write(std::u16string_view text) {
-    if (!OpenClipboard(window_)) return false;
+    if (!open_clipboard(window_)) return false;
     auto memory = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(char16_t));
     bool ok = false;
     if (memory) {
@@ -75,7 +88,7 @@ bool WindowsClipboard::write(std::u16string_view text) {
     return ok;
 }
 std::optional<std::u16string> WindowsClipboard::read() {
-    if (!OpenClipboard(window_)) return std::nullopt;
+    if (!open_clipboard(window_)) return std::nullopt;
     std::optional<std::u16string> result;
     if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
         if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {

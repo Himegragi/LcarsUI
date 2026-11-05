@@ -8,11 +8,13 @@
 #include <imm.h>
 #include <msctf.h>
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <thread>
 
 using namespace lcars;
 using lcars::detail::DesktopHost;
@@ -189,20 +191,62 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto saved = clipboard.read();
     f.chord('C');
     auto copied = clipboard.read();
-    clipboard.write(u"X\r\nY");
+    bool supplied = clipboard.write(u"X\r\nY");
     f.chord('A');
     f.chord('V');
     auto pasted = detail::access(ui).text(f.ids.name);
     f.chord('Z');
     auto undone = detail::access(ui).text(f.ids.name);
-    if (saved) clipboard.write(*saved);
+    bool restored = !saved || clipboard.write(*saved);
     report.check("AC08-pointer-clipboard",
                  placed.anchor == 5 && placed.caret == 5 && extended.anchor == 5 && extended.caret == 8 && dragged.anchor == 0 &&
-                     dragged.caret == 5 && copied == u"Alpha" && pasted == u"X Y" && undone == u"Alpha 中文",
+                     dragged.caret == 5 && copied == u"Alpha" && supplied && pasted == u"X Y" && undone == u"Alpha \u4e2d\u6587" && restored,
                  "click caret=" + std::to_string(placed.caret) + ", shift-click=" + std::to_string(extended.anchor) + ".." +
                      std::to_string(extended.caret) + ", drag=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) +
-                     ", Ctrl+C clipboard='" + narrow(copied.value_or(u"<none>")) + "', Ctrl+A Ctrl+V of CRLF -> '" + narrow(pasted) +
-                     "', Ctrl+Z -> '" + narrow(undone) + "'; user clipboard text restored=" + (saved ? "yes" : "no text saved"));
+                     ", Ctrl+C=" + (copied == u"Alpha" ? "ok" : copied ? "unexpected" : "unavailable") +
+                     ", fixture write=" + (supplied ? "ok" : "failed") + ", Ctrl+V=" + (pasted == u"X Y" ? "ok" : "unexpected") +
+                     ", Ctrl+Z=" + (undone == u"Alpha \u4e2d\u6587" ? "ok" : "unexpected") +
+                     "; user clipboard text restored=" + (!saved ? "no text saved" : restored ? "yes" : "FAILED"));
+}
+
+// Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
+void clipboard_contention(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    auto& ui = detail::access(f.form.ui);
+    detail::WindowsClipboard clipboard(f.host.window());
+    auto saved = clipboard.read();
+    ui.set_value(f.ids.name, u"Alpha");
+    ui.focus(f.ids.name);
+    ui.select(f.ids.name, 0, 5);
+
+    auto held_during = [&](const std::function<void()>& action) {
+        HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ready) return false;
+        std::atomic<bool> acquired = false;
+        std::thread holder([&] {
+            for (int i = 0; i < 200; ++i) {
+                if (OpenClipboard(nullptr)) { acquired = true; break; }
+                Sleep(5);
+            }
+            SetEvent(ready);
+            if (acquired) { Sleep(60); CloseClipboard(); }
+        });
+        bool signaled = WaitForSingleObject(ready, 3000) == WAIT_OBJECT_0;
+        if (signaled && acquired) action();
+        holder.join();
+        CloseHandle(ready);
+        return signaled && acquired;
+    };
+    bool held_copy = held_during([&] { f.chord('C'); });
+    auto copied = clipboard.read();
+    bool supplied = clipboard.write(u"X\r\nY");
+    f.chord('A');
+    bool held_paste = held_during([&] { f.chord('V'); });
+    auto pasted = ui.text(f.ids.name);
+    bool restored = !saved || clipboard.write(*saved);
+    report.check("AC08-clipboard-contention", held_copy && copied == u"Alpha" && supplied && held_paste && pasted == u"X Y" && restored,
+                 std::string("60ms clipboard hold: copy=") + (copied == u"Alpha" ? "ok" : "failed") + ", paste=" + (pasted == u"X Y" ? "ok" : "failed") +
+                     ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (restored ? "ok or unavailable" : "failed"));
 }
 
 void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, const std::filesystem::path& folder, const std::string& tag) {
@@ -639,12 +683,28 @@ int run(const std::filesystem::path& folder) {
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
+        clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
         resize_first_frame_matches_next(*appearance, report, 1.5f);
         layout_matrix(*appearance, report, folder, tag);
     }
     std::cout << report.checks << " native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
+// The same AC08 scenario with fresh windows, without the unrelated layout matrix.
+int run_clipboard(const std::filesystem::path& folder, int repeat) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "clipboard.tsv");
+    for (int i = 0; i < repeat; ++i) {
+        for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+            report.appearance = (appearance == &web_appearance() ? "web-" : "material-") + std::to_string(i + 1);
+            pointer_selection_and_clipboard(*appearance, report);
+            clipboard_contention(*appearance, report);
+        }
+    }
+    std::cout << report.checks << " native clipboard checks, " << report.failures << " failures\n";
     return report.failures ? 1 : 0;
 }
 
@@ -660,14 +720,19 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false;
+        bool ime = false, clipboard_only = false;
+        int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--ime") ime = true;
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime] [--evidence DIR]");
+            else if (arg == L"--clipboard-only") clipboard_only = true;
+            else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        return ime ? run_ime(evidence) : run(evidence);
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || (ime && clipboard_only))
+            throw std::runtime_error("Invalid verification options");
+        return ime ? run_ime(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;
