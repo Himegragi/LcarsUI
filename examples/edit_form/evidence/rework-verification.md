@@ -1,3 +1,24 @@
+# Dropdown and overlay verification - issue #19 (2026-11-05)
+
+Production and tests: commit `d1e32d89d440128703799da78e3f336281f840d2`, based on local integration tip `e43966dc300b6733a326f07bd276ea199cb3d3db`. Merging that tip reported already up to date. The following evidence-only commit records these runs. The form uses typed handles and an application-owned region source in the same confirmation group as name, notices, mode and volume. Both appearances run the same application and cases; native input uses the host interface.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 5/5 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 51/51 cases and 225 checks, layout 16/16 cases and 103 checks |
+| Release desktop build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release`, including independent consumer and native host |
+| Native host, both appearances | 42/42 checks passed, 0 failed | [host results](ticket-19-host/host.tsv), including native F07 candidate, Escape, Tab, outside action and popup click; [Web](ticket-19-host/web-960x720-100-initial.bmp), [Material](ticket-19-host/material-960x720-100-initial.bmp) |
+| Real Microsoft Bopomofo, one run | 36/36 checks passed, 0 failed or blocked | [IME results](ticket-19-ime/ime.tsv), [events](ticket-19-ime/ime-events.log); real foreground `SendInput` |
+| Clipboard stress, first complete run | 398/400 checks passed, 2 failed | [results](ticket-19-clipboard/clipboard.tsv), 100 repetitions per appearance including 60 ms forced contention |
+| Clipboard stress, one repeat | 400/400 checks passed, 0 failed | [repeat results](ticket-19-clipboard-retry/clipboard.tsv), same binary and repetitions |
+
+The first complete clipboard run failed forced-contention checks at Web repetitions 14 and 31: copy failed in both and paste also failed at repetition 14. The test's output does not distinguish failure to open the clipboard from an unexpected value, so the cause is unconfirmed. The passing repeat does not erase the intermittent failure; reliable behavior under contention remains open. An earlier partial stress run was stopped before completion to rebuild a dropdown repaint fix and is not counted. The first desktop CTest run also failed the existing pointer-activation check in both appearances because the added form row placed Apply below the fixture's viewport. The test was changed to reveal Apply before clicking; the subsequent complete desktop run passed.
+
+The form suite has 13 cases run with both appearances and two ID sets (52 executions, 368 cumulative checks). F01 submits all five drafts together; F08 and R04 check missing region, field-specific errors and name-first focus. F07 is exercised through native keyboard and pointer events. Component and layout cases cover cancellation, empty and restored options, disabled/modal admission, identity-preserving pointer presses, non-recursive notifications, programmatic repaint, stack hit order, edge placement, and readable empty/disabled states. The candidate, popup geometry, form connection, readable states, non-recursive notification and repaint tests were observed failing before their respective fixes.
+
+Windows 11 Pro N build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Native layout covers 960x720 and 640x480 DIP at forced 100% and 150%; forced scale is not a real cross-monitor DPI migration. Only the two representative initial bitmaps were retained from the native run; other bitmap names in its TSV were temporary outputs. Trailing whitespace in the host and IME event logs was normalized. User trial, UIA, MCP, full cross-page behavior and actual cross-monitor DPI migration were not run. Confirmation callbacks remain synchronous, as in the previous slice.
+
+---
+
 # Volume slider verification - issue #18 (2026-11-05)
 
 Production and test code: commit `4a0545982f62b8e553884f3d8a2685a875a9f243`, based on local integration tip `e2c3cf05ce7904b8f8a1bdb6c977db81fd3ea3bf`; merging that tip reported already up to date. The following evidence-only commit records these runs. The form and public driver use typed handles and connections; native input and geometry use the internal host interface. Both appearances run the same cases and application logic.
