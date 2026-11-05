@@ -336,8 +336,43 @@ void stack_and_popup_edges_follow_paint_order() {
     }
 }
 
+void list_reveals_the_keyboard_row_and_clips_hits() {
+    for (const auto* look : appearances) {
+        Ui ui({}); std::vector<RadioOption> items;
+        for (int i = 1; i <= 100; ++i) items.push_back({{std::to_string(i)}, u"Row"});
+        auto list = ui.add_list({.id = "list", .kind = Kind::list}, std::move(items));
+        std::optional<OptionValue> selected;
+        list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+        list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+        list.focus(); detail::access(ui).key_down({.key = Key::end});
+        FakeMeasure measure; ScrollState scroll;
+        auto page = layout::scroll(layout::control(list));
+        auto frame = arrange(page, ui, *look, measure, 640, 480, 1.f, scroll, "list");
+        auto item = frame.find(list);
+        check(item && item->options.size() == 100 && inside(item->options.back(), frame.viewport), "End reveals the whole last row");
+        check(!frame.option_at(*item, item->options.front().x + 2, item->options.front().y + 2), "Clipped rows cannot be hit");
+    }
+}
+void assembled_layout_handles_long_text_and_larger_type() {
+    for (const auto* look : appearances) for (int font : {16, 24}) {
+        Ui ui({});
+        auto left = ui.add_label({.id = "left", .kind = Kind::label, .value = u"很長的說明文字會在狹窄空間中重新換行並保留間距"});
+        auto right = ui.add_label({.id = "right", .kind = Kind::label, .value = u"右側標籤"});
+        auto below = ui.add_label({.id = "below", .kind = Kind::label, .value = u"下方結果"});
+        auto page = layout::column({layout::row({layout::control(left, font), layout::control(right, font)}, 12),
+                                    layout::grid({layout::control(below, font)}, 160)}, 14, 8);
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(page, ui, *look, measure, 240, 600, 1.f, scroll);
+        auto a = frame.find(left)->bounds, b = frame.find(right)->bounds, c = frame.find(below)->bounds;
+        check(a.x + a.w + 12 <= b.x && c.y >= std::max(a.y + a.h, b.y + b.h) + 14 && c.x >= 8 && c.x + c.w <= 232,
+              "Row, column and grid retain their gaps and bounds at a narrow width and larger type");
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"R02 list keyboard row reveal and clipped hit", list_reveals_the_keyboard_row_and_clips_hits},
+        {"N06 assembled layout with long text and type size", assembled_layout_handles_long_text_and_larger_type},
         {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},
         {"R05 dropdown states are readable", dropdown_states_are_readable_without_color},
         {"B04 stack and popup edge placement", stack_and_popup_edges_follow_paint_order},

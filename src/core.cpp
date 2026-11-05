@@ -50,7 +50,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider || control.kind == Kind::dropdown) throw std::invalid_argument("Component requires typed creation");
+        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -70,6 +70,7 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : bools_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : radios_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : dropdowns_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : lists_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
 }
 TextHandle detail::UiState::add_text(Control control) {
@@ -212,6 +213,94 @@ RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<R
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
 ComponentHandle detail::UiState::radio_layout_handle(const Control& c) { return RadioGroupHandle(this, lifetime_, c.id); }
+ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> items) {
+    if (control.kind != Kind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
+    std::set<std::string> ids;
+    for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) throw std::invalid_argument("Invalid list identity");
+    auto id = control.id; controls_.push_back(std::move(control));
+    ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
+    return ListHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::list_layout_handle(const Control& c) { return ListHandle(this, lifetime_, c.id); }
+Result ListHandle::connect_source(OptionSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+    auto& f = ui_->lists_.at(id_); if (f.disconnect) f.disconnect();
+    f.source = std::move(source); auto weak = lifetime_; auto* state = ui_;
+    f.disconnect = f.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+    return {};
+}
+Result ListHandle::connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->lists_.at(id_); if (!f.source.read || !write) return {Status::invalid_value, u"A source and write are required"};
+    f.immediate = std::move(write); return {};
+}
+Result ListHandle::select(OptionValue value) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->lists_.at(id_);
+    if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
+    if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
+    if (std::none_of(f.items.begin(), f.items.end(), [&](const auto& item) { return item.enabled && item.value == value; })) return {Status::invalid_value, u"Invalid list item"};
+    if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
+    if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
+    f.writing = true; Result r;
+    try { r = f.immediate(value); }
+    catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.writing = false;
+    if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
+}
+Result detail::UiState::list_key_down(KeyPress key) {
+    auto& f = lists_.at(focus_);
+    if (key.key == Key::space) return f.cursor ? ListHandle(this, lifetime_, focus_).select(*f.cursor) : Result{};
+    if (key.key != Key::up && key.key != Key::down && key.key != Key::left && key.key != Key::right && key.key != Key::home && key.key != Key::end) return {};
+    int n = static_cast<int>(f.items.size());
+    int current = -1;
+    for (int i = 0; i < n; ++i) if (f.cursor && f.items[i].value == *f.cursor) { current = i; break; }
+    int step = key.key == Key::up || key.key == Key::left || key.key == Key::end ? -1 : 1;
+    int start = key.key == Key::home ? 0 : key.key == Key::end ? n - 1 : current < 0 ? (step > 0 ? 0 : n - 1) : current + step;
+    for (int i = start; i >= 0 && i < n; i += step) if (f.items[i].enabled) return ListHandle(this, lifetime_, focus_).select(f.items[i].value);
+    return {};
+}
+Result ListHandle::set_items(std::vector<RadioOption> items) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    std::set<std::string> ids;
+    for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) return {Status::invalid_value, u"Invalid list identity"};
+    if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
+    auto& f = ui_->lists_.at(id_);
+    if (f.writing) return {Status::busy, u"Operation is already executing"};
+    auto exists = [&](const OptionValue& value) {
+        return std::any_of(items.begin(), items.end(), [&](const auto& item) { return item.enabled && item.value == value; });
+    };
+    auto selected = f.source.read ? f.source.read() : std::optional<OptionValue>{};
+    if (selected && !exists(*selected)) {
+        if (!f.immediate) return {Status::invalid_value, u"Cannot clear selection without a write connection"};
+        f.writing = true; Result result;
+        try { result = f.immediate(std::nullopt); }
+        catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.writing = false; if (!result) return result;
+    }
+    if (f.cursor && !exists(*f.cursor)) {
+        auto old = std::find_if(f.items.begin(), f.items.end(), [&](const auto& item) { return item.value == *f.cursor; });
+        std::optional<OptionValue> replacement;
+        if (old != f.items.end()) {
+            for (auto it = old + 1; it != f.items.end(); ++it) if (exists(it->value)) { replacement = it->value; break; }
+            if (!replacement) for (auto it = old; it != f.items.begin();) { --it; if (exists(it->value)) { replacement = it->value; break; } }
+        }
+        f.cursor = replacement;
+    }
+    f.items = std::move(items); if (ui_->invalidate_) ui_->invalidate_(); return {};
+}
+Result ListHandle::focus() const { if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; return ui_->focus(id_); }
+Result ListHandle::enable(bool enabled) const { if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; if (auto r = ui_->configuration_access(id_); !r) return r; ui_->enable(id_, enabled); return {}; }
+Query<Semantics> ListHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
 Result RadioGroupHandle::use_latest() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto r = ui_->available(id_); !r) return r;
@@ -1033,6 +1122,15 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             if (selected) s.value = option.label;
         }
     }
+    if (auto it = lists_.find(id); it != lists_.end()) {
+        const auto& f = it->second; auto value = f.source.read ? f.source.read() : std::optional<OptionValue>{};
+        s.candidate = f.cursor;
+        for (const auto& item : f.items) {
+            bool selected = value && *value == item.value;
+            s.options.push_back({item.value, item.label, item.enabled, selected});
+            if (selected) s.value = item.label;
+        }
+    }
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -1066,6 +1164,11 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
         const auto& f = it->second;
         if (f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::select);
+    }
+    if (auto it = lists_.find(id); it != lists_.end()) {
+        const auto& f = it->second;
+        if (!control->read_only && f.source.read && f.immediate &&
+            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
@@ -1291,6 +1394,13 @@ Result detail::UiState::move_focus(Id next) {
         composition_commit(preedit);
     }
     auto previous = std::exchange(focus_, std::move(next));
+    if (auto it = lists_.find(focus_); it != lists_.end()) {
+        auto& f = it->second; auto selected = f.source.read ? f.source.read() : std::optional<OptionValue>{};
+        auto valid = [&](const auto& item) { return item.enabled && selected && item.value == *selected; };
+        auto target = std::find_if(f.items.begin(), f.items.end(), valid);
+        if (target == f.items.end()) target = std::find_if(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; });
+        f.cursor = target == f.items.end() ? std::optional<OptionValue>{} : std::optional<OptionValue>{target->value};
+    }
     if (!focus_moved_ && blur_callbacks_.empty()) return {};
     pending_focus_.emplace_back(std::move(previous), focus_);
     if (notifying_focus_) return {};
@@ -1434,6 +1544,11 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         auto& f = dropdowns_.at(control->id);
         if (popup_source_ == id && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
     }
+    else if (control->kind == Kind::list) {
+        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
+        const auto& items = lists_.at(control->id).items;
+        if (option && *option < items.size()) pointer_option_value_ = items[*option].value;
+    }
     else if (control->kind == Kind::radio_group || control->kind == Kind::slider) { pointer_armed_ = control->id; pointer_option_ = option; }
     else component_type(control->kind).pointer_down(*this);
     return {};
@@ -1452,6 +1567,10 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
         return DropdownHandle(this, lifetime_, armed).open();
     }
     if (numerics_.contains(armed)) return {};
+    if (auto it = lists_.find(armed); it != lists_.end()) {
+        if (!pressed_value || !option || *option >= it->second.items.size() || it->second.items[*option].value != *pressed_value) return {};
+        return ListHandle(this, lifetime_, armed).select(*pressed_value);
+    }
     if (auto it = radios_.find(armed); it != radios_.end()) {
         if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
         return select_option(armed, it->second.options[*option].value);
@@ -1500,6 +1619,7 @@ CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(s
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
 SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
+ListHandle Ui::add_list(Control control, std::vector<RadioOption> items) { return state_->add_list(std::move(control), std::move(items)); }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));

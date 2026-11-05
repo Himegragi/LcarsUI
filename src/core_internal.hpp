@@ -23,6 +23,9 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
+    ListHandle add_list(Control control, std::vector<RadioOption> items);
+    ComponentHandle list_layout_handle(const Control& control);
+    Result list_key_down(KeyPress key);
     ComponentHandle dropdown_layout_handle(const Control& control);
     Result dropdown_key_down(KeyPress key);
     void close_popup();
@@ -121,6 +124,7 @@ private:
     friend class ::lcars::RadioGroupHandle;
     friend class ::lcars::SliderHandle;
     friend class ::lcars::DropdownHandle;
+    friend class ::lcars::ListHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -167,6 +171,15 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, DropdownField, std::less<>> dropdowns_;
+    struct ListField {
+        std::vector<RadioOption> items;
+        OptionSource source;
+        std::optional<OptionValue> cursor;
+        bool writing = false;
+        std::function<Result(std::optional<OptionValue>)> immediate;
+        std::function<void()> disconnect;
+    };
+    std::map<Id, ListField, std::less<>> lists_;
     Id popup_source_;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);

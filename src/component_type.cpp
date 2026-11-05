@@ -220,6 +220,41 @@ public:
     int natural_width(const ComponentLayout&) const override { return -1; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.radio_key_down(key); }
 };
+class List final : public Command {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
+        int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, 12);
+        int y = 0;
+        if (s.options.empty()) {
+            p.lines.push_back({{scaled(c.scale, 8), 0, c.width, line}, u"\u6c92\u6709\u9805\u76ee"});
+            y = row;
+        }
+        for (const auto& item : s.options) {
+            p.options.push_back({0, y, c.width, row});
+            auto text = (item.selected ? std::u16string(u"\u2713 ") : std::u16string(u"  ")) + item.label;
+            if (!item.enabled) text += u"\uff08\u505c\u7528\uff09";
+            p.lines.push_back({{scaled(c.scale, 8), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 16)), line}, std::move(text)});
+            y += row;
+        }
+        p.bounds = {0, 0, c.width, y};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto palette = c.appearance.palette(); const auto& p = c.placement;
+        if (c.semantics.options.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
+        for (std::size_t i = 0; i < p.options.size(); ++i) {
+            const auto& item = c.semantics.options[i]; const auto& row = p.options[i];
+            if (item.selected) c.fill(row, palette.selection);
+            if (c.semantics.focused && c.semantics.candidate == item.value)
+                c.fill({row.x, row.y, scaled(c.scale, 3), row.h}, palette.accent);
+            const auto& line = p.lines[i];
+            c.text(line.text, p.text_size, line.bounds.x, line.bounds.y, item.enabled && c.semantics.enabled ? palette.text : palette.muted);
+        }
+    }
+    int natural_width(const ComponentLayout&) const override { return -1; }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.list_key_down(key); }
+};
 class Dropdown final : public Command {
 public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
@@ -309,6 +344,7 @@ public:
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
 };
 Slider slider;
+List list;
 Dropdown dropdown;
 RadioGroup radio_group;
 Checkbox checkbox;
@@ -319,7 +355,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

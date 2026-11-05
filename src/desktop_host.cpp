@@ -413,6 +413,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             SetCapture(window_);
         }
         after_input(before);
+        // A pointer already targets a visible row. Revealing the list's entry cursor here
+        // would move the row before button-up and cancel or redirect the click.
+        if (hit->kind == Kind::list) reveal_.clear();
         return 0;
     }
     case WM_MOUSEMOVE: {
@@ -457,6 +460,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         auto before = detail::access(ui_).focused();
         if (key.key == Key::tab) finish_composition();
         detail::access(ui_).key_down(key);
+        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->kind == Kind::list &&
+            (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
+            reveal_ = focused->id;
         after_input(before);
         return 0;
     }
