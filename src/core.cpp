@@ -925,7 +925,7 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
         if (page.value.id.empty() || !values.insert(page.value.id).second) throw std::invalid_argument("Duplicate page identity");
         for (const auto& handle : page.members) {
             auto member = layout_id(handle);
-            if (!member || page_members_.contains(*member) || !members.insert(*member).second)
+            if (!member || removal_pending(*member) || page_members_.contains(*member) || !members.insert(*member).second)
                 throw std::invalid_argument("Invalid or duplicate page member");
         }
     }
@@ -942,7 +942,7 @@ ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) {
 TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
     OperationScope operation(this);
     auto id = layout_id(source);
-    if (!id || !find(*id) || text.empty() || tooltips_.contains(*id))
+    if (!id || !find(*id) || removal_pending(*id) || text.empty() || tooltips_.contains(*id))
         throw std::invalid_argument("Invalid tooltip source or text");
     tooltips_.emplace(*id, TooltipState{std::move(text), delay_ms});
     refresh_tooltips();
@@ -1016,11 +1016,11 @@ Query<bool> TooltipHandle::visible() const {
 DialogHandle detail::UiState::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
     OperationScope operation(this);
     auto first = layout_id(initial), backup = layout_id(fallback);
-    if (dialog_.configured || !first || !backup || !find(*first) || !find(*backup) || !result || members.empty()) throw std::invalid_argument("Invalid dialog");
+    if (dialog_.configured || !first || !backup || !find(*first) || !find(*backup) || removal_pending(*first) || removal_pending(*backup) || !result || members.empty()) throw std::invalid_argument("Invalid dialog");
     std::set<Id> unique;
     for (const auto& member : members) {
         auto id = layout_id(member);
-        if (!id || !find(*id) || page_members_.contains(*id) || !unique.insert(*id).second)
+        if (!id || !find(*id) || removal_pending(*id) || page_members_.contains(*id) || !unique.insert(*id).second)
             throw std::invalid_argument("Invalid dialog member");
     }
     if (!unique.contains(*first) || unique.contains(*backup)) throw std::invalid_argument("Invalid dialog focus targets");
@@ -1123,7 +1123,7 @@ Result detail::UiState::add_page_member(const Id& id, OptionValue page, Componen
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
     auto member = layout_id(component);
-    if (!member || !find(*member) || page_members_.contains(*member) ||
+    if (!member || !find(*member) || removal_pending(*member) || page_members_.contains(*member) ||
         std::find(dialog_.members.begin(), dialog_.members.end(), *member) != dialog_.members.end())
         return {Status::invalid_value, u"Invalid page member"};
     auto& t = tabs_.at(id);
@@ -2127,12 +2127,17 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     pointer_focus_ = true;
-    if (auto result = move_focus(control->id); !result) return result;
+    const Id target = control->id;
+    if (auto result = move_focus(target); !result) return result;
+    // Focus notifications can remove, disable, hide, or add controls. Revalidate and
+    // reacquire the target before dispatch instead of retaining a vector pointer.
     refresh_tooltips();
+    if (auto result = available(target); !result) return result;
+    control = find(target);
     if (control->kind == Kind::dropdown) {
         pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
         auto& f = dropdowns_.at(control->id);
-        if (popup_source_ == id && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
+        if (popup_source_ == target && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
     }
     else if (control->kind == Kind::list) {
         pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();

@@ -1197,6 +1197,15 @@ void list_write_cannot_reenter_itself() {
     check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
 }
 
+void pointer_dispatch_rechecks_a_removed_focus_target() {
+    Ui ui({});
+    auto button = ui.add_button({.id = "button", .kind = Kind::button});
+    auto& host = detail::access(ui);
+    host.on_focus([&](const auto&, const auto& to) { if (to == "button") button.remove(); });
+    check(host.pointer_down("button").status == Status::not_found, "A target removed by focus notification is rejected before pointer dispatch");
+    check(button.describe().status == Status::not_found, "The accepted removal commits after pointer handling");
+}
+
 void removing_confirmation_button_releases_its_fields() {
     Ui ui({});
     auto field = ui.add_text({.id = "field", .kind = Kind::text});
@@ -1271,6 +1280,7 @@ void removal_waits_for_action_and_stale_handle_stays_invalid() {
 
 int main() {
     const test::Case cases[] = {
+        {"G07 revalidate after focus callback", pointer_dispatch_rechecks_a_removed_focus_target},
         {"G07 removal releases confirmation connection", removing_confirmation_button_releases_its_fields},
         {"G07 bounded removal storage", repeated_removal_reclaims_component_storage},
         {"General page membership", page_accepts_new_members_of_different_types},
