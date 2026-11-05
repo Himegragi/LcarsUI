@@ -64,6 +64,7 @@ private:
     std::string reveal_;                        // focus target to scroll into view on the next arrange
     enum class Drag { none, text, thumb, slider } drag_ = Drag::none;
     int drag_origin_ = 0, drag_offset_ = 0;
+    ScrollState* drag_scroll_ = nullptr;
     char16_t pending_high_ = 0;
     std::vector<std::wstring> ime_log_, trace_;
     bool tracing_ = false;

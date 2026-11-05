@@ -96,7 +96,7 @@ struct Fixture {
     }
 };
 
-void tabs_native(const Appearance& appearance, Report& report) {
+void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
     h.name.set_value(u"draft");
@@ -112,6 +112,8 @@ void tabs_native(const Appearance& appearance, Report& report) {
     bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && f.form.list->handles.search.set_value(u"blocked").status == Status::hidden;
     h.tabs.activate({"v02"});
     bool retained = *f.form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && f.form.list->selection() == OptionValue{"T006"};
+    f.form.list->handles.reset.invoke();
+    f.host.render(960, 720, 1.f, folder / (report.appearance + "-v02.bmp"));
     report.check("C09-native", candidate && activated && pointer && retained,
         "Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive");
 }
@@ -161,21 +163,24 @@ void list_native(const Appearance& appearance, Report& report) {
     post(WM_KEYUP, VK_END, key_lparam(VK_END, false, true));
     host.paint();
     auto item = host.frame().find(page.handles.list);
-    auto visible = [&](Rect r) { auto v = host.frame().viewport; return r.y >= v.y && r.y + r.h <= v.y + v.h; };
+    auto visible = [&](Rect r) { auto v = host.frame().find(page.handles.list)->clip; return r.y >= v.y && r.y + r.h <= v.y + v.h; };
     bool end = item && item->options.size() == 100 && visible(item->options.back()) && page.selection() == OptionValue{"T100"};
     report.check("R02-native-end", end, "End selects T100 and reveals its entire row at 640x480");
 
     page.handles.hundred.invoke(); page.handles.search.focus(); host.pump(); host.paint();
-    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), 0); host.paint();
-    bool wheel = host.frame().offset > 0;
     auto frame = host.frame();
-    POINT start{frame.thumb.x + frame.thumb.w / 2, frame.thumb.y + frame.thumb.h / 2};
-    POINT finish{start.x, frame.track.y + frame.track.h - frame.thumb.h / 2};
+    auto region = frame.regions.back();
+    POINT wheelpoint{region.clip.x + 10, region.clip.y + 10}; ClientToScreen(host.window(), &wheelpoint);
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), MAKELPARAM(wheelpoint.x, wheelpoint.y)); host.paint();
+    bool wheel = page.list_scroll.offset > 0;
+    frame = host.frame(); region = frame.regions.back();
+    POINT start{region.thumb.x + region.thumb.w / 2, region.thumb.y + region.thumb.h / 2};
+    POINT finish{start.x, region.track.y + region.track.h - region.thumb.h / 2};
     post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(start.x, start.y));
     post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(finish.x, finish.y));
     post(WM_LBUTTONUP, 0, MAKELPARAM(finish.x, finish.y)); host.paint();
     item = host.frame().find(page.handles.list);
-    bool dragged = host.frame().offset == host.frame().maximum && item && visible(item->options.back());
+    bool dragged = page.list_scroll.offset == host.frame().regions.back().maximum && item && visible(item->options.back());
     bool clicked = false;
     if (dragged) {
         auto r = item->options.back(); POINT point{r.x + 8, r.y + r.h / 2};
@@ -184,7 +189,7 @@ void list_native(const Appearance& appearance, Report& report) {
         clicked = page.selection() == OptionValue{"T100"};
     }
     page.handles.one.invoke(); host.pump(); host.paint();
-    bool clamped = host.frame().offset <= host.frame().maximum;
+    bool clamped = page.list_scroll.offset <= host.frame().regions.back().maximum;
     report.check("L06-N07-native-scroll", wheel && dragged && clicked && clamped,
         "wheel=" + std::to_string(wheel) + ", thumb drag=" + std::to_string(dragged) + ", click T100=" + std::to_string(clicked) + ", shrink clamped=" + std::to_string(clamped));
 
@@ -193,7 +198,9 @@ void list_native(const Appearance& appearance, Report& report) {
     post(WM_KEYDOWN, VK_HOME, key_lparam(VK_HOME, false, false));
     for (int i = 0; i < 6; ++i) post(WM_KEYDOWN, VK_DOWN, key_lparam(VK_DOWN, false, false));
     host.paint();
-    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), 0); host.paint();
+    region = host.frame().regions.back();
+    wheelpoint = {region.clip.x + 10, region.clip.y + 10}; ClientToScreen(host.window(), &wheelpoint);
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), MAKELPARAM(wheelpoint.x, wheelpoint.y)); host.paint();
     item = host.frame().find(page.handles.list);
     bool disabled_click = false;
     if (item && item->options.size() > 7 && visible(item->options[7])) {
@@ -205,6 +212,33 @@ void list_native(const Appearance& appearance, Report& report) {
     post(WM_KEYDOWN, VK_DOWN, key_lparam(VK_DOWN, false, false));
     report.check("R09-native-disabled-row", disabled_click && page.selection() == OptionValue{"T009"},
         "disabled T008 click ignored=" + std::to_string(disabled_click) + ", Down from T007 skips to T009=" + std::to_string(page.selection() == OptionValue{"T009"}));
+}
+
+void nested_list_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.tabs.activate({"v02"});
+    auto& page = *f.form.list;
+    page.handles.hundred.invoke();
+    f.host.client_size(640, 300); f.settle();
+    page.handles.list.focus(); f.settle();
+    f.tap(VK_END); f.settle();
+    auto item = f.host.frame().find(page.handles.list);
+    auto row = item->options.back(); auto clip = item->clip;
+    bool revealed = page.selection() == OptionValue{"T100"} && page.list_scroll.offset > 0 &&
+        f.form.scroll.offset > 0 && row.y >= clip.y && row.y + row.h <= clip.y + clip.h;
+    int inner = page.list_scroll.offset;
+    f.form.scroll.offset = f.host.frame().maximum / 2; f.settle();
+    const auto& region = f.host.frame().regions.back();
+    POINT point{region.clip.x + 5, region.clip.y + region.clip.h / 2};
+    ClientToScreen(f.host.window(), &point);
+    int outer = f.form.scroll.offset;
+    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), MAKELPARAM(point.x, point.y));
+    f.settle();
+    bool bubbles = page.list_scroll.offset == inner && f.form.scroll.offset > outer;
+    report.check("B03-native-nested", revealed && bubbles,
+        "End reveals T100 through both viewports=" + std::to_string(revealed) +
+        ", wheel at inner limit moves outer=" + std::to_string(bubbles));
 }
 
 void space_activation_does_not_leak(const Appearance& appearance, Report& report) {
@@ -498,7 +532,8 @@ void resize_first_frame_matches_next(const Appearance& appearance, Report& repor
     f.host.client_size(640, 480);
     f.host.pump();
     UpdateWindow(f.host.window());
-    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120 * 40)), 0);
+    POINT wheelpoint{20, 20}; ClientToScreen(f.host.window(), &wheelpoint);
+    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120 * 40)), MAKELPARAM(wheelpoint.x, wheelpoint.y));
     f.host.pump();
     UpdateWindow(f.host.window());
     int deep = f.host.frame().offset, deep_max = f.host.frame().maximum;
@@ -904,8 +939,9 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
-        tabs_native(*appearance, report);
+        tabs_native(*appearance, report, folder);
         list_native(*appearance, report);
+        nested_list_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);

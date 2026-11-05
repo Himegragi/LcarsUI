@@ -245,10 +245,12 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
         detail::component_type(item.kind).paint(adapter);
     }
-    canvas.clip = whole;
-    if (frame.thumb.h) {
-        canvas.rounded(frame.track, frame.track.w / 2, p.panel);
-        canvas.rounded(frame.thumb, frame.thumb.w / 2, p.border);
+    for (const auto& region : frame.regions) {
+        canvas.clip = intersect(region.clip, whole);
+        if (region.thumb.h) {
+            canvas.rounded(region.track, region.track.w / 2, p.panel);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+        }
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
@@ -375,7 +377,15 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
         return 0;
     case WM_MOUSEWHEEL: {
-        scroll_.offset -= GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
+        POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+        ScreenToClient(window_, &point);
+        int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
+        // Route to the deepest visible viewport that can move in this direction.
+        for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
+            if (!it->clip.contains(point.x, point.y)) continue;
+            int next = std::clamp(it->offset - delta, 0, it->maximum);
+            if (next != it->offset) { it->state->offset = next; break; }
+        }
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
@@ -386,15 +396,18 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
         if (!hit || !hit->popup) detail::access(ui_).close_popup();
-        if ((!hit || !hit->popup) && frame_.thumb.h && frame_.track.contains(x, y)) {
-            // Track click centers the thumb on the pointer; dragging then moves the thumb top.
-            drag_offset_ = frame_.thumb.contains(x, y) ? frame_.thumb.y : y - frame_.thumb.h / 2;
-            scroll_.offset = frame_.offset_for_thumb(drag_offset_);
-            drag_ = Drag::thumb;
-            drag_origin_ = y;
-            SetCapture(window_);
-            InvalidateRect(window_, nullptr, FALSE);
-            return 0;
+        if (!hit || !hit->popup) {
+            for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
+                if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
+                // Track click centers the thumb on the pointer; dragging then moves its top.
+                drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
+                drag_scroll_ = it->state;
+                drag_scroll_->offset = it->offset_for_thumb(drag_offset_);
+                drag_ = Drag::thumb; drag_origin_ = y;
+                SetCapture(window_);
+                InvalidateRect(window_, nullptr, FALSE);
+                return 0;
+            }
         }
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
@@ -429,7 +442,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
-            scroll_.offset = frame_.offset_for_thumb(drag_offset_ + (y - drag_origin_));
+            auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
+                [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
+            if (region != frame_.regions.end()) drag_scroll_->offset = region->offset_for_thumb(drag_offset_ + (y - drag_origin_));
             InvalidateRect(window_, nullptr, FALSE);
         }
         return 0;
@@ -446,7 +461,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             // Settle the press before releasing capture; capture loss would cancel it.
             detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
         }
-        drag_ = Drag::none;
+        drag_ = Drag::none; drag_scroll_ = nullptr;
         if (GetCapture() == window_) ReleaseCapture();
         after_input(before);
         return 0;

@@ -398,6 +398,28 @@ void list_reveals_the_keyboard_row_and_clips_hits() {
         check(!frame.option_at(*item, item->options.front().x + 2, item->options.front().y + 2), "Clipped rows cannot be hit");
     }
 }
+void nested_scroll_reveals_the_list_target() {
+    for (const auto* look : appearances) {
+        Ui ui({});
+        auto filler = ui.add_label({.id = "filler", .kind = Kind::label, .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12"});
+        std::vector<RadioOption> options;
+        for (int i = 1; i <= 100; ++i) options.push_back({{std::to_string(i)}, u"Row"});
+        auto list = ui.add_list({.id = "list", .kind = Kind::list}, std::move(options));
+        std::optional<OptionValue> selected;
+        list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+        list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+        list.focus(); detail::access(ui).key_down({.key = Key::end});
+        ScrollState outer, inner; FakeMeasure measure;
+        auto page = layout::scroll(layout::column({layout::control(filler), layout::scroll(layout::control(list), inner, 140)}));
+        auto frame = arrange(page, ui, *look, measure, 360, 200, 1.f, outer, "list");
+        auto item = frame.find(list);
+        check(item && item->options.size() == 100 && inside(item->options.back(), item->clip) &&
+              outer.offset > 0 && inner.offset > 0 && selected == OptionValue{"100"},
+              "End reveals the whole last row through inner and outer viewports on the first frame");
+        check(item && !frame.option_at(*item, item->options.front().x + 2, item->options.front().y + 2),
+              "Rows outside the combined clip cannot be hit");
+    }
+}
 void assembled_layout_handles_long_text_and_larger_type() {
     for (const auto* look : appearances) for (int font : {16, 24}) {
         Ui ui({});
@@ -418,6 +440,7 @@ int main() {
     const test::Case cases[] = {
         {"G11 reveal cross-page error", cross_page_error_is_revealed_in_first_frame},
         {"C09 only active page is drawn", inactive_page_members_do_not_paint_or_hit},
+        {"B03 nested reveal", nested_scroll_reveals_the_list_target},
         {"R02 list keyboard row reveal and clipped hit", list_reveals_the_keyboard_row_and_clips_hits},
         {"N06 assembled layout with long text and type size", assembled_layout_handles_long_text_and_larger_type},
         {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},

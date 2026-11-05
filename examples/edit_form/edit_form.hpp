@@ -50,9 +50,10 @@ public:
         lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, offline_disabled, region_empty;
         lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
     } handles;
+    // Page model must outlive Ui subscriptions and their disconnect callbacks.
+    std::unique_ptr<list_page::Page> list;
     lcars::Ui ui;
     lcars::ScrollState scroll;
-    std::unique_ptr<list_page::Page> list;
     lcars::layout::Node page() const;
     const Ids& ids() const { return ids_; }
     const std::u16string& applied() const { return applied_; }

@@ -12,7 +12,7 @@
 
 The desktop example starts with three fixed tabs. Left and Right move the tab candidate; Enter or Space activates it, and a pointer click activates the clicked enabled tab. The selected tab and keyboard candidate are independently indicated. Disabled pages cannot be activated. An exclamation mark on a tab indicates that a member has a validation error. The framework switches to and reveals the first invalid field in a rejected cross-page confirmation group; errors on other pages remain marked on their tabs.
 
-V01 retains its existing form. V02 is intentionally a **placeholder**, with a search draft and a sample-selection flag to exercise page isolation; it is not the list from #20. V03 is a placeholder. Each page has its own reset; switching retains drafts, history, and page scroll offsets, and resetting V02 or V03 leaves V01 untouched. The list-specific T006 selection, filtering, list data, and scrollbar portions of L07/L08 remain for #20 integration.
+V01 retains its existing form. V02 uses the same list page and application model as the standalone example: choose a sample, filter by name, reverse the order, disable T008, or delete the selected item. V03 remains a placeholder. Each page has its own reset; switching retains drafts, history, list selection and the valid page and list scroll offsets. Resetting V02 or V03 leaves V01 untouched.
 
 Applications create tabs with `Ui::add_tabs` and typed `ComponentHandle` members, and use `TabsHandle` for activation and queries. Page membership determines operation admission and rendering. `layout::pinned` keeps the tabs visible above the page's scroll region. Page identity uses `OptionValue`; the application saves per-page scroll state through the page-change callback. A hidden component returns `Status::hidden` for normal operations. A current page cannot be disabled; a page change attempted recursively from its callback is rejected as busy.
 
@@ -74,7 +74,7 @@ The S1-specific descriptions below are historical where they list only the origi
 | 文字長度上限 | 保留為**公開**的每欄位設定 `Control::max_length`，預設 `lcars::default_max_text_length = 4096` UTF-16 單位。數值沿用 MVP，但現在寫在公開標頭、可由使用端改；超限的整筆編輯被拒絕，不破壞舊文字及歷史。理由：單行欄位需要有界的輸入，S1 不打算為此另訂數值研究。 |
 | E01 單欄位失焦 | **離焦即提交組字**。依真實微軟注音事件確定：點別的元件或同一欄位，宿主先請 IME 完成組字（`CPS_COMPLETE`），IME 同步送回結果；視窗失去前景時注音自行提交。組字中按 Tab 由 IME 處理（焦點不動、組字保留）；Esc 取消。欄位 Handle 的 `focus()` 在組字中也採同一政策。原型的「離焦取消」不採用。 |
 | 文字支援邊界（T01） | 單行、由左至右。游標與刪除以 Unicode 碼位為單位，不切開 UTF-16 代理對；繪製與命中以 HarfBuzz cluster 為停駐點。字型：Segoe UI 為主，缺字時改用微軟正黑體（逐碼位選字型），兩者都沒有的字形畫成缺字記號。不支援完整 grapheme cluster、RTL、彩色 emoji、多行。 |
-| 版面（B01–B03） | 只提供本表單需要的直排／橫排、依最小欄寬自動決定欄數的格線、單一捲動區。窄窗（640 DIP）時結果區移到表單下方。 |
+| 版面（B01–B03） | 提供本展示頁需要的直排／橫排、依最小欄寬自動決定欄數的格線與巢狀捲動區。清單有固定高度視口；鍵盤目標逐層揭露，滾輪在內層到達邊界時可交給外層。窄窗（640 DIP）時結果區移到表單下方。 |
 
 ## 驗證
 

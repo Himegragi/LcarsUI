@@ -21,6 +21,7 @@ public:
     Page& operator=(const Page&) = delete;
     lcars::Ui& ui;
     lcars::ScrollState& scroll;
+    mutable lcars::ScrollState list_scroll;
     struct Handles {
         lcars::ListHandle list;
         lcars::TextHandle search;

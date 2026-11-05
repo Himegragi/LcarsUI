@@ -65,6 +65,10 @@ Node grid(std::vector<Node> children, int min_column, int gap) {
     Node n; n.type = Node::Type::grid; n.children = std::move(children); n.min_column = min_column; n.gap = gap; return n;
 }
 Node scroll(Node child) { Node n; n.type = Node::Type::scroll; n.children.push_back(std::move(child)); return n; }
+Node scroll(Node child, ScrollState& state, int height) {
+    if (height <= 0) throw std::invalid_argument("Nested scroll height must be positive");
+    Node n = scroll(std::move(child)); n.scroll_state = &state; n.scroll_height = height; return n;
+}
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
 }
@@ -124,10 +128,14 @@ unsigned Frame::text_offset(const TextHandle& handle, int x) const {
 int Placement::caret_x(unsigned offset) const {
     return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
 }
-int Frame::offset_for_thumb(int thumb_top) const {
+int ScrollRegion::offset_for_thumb(int thumb_top) const {
     int travel = track.h - thumb.h;
     if (maximum <= 0 || travel <= 0) return 0;
     return std::clamp(static_cast<int>(std::lround(double(thumb_top - track.y) * maximum / travel)), 0, maximum);
+}
+
+int Frame::offset_for_thumb(int thumb_top) const {
+    return ScrollRegion{nullptr, viewport, viewport, track, thumb, extent, maximum, offset}.offset_for_thumb(thumb_top);
 }
 
 namespace {
@@ -135,6 +143,7 @@ using layout::Node;
 void translate(Placement& p, int dx, int dy) {
     auto move = [&](Rect& r) { r.x += dx; r.y += dy; };
     move(p.bounds);
+    if (p.clipped) move(p.clip);
     move(p.slider_track);
     for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
@@ -148,6 +157,7 @@ struct Arranger {
     ScrollState& scroll;
     std::string_view reveal;
     Frame frame;
+    bool measuring = false;
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
     int pixels(int size) const { return d(size ? size : appearance.text_size()); }
 
@@ -179,10 +189,12 @@ struct Arranger {
             if (id && ui.available(*id).status == Status::hidden) return 0;
             return build(node, width).bounds.h;
         }
-        case Node::Type::scroll: return 0;  // fills what it is given
+        case Node::Type::scroll: return node.scroll_height ? d(node.scroll_height) : 0;
         default: {
             std::vector<Placement> scratch;
-            return place(node, {0, 0, width, 0}, scratch);
+            bool previous = measuring; measuring = true;
+            int result = place(node, {0, 0, width, 0}, scratch);
+            measuring = previous; return result;
         }
         }
     }
@@ -244,7 +256,10 @@ struct Arranger {
             }
             return y - r.y;
         }
-        case Node::Type::scroll: return place_scroll(node.children.front(), r, out);
+        case Node::Type::scroll:
+            if (node.scroll_height) r.h = d(node.scroll_height);
+            if (measuring) return r.h;
+            return place_scroll(node, r, out);
         case Node::Type::pinned: {
             int header = place(node.children[0], {r.x, r.y, r.w, 0}, out);
             place(node.children[1], {r.x, r.y + header, r.w, std::max(0, r.h - header)}, out);
@@ -258,17 +273,20 @@ struct Arranger {
         }
         return 0;
     }
-    int place_scroll(const Node& child, Rect r, std::vector<Placement>& out) {
-        frame.viewport = r;
+    int place_scroll(const Node& node, Rect r, std::vector<Placement>& out) {
+        const auto& child = node.children.front();
+        auto& state = node.scroll_state ? *node.scroll_state : scroll;
         int bar = d(10);
         int content = height(child, r.w);
-        int width = content > r.h ? r.w - bar - d(4) : r.w;
+        int width = content > r.h ? std::max(0, r.w - bar - d(4)) : r.w;
         if (width != r.w) content = height(child, width);
         std::vector<Placement> placed;
+        auto region_start = frame.regions.size();
         place(child, {r.x, r.y, width, 0}, placed);
-        frame.extent = content;
-        frame.maximum = std::max(0, content - r.h);
-        int offset = std::clamp(scroll.offset, 0, frame.maximum);
+        ScrollRegion region; region.state = &state; region.viewport = region.clip = r;
+        region.extent = content;
+        region.maximum = std::max(0, content - r.h);
+        int offset = std::clamp(state.offset, 0, region.maximum);
         if (!reveal.empty()) {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == reveal; });
             if (it != placed.end()) {
@@ -283,20 +301,29 @@ struct Arranger {
                 int top = target.y - r.y, bottom = top + target.h;
                 if (top < offset || target.h > r.h) offset = top;
                 else if (bottom > offset + r.h) offset = bottom - r.h;
-                offset = std::clamp(offset, 0, frame.maximum);
+                offset = std::clamp(offset, 0, region.maximum);
             }
         }
-        scroll.offset = frame.offset = offset;
+        state.offset = region.offset = offset;
         for (auto& p : placed) {
             translate(p, 0, -offset);
-            p.clip = r;
+            p.clip = p.clipped ? intersect(p.clip, r) : r;
+            p.clipped = true;
             out.push_back(std::move(p));
         }
-        if (frame.maximum > 0) {
-            frame.track = {r.x + r.w - bar, r.y, bar, r.h};
-            int thumb = std::max(d(24), r.h * r.h / std::max(1, content));
-            frame.thumb = {frame.track.x, r.y + (r.h - thumb) * offset / frame.maximum, bar, thumb};
+        // Nested viewports move with their content and inherit every ancestor's clip.
+        for (std::size_t i = region_start; i < frame.regions.size(); ++i) {
+            auto& inner = frame.regions[i];
+            inner.viewport.y -= offset; inner.clip.y -= offset;
+            inner.track.y -= offset; inner.thumb.y -= offset;
+            inner.clip = intersect(inner.clip, r);
         }
+        if (region.maximum > 0) {
+            region.track = {r.x + r.w - bar, r.y, bar, r.h};
+            int thumb = std::min(r.h, std::max(d(24), r.h * r.h / std::max(1, content)));
+            region.thumb = {region.track.x, r.y + (r.h - thumb) * offset / region.maximum, bar, thumb};
+        }
+        frame.regions.insert(frame.regions.begin() + region_start, region);
         return r.h;
     }
 };
@@ -311,9 +338,15 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     std::vector<Placement> items;
     a.place(root, window, items);
     for (auto& p : items) {
-        p.clip = p.clip.w ? intersect(p.clip, window) : window;
+        p.clip = p.clipped ? intersect(p.clip, window) : window;
     }
     a.frame.items = std::move(items);
+    for (auto& region : a.frame.regions) region.clip = intersect(region.clip, window);
+    if (!a.frame.regions.empty()) {
+        const auto& outer = a.frame.regions.front();
+        a.frame.viewport = outer.viewport; a.frame.track = outer.track; a.frame.thumb = outer.thumb;
+        a.frame.extent = outer.extent; a.frame.maximum = outer.maximum; a.frame.offset = outer.offset;
+    }
     // Overlay placement is relative to its visible source, but clipped to the window, not its scroll region.
     for (const auto& source : a.frame.items) {
         if (source.kind != Kind::dropdown) continue;

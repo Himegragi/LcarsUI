@@ -68,7 +68,7 @@ Result Page::sample(int count) {
         auto label = n == 5 || n == 6 ? std::u16string(u"共用範本") : u"範本 " + std::u16string(number, number + std::char_traits<char>::length(number));
         items_.push_back({{id}, std::move(label)});
     }
-    search_.clear(); descending_ = disabled_eight_ = false; selection_.reset(); scroll.offset = 0;
+    search_.clear(); descending_ = disabled_eight_ = false; selection_.reset(); scroll.offset = 0; list_scroll.offset = 0;
     handles.erase.enable(false); if (selection_changed_) selection_changed_(); if (search_changed_) search_changed_();
     handles.search.reset_to_source(); return refresh();
 }
@@ -78,7 +78,7 @@ layout::Node Page::page() const {
         row({control(handles.zero), control(handles.one), control(handles.twenty), control(handles.hundred)}, 6),
         row({control(handles.sort), control(handles.disable_eight), control(handles.reset)}, 6),
         control(handles.search),
-        grid({control(handles.list), column({control(handles.detail), control(handles.erase)}, 12)}, 400, 16)
+        grid({layout::scroll(control(handles.list), list_scroll, 220), column({control(handles.detail), control(handles.erase)}, 12)}, 400, 16)
     }, 12, 16));
 }
 }

@@ -1,5 +1,5 @@
 #pragma once
-// B01-B03 minimal layout: column/row, grid and one scroll region, measured through a host
+// B01-B03 minimal layout: column/row, grid and nested scroll regions, measured through a host
 // text backend. The same inputs give the same frame, which the host both draws and hit-tests,
 // so measurement, painting and pointer targets cannot disagree. arrange settles view state as it
 // goes: it clamps the scroll offset and each field's display offset before placing anything.
@@ -27,6 +27,8 @@ public:
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width);
 
+struct ScrollState { int offset = 0; };  // physical pixels, clamped by every arrange
+
 namespace layout {
 struct Node {
     enum class Type { control, column, row, grid, scroll, stack, pinned } type = Type::column;
@@ -35,13 +37,16 @@ struct Node {
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
     int min_column = 0;  // grid: as many columns as fit at this width, at least one
+    ScrollState* scroll_state = nullptr; // bounded nested viewport: caller keeps this state alive
+    int scroll_height = 0; // viewport height in DIP; 0 fills the available space
     std::vector<Node> children;
 };
 Node control(ComponentHandle component, int text_size = 0);
 Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
-Node scroll(Node child);  // S1 supports one scroll region per frame
+Node scroll(Node child);  // fills available space, using arrange's scroll state
+Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 }
@@ -51,6 +56,7 @@ struct Placement {
     std::string id;
     Kind kind = Kind::label;
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
+    bool clipped = false;         // clip has been assigned, including an empty intersection
     bool popup = false;           // an overlay belongs to its source, outside normal layout flow
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
@@ -63,9 +69,15 @@ struct Placement {
     float offset = 0;             // text fields: horizontal display offset in pixels
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
 };
-struct ScrollState { int offset = 0; };  // physical pixels, clamped by every arrange
+struct ScrollRegion {
+    ScrollState* state = nullptr;
+    Rect viewport, clip, track, thumb;
+    int extent = 0, maximum = 0, offset = 0;
+    int offset_for_thumb(int thumb_top) const;
+};
 struct Frame {
     std::vector<Placement> items;
+    std::vector<ScrollRegion> regions; // outermost first, innermost last
     std::vector<Placement> overlays; // painted and hit above normal content and scrollbars
     Rect viewport, track, thumb;  // scroll region and its bar; thumb empty when nothing scrolls
     int extent = 0, maximum = 0, offset = 0;

@@ -264,6 +264,19 @@ void pages_keep_independent_drafts_history_and_scroll() {
     check(*list.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
     list.reset.invoke();
     check(list.reset.describe()->focused && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->options.size() == 20, "V02 reset restores the real list and keeps focus");
+    list.hundred.invoke(); list.list.focus(); list.list.select({"T100"});
+    auto list_frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, list.list.describe()->id);
+    auto row = list_frame.find(list.list)->options.back();
+    auto clip = list_frame.find(list.list)->clip;
+    int list_outer = form.scroll.offset, list_inner = form.list->list_scroll.offset;
+    check(list_outer > 0 && list_inner > 0 && row.y >= clip.y && row.y + row.h <= clip.y + clip.h,
+          "V02 target is fully revealed by both viewports");
+    h.tabs.activate({"v01"}); h.tabs.activate({"v02"});
+    check(form.scroll.offset == list_outer && form.list->list_scroll.offset == list_inner &&
+          form.list->selection() == OptionValue{"T100"}, "Both V02 offsets and selection survive switching");
+    list.reset.invoke();
+    check(form.scroll.offset == 0 && form.list->list_scroll.offset == 0 && !form.list->selection(),
+          "Reset restores both V02 offsets and clears selection");
     h.tabs.activate({"v01"});
     check(form.scroll.offset == saved_scroll && detail::access(form.ui).text_offset(ids.name) == offset && bool(h.name.undo()) &&
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
