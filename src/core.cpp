@@ -75,15 +75,76 @@ TextHandle Ui::add_text(Control control) {
     edits_.emplace(id, std::move(field));
     return TextHandle(this, lifetime_, std::move(id));
 }
+ButtonHandle Ui::add_button(Control control) {
+    if (control.kind != Kind::button || control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid button component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    return ButtonHandle(this, lifetime_, std::move(id));
+}
+Result ButtonHandle::invoke() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->invoke(id_);
+}
+bool ButtonHandle::executing() const {
+    return !lifetime_.expired() && ui_->executing_ == id_;
+}
+Result TextHandle::undo() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->undo(id_);
+}
+Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
+                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
+    if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
+        return {Status::invalid_value, u"Invalid confirmation group"};
+    for (const auto& field : fields) {
+        auto it = edits_.find(field.id_);
+        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value)
+            return {Status::invalid_value, u"A text source requires read and subscribe"};
+    }
+    bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
+        std::vector<TextChange> changes;
+        for (const auto& handle : fields) {
+            auto& field = edits_.at(handle.id_);
+            changes.push_back({handle, field.session.text, field.origin});
+            field.submitting = true;
+        }
+        ConfirmationResult outcome;
+        try { outcome = submit(changes); }
+        catch (...) {
+            for (const auto& handle : fields) edits_.at(handle.id_).submitting = false;
+            throw;
+        }
+        for (std::size_t i = 0; i < fields.size(); ++i) {
+            auto& field = edits_.at(fields[i].id_);
+            field.submitting = false;
+            if (outcome.result) {
+                field.origin = changes[i].value;
+                set_error(fields[i].id_, u"");
+            }
+        }
+        if (!outcome.result) {
+            std::optional<std::size_t> first;
+            for (const auto& error : outcome.errors) {
+                if (error.index >= fields.size()) continue;
+                set_error(fields[error.index].id_, error.message);
+                if (!error.message.empty() && (!first || error.index < *first)) first = error.index;
+            }
+            if (first) focus(fields[*first].id_);
+        }
+        return outcome.result;
+    });
+    return {};
+}
 Result TextHandle::connect_source(TextSource source) const {
-    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->connect_source(id_, std::move(source));
 }
 Result Ui::connect_source(const Id& id, TextSource source) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"????? UI ???"};
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::not_found, u"?????"};
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"???????????"};
+    if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
     if (it->second.disconnect) it->second.disconnect();
     it->second.source = std::move(source);
     it->second.has_source_value = false;
@@ -103,7 +164,7 @@ void Ui::source_changed(const Id& id) {
     const bool clean = !field.has_source_value || field.session.text == field.source_value;
     field.source_value = latest;
     field.has_source_value = true;
-    if (clean) {
+    if (clean && !field.submitting) {
         replace_text(id, latest);
         field.origin = latest;
     }
@@ -116,16 +177,16 @@ bool TextHandle::source_conflict() const {
     return field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
 }
 Result TextHandle::use_latest() const {
-    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"??????"};
+    if (it == ui_->edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
     auto result = ui_->set_value(id_, latest);
     if (result) it->second.origin = std::move(latest);
     return result;
 }
 Result TextHandle::set_value(std::u16string value) const {
-    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->set_value(id_, std::move(value));
 }
 std::optional<Semantics> TextHandle::describe() const {
@@ -140,6 +201,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     s.enabled = control->enabled; s.read_only = control->read_only;
     s.focusable = bool(focusable(*control));
     s.focused = focus_ == control->id;
+    s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
@@ -151,7 +213,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     }
     if (!s.focusable) return s;
     s.operations.push_back(Operation::focus);
-    if (control->kind == Kind::button) s.operations.push_back(Operation::activate);
+    if (control->kind == Kind::button && !s.executing) s.operations.push_back(Operation::activate);
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
@@ -316,8 +378,9 @@ Result Ui::invoke(std::string_view id) {
     auto it = actions_.find(id);
     if (it == actions_.end()) return {Status::not_found, u"元件沒有此動作"};
     invoking_ = true;
-    try { auto result = it->second(); invoking_ = false; return result; }
-    catch (...) { stopped_ = true; invoking_ = false; return {Status::failed, u"操作失敗，介面已停止"}; }
+    executing_ = id;
+    try { auto result = it->second(); invoking_ = false; executing_.clear(); return result; }
+    catch (...) { stopped_ = true; invoking_ = false; executing_.clear(); return {Status::failed, u"操作失敗，介面已停止"}; }
 }
 void Ui::bind(Id id, Action action) {
     if (!find(id) || !action) throw std::invalid_argument("Action requires a known ID and a callback");

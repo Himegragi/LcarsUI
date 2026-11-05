@@ -45,7 +45,7 @@ struct Semantics {
     Id id;
     Kind kind = Kind::label;
     std::u16string name, value, description, error;
-    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false;
+    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false;
     Id target;
     TextRole role = TextRole::plain;
     std::vector<Id> labels;  // labels whose target is this control, in declaration order
@@ -99,6 +99,7 @@ class TextHandle {
 public:
     TextHandle() = default;
     Result set_value(std::u16string value) const;
+    Result undo() const;
     Result connect_source(TextSource source) const;
     bool source_conflict() const;
     Result use_latest() const;
@@ -111,6 +112,28 @@ private:
     std::weak_ptr<void> lifetime_;
     Id id_;
 };
+class ButtonHandle {
+public:
+    ButtonHandle() = default;
+    Result invoke() const;
+    bool executing() const;
+private:
+    friend class Ui;
+    ButtonHandle(Ui* ui, std::weak_ptr<void> lifetime, Id id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    Ui* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    Id id_;
+};
+struct TextChange {
+    TextHandle field;
+    std::u16string value, origin;
+};
+struct FieldError { std::size_t index; std::u16string message; };
+struct ConfirmationResult {
+    Result result;
+    std::vector<FieldError> errors;
+};
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class Ui {
 public:
@@ -118,6 +141,9 @@ public:
     explicit Ui(std::vector<Control> controls);
     ~Ui();
     TextHandle add_text(Control control);
+    ButtonHandle add_button(Control control);
+    Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
+                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Ui(const Ui&)=delete;
     Ui& operator=(const Ui&)=delete;
     const std::vector<Control>& controls() const { return controls_; }
@@ -181,6 +207,7 @@ public:
     bool stopped() const { return stopped_; }
 private:
     friend class TextHandle;
+    friend class ButtonHandle;
     Result connect_source(const Id& id, TextSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
@@ -194,12 +221,13 @@ private:
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;
+        bool submitting = false;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
     std::map<Id, Action, std::less<>> actions_;
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
-    Id focus_, key_armed_, pointer_armed_, composing_;
+    Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     Clipboard* clipboard_ = nullptr;
     Result focusable(const Control& control) const;
     Result move_focus(Id next);

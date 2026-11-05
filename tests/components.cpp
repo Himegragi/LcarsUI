@@ -426,8 +426,85 @@ void source_conflict_keeps_draft_until_cancelled() {
           "Choosing the latest value discards the draft and clears the conflict");
 }
 
+void confirmation_submits_draft_and_origin_and_keeps_history() {
+    std::u16string model = u"before";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "confirm.field", .kind = Kind::text});
+    auto apply = ui.add_button({.id = "confirm.apply", .kind = Kind::button});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
+        changed = std::move(callback); return [&] { changed = {}; };
+    }});
+    std::u16string received_origin;
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
+        received_origin = changes.at(0).origin;
+        model = changes.at(0).value;
+        changed();
+        return ConfirmationResult{};
+    });
+    field.set_value(u"draft");
+    check(bool(apply.invoke()) && model == u"draft" && received_origin == u"before",
+          "One application entry receives the draft and its origin");
+    check(bool(field.undo()) && field.describe()->value == u"before" && model == u"draft",
+          "Undo after apply creates a draft without undoing the model change");
+}
+
+void rejected_group_keeps_drafts_and_focuses_first_error() {
+    std::u16string a = u"one", b = u"two";
+    std::function<void()> changed_a, changed_b;
+    Ui ui({});
+    auto first = ui.add_text({.id = "reject.first", .kind = Kind::text});
+    auto second = ui.add_text({.id = "reject.second", .kind = Kind::text});
+    auto apply = ui.add_button({.id = "reject.apply", .kind = Kind::button});
+    first.connect_source({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
+    second.connect_source({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
+    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<TextChange>& changes) {
+        check(changes.size() == 2 && changes[0].value == u"bad one" && changes[1].value == u"bad two",
+              "Both drafts arrive together");
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{1, u"second problem"}, {0, u"first problem"}}};
+    });
+    first.set_value(u"bad one");
+    second.set_value(u"bad two");
+    check(apply.invoke().status == Status::invalid_value && first.describe()->value == u"bad one" && second.describe()->value == u"bad two",
+          "Rejection keeps all drafts");
+    check(first.describe()->error == u"first problem" && second.describe()->error == u"second problem" && first.describe()->focused,
+          "Rejection labels each field and focuses the first field in group order");
+}
+
+void confirmation_blocks_reentry_but_preserves_new_edits() {
+    std::u16string model = u"start";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "busy.field", .kind = Kind::text});
+    auto apply = ui.add_button({.id = "busy.apply", .kind = Kind::button});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    int calls = 0;
+    std::u16string second_origin;
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
+        ++calls;
+        if (calls == 1) {
+            check(apply.executing() && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
+            check(bool(field.set_value(u"newer")), "The field remains editable while the action executes");
+        } else second_origin = changes[0].origin;
+        model = changes[0].value;
+        changed();
+        return ConfirmationResult{};
+    });
+    field.set_value(u"sent");
+    auto accepted = apply.invoke();
+    check(bool(accepted), "The first confirmation succeeds");
+    check(!apply.executing() && calls == 1, "Execution state resets and callback runs once");
+    check(model == u"sent", "The submitted value reaches the model");
+    check(field.describe()->value == u"newer", "Edits during execution stay in the field");
+    check(bool(apply.invoke()) && model == u"newer" && second_origin == u"sent",
+          "The new draft starts from the submitted value");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G11 confirmation blocks reentry but preserves new edits", confirmation_blocks_reentry_but_preserves_new_edits},
+        {"G11 rejected group retains drafts and focuses first error", rejected_group_keeps_drafts_and_focuses_first_error},
+        {"G11 confirmation submits draft and origin and keeps history", confirmation_submits_draft_and_origin_and_keeps_history},
         {"G11 source conflicts preserve drafts until cancel", source_conflict_keeps_draft_until_cancelled},
         {"G10 source updates follow component lifetime", source_updates_follow_the_component_lifetime},
         {"G10 typed handles expire with their component tree", handles_expire_with_their_component_tree},
