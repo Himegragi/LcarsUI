@@ -1,3 +1,21 @@
+# Component type dispatch verification - issue #16 (2026-11-05)
+
+The production code tested is commit `0df8e06`, based on local integration tip `f0561f018dda303d69eceda567411a34d8bcf01f`. The evidence-only commit follows it. Component type registration is internal: it does not expose a new public plug-in API or change the application's typed handles and data connections. The test-only type supplies its own geometry, painted color, hit region and keyboard/pointer behavior. Both appearances exercise it through the existing layout and core seams and the real Win32 host; the host test rejects a click inside its bounds but outside its hit region, and checks one activation each from a click and Enter. Before the implementation, the test failed to compile because the dispatch seam did not exist; the distinct geometry/hit and paint extensions were also checked red before implementation.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 5/5 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`, including independent public consumer |
+| Release desktop build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release`, including independent public consumer and native host |
+| Native host, both appearances | 36/36 checks passed, 0 failed | [host results](ticket-16-host/host.tsv); includes two registered-component checks; [Web probe](ticket-16-host/web-registered-component.bmp), [Material probe](ticket-16-host/material-registered-component.bmp) |
+| Clipboard stress, both appearances | 400/400 checks passed, 0 failed | [clipboard results](ticket-16-clipboard/clipboard.tsv); 100 repetitions per appearance, including forced contention |
+| Real Microsoft Bopomofo, both appearances | 36/36 checks passed, 0 blocked or failed | [IME results](ticket-16-ime/ime.tsv), [events](ticket-16-ime/ime-events.log); foreground `SendInput` |
+
+The unchanged V01 application uses the same handles, data connections and cases for both appearances. At 640x480 DIP and 100% forced scale, the initial Web and Material host BMPs are each byte-identical (SHA-256) to their respective [prior Web](review-fixes-host/web-640x480-100-initial.bmp) and [prior Material](review-fixes-host/material-640x480-100-initial.bmp) evidence. This is a comparison of those two initial views, not proof of all visual states. Trailing whitespace was removed from the retained host and IME event logs; their recorded outcomes and event text are unchanged. All project C++ translation units in the compile databases specified C++20: 10/10 core-only and 16/16 desktop.
+
+Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060/OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Forced 150% rendering is not a real cross-monitor DPI migration. User trial, UIA, MCP, full cross-page behavior and actual cross-monitor DPI migration were not run; they remain outside these results.
+
+---
+
 # S1 review-fix verification ? 2026-11-05
 
 The final production binary was built from `415026e` on `s1/review-fixes`, after `3d0ada1`; the subsequent evidence-only commit records this run. The results below supersede the earlier rework record retained underneath. The form's application cases now use its publicly exposed handles; host input, focus traversal, clipboard setup and geometry checks still use the internal host seam. The old AC15 record overstated the earlier driver's public coverage; it is corrected in [verification.md](verification.md). Current AC15 passes within the S1 scope using the stated seams, not UIA or MCP.
