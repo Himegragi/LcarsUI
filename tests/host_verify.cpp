@@ -58,8 +58,8 @@ struct Fixture {
     edit_form::Form form;
     DesktopHost host;
     const edit_form::Ids& ids;
-    explicit Fixture(const Appearance& appearance)
-        : host(form.ui, appearance, [this] { return form.page(); }, form.scroll, options(), true, true), ids(form.ids()) {
+    explicit Fixture(const Appearance& appearance, bool pages = false)
+        : form(edit_form::default_ids(), pages), host(form.ui, appearance, [this] { return form.page(); }, form.scroll, options(), true, true), ids(form.ids()) {
         ShowWindow(host.window(), SW_SHOWNOACTIVATE);
         host.force_scale(1.f);
         host.client_size(900, 700);
@@ -94,6 +94,26 @@ struct Fixture {
         return n;
     }
 };
+
+void tabs_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.name.set_value(u"draft");
+    h.tabs.focus(); f.settle();
+    f.tap(VK_RIGHT);
+    bool candidate = *h.tabs.active() == OptionValue{"v01"} && h.tabs.describe()->candidate == OptionValue{"v02"};
+    f.tap(VK_RETURN); f.settle();
+    bool activated = *h.tabs.active() == OptionValue{"v02"} && !f.host.frame().find(h.name) && f.host.frame().find(h.search);
+    h.search.set_value(u"sample"); h.choose_sample.invoke();
+    f.host.paint(); auto tab = f.host.frame().find(h.tabs);
+    auto first = tab->options[0]; POINT point{first.x + first.w / 2, first.y + first.h / 2};
+    f.mouse(WM_LBUTTONDOWN, point, MK_LBUTTON); f.mouse(WM_LBUTTONUP, point); f.settle();
+    bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && h.search.set_value(u"blocked").status == Status::hidden;
+    h.tabs.activate({"v02"});
+    bool retained = *h.search.draft() == u"sample" && f.form.sample_selected();
+    report.check("C09-native", candidate && activated && pointer && retained,
+        "Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive");
+}
 
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     constexpr auto test_kind = static_cast<Kind>(100);
@@ -524,7 +544,7 @@ std::string os_version() {
 }
 
 struct Live {
-    edit_form::Form form;
+    edit_form::Form form{edit_form::default_ids(), true};
     DesktopHost host;
     const edit_form::Ids& ids;
     HWND helper = nullptr;
@@ -664,7 +684,7 @@ struct Profiles {
 };
 }
 
-void ime_session(const Appearance& appearance, Report& report, std::ofstream& events) {
+bool ime_session(const Appearance& appearance, Report& report, std::ofstream& events) {
     try {
         Live live(appearance);
         auto& ui = live.form.ui;
@@ -727,6 +747,19 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         bool redo_kept = !session->composing && detail::access(ui).text(ids.name) == u"測試使用者" && detail::access(live.form.ui).describe(ids.name)->operations.back() == Operation::redo;
         record("E01-cancel", redo_kept, "Escape cancels the composition; committed text and the redo position survive");
 
+        // Switch pages through the real tab during an active Microsoft Bopomofo composition.
+        live.start_in_name();
+        live.type("JI3");
+        auto page_before = live.state();
+        live.host.paint();
+        live.click(live.form.handles.tabs.describe()->id);
+        bool switched = *live.form.handles.tabs.active() == OptionValue{"v02"} && !session->composing &&
+            session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && live.form.handles.tabs.describe()->focused && live.form.applies() == 0;
+        live.form.handles.tabs.activate({"v01"});
+        live.wait(100);
+        record("E01-page-switch", switched && live.history() == 1,
+               "Real tab click during composition commits once, focuses tabs and switches page; before: " + page_before);
+
         live.start_in_name();
         live.chord(VK_CONTROL, 'A');
         live.type("JI3");
@@ -783,9 +816,11 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
 
         profiles.us();
         live.wait(200);
+        return true;
     } catch (const Blocked& blocked) {
         report.check("BLOCKED", false, blocked.what());
         events << "BLOCKED\t" << blocked.what() << '\n';
+        return false;
     }
 }
 
@@ -797,7 +832,7 @@ int run_ime(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         events << "=== " << report.appearance << " ===\n";
-        ime_session(*appearance, report, events);
+        if (!ime_session(*appearance, report, events)) break;
     }
     CoUninitialize();
     std::cout << report.checks << " real-input checks, " << report.failures << " not passing\n";
@@ -810,6 +845,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        tabs_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);

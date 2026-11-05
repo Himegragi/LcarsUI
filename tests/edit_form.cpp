@@ -239,6 +239,35 @@ void checkbox_and_radio_are_applied_together() {
           "Reset restores the initial checkbox and radio values");
 }
 
+void pages_keep_independent_drafts_history_and_scroll() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    test::FakeMeasure measure;
+    h.name.set_value(u"a very long draft that needs horizontal scrolling in a narrow field");
+    h.name.focus(); h.name.select(66, 66);
+    h.long_text.invoke();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, ids.name);
+    auto offset = detail::access(form.ui).text_offset(ids.name);
+    form.scroll.offset = frame.maximum;
+    int saved_scroll = form.scroll.offset;
+    check(offset > 0 && saved_scroll > 0, "V01 has horizontal and vertical offsets to preserve");
+    check(bool(h.tabs.activate({"v02"})), "Open V02");
+    check(h.name.set_value(u"blocked").status == Status::hidden, "Hidden V01 cannot be edited");
+    h.search.set_value(u"common"); h.choose_sample.invoke();
+    check(bool(h.tabs.activate({"v01"})), "Return to V01");
+    check(*h.name.draft() == u"a very long draft that needs horizontal scrolling in a narrow field", "V01 draft survives switch");
+    check(form.applied() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V01 applied value survives switch");
+    check(form.scroll.offset == saved_scroll, "V01 vertical offset survives switch");
+    check(detail::access(form.ui).text_offset(ids.name) == offset, "V01 horizontal offset survives switch");
+    h.tabs.activate({"v02"});
+    check(*h.search.draft() == u"common" && form.sample_selected(), "V02 placeholder search and selection survive a switch");
+    h.reset_v02.invoke();
+    check(h.reset_v02.describe()->focused && h.search.draft()->empty() && !form.sample_selected(), "V02 reset affects only its own state and keeps focus");
+    h.tabs.activate({"v01"});
+    check(form.scroll.offset == saved_scroll && detail::access(form.ui).text_offset(ids.name) == offset && bool(h.name.undo()) &&
+          *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
+}
+
 void both_appearances_give_same_results() {
     std::vector<std::vector<Semantics>> runs;
     std::vector<std::vector<int>> outcomes;
@@ -295,6 +324,7 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"L07 L08 R07 page scopes", pages_keep_independent_drafts_history_and_scroll},
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"F01 five fields apply once", all_five_fields_apply_once},
         {"G11 volume conflict", volume_conflict_offers_latest},

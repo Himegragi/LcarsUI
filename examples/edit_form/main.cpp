@@ -6,7 +6,7 @@
 
 int wmain() {
     try {
-        edit_form::Form form;
+        edit_form::Form form(edit_form::default_ids(), true);
 #ifdef LCARS_APPEARANCE_material
         const auto& appearance = lcars::material_appearance();
 #else

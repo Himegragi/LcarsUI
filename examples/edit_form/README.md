@@ -8,6 +8,22 @@
 這不是穩定公開 API。型別與回呼形式仍可能隨 S2–S5 調整。
 
 
+## S3: tabs and page scopes (#21)
+
+The desktop example starts with three fixed tabs. Left and Right move the tab candidate; Enter or Space activates it, and a pointer click activates the clicked enabled tab. The selected tab and keyboard candidate are independently indicated. Disabled pages cannot be activated. An exclamation mark on a tab indicates that a member has a validation error. The framework switches to and reveals the first invalid field in a rejected cross-page confirmation group; errors on other pages remain marked on their tabs.
+
+V01 retains its existing form. V02 is intentionally a **placeholder**, with a search draft and a sample-selection flag to exercise page isolation; it is not the list from #20. V03 is a placeholder. Each page has its own reset; switching retains drafts, history, and page scroll offsets, and resetting V02 or V03 leaves V01 untouched. The list-specific T006 selection, filtering, list data, and scrollbar portions of L07/L08 remain for #20 integration.
+
+Applications create tabs with `Ui::add_tabs` and typed `ComponentHandle` members, and use `TabsHandle` for activation and queries. Page membership determines operation admission and rendering. `layout::pinned` keeps the tabs visible above the page's scroll region. Page identity uses `OptionValue`; the application saves per-page scroll state through the page-change callback. A hidden component returns `Status::hidden` for normal operations. A current page cannot be disabled; a page change attempted recursively from its callback is rejected as busy.
+
+```mermaid
+flowchart LR
+    A[Focus tab] --> B[Activate page]
+    B --> C[Save current page offset and show selected page]
+    D[Rejected confirmation] --> E[Mark field errors on their pages]
+    E --> F[Open first invalid field's page and reveal its focus]
+```
+
 ## S2c: region and popup layer
 
 Region starts at North, with Central and South available. Enter or a click opens the non-editable dropdown; arrows move a candidate without changing the draft. Enter or clicking an option selects the draft, while Escape, Tab and an outside click cancel the candidate. Tab continues to the next component and an outside click still acts on its target. Apply submits the region with the other four drafts. The region fixture clears or restores the options; clearing removes the selection, and restoring requires an explicit new selection. A missing region is reported on the region field, after name in validation focus order. Reset restores North.
