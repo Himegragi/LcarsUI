@@ -910,6 +910,26 @@ void slider_rejects_invalid_ranges() {
     check(missing_range, "A slider without a range cannot be created through the untyped constructor");
 }
 
+void progress_source_is_read_only_and_disconnects() {
+    int source = -10;
+    std::function<void()> changed;
+    ProgressHandle saved;
+    {
+        Ui ui({});
+        saved = ui.add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"});
+        check(saved.connect_source({{}, {}}).status == Status::invalid_value, "Incomplete sources are rejected");
+        check(bool(saved.connect_source({[&] { return source; }, [&](std::function<void()> cb) {
+            changed = std::move(cb); return [&] { changed = {}; };
+        }})), "Progress accepts a read-only numeric source");
+        auto s = saved.describe();
+        check(s->read_only && !s->focusable && s->operations.empty() && s->value == u"0%" && source == -10,
+              "Progress semantics are read-only and do not alter the out-of-range source");
+        source = 110; changed();
+        check(saved.describe()->value == u"100%" && source == 110, "A notified value updates the display without a write");
+    }
+    check(!changed && saved.describe().status == Status::not_found, "Destroying the tree disconnects and expires the handle");
+}
+
 void slider_source_conflict_and_invalid_updates() {
     int model = 40; std::function<void()> changed; int origin = -1;
     SliderHandle saved;
@@ -1174,6 +1194,7 @@ int main() {
         {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},
         {"G07 dropdown programmatic edits repaint", dropdown_programmatic_edits_request_a_frame},
         {"G11 edits during numeric submission", slider_group_preserves_edits_during_submission},
+        {"C12 progress source lifecycle", progress_source_is_read_only_and_disconnects},
         {"G10 numeric source and conflict lifecycle", slider_source_conflict_and_invalid_updates},
         {"N04 non-divisible steps and keys", slider_non_divisible_range_and_keyboard},
         {"N04 invalid slider ranges", slider_rejects_invalid_ranges},

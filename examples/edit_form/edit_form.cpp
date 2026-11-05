@@ -134,9 +134,28 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     if (pages_) {
         const auto prefix = i.title + ".pages.";
         list = std::make_unique<list_page::Page>(&ui, &scroll, prefix + "v02.");
-        handles.v03_title = ui.add_label({.id = prefix + "v03.title", .kind = Kind::label, .value = u"Confirmation and help (placeholder)"});
+        handles.v03_title = ui.add_label({.id = prefix + "v03.title", .kind = Kind::label, .value = u"確認與說明"});
+        handles.progress = ui.add_progress({.id = prefix + "v03.progress", .kind = Kind::progress, .label = u"示範進度"});
+        handles.progress_source = ui.add_label({.id = prefix + "v03.source", .kind = Kind::label});
+        handles.progress_zero = ui.add_button({.id = prefix + "v03.zero", .kind = Kind::button, .label = u"0%"});
+        handles.progress_half = ui.add_button({.id = prefix + "v03.half", .kind = Kind::button, .label = u"50%"});
+        handles.progress_full = ui.add_button({.id = prefix + "v03.full", .kind = Kind::button, .label = u"100%"});
+        handles.progress_below = ui.add_button({.id = prefix + "v03.below", .kind = Kind::button, .label = u"-10"});
+        handles.progress_above = ui.add_button({.id = prefix + "v03.above", .kind = Kind::button, .label = u"110"});
+        handles.progress.connect_source({[this] { return progress_; }, [this](std::function<void()> changed) {
+            progress_changed_ = std::move(changed); return [this] { progress_changed_ = {}; };
+        }});
+        handles.progress_source.connect_source([this] {
+            auto number = std::to_string(progress_);
+            return u"來源值：" + std::u16string(number.begin(), number.end());
+        });
+        handles.progress_zero.bind([this] { update_progress(0); return Result{}; });
+        handles.progress_half.bind([this] { update_progress(50); return Result{}; });
+        handles.progress_full.bind([this] { update_progress(100); return Result{}; });
+        handles.progress_below.bind([this] { update_progress(-10); return Result{}; });
+        handles.progress_above.bind([this] { update_progress(110); return Result{}; });
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
-        handles.reset_v03.bind([this] { scroll.offset = 0; return handles.reset_v03.focus(); });
+        handles.reset_v03.bind([this] { update_progress(50); scroll.offset = 0; return handles.reset_v03.focus(); });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
@@ -146,7 +165,8 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
             {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
                 list->handles.hundred, list->handles.sort, list->handles.disable_eight, list->handles.reset,
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
-            {{"v03"}, u"Confirm", true, {handles.v03_title, handles.reset_v03}}
+            {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source,
+                handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03}}
         });
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : 2; };
@@ -193,6 +213,10 @@ void Form::update_volume_source(int value) {
     volume_applied_ = value;
     if (volume_changed_) volume_changed_();
     refresh_conflict();
+}
+void Form::update_progress(int value) {
+    progress_ = value;
+    if (progress_changed_) progress_changed_();
 }
 void Form::refresh_conflict() {
     handles.volume_latest.enable(mode_ != Mode::disabled && handles.volume.describe()->source_conflict);
@@ -244,7 +268,9 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.reset_v03)}, 16, 24));
+    else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source),
+        grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
+              control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));
     return pinned(control(handles.tabs), std::move(content));
 }
 }

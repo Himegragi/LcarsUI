@@ -24,6 +24,7 @@ private:
     std::u16string applied_;
     int applies_ = 0;
     int volume_applied_ = 40;
+    int progress_ = 50;
     bool notices_applied_ = true;
     std::optional<lcars::OptionValue> mode_applied_ = lcars::OptionValue{"normal"};
     std::optional<lcars::OptionValue> region_applied_ = lcars::OptionValue{"north"};
@@ -33,7 +34,7 @@ private:
     bool long_intro_ = false;
     bool pages_ = false;
     std::array<int, 3> page_offsets_{};
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_;
+    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
 public:
     explicit Form(Ids ids = default_ids(), bool pages = false);
     Form(const Form&) = delete;
@@ -42,7 +43,9 @@ public:
         lcars::TextHandle name;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
-        lcars::LabelHandle v03_title;
+        lcars::ButtonHandle progress_zero, progress_half, progress_full, progress_below, progress_above;
+        lcars::LabelHandle v03_title, progress_source;
+        lcars::ProgressHandle progress;
         lcars::CheckboxHandle notices;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
@@ -59,12 +62,14 @@ public:
     const std::u16string& applied() const { return applied_; }
     int applies() const { return applies_; }
     int volume_applied() const { return volume_applied_; }
+    int progress() const { return progress_; }
     bool notices_applied() const { return notices_applied_; }
     std::optional<lcars::OptionValue> mode_applied() const { return mode_applied_; }
     std::optional<lcars::OptionValue> region_applied() const { return region_applied_; }
     // An external application change to the same model (also useful to exercise conflicts).
     void update_source(std::u16string value);
     void update_volume_source(int value);
+    void update_progress(int value);
 private:
     bool validate();
     lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);

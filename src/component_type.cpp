@@ -343,6 +343,29 @@ public:
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
 };
+class Progress final : public ComponentType {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.progress_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto& p = c.placement;
+        auto semantic = *c.ui.describe(c.control.id);
+        auto title = semantic.name + (semantic.value.empty() ? u"" : u": " + semantic.value);
+        p.lines = block(c.measure, title, p.text_size, c.width);
+        int y = height_of(p.lines) + scaled(c.scale, 4);
+        p.progress_track = {0, y, std::max(0, c.width), scaled(c.scale, 12)};
+        p.progress_fill = p.progress_track;
+        p.progress_fill.w = static_cast<int>(static_cast<long long>(p.progress_track.w) * semantic.numeric_value.value_or(0) / 100);
+        p.bounds = {0, 0, c.width, y + p.progress_track.h};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto palette = c.appearance.palette();
+        paint_lines(c, c.placement.lines, c.placement.text_size, palette.text);
+        c.fill(c.placement.progress_track, palette.border);
+        if (c.placement.progress_fill.w > 0) c.fill(c.placement.progress_fill, palette.accent);
+    }
+    bool can_focus() const override { return false; }
+    bool accepts_pointer() const override { return false; }
+};
 class Tabs final : public ComponentType {
 public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
@@ -384,6 +407,7 @@ public:
     Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
 };
 Tabs tabs;
+Progress progress;
 Slider slider;
 List list;
 Dropdown dropdown;
@@ -396,7 +420,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

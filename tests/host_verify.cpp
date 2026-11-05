@@ -118,6 +118,44 @@ void tabs_native(const Appearance& appearance, Report& report, const std::filesy
         "Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive");
 }
 
+void progress_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.tabs.activate({"v03"});
+    f.settle();
+    bool passed = true;
+    const struct { ButtonHandle button; int source; int displayed; } cases[] = {
+        {h.progress_zero, 0, 0}, {h.progress_half, 50, 50}, {h.progress_full, 100, 100},
+        {h.progress_below, -10, 0}, {h.progress_above, 110, 100}
+    };
+    for (const auto& c : cases) {
+        c.button.focus(); f.tap(VK_RETURN); f.settle();
+        Canvas pixels(1, 1, {0, 0, 0});
+        auto path = folder / (report.appearance + (c.source == 50 ? "-v03-50.bmp" : "-v03-p07.bmp"));
+        auto frame = f.host.render(960, 720, 1.f, path, &pixels);
+        const auto* item = frame.find(h.progress);
+        if (!item || item->progress_track.w < 4) { passed = false; continue; }
+        auto track = item->progress_track;
+        auto at = [&](int x) {
+            auto i = (static_cast<std::size_t>(pixels.height - 1 - (track.y + track.h / 2)) * pixels.width + x) * 4;
+            return Color{pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]};
+        };
+        auto matches = [](Color a, Color b) { return a.r == b.r && a.g == b.g && a.b == b.b; };
+        auto palette = appearance.palette();
+        auto quarter = at(track.x + track.w / 4), three_quarters = at(track.x + 3 * track.w / 4);
+        auto expected_left = c.displayed >= 50 ? palette.accent : palette.border;
+        auto expected_right = c.displayed == 100 ? palette.accent : palette.border;
+        auto number = std::to_string(c.source);
+        passed = passed && f.form.progress() == c.source && h.progress.describe()->numeric_value == c.displayed &&
+            h.progress_source.describe()->value.find(std::u16string(number.begin(), number.end())) != std::u16string::npos &&
+            matches(quarter, expected_left) && matches(three_quarters, expected_right);
+    }
+    int frames = f.host.frames();
+    f.form.update_progress(50); f.host.pump();
+    passed = passed && f.host.frames() > frames && h.progress.describe()->value == u"50%";
+    report.check("P07-progress", passed, "Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints");
+}
+
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     constexpr auto test_kind = static_cast<Kind>(100);
     TestComponent component;
@@ -940,6 +978,7 @@ int run(const std::filesystem::path& folder) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
         tabs_native(*appearance, report, folder);
+        progress_native(*appearance, report, folder);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);

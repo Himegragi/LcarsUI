@@ -95,6 +95,9 @@ const Placement* Frame::find(const RadioGroupHandle& handle) const {
 const Placement* Frame::find(const SliderHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
+const Placement* Frame::find(const ProgressHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
 const Placement* Frame::find(const DropdownHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
@@ -145,6 +148,7 @@ void translate(Placement& p, int dx, int dy) {
     move(p.bounds);
     if (p.clipped) move(p.clip);
     move(p.slider_track);
+    move(p.progress_track); move(p.progress_fill);
     for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
         for (auto& line : *lines) move(line.bounds);

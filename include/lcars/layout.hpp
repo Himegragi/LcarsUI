@@ -63,6 +63,7 @@ struct Placement {
     std::vector<Line> lines;      // labels and command titles
     std::vector<Rect> options;   // radio option hit and paint bounds
     Rect slider_track;           // slider track in frame coordinates
+    Rect progress_track, progress_fill; // progress display in frame coordinates
     FieldLayout field;            // text fields, translated to frame coordinates
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
@@ -87,6 +88,7 @@ struct Frame {
     const Placement* find(const CheckboxHandle& handle) const;
     const Placement* find(const RadioGroupHandle& handle) const;
     const Placement* find(const SliderHandle& handle) const;
+    const Placement* find(const ProgressHandle& handle) const;
     const Placement* find(const DropdownHandle& handle) const;
     const Placement* find(const TabsHandle& handle) const;
     const Placement* find(const ListHandle& handle) const;

@@ -50,7 +50,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs) throw std::invalid_argument("Component requires typed creation");
+        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs || control.kind == Kind::progress) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -72,6 +72,33 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : dropdowns_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : lists_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
+}
+ProgressHandle detail::UiState::add_progress(Control control) {
+    if (control.kind != Kind::progress || control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid progress component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    progresses_.emplace(id, ProgressField{});
+    return ProgressHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::progress_layout_handle(const Control& c) { return ProgressHandle(this, lifetime_, c.id); }
+Result ProgressHandle::connect_source(NumericSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
+    auto& field = ui_->progresses_.at(id_);
+    if (field.disconnect) field.disconnect();
+    field.source = std::move(source);
+    auto weak = lifetime_; auto state = ui_;
+    field.disconnect = field.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
+}
+Query<Semantics> ProgressHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
 }
 TextHandle detail::UiState::add_text(Control control) {
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
@@ -1207,6 +1234,15 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
         s.slider_range = it->second.range; s.numeric_value = it->second.value;
     }
+    if (auto it = progresses_.find(id); it != progresses_.end()) {
+        s.read_only = true;
+        if (it->second.source.read) {
+            int displayed = std::clamp(it->second.source.read(), 0, 100);
+            s.numeric_value = displayed;
+            auto number = std::to_string(displayed);
+            s.value = std::u16string(number.begin(), number.end()) + u"%";
+        }
+    }
     if (auto it = radios_.find(id); it != radios_.end()) {
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
         for (const auto& option : it->second.options) {
@@ -1744,6 +1780,7 @@ LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(
 CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
 SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
+ProgressHandle Ui::add_progress(Control control) { return state_->add_progress(std::move(control)); }
 TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
 ListHandle Ui::add_list(Control control, std::vector<RadioOption> items) { return state_->add_list(std::move(control), std::move(items)); }

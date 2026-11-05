@@ -11,7 +11,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, list, tabs };
+enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, list, tabs, progress };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
@@ -115,6 +115,7 @@ struct BoolSource {
     std::function<bool()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
+// Integer sources also feed read-only progress displays, which accept values outside 0-100.
 // Integer slider values are the minimum plus whole steps, with the maximum also valid.
 // Edits clamp to the range and snap to the closest valid value; ties choose the higher value.
 // Arrow keys move to the adjacent valid value, including the shorter final interval; Home and End
@@ -277,6 +278,21 @@ private:
     std::string id_;
 };
 struct NumericChange { SliderHandle field; int value, origin; };
+// A display-only percentage. Source values are never written; display is clamped to 0-100.
+class ProgressHandle {
+public:
+    ProgressHandle() = default;
+    Result connect_source(NumericSource source) const;
+    Query<Semantics> describe() const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    ProgressHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
 struct DropdownChange;
 class DropdownHandle {
 public:
@@ -341,7 +357,7 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle>;
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 struct TextChange {
@@ -371,6 +387,7 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     // Throws std::invalid_argument when minimum >= maximum or step <= 0.
     SliderHandle add_slider(Control control, SliderRange range);
+    ProgressHandle add_progress(Control control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     ListHandle add_list(Control control, std::vector<RadioOption> items);

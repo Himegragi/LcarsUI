@@ -284,6 +284,35 @@ void pages_keep_independent_drafts_history_and_scroll() {
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
 }
 
+void progress_displays_clamped_values_without_changing_the_model() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    test::FakeMeasure measure;
+    h.name.set_value(u"kept draft");
+    check(bool(h.tabs.activate({"v03"})), "Open V03");
+    check(form.progress() == 50 && h.progress.describe()->value == u"50%", "Progress starts at 50%");
+    const struct { ButtonHandle button; int source; int shown; std::u16string text; } cases[] = {
+        {h.progress_zero, 0, 0, u"0%"}, {h.progress_half, 50, 50, u"50%"},
+        {h.progress_full, 100, 100, u"100%"}, {h.progress_below, -10, 0, u"0%"},
+        {h.progress_above, 110, 100, u"100%"}
+    };
+    for (const auto& c : cases) {
+        check(bool(c.button.invoke()), "Progress fixture is available");
+        auto semantic = h.progress.describe();
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
+        const auto* p = frame.find(h.progress);
+        check(form.progress() == c.source && semantic->numeric_value == c.shown && semantic->value == c.text,
+              "Source stays unchanged while semantic value is clamped");
+        check(p && !p->lines.empty() && p->lines.front().text.find(c.text) != std::u16string::npos &&
+              p->progress_fill.w == p->progress_track.w * c.shown / 100,
+              "Rendered text and filled track agree");
+    }
+    check(bool(h.reset_v03.invoke()) && form.progress() == 50 && h.progress.describe()->value == u"50%",
+          "Reset restores V03 progress to 50%");
+    h.tabs.activate({"v01"});
+    check(*h.name.draft() == u"kept draft", "Resetting V03 preserves the V01 draft");
+}
+
 void both_appearances_give_same_results() {
     std::vector<std::vector<Semantics>> runs;
     std::vector<std::vector<int>> outcomes;
@@ -340,6 +369,7 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"P07 progress display and source", progress_displays_clamped_values_without_changing_the_model},
         {"L07 L08 R07 page scopes", pages_keep_independent_drafts_history_and_scroll},
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"F01 five fields apply once", all_five_fields_apply_once},

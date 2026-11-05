@@ -22,6 +22,8 @@ public:
     CheckboxHandle add_checkbox(Control control);
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
+    ProgressHandle add_progress(Control control);
+    ComponentHandle progress_layout_handle(const Control& control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     ComponentHandle tabs_layout_handle(const Control& control);
@@ -129,6 +131,7 @@ private:
     friend class ::lcars::CheckboxHandle;
     friend class ::lcars::RadioGroupHandle;
     friend class ::lcars::SliderHandle;
+    friend class ::lcars::ProgressHandle;
     friend class ::lcars::DropdownHandle;
     friend class ::lcars::ListHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
@@ -208,6 +211,8 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, NumericField, std::less<>> numerics_;
+    struct ProgressField { NumericSource source; std::function<void()> disconnect; };
+    std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
     Result select_option(const Id& id, OptionValue value);
     void option_source_changed(const Id& id);
