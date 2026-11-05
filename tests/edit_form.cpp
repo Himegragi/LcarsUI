@@ -15,7 +15,7 @@ edit_form::Ids alternate_ids() {
     edit_form::Ids i;
     i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
-    i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
+    i.volume_latest = "volume.latest"; i.volume = "volume"; i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
     i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c"; i.latest = "latest";
     return i;
 }
@@ -30,6 +30,28 @@ void settle(edit_form::Form& form) {
         check(field && field->label_lines.size() == 1 && field->error_lines.empty() != invalid,
               "Under this appearance the name carries its label, and an error exactly when invalid");
     }
+}
+
+void volume_is_a_confirmed_form_field() {
+    edit_form::Form form(ids);
+    check(*form.handles.volume.draft() == 40 && form.volume_applied() == 40 && form.handles.volume.describe()->name == u"\u97f3\u91cf", "Volume starts at 40 with its accessible name");
+    form.handles.volume.set_value(75);
+    check(*form.handles.volume.draft() == 75 && form.volume_applied() == 40 &&
+          form.handles.draft.describe()->value.find(u"75") != std::u16string::npos, "Volume is shown as an unapplied draft");
+    check(bool(form.handles.apply.invoke()) && form.volume_applied() == 75 && form.applies() == 1 &&
+          form.handles.result.describe()->value.find(u"75") != std::u16string::npos, "Apply commits and displays volume");
+    form.handles.reset.invoke();
+    check(*form.handles.volume.draft() == 40 && form.volume_applied() == 40 && form.applies() == 0, "Reset restores volume");
+}
+
+void volume_conflict_offers_latest() {
+    edit_form::Form form(ids);
+    form.handles.volume.set_value(55);
+    form.update_volume_source(70);
+    check(*form.handles.volume.draft() == 55 && form.handles.volume.describe()->source_conflict &&
+          form.handles.volume_latest.describe()->enabled, "Volume conflict preserves the draft and enables use latest");
+    check(bool(form.handles.volume_latest.invoke()) && *form.handles.volume.draft() == 70 &&
+          !form.handles.volume.describe()->source_conflict, "Use latest discards the volume draft");
 }
 
 void initial_values_apply_and_reset() {
@@ -137,8 +159,8 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
     std::vector<Id> seen;
-    for (int i = 0; i < 12; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
-    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.offline_disabled, ids.apply, ids.normal};
+    for (int i = 0; i < 13; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
+    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.volume, ids.offline_disabled, ids.apply, ids.normal};
     check(seen == expected, "Tab reaches fixtures, name and apply, then wraps");
     detail::access(ui).key_down(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
@@ -241,6 +263,8 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"G11 volume conflict", volume_conflict_offers_latest},
+        {"F09 volume confirmation", volume_is_a_confirmed_form_field},
         {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},
         {"G11 source updates offer the latest value", source_updates_offer_the_latest_value},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},

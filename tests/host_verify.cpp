@@ -323,10 +323,37 @@ void checkbox_and_radio_native(const Appearance& appearance, Report& report) {
         ", enabled click=" + std::to_string(clicked) + ", apply=" + std::to_string(applied));
 }
 
+void slider_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    f.form.handles.volume.focus(); f.settle();
+    f.tap(VK_RIGHT);
+    bool step = *f.form.handles.volume.draft() == 45 && f.form.volume_applied() == 40;
+    f.tap(VK_HOME); bool home = *f.form.handles.volume.draft() == 0;
+    f.tap(VK_END); bool end = *f.form.handles.volume.draft() == 100;
+    f.host.paint();
+    const auto* item = f.host.frame().find(f.form.handles.volume);
+    bool dragged = false;
+    if (item) {
+        auto r = item->slider_track;
+        POINT start{r.x, r.y + r.h / 2}, middle{r.x + r.w / 2, r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON);
+        bool at_start = *f.form.handles.volume.draft() == 0;
+        f.mouse(WM_MOUSEMOVE, middle, MK_LBUTTON);
+        f.mouse(WM_LBUTTONUP, middle);
+        dragged = at_start && *f.form.handles.volume.draft() == 50;
+    }
+    bool applied = f.form.volume_applied() == 40 && bool(f.form.handles.apply.invoke()) && f.form.volume_applied() == 50;
+    f.form.handles.disabled.invoke();
+    bool disabled = f.form.handles.volume.set_value(75).status == Status::disabled && *f.form.handles.volume.draft() == 50;
+    report.check("F09-slider", step && home && end && dragged && applied && disabled,
+        "arrow=" + std::to_string(step) + ", Home=" + std::to_string(home) + ", End=" + std::to_string(end) +
+        ", native drag=" + std::to_string(dragged) + ", apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
+}
+
 void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, const std::filesystem::path& folder, const std::string& tag) {
     Fixture f(appearance);
     std::vector<Id> seen;
-    for (int i = 0; i < 12; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
+    for (int i = 0; i < 13; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
     BYTE state[256]{};
     GetKeyboardState(state);
     state[VK_SHIFT] = 0x80;
@@ -349,7 +376,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     bool distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
     std::string order;
     for (const auto& id : seen) order += id + " ";
-    bool wraps = seen.size() == 12 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.offline_disabled && seen[10] == f.ids.apply && seen[11] == seen[0];
+    bool wraps = seen.size() == 13 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.volume && seen[10] == f.ids.offline_disabled && seen[11] == f.ids.apply && seen[12] == seen[0];
     report.check("AC11-tab", wraps && back && visible && distinct,
                  "Tab order: " + order + "; Shift+Tab back to apply=" + (back ? "yes" : "no") + "; focused apply ring pixel is accent=" +
                      (visible ? "yes" : "NO") + ", unfocused reset ring is not=" + (distinct ? "yes" : "NO") + " (" + tag + "-focus-apply.bmp)");
@@ -755,6 +782,7 @@ int run(const std::filesystem::path& folder) {
         report.appearance = tag;
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
+        slider_native(*appearance, report);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);

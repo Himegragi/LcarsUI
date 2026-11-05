@@ -6,6 +6,8 @@
 #include <type_traits>
 
 static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::OptionSource>);
+static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
+static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
 // An application sees only typed handles; string IDs cannot operate or look up components.
