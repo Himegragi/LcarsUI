@@ -958,8 +958,26 @@ void slider_group_preserves_edits_during_submission() {
     check(model == 65 && submitted_origin == 55, "The next submission starts from the accepted value");
 }
 
+void dropdown_candidate_is_not_a_draft_until_confirmed() {
+    std::optional<OptionValue> model = OptionValue{"north"};
+    Ui ui({});
+    auto region = ui.add_dropdown({.id = "region", .kind = Kind::dropdown},
+        {{{"north"}, u"North"}, {{"south"}, u"South"}});
+    check(bool(region.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }})), "Connect region source");
+    check(bool(region.connect_confirmed([](const DropdownChange&) { return Result{}; })), "Connect confirmed write");
+    check(bool(region.focus()) && bool(region.open()), "Open the dropdown");
+    detail::access(ui).key_down({.key = Key::down});
+    check(*region.draft() == OptionValue{"north"} && region.describe()->candidate == OptionValue{"south"},
+          "Arrow changes the candidate only");
+    detail::access(ui).key_down({.key = Key::escape});
+    check(*region.draft() == OptionValue{"north"} && !region.describe()->expanded, "Escape cancels the candidate");
+    region.open(); detail::access(ui).key_down({.key = Key::down}); detail::access(ui).key_down({.key = Key::enter});
+    check(*region.draft() == OptionValue{"south"} && model == OptionValue{"north"}, "Enter confirms only the draft");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
         {"G11 edits during numeric submission", slider_group_preserves_edits_during_submission},
         {"G10 numeric source and conflict lifecycle", slider_source_conflict_and_invalid_updates},
         {"N04 non-divisible steps and keys", slider_non_divisible_range_and_keyboard},

@@ -50,7 +50,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider) throw std::invalid_argument("A slider requires an explicit range; use add_slider");
+        if (control.kind == Kind::slider || control.kind == Kind::dropdown) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -69,6 +69,7 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : bools_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : radios_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : dropdowns_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
 }
 TextHandle detail::UiState::add_text(Control control) {
@@ -323,6 +324,163 @@ Query<Semantics> RadioGroupHandle::describe() const {
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
     auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
     return {Status::ok, {}, ui_->radios_.at(id_).value};
+}
+DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioOption> options) {
+    if (control.kind != Kind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
+    std::set<std::string> ids;
+    for (const auto& option : options)
+        if (option.value.id.empty() || !ids.insert(option.value.id).second) throw std::invalid_argument("Invalid dropdown option");
+    auto id = control.id; controls_.push_back(std::move(control));
+    DropdownField field; field.options = std::move(options); dropdowns_.emplace(id, std::move(field));
+    return DropdownHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::dropdown_layout_handle(const Control& c) { return DropdownHandle(this, lifetime_, c.id); }
+void detail::UiState::close_popup() {
+    if (popup_source_.empty()) return;
+    if (auto it = dropdowns_.find(popup_source_); it != dropdowns_.end()) it->second.candidate.reset();
+    popup_source_.clear();
+    if (invalidate_) invalidate_();
+}
+Result DropdownHandle::open() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->dropdowns_.at(id_);
+    if (!f.connected || (!f.confirmation_member && !f.immediate && !f.confirmed)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (auto r = ui_->focus(id_); !r) return r;
+    ui_->close_popup(); ui_->popup_source_ = id_;
+    auto current = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && f.value && o.value == *f.value; });
+    if (current == f.options.end()) current = std::find_if(f.options.begin(), f.options.end(), [](const auto& o) { return o.enabled; });
+    f.candidate = current == f.options.end() ? std::nullopt : std::optional<OptionValue>(current->value);
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
+}
+Result DropdownHandle::cancel() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    if (ui_->popup_source_ == id_) ui_->close_popup();
+    return {};
+}
+Result DropdownHandle::focus() const { if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; return ui_->focus(id_); }
+Result DropdownHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    ui_->enable(id_, enabled); return {};
+}
+Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    std::set<std::string> ids;
+    for (const auto& o : options) if (o.value.id.empty() || !ids.insert(o.value.id).second) return {Status::invalid_value, u"Invalid dropdown option"};
+    auto& f = ui_->dropdowns_.at(id_); f.options = std::move(options);
+    auto valid = [&](const std::optional<OptionValue>& value) {
+        return value && std::any_of(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && o.value == *value; });
+    };
+    if (!valid(f.value)) f.value.reset();
+    if (!valid(f.candidate)) f.candidate.reset();
+    if (ui_->invalidate_) ui_->invalidate_();
+    return ui_->notify();
+}
+Result DropdownHandle::connect_source(OptionSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+    auto& f = ui_->dropdowns_.at(id_); if (f.disconnect) f.disconnect();
+    f.source = std::move(source); f.connected = false;
+    auto weak = lifetime_; auto state = ui_; auto id = id_;
+    f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); });
+    ui_->dropdown_source_changed(id_); return {};
+}
+void detail::UiState::dropdown_source_changed(const Id& id) {
+    auto& f = dropdowns_.at(id); auto value = f.source.read();
+    bool clean = !f.connected || f.value == f.source_value;
+    f.source_value = value; f.connected = true;
+    if (clean && !f.submitting) {
+        auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return value && o.enabled && o.value == *value; });
+        f.value = it == f.options.end() ? std::nullopt : value; f.origin = value;
+    }
+    if (invalidate_) invalidate_();
+}
+Result DropdownHandle::connect_immediate(std::function<Result(const DropdownChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->dropdowns_.at(id_);
+    if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.immediate = std::move(write); return {};
+}
+Result DropdownHandle::connect_confirmed(std::function<Result(const DropdownChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->dropdowns_.at(id_);
+    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.confirmed = std::move(write); return {};
+}
+Result DropdownHandle::confirm() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->dropdowns_.at(id_);
+    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+    DropdownChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true; Result result;
+    try { result = f.confirmed(change); } catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false; ui_->invoking_ = false;
+    if (result) { f.origin = change.value; ui_->set_error(id_, u""); } else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+    auto notification = ui_->notify(); return notification ? result : notification;
+}
+Result DropdownHandle::use_latest() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->dropdowns_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return f.source_value && o.enabled && o.value == *f.source_value; });
+    f.value = it == f.options.end() ? std::nullopt : f.source_value; f.origin = f.source_value;
+    ui_->set_error(id_, u""); return ui_->notify();
+}
+Result DropdownHandle::select(OptionValue value) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_dropdown(id_, std::move(value));
+}
+Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
+    if (auto r = available(id); !r) return r;
+    auto& f = dropdowns_.at(id);
+    auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.value == value; });
+    if (it == f.options.end()) return {Status::invalid_value, u"Unknown option"};
+    if (!it->enabled) return {Status::disabled, u"Option is disabled"};
+    if (!f.connected || (!f.immediate && !f.confirmed && !f.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (dispatching_) return {Status::busy, u"Operation is already executing"};
+    if (f.value == value) return {};
+    if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
+    f.value = std::move(value); set_error(id, u"");
+    DropdownChange change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
+    if (!f.immediate || f.submitting) return notify();
+    f.submitting = true; Result result;
+    try { result = f.immediate(change); } catch (...) { f.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false;
+    if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
+    auto notification = notify(); return notification ? result : notification;
+}
+Result detail::UiState::dropdown_key_down(KeyPress key) {
+    auto& f = dropdowns_.at(focus_);
+    if (key.key == Key::escape) { close_popup(); return {}; }
+    if (key.key == Key::enter || key.key == Key::space) {
+        if (key.repeat) return {};
+        if (popup_source_ != focus_) return DropdownHandle(this, lifetime_, focus_).open();
+        auto candidate = f.candidate; close_popup(); return candidate ? select_dropdown(focus_, *candidate) : Result{};
+    }
+    if (popup_source_ != focus_) return {};
+    int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
+    if (!direction) return {};
+    int n = static_cast<int>(f.options.size()), index = direction > 0 ? -1 : n;
+    for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
+    for (int i = index + direction; i >= 0 && i < n; i += direction) if (f.options[i].enabled) { f.candidate = f.options[i].value; break; }
+    if (invalidate_) invalidate_(); return {};
+}
+Query<Semantics> DropdownHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<std::optional<OptionValue>> DropdownHandle::draft() const {
+    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+    return {Status::ok, {}, ui_->dropdowns_.at(id_).value};
 }
 namespace {
 int snap_slider(SliderRange range, int input) {
@@ -658,6 +816,8 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
                 auto it = bools_.find(h.id_); return it != bools_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             } else if constexpr (std::is_same_v<T, SliderHandle>) {
                 auto it = numerics_.find(h.id_); return it != numerics_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
+            } else if constexpr (std::is_same_v<T, DropdownHandle>) {
+                auto it = dropdowns_.find(h.id_); return it != dropdowns_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             } else {
                 auto it = radios_.find(h.id_); return it != radios_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             }
@@ -669,6 +829,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).confirmation_member = true;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).confirmation_member = true;
         else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).confirmation_member = true;
+        else if constexpr (std::is_same_v<T, DropdownHandle>) dropdowns_.at(h.id_).confirmation_member = true;
         else radios_.at(h.id_).confirmation_member = true;
     }, member);
     confirmation_buttons_.insert(button.id_);
@@ -679,6 +840,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
+            else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); changes.emplace_back(DropdownChange{h, f.value, f.origin}); f.submitting = true; }
             else { auto& f = radios_.at(h.id_); changes.emplace_back(OptionChange{h, f.value, f.origin}); f.submitting = true; }
         }, member);
         MixedConfirmationResult outcome;
@@ -689,6 +851,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
                 if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).submitting = false;
                 else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).submitting = false;
                 else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).submitting = false;
+                else if constexpr (std::is_same_v<T, DropdownHandle>) dropdowns_.at(h.id_).submitting = false;
                 else radios_.at(h.id_).submitting = false;
             }, member);
             throw;
@@ -698,6 +861,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
+            else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<DropdownChange>(changes[i]).value; }
             else { auto& f = radios_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<OptionChange>(changes[i]).value; }
             if (outcome.result) set_error(h.id_, u"");
         }, fields[i]);
@@ -856,6 +1020,16 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             if (selected) s.value = option.label;
         }
     }
+    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
+        const auto& f = it->second;
+        s.source_conflict = f.connected && f.origin != f.source_value && f.value != f.source_value;
+        s.expanded = popup_source_ == id; s.candidate = f.candidate;
+        for (const auto& option : f.options) {
+            bool selected = f.value && *f.value == option.value;
+            s.options.push_back({option.value, option.label, option.enabled, selected});
+            if (selected) s.value = option.label;
+        }
+    }
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -885,6 +1059,10 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     if (auto it = numerics_.find(id); it != numerics_.end()) {
         const auto& f = it->second;
         if (!control->read_only && f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::edit);
+    }
+    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
+        const auto& f = it->second;
+        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::select);
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
@@ -1102,6 +1280,7 @@ std::vector<Id> detail::UiState::focus_order() const {
 // (ADR 0003: no direct recursion into subscribers).
 Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
+    if (!popup_source_.empty() && next != popup_source_) close_popup();
     key_armed_.clear(); pointer_armed_.clear();
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
@@ -1274,6 +1453,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Control*>(find(id));
     if (!control) return;
     control->enabled = enabled;
+    if (!enabled && popup_source_ == id) close_popup();
     if (!enabled && focus_ == control->id) move_focus({});
 }
 void detail::UiState::set_read_only(std::string_view id, bool read_only) {
@@ -1301,6 +1481,7 @@ LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(
 CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
 SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
+DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));

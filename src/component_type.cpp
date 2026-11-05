@@ -220,6 +220,34 @@ public:
     int natural_width(const ComponentLayout&) const override { return -1; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.radio_key_down(key); }
 };
+class Dropdown final : public Command {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
+        int line = c.measure.line_height(p.text_size), row = c.appearance.button_height(line, c.scale);
+        p.lines.push_back({{0, 0, c.width, line}, s.name});
+        p.lines.push_back({{scaled(c.scale, 8), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 16)), line}, s.value.empty() ? u"\u672a\u9078\u53d6" : s.value});
+        int y = line + row;
+        if (s.invalid) {
+            p.error_lines = block(c.measure, s.error, p.text_size, c.width);
+            for (auto& l : p.error_lines) l.bounds.y += y;
+            y += height_of(p.error_lines);
+        }
+        p.bounds = {0, 0, c.width, y};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto palette = c.appearance.palette();
+        auto bounds = c.placement.bounds;
+        c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : palette.border);
+        int inset = scaled(c.scale, 2);
+        c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);
+        paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
+        paint_lines(c, c.placement.error_lines, c.placement.text_size, palette.error);
+    }
+    int natural_width(const ComponentLayout&) const override { return -1; }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.dropdown_key_down(key); }
+};
 class Slider final : public ComponentType {
 public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.slider_layout_handle(c); }
@@ -260,6 +288,7 @@ public:
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
 };
 Slider slider;
+Dropdown dropdown;
 RadioGroup radio_group;
 Checkbox checkbox;
 Label label;
@@ -269,7 +298,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

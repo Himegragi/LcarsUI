@@ -11,7 +11,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider };
+enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history };
@@ -61,6 +61,8 @@ struct Semantics {
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox
+    bool expanded = false;
+    std::optional<OptionValue> candidate;
     std::string target;
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
@@ -275,7 +277,34 @@ private:
     std::string id_;
 };
 struct NumericChange { SliderHandle field; int value, origin; };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle>;
+struct DropdownChange;
+class DropdownHandle {
+public:
+    DropdownHandle() = default;
+    Result open() const;
+    Result cancel() const;
+    Result select(OptionValue value) const;
+    Result set_options(std::vector<RadioOption> options) const;
+    Result use_latest() const;
+    Result focus() const;
+    Result enable(bool enabled) const;
+    Result connect_source(OptionSource source) const;
+    Result connect_immediate(std::function<Result(const DropdownChange&)> write) const;
+    Result connect_confirmed(std::function<Result(const DropdownChange&)> write) const;
+    Result confirm() const;
+    Query<std::optional<OptionValue>> draft() const;
+    Query<Semantics> describe() const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    DropdownHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
@@ -285,8 +314,8 @@ struct ConfirmationResult {
     Result result;
     std::vector<FieldError> errors;
 };
-using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle>;
-using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange>;
+using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
+using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange>;
 struct MixedFieldError { ConfirmField field; std::u16string message; };
 struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
 // Owns the component tree. Components are operated through the handles returned at creation.
@@ -303,6 +332,7 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     // Throws std::invalid_argument when minimum >= maximum or step <= 0.
     SliderHandle add_slider(Control control, SliderRange range);
+    DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,

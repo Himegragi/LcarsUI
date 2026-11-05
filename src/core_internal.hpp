@@ -22,6 +22,10 @@ public:
     CheckboxHandle add_checkbox(Control control);
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
+    DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
+    ComponentHandle dropdown_layout_handle(const Control& control);
+    Result dropdown_key_down(KeyPress key);
+    void close_popup();
     ComponentHandle slider_layout_handle(const Control& control);
     Result slider_key_down(KeyPress key);
     Result slider_set_value(const Id& id, int value);
@@ -106,7 +110,7 @@ public:
     void check(std::string_view id, bool checked);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
-    void modal(bool active) { modal_ = active; }
+    void modal(bool active) { modal_ = active; if (active) close_popup(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
 private:
@@ -116,6 +120,7 @@ private:
     friend class ::lcars::CheckboxHandle;
     friend class ::lcars::RadioGroupHandle;
     friend class ::lcars::SliderHandle;
+    friend class ::lcars::DropdownHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -153,6 +158,18 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, RadioField, std::less<>> radios_;
+    struct DropdownField {
+        OptionSource source;
+        std::vector<RadioOption> options;
+        std::optional<OptionValue> value, source_value, origin, candidate;
+        bool connected = false, submitting = false, confirmation_member = false;
+        std::function<Result(const DropdownChange&)> immediate, confirmed;
+        std::function<void()> disconnect;
+    };
+    std::map<Id, DropdownField, std::less<>> dropdowns_;
+    Id popup_source_;
+    Result select_dropdown(const Id& id, OptionValue value);
+    void dropdown_source_changed(const Id& id);
     struct NumericField {
         SliderRange range;
         NumericSource source;
