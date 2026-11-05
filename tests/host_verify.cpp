@@ -752,12 +752,14 @@ std::string os_version() {
 
 struct Live {
     edit_form::Form form{edit_form::default_ids(), true};
-    DesktopHost host;
+    std::unique_ptr<DesktopHost> owner;
+    DesktopHost& host;
     const edit_form::Ids& ids;
     HWND helper = nullptr;
     std::size_t logged = 0;
     explicit Live(const Appearance& appearance)
-        : host(form.ui, appearance, [this] { return form.page(); }, form.scroll, Fixture::options(), true, false), ids(form.ids()) {
+        : owner(std::make_unique<DesktopHost>(form.ui, appearance, [this] { return form.page(); }, form.scroll, Fixture::options(), true, false)),
+          host(*owner), ids(form.ids()) {
         host.client_size(800, 600);
         SetWindowPos(host.window(), HWND_TOP, 40, 40, 0, 0, SWP_NOSIZE);
         ShowWindow(host.window(), SW_SHOW);
@@ -805,10 +807,8 @@ struct Live {
     void tap(WORD vk) { send(vk, false); send(vk, true); }
     void chord(WORD modifier, WORD vk) { send(modifier, false); tap(vk); send(modifier, true); }
     void type(const char* keys) { for (const char* k = keys; *k; ++k) tap(static_cast<WORD>(*k)); wait(250); }
-    void click(std::string_view id, int x_bias = 0) {
+    void click_point(POINT p) {
         guard();
-        auto r = detail::find_placement(host.frame(), id)->bounds;
-        POINT p{r.x + r.w / 2 + x_bias, r.y + r.h / 2};
         ClientToScreen(host.window(), &p);
         int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
         int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN), vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
@@ -823,6 +823,10 @@ struct Live {
         in[2].mi.dwFlags |= MOUSEEVENTF_LEFTUP;
         SendInput(3, in, sizeof(INPUT));
         wait(300);
+    }
+    void click(std::string_view id, int x_bias = 0) {
+        auto r = detail::find_placement(host.frame(), id)->bounds;
+        click_point({r.x + r.w / 2 + x_bias, r.y + r.h / 2});
     }
     int history() {
         auto& ui = form.ui;
@@ -1061,6 +1065,23 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         report.check("R08-real-window-focus", visible_before && hidden_away && fresh_delay && visible_after,
                      "Real foreground switch closes and restarts the delay; tooltip returns without taking source focus");
         live.wait(200);
+
+        // Follow the desktop run loop through WM_CLOSE and host destruction while the model is still alive.
+        live.form.handles.tabs.activate({"v01"});
+        if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be reactivated for close");
+        live.start_in_name();
+        live.type("JI3");
+        bool close_started = session->composing && !session->preedit.empty();
+        auto close_before = live.state();
+        PostMessageW(live.host.window(), WM_CLOSE, 0, 0);
+        int run_result = live.host.run();
+        events << "E01-close-before-destroy\t" << live.events() << '\n';
+        live.owner.reset();
+        bool close_ok = close_started && run_result == 0 && !session->composing &&
+                        detail::access(ui).text(ids.name) == u"測試使用者" && live.history() == 0 && live.form.applies() == 0;
+        report.check("E01-close", close_ok,
+                     "WM_CLOSE exits the real host loop and destroys its window; before: " + close_before +
+                     " => after destruction: " + live.state());
         return true;
     } catch (const Blocked& blocked) {
         report.check("BLOCKED", false, blocked.what());
@@ -1081,6 +1102,150 @@ int run_ime(const std::filesystem::path& folder) {
     }
     CoUninitialize();
     std::cout << report.checks << " real-input checks, " << report.failures << " not passing\n";
+    return report.failures ? 1 : 0;
+}
+
+// Real per-monitor transition. Unlike the offscreen matrix this never forces a scale.
+// The window procedure wrapper observes the actual OS message before forwarding it.
+namespace {
+WNDPROC dpi_previous_proc = nullptr;
+int dpi_messages = 0;
+LRESULT CALLBACK dpi_observer(HWND window, UINT msg, WPARAM w, LPARAM l) {
+    if (msg == WM_DPICHANGED) ++dpi_messages;
+    return CallWindowProcW(dpi_previous_proc, window, msg, w, l);
+}
+struct DpiObserver {
+    HWND window;
+    explicit DpiObserver(HWND w) : window(w) {
+        dpi_messages = 0;
+        dpi_previous_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(dpi_observer)));
+        if (!dpi_previous_proc) throw Blocked("could not observe WM_DPICHANGED");
+    }
+    ~DpiObserver() { SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(dpi_previous_proc)); }
+};
+BOOL CALLBACK collect_monitor(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
+    auto* monitors = reinterpret_cast<std::vector<MONITORINFOEXW>*>(data);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (GetMonitorInfoW(monitor, &info)) monitors->push_back(info);
+    return TRUE;
+}
+
+bool dpi_session(const Appearance& appearance, Report& report) {
+    try {
+        std::vector<MONITORINFOEXW> monitors;
+        EnumDisplayMonitors(nullptr, nullptr, collect_monitor, reinterpret_cast<LPARAM>(&monitors));
+        if (monitors.size() < 2) throw Blocked("two active monitors are required");
+        std::sort(monitors.begin(), monitors.end(), [](const auto& a, const auto& b) { return a.rcMonitor.left < b.rcMonitor.left; });
+        Live live(appearance);
+        DpiObserver observer(live.host.window());
+        auto& ui = live.form.ui;
+        const auto& ids = live.ids;
+        auto move = [&](const MONITORINFOEXW& monitor) {
+            auto r = monitor.rcMonitor;
+            SetWindowPos(live.host.window(), nullptr, r.left + 20, r.top + 20, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            live.wait(400);
+            live.host.paint();
+            return GetDpiForWindow(live.host.window());
+        };
+        UINT first = move(monitors[0]);
+        live.start_in_name();
+        detail::access(ui).select(ids.name, 1, 3);
+        live.host.paint();
+        int before = dpi_messages;
+        UINT second = move(monitors[1]);
+        auto* session = detail::access(ui).edit(ids.name);
+        auto* field = live.host.frame().find(live.form.handles.name);
+        bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
+                     session->selection.caret == 3 && detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
+        // Field-part rectangles are relative to the containing placement.
+        int hit_x = field ? field->bounds.x + field->field.editor.x + field->field.editor.w / 2 : 0;
+        int hit_y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+        auto* hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
+        bool hit = hit_item && hit_item->id == ids.name;
+        unsigned expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
+        if (hit) live.click_point({hit_x, hit_y});
+        bool pointer = hit && session->selection.anchor == expected_caret && session->selection.caret == expected_caret;
+        report.check("D01-selection-forward", first != second && dpi_messages > before && state && hit && pointer,
+                     narrow(std::wstring(monitors[0].szDevice)) + " " + std::to_string(first) + " -> " +
+                     narrow(std::wstring(monitors[1].szDevice)) + " " + std::to_string(second) +
+                     "; WM_DPICHANGED=" + std::to_string(dpi_messages - before) + "; selection/focus=" +
+                     std::to_string(state) + "; field hit=" + std::to_string(hit) + "; physical click caret=" + std::to_string(pointer));
+
+        detail::access(ui).select(ids.name, 1, 3);
+
+        Profiles profiles;
+        if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated for this process");
+        if (auto imc = ImmGetContext(live.host.window())) {
+            DWORD conversion = 0, sentence = 0;
+            ImmGetConversionStatus(imc, &conversion, &sentence);
+            ImmSetConversionStatus(imc, conversion | IME_CMODE_NATIVE, sentence);
+            ImmReleaseContext(live.host.window(), imc);
+        }
+        live.type("JI3");
+        bool composing_before = session->composing && !session->preedit.empty();
+        before = dpi_messages;
+        UINT returned = move(monitors[0]);
+        field = live.host.frame().find(live.form.handles.name);
+        IMECHARPOSITION position{};
+        position.dwSize = sizeof(position);
+        bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION,
+                                  reinterpret_cast<LPARAM>(&position)) != 0;
+        POINT caret{field ? field->caret_x(session->begin()) : 0,
+                    field ? field->bounds.y + field->field.editor.y : 0};
+        ClientToScreen(live.host.window(), &caret);
+        CANDIDATEFORM candidate{};
+        bool candidate_ok = false;
+        if (auto imc = ImmGetContext(live.host.window())) {
+            candidate.dwIndex = 0;
+            candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field &&
+                           candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) &&
+                           candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+            ImmReleaseContext(live.host.window(), imc);
+        }
+        bool caret_ok = query && position.pt.x == caret.x && position.pt.y == caret.y;
+        bool composition = composing_before && session->composing && detail::access(ui).focused() == ids.name;
+        report.check("D01-composition-return", returned == first && dpi_messages > before && composition && caret_ok && candidate_ok,
+                     std::to_string(second) + " -> " + std::to_string(returned) + "; WM_DPICHANGED=" +
+                     std::to_string(dpi_messages - before) + "; composition=" + std::to_string(composition) +
+                     "; IMR caret=" + std::to_string(caret_ok) + "; candidate placement request=" + std::to_string(candidate_ok));
+        live.clear_composition();
+        profiles.us();
+        live.form.handles.region.focus();
+        live.tap(VK_RETURN);
+        live.host.paint();
+        before = dpi_messages;
+        UINT popup_dpi = move(monitors[1]);
+        const auto& frame = live.host.frame();
+        bool popup = !frame.overlays.empty();
+        if (popup) {
+            const auto& overlay = frame.overlays.front();
+            auto r = overlay.bounds;
+            auto* target = frame.hit(r.x + r.w / 2, r.y + r.h / 2);
+            popup = r.x >= 0 && r.y >= 0 && r.x + r.w <= frame.viewport.w && r.y + r.h <= frame.viewport.h &&
+                    target && target->popup;
+        }
+        report.check("D01-popup-forward", popup_dpi == second && dpi_messages > before && popup,
+                     "Open dropdown across monitor move: WM_DPICHANGED=" + std::to_string(dpi_messages - before) +
+                     "; popup inside viewport and hit=" + std::to_string(popup));
+        return true;
+    } catch (const Blocked& blocked) {
+        report.check("BLOCKED", false, blocked.what());
+        return false;
+    }
+}
+}
+int run_dpi(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "dpi.tsv");
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        if (!dpi_session(*appearance, report)) break;
+    }
+    CoUninitialize();
+    std::cout << report.checks << " real DPI checks, " << report.failures << " not passing\n";
     return report.failures ? 1 : 0;
 }
 
@@ -1141,19 +1306,20 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false;
+        bool ime = false, clipboard_only = false, dpi = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--ime") ime = true;
+            else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || (ime && clipboard_only))
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

@@ -142,6 +142,17 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 }
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
+    // A host may be destroyed while its Ui remains alive. Discard an unfinished
+    // preedit on both sides before detaching the window; closing must not leave
+    // an orphaned composition in the retained text session.
+    const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
+    if (window_ && session && session->composing) {
+        if (auto imc = ImmGetContext(window_)) {
+            ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+            ImmReleaseContext(window_, imc);
+        }
+        detail::access(ui_).composition_cancel();
+    }
     detail::access(ui_).on_invalidate({});
     detail::access(ui_).tooltip_clock({});
     if (window_) KillTimer(window_, tooltip_timer);

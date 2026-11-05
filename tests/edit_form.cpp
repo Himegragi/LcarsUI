@@ -1,6 +1,6 @@
 #include "core_internal.hpp"
-// V01 minimal edit form acceptance through the assembled application's public operations.
-// Every case runs twice: with the shipped IDs and with an unrelated ID set (AC02).
+// Assembled showcase acceptance through public operations and the host input seam.
+// Every case runs for both appearances and both the shipped and alternate ID sets (AC02).
 #include "check.hpp"
 #include "edit_form.hpp"
 #include "fake_measure.hpp"
@@ -237,6 +237,91 @@ void checkbox_and_radio_are_applied_together() {
     form.handles.reset.invoke();
     check(form.notices_applied() && form.mode_applied() == OptionValue{"normal"} && *form.handles.notices.draft(),
           "Reset restores the initial checkbox and radio values");
+}
+
+void v02_empty_single_and_navigation() {
+    edit_form::Form form(ids, true);
+    form.handles.tabs.activate({"v02"});
+    auto& page = *form.list;
+    auto& h = page.handles;
+    auto& host = detail::access(form.ui);
+    test::FakeMeasure measure;
+    h.zero.invoke(); h.list.focus();
+    host.key_down({Key::down}); host.key_down({Key::space});
+    auto empty = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
+    check(empty.find(h.list) && h.list.describe()->focused && !h.list.describe()->candidate && !page.selection(),
+          "V02 empty list is rendered, focusable and has no selection");
+    host.key_down({Key::tab});
+    check(!h.list.describe()->focused, "Tab leaves an empty V02 list");
+    h.one.invoke(); h.list.focus(); host.key_down({Key::space}); host.key_down({Key::end});
+    check(page.selection() == OptionValue{"T001"}, "Single-item endpoints stay on T001");
+    h.twenty.invoke(); h.list.focus();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
+    const auto* item = frame.find(h.list);
+    check(item && item->options.size() == 20, "Twenty V02 rows are arranged");
+    auto row = item->options[2];
+    check(frame.option_at(*item, row.x + 3, row.y + row.h / 2) == 2, "T003 has a visible pointer target");
+    host.pointer_down(item->id, 2); host.pointer_up(item->id, 2);
+    check(page.selection() == OptionValue{"T003"}, "Pointer selects T003");
+    auto visible = [&](std::size_t index) {
+        auto next = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
+        auto* list = next.find(h.list);
+        return list && index < list->options.size() && intersect(list->options[index], list->clip) == list->options[index];
+    };
+    host.key_down({Key::down});
+    check(page.selection() == OptionValue{"T004"} && visible(3), "Down selects and reveals T004");
+    host.key_down({Key::end});
+    check(page.selection() == OptionValue{"T020"} && visible(19), "End selects and reveals T020");
+    host.key_down({Key::home});
+    check(page.selection() == OptionValue{"T001"} && visible(0), "Home selects and reveals T001");
+}
+
+void v02_identity_filter_and_delete() {
+    edit_form::Form form(ids, true);
+    form.handles.tabs.activate({"v02"});
+    auto& page = *form.list; auto& h = page.handles;
+    test::FakeMeasure measure;
+    h.list.focus(); h.list.select({"T006"}); h.sort.invoke();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
+    check(frame.find(h.list) && page.selection() == OptionValue{"T006"} && h.detail.describe()->value.find(u"T006") != std::u16string::npos,
+          "Reverse sorting retains the selected duplicate identity in the detail");
+    h.sort.invoke();
+    check(page.selection() == OptionValue{"T006"}, "Restoring sort preserves T006");
+    h.list.select({"T003"}); h.search.set_value(u"範本 20");
+    check(!page.selection() && h.list.describe()->options.size() == 1 && h.list.describe()->options[0].value == OptionValue{"T020"},
+          "Filtering T003 out clears selection and leaves T020");
+    h.search.set_value(u"");
+    check(!page.selection() && h.list.describe()->options.size() == 20, "Clearing the filter does not restore selection");
+    h.list.focus(); h.list.select({"T003"}); h.erase.invoke();
+    const auto remaining = h.list.describe()->options;
+    bool identities = remaining.size() == 19;
+    for (int n = 1; n <= 20 && identities; ++n) {
+        if (n == 3) continue;
+        auto expected = "T" + std::string(n < 10 ? "00" : "0") + std::to_string(n);
+        auto index = static_cast<std::size_t>(n < 3 ? n - 1 : n - 2);
+        identities = remaining[index].value == OptionValue{expected};
+    }
+    check(!page.selection() && h.list.describe()->candidate == OptionValue{"T004"} && h.list.describe()->options.size() == 19 &&
+          identities && h.erase.invoke().status == Status::disabled, "Deleting T003 keeps all other identities, clears selection and disables deletion");
+    h.search.focus(); detail::access(form.ui).key_down({Key::tab});
+    check(h.list.describe()->focused && !page.selection() && h.list.describe()->candidate == OptionValue{"T001"},
+          "Tab reentry starts at T001 without selecting it");
+}
+
+void v02_disabled_and_filtered_neighbors() {
+    edit_form::Form form(ids, true);
+    form.handles.tabs.activate({"v02"});
+    auto& page = *form.list; auto& h = page.handles;
+    test::FakeMeasure measure;
+    h.list.focus(); h.list.select({"T008"}); h.disable_eight.invoke();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
+    auto options = h.list.describe()->options;
+    check(frame.find(h.list) && !page.selection() && h.list.describe()->candidate == OptionValue{"T009"} &&
+          h.list.select({"T008"}).status == Status::invalid_value && options.size() == 20 &&
+          options[6].value == OptionValue{"T007"} && options[7].value == OptionValue{"T008"} && options[8].value == OptionValue{"T009"},
+          "Disabling selected T008 clears it, moves to T009 and keeps the neighboring identities");
+    h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.set_value(u"範本 1");
+    check(!page.selection() && h.list.describe()->candidate == OptionValue{"T010"}, "Filtering recovers the next surviving identity T010");
 }
 
 void pages_keep_independent_drafts_history_and_scroll() {
@@ -549,6 +634,9 @@ int main() {
         {"P04 removed opener and confirm", dialog_removed_opener_can_confirm},
         {"P07 progress display and source", progress_displays_clamped_values_without_changing_the_model},
         {"L07 L08 R07 page scopes", pages_keep_independent_drafts_history_and_scroll},
+        {"L01 L02 V02 navigation in each appearance", v02_empty_single_and_navigation},
+        {"L03 L04 L05 R03 R10 V02 identities", v02_identity_filter_and_delete},
+        {"N08 R11 V02 neighbors", v02_disabled_and_filtered_neighbors},
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"F01 five fields apply once", all_five_fields_apply_once},
         {"G11 volume conflict", volume_conflict_offers_latest},
