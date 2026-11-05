@@ -167,6 +167,24 @@ void list_native(const Appearance& appearance, Report& report) {
     bool clamped = host.frame().offset <= host.frame().maximum;
     report.check("L06-N07-native-scroll", wheel && dragged && clicked && clamped,
         "wheel=" + std::to_string(wheel) + ", thumb drag=" + std::to_string(dragged) + ", click T100=" + std::to_string(clicked) + ", shrink clamped=" + std::to_string(clamped));
+
+    page.handles.twenty.invoke(); page.handles.disable_eight.invoke(); page.handles.list.focus();
+    host.pump();
+    post(WM_KEYDOWN, VK_HOME, key_lparam(VK_HOME, false, false));
+    for (int i = 0; i < 6; ++i) post(WM_KEYDOWN, VK_DOWN, key_lparam(VK_DOWN, false, false));
+    host.paint();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), 0); host.paint();
+    item = host.frame().find(page.handles.list);
+    bool disabled_click = false;
+    if (item && item->options.size() > 7 && visible(item->options[7])) {
+        auto r = item->options[7]; POINT point{r.x + 8, r.y + r.h / 2};
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y));
+        post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y));
+        disabled_click = page.selection() == OptionValue{"T007"};
+    }
+    post(WM_KEYDOWN, VK_DOWN, key_lparam(VK_DOWN, false, false));
+    report.check("R09-native-disabled-row", disabled_click && page.selection() == OptionValue{"T009"},
+        "disabled T008 click ignored=" + std::to_string(disabled_click) + ", Down from T007 skips to T009=" + std::to_string(page.selection() == OptionValue{"T009"}));
 }
 
 void space_activation_does_not_leak(const Appearance& appearance, Report& report) {
