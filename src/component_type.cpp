@@ -220,6 +220,46 @@ public:
     int natural_width(const ComponentLayout&) const override { return -1; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.radio_key_down(key); }
 };
+class Slider final : public ComponentType {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.slider_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto& p = c.placement;
+        auto semantics = *c.ui.describe(c.control.id);
+        int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, 10), track_height = scaled(c.scale, 18);
+        auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : u"\uff08\u505c\u7528\uff09");
+        if (semantics.source_conflict) title += u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09";
+        p.lines = block(c.measure, title, p.text_size, c.width);
+        int y = height_of(p.lines) + scaled(c.scale, 4);
+        p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};
+        y += track_height;
+        if (semantics.invalid) {
+            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
+            for (auto& l : p.error_lines) l.bounds.y += y;
+            y += height_of(p.error_lines);
+        }
+        p.bounds = {0, 0, c.width, std::max(y, line)};
+    }
+    void paint(ComponentPaint& c) const override {
+        const auto& item = c.placement; auto palette = c.appearance.palette();
+        paint_lines(c, item.lines, item.text_size, c.semantics.enabled ? palette.text : palette.muted);
+        paint_lines(c, item.error_lines, item.text_size, palette.error);
+        auto track = item.slider_track; int thickness = scaled(c.scale, 3);
+        c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.border : palette.muted);
+        if (c.semantics.slider_range && c.semantics.numeric_value) {
+            const auto range = *c.semantics.slider_range;
+            double ratio = (static_cast<double>(*c.semantics.numeric_value) - range.minimum) /
+                           (static_cast<double>(range.maximum) - range.minimum);
+            int x = track.x + static_cast<int>(std::lround(track.w * ratio));
+            int size = scaled(c.scale, c.semantics.focused ? 16 : 12);
+            c.rounded({x - size / 2, track.y + (track.h - size) / 2, size, size}, size / 2,
+                      c.semantics.enabled ? palette.accent : palette.muted);
+            if (c.semantics.focused) c.fill({track.x, track.y + track.h - scaled(c.scale, 2), track.w, scaled(c.scale, 2)}, palette.accent);
+        }
+    }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
+};
+Slider slider;
 RadioGroup radio_group;
 Checkbox checkbox;
 Label label;
@@ -229,7 +269,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

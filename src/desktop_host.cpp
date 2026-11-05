@@ -397,6 +397,10 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 detail::access(ui_).select(id, anchor, offset);
                 drag_ = Drag::text;
             }
+            if (hit->kind == Kind::slider) {
+                drag_ = Drag::slider;
+                detail::access(ui_).slider_pointer(id, x, hit->slider_track);
+            }
             SetCapture(window_);
         }
         after_input(before);
@@ -408,6 +412,10 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             const auto& id = detail::access(ui_).focused();
             if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
             InvalidateRect(window_, nullptr, FALSE);
+        } else if (drag_ == Drag::slider && (w & MK_LBUTTON)) {
+            const auto& id = detail::access(ui_).focused();
+            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             scroll_.offset = frame_.offset_for_thumb(drag_offset_ + (y - drag_origin_));
             InvalidateRect(window_, nullptr, FALSE);
@@ -417,7 +425,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_LBUTTONUP: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
-        if (drag_ == Drag::none) {
+        if (drag_ == Drag::slider) {
+            const auto& id = detail::access(ui_).focused();
+            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            detail::access(ui_).pointer_up(id);
+        } else if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
             // Settle the press before releasing capture; capture loss would cancel it.
             detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);

@@ -861,8 +861,110 @@ void unconnected_selection_controls_do_not_advertise_writes() {
           "Connected editable controls advertise their available modifications");
 }
 
+void slider_connected_draft_is_confirmed_as_a_number() {
+    int model = 40;
+    Ui ui({});
+    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5});
+    auto apply = ui.add_button({.id = "apply.slider", .kind = Kind::button});
+    slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+        model = std::get<NumericChange>(changes[0]).value;
+        return MixedConfirmationResult{};
+    });
+    check(bool(slider.set_value(55)) && *slider.draft() == 55 && model == 40 && slider.describe()->value == u"55",
+          "The numeric edit and semantic value are drafts until apply");
+    check(bool(apply.invoke()) && model == 55, "Apply submits the numeric draft through the application callback");
+}
+
+void slider_non_divisible_range_and_keyboard() {
+    Ui ui({});
+    auto slider = ui.add_slider({.id = "level", .kind = Kind::slider}, {-3, 8, 4});
+    slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
+    slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+    slider.set_value(3);
+    check(*slider.draft() == 5, "A midpoint snaps to the higher step");
+    slider.set_value(7);
+    check(*slider.draft() == 8, "The shorter final interval snaps to the maximum");
+    slider.focus();
+    detail::access(ui).key_down({.key = Key::left});
+    check(*slider.draft() == 5, "Left from the maximum reaches the last regular step");
+    detail::access(ui).key_down({.key = Key::right});
+    detail::access(ui).key_down({.key = Key::right});
+    check(*slider.draft() == 8, "Right reaches and stops at the maximum");
+    detail::access(ui).key_down({.key = Key::home});
+    check(*slider.draft() == -3, "Home reaches the minimum");
+    detail::access(ui).key_down({.key = Key::end});
+    check(*slider.draft() == 8, "End reaches the non-divisible maximum");
+    slider.enable(false);
+    check(slider.set_value(1).status == Status::disabled && *slider.draft() == 8, "Disabled edits are rejected");
+}
+
+void slider_rejects_invalid_ranges() {
+    Ui ui({}); int rejected = 0;
+    for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}}) {
+        try { ui.add_slider({.id = "invalid", .kind = Kind::slider}, range); } catch (const std::invalid_argument&) { ++rejected; }
+    }
+    check(rejected == 4, "Empty or reversed ranges and non-positive steps are rejected");
+    bool missing_range = false;
+    try { Ui invalid({{.id = "missing", .kind = Kind::slider}}); } catch (const std::invalid_argument&) { missing_range = true; }
+    check(missing_range, "A slider without a range cannot be created through the untyped constructor");
+}
+
+void slider_source_conflict_and_invalid_updates() {
+    int model = 40; std::function<void()> changed; int origin = -1;
+    SliderHandle saved;
+    {
+        Ui ui({});
+        saved = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5});
+        auto apply = ui.add_button({.id = "send", .kind = Kind::button});
+        saved.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
+        ui.connect_mixed_confirmation(apply, {saved}, [&](const auto& changes) {
+            origin = std::get<NumericChange>(changes[0]).origin;
+            return MixedConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
+        });
+        saved.set_value(55); model = 70; changed();
+        check(*saved.draft() == 55 && saved.describe()->source_conflict, "External updates retain a conflicting numeric draft");
+        check(apply.invoke().status == Status::invalid_value && origin == 40 && saved.describe()->error == u"Volume rejected" && *saved.draft() == 55,
+              "A rejected group retains the draft, origin, field error and focus");
+        check(bool(saved.use_latest()) && *saved.draft() == 70 && !saved.describe()->source_conflict, "Use latest restores the numeric source");
+        model = 72; changed();
+        check(*saved.draft() == 70 && saved.describe()->invalid, "An invalid notified source value cannot escape the range contract");
+        model = 75; changed();
+        check(*saved.draft() == 75 && !saved.describe()->invalid, "A valid source update clears its earlier source error");
+    }
+    check(!changed && saved.draft().status == Status::not_found, "Destroying the tree disconnects the numeric source and expires the handle");
+}
+
+void slider_group_preserves_edits_during_submission() {
+    int model = 40, submitted_origin = -1; std::function<void()> changed;
+    Ui ui({});
+    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5});
+    auto apply = ui.add_button({.id = "apply", .kind = Kind::button});
+    slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
+    int calls = 0;
+    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+        const auto change = std::get<NumericChange>(changes[0]);
+        ++calls; submitted_origin = change.origin;
+        if (calls == 1) {
+            check(apply.invoke().status == Status::busy, "A running confirmation cannot be reentered");
+            slider.set_value(65);
+        }
+        model = change.value; changed();
+        return MixedConfirmationResult{};
+    });
+    slider.set_value(55); apply.invoke();
+    check(model == 55 && *slider.draft() == 65, "An edit during submission survives as a new draft");
+    apply.invoke();
+    check(model == 65 && submitted_origin == 55, "The next submission starts from the accepted value");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G11 edits during numeric submission", slider_group_preserves_edits_during_submission},
+        {"G10 numeric source and conflict lifecycle", slider_source_conflict_and_invalid_updates},
+        {"N04 non-divisible steps and keys", slider_non_divisible_range_and_keyboard},
+        {"N04 invalid slider ranges", slider_rejects_invalid_ranges},
+        {"C07 numeric draft and confirmation", slider_connected_draft_is_confirmed_as_a_number},
         {"G04 selection operations reflect write admission", unconnected_selection_controls_do_not_advertise_writes},
         {"G10 standalone typed confirmations", standalone_boolean_and_option_confirmation},
         {"G11 radio conflict and latest", radio_source_conflict_can_be_resolved},

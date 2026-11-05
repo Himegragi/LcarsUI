@@ -53,6 +53,7 @@ struct Placement {
     int caption_size = 0;         // text fields: label, description and error text size
     std::vector<Line> lines;      // labels and command titles
     std::vector<Rect> options;   // radio option hit and paint bounds
+    Rect slider_track;           // slider track in frame coordinates
     FieldLayout field;            // text fields, translated to frame coordinates
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
@@ -69,6 +70,7 @@ struct Frame {
     const Placement* find(const LabelHandle& handle) const;
     const Placement* find(const CheckboxHandle& handle) const;
     const Placement* find(const RadioGroupHandle& handle) const;
+    const Placement* find(const SliderHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x

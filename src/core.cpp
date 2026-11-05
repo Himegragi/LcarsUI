@@ -1,6 +1,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include <stdexcept>
+#include <cmath>
 namespace lcars {
 namespace {
 // Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
@@ -49,6 +50,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
+        if (control.kind == Kind::slider) throw std::invalid_argument("A slider requires an explicit range; use add_slider");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -67,6 +69,7 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : bools_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : radios_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
 }
 TextHandle detail::UiState::add_text(Control control) {
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
@@ -321,6 +324,151 @@ Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
     auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
     return {Status::ok, {}, ui_->radios_.at(id_).value};
 }
+namespace {
+int snap_slider(SliderRange range, int input) {
+    const long long lo = range.minimum, hi = range.maximum, step = range.step;
+    const long long value = std::clamp<long long>(input, lo, hi);
+    const long long lower = lo + ((value - lo) / step) * step;
+    const long long upper = std::min(hi, lower + step);
+    return static_cast<int>(value - lower < upper - value ? lower : upper);
+}
+}
+SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
+    if (control.kind != Kind::slider || control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
+        throw std::invalid_argument("Invalid slider component or range");
+    auto id = control.id;
+    controls_.push_back(std::move(control));
+    NumericField field{}; field.range = range; field.value = field.source_value = field.origin = range.minimum;
+    numerics_.emplace(id, std::move(field));
+    return SliderHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::slider_layout_handle(const Control& c) { return SliderHandle(this, lifetime_, c.id); }
+Result SliderHandle::set_value(int value) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->slider_set_value(id_, value);
+}
+Result SliderHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result SliderHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    ui_->enable(id_, enabled); return {};
+}
+Result SliderHandle::use_latest() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->numerics_.at(id_);
+    if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+}
+Result SliderHandle::connect_source(NumericSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
+    auto& f = ui_->numerics_.at(id_);
+    int value = source.read();
+    if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
+    if (f.disconnect) f.disconnect();
+    f.source = std::move(source); f.connected = false;
+    auto weak = lifetime_; auto state = ui_; auto id = id_;
+    f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); });
+    ui_->numeric_source_changed(id_); return {};
+}
+void detail::UiState::numeric_source_changed(const Id& id) {
+    auto& f = numerics_.at(id); int value = f.source.read();
+    if (snap_slider(f.range, value) != value) {
+        if (!f.source_invalid) { auto it = errors_.find(id); f.error_before_source = it == errors_.end() ? u"" : it->second; }
+        f.source_invalid = true; set_error(id, u"Source value is outside the slider's valid values");
+        if (invalidate_) invalidate_(); return;
+    }
+    if (f.source_invalid) { f.source_invalid = false; set_error(id, std::move(f.error_before_source)); }
+    bool clean = !f.connected || f.value == f.source_value;
+    f.source_value = value; f.connected = true;
+    if (clean && !f.submitting) f.value = f.origin = value;
+    if (invalidate_) invalidate_();
+}
+Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->numerics_.at(id_);
+    if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.immediate = std::move(write); return {};
+}
+Result SliderHandle::connect_confirmed(std::function<Result(const NumericChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->numerics_.at(id_);
+    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.confirmed = std::move(write); return {};
+}
+Result SliderHandle::confirm() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->numerics_.at(id_);
+    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+    NumericChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+    Result result;
+    try { result = f.confirmed(change); }
+    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false; ui_->invoking_ = false;
+    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+    auto notification = ui_->notify(); return notification ? result : notification;
+}
+Result detail::UiState::slider_set_value(const Id& id, int value) {
+    if (auto r = available(id); !r) return r;
+    auto& f = numerics_.at(id);
+    if (find(id)->read_only) return {Status::read_only, u"Component is read only"};
+    if (!f.connected || (!f.immediate && !f.confirmed && !f.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (dispatching_) return {Status::busy, u"Operation is already executing"};
+    value = snap_slider(f.range, value);
+    if (f.value == value) return {};
+    if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
+    f.value = value;
+    NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
+    if (!f.immediate || f.submitting) return notify();
+    f.submitting = true; Result result;
+    try { result = f.immediate(change); } catch (...) { f.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false;
+    if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
+    auto notification = notify(); return notification ? result : notification;
+}
+Result detail::UiState::slider_pointer(const Id& id, int x, Rect track) {
+    if (pointer_armed_ != id || track.w <= 0) return {Status::invalid_value, u"No slider drag is active"};
+    auto& f = numerics_.at(id);
+    double ratio = std::clamp((static_cast<double>(x) - track.x) / track.w, 0.0, 1.0);
+    double value = static_cast<double>(f.range.minimum) + ratio * (static_cast<double>(f.range.maximum) - f.range.minimum);
+    return slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+}
+Result detail::UiState::slider_key_down(KeyPress key) {
+    auto& f = numerics_.at(focus_);
+    const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
+    long long target = value;
+    switch (key.key) {
+    case Key::home: target = lo; break;
+    case Key::end: target = hi; break;
+    case Key::right: case Key::up:
+        if (value < hi) target = std::min(hi, lo + ((value - lo) / step + 1) * step);
+        break;
+    case Key::left: case Key::down:
+        if (value > lo) target = lo + ((value - lo - 1) / step) * step;
+        break;
+    default: return {};
+    }
+    return slider_set_value(focus_, static_cast<int>(target));
+}
+Query<Semantics> SliderHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<int> SliderHandle::draft() const {
+    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+    return {Status::ok, {}, ui_->numerics_.at(id_).value};
+}
 ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     auto control = find(id);
     if (!control) return {};
@@ -508,6 +656,8 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
                 auto it = edits_.find(h.id_); return it != edits_.end() && it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             } else if constexpr (std::is_same_v<T, CheckboxHandle>) {
                 auto it = bools_.find(h.id_); return it != bools_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
+            } else if constexpr (std::is_same_v<T, SliderHandle>) {
+                auto it = numerics_.find(h.id_); return it != numerics_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             } else {
                 auto it = radios_.find(h.id_); return it != radios_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
             }
@@ -518,6 +668,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).confirmation_member = true;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).confirmation_member = true;
+        else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).confirmation_member = true;
         else radios_.at(h.id_).confirmation_member = true;
     }, member);
     confirmation_buttons_.insert(button.id_);
@@ -527,6 +678,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             using T = std::decay_t<decltype(h)>;
             if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
+            else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
             else { auto& f = radios_.at(h.id_); changes.emplace_back(OptionChange{h, f.value, f.origin}); f.submitting = true; }
         }, member);
         MixedConfirmationResult outcome;
@@ -536,6 +688,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
                 using T = std::decay_t<decltype(h)>;
                 if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).submitting = false;
                 else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).submitting = false;
+                else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).submitting = false;
                 else radios_.at(h.id_).submitting = false;
             }, member);
             throw;
@@ -544,6 +697,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             using T = std::decay_t<decltype(h)>;
             if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
+            else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
             else { auto& f = radios_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<OptionChange>(changes[i]).value; }
             if (outcome.result) set_error(h.id_, u"");
         }, fields[i]);
@@ -690,6 +844,10 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         s.checked = it->second.value;
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
     }
+    if (auto it = numerics_.find(id); it != numerics_.end()) {
+        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
+        s.slider_range = it->second.range; s.numeric_value = it->second.value;
+    }
     if (auto it = radios_.find(id); it != radios_.end()) {
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
         for (const auto& option : it->second.options) {
@@ -724,6 +882,10 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
             s.operations.push_back(Operation::select);
     }
+    if (auto it = numerics_.find(id); it != numerics_.end()) {
+        const auto& f = it->second;
+        if (!control->read_only && f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::edit);
+    }
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
@@ -744,6 +906,7 @@ std::u16string detail::UiState::text(std::string_view id) const {
     }
     if (auto it = edits_.find(id); it != edits_.end()) return it->second.session.text;
     if (auto it = bools_.find(id); it != bools_.end()) return it->second.value ? u"true" : u"false";
+    if (auto it = numerics_.find(id); it != numerics_.end()) { auto value = std::to_string(it->second.value); return {value.begin(), value.end()}; }
     if (auto it = providers_.find(id); it != providers_.end()) return it->second();
     return control->value;
 }
@@ -1083,7 +1246,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     if (auto result = move_focus(control->id); !result) return result;
-    if (control->kind == Kind::radio_group) { pointer_armed_ = control->id; pointer_option_ = option; }
+    if (control->kind == Kind::radio_group || control->kind == Kind::slider) { pointer_armed_ = control->id; pointer_option_ = option; }
     else component_type(control->kind).pointer_down(*this);
     return {};
 }
@@ -1091,6 +1254,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     auto armed = std::exchange(pointer_armed_, {});
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     if (armed.empty() || armed != id) return {};
+    if (numerics_.contains(armed)) return {};
     if (auto it = radios_.find(armed); it != radios_.end()) {
         if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
         return select_option(armed, it->second.options[*option].value);
@@ -1136,6 +1300,7 @@ ButtonHandle Ui::add_button(Control control) { return state_->add_button(std::mo
 LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(control)); }
 CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
+SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));

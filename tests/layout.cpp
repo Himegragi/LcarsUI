@@ -256,8 +256,27 @@ void radio_options_share_geometry_with_pointer_input() {
     }
 }
 
+void slider_track_and_drag_share_geometry() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        Ui ui({});
+        auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5});
+        slider.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
+        slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+        test::FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(layout::control(slider), ui, *appearance, measure, 400, 200, 1.f, scroll);
+        const auto* item = frame.find(slider);
+        check(item && item->slider_track.w > 0 && frame.hit(item->slider_track.x, item->slider_track.y)->id == "volume", "The drawn track is a pointer target");
+        detail::access(ui).pointer_down(item->id);
+        detail::access(ui).slider_pointer(item->id, item->slider_track.x, item->slider_track);
+        check(*slider.draft() == 0, "Track start reaches minimum");
+        detail::access(ui).slider_pointer(item->id, item->slider_track.x + item->slider_track.w, item->slider_track);
+        check(*slider.draft() == 100, "Dragging to the track end reaches maximum");
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"C07 slider track and drag", slider_track_and_drag_share_geometry},
         {"C05 radio pointer geometry", radio_options_share_geometry_with_pointer_input},
         {"Registered component reaches layout, hit and input", registered_component_reaches_layout_hit_and_input},
         {"Layout rejects foreign and expired handles", layout_rejects_foreign_or_expired_handles},

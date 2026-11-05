@@ -21,6 +21,11 @@ public:
     LabelHandle add_label(Control control);
     CheckboxHandle add_checkbox(Control control);
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
+    SliderHandle add_slider(Control control, SliderRange range);
+    ComponentHandle slider_layout_handle(const Control& control);
+    Result slider_key_down(KeyPress key);
+    Result slider_set_value(const Id& id, int value);
+    Result slider_pointer(const Id& id, int x, Rect track);
     ComponentHandle radio_layout_handle(const Control& control);
     Result radio_key_down(KeyPress key);
     ComponentHandle checkbox_layout_handle(const Control& control);
@@ -110,6 +115,7 @@ private:
     friend class ::lcars::LabelHandle;
     friend class ::lcars::CheckboxHandle;
     friend class ::lcars::RadioGroupHandle;
+    friend class ::lcars::SliderHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -147,6 +153,18 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, RadioField, std::less<>> radios_;
+    struct NumericField {
+        SliderRange range;
+        NumericSource source;
+        bool source_invalid = false;
+        std::u16string error_before_source;
+        int value, source_value, origin;
+        bool connected = false, submitting = false, confirmation_member = false;
+        std::function<Result(const NumericChange&)> immediate, confirmed;
+        std::function<void()> disconnect;
+    };
+    std::map<Id, NumericField, std::less<>> numerics_;
+    void numeric_source_changed(const Id& id);
     Result select_option(const Id& id, OptionValue value);
     void option_source_changed(const Id& id);
     Result toggle_checkbox(const Id& id);
