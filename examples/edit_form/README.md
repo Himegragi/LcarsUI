@@ -1,5 +1,8 @@
 # V01 最小編輯表單（S1）
 
+> **Rework status (2026-11-05): incomplete.** The form and independent consumer now use typed handles, source connections and a confirmation group. The legacy string-ID operations remain public, so this branch does not yet satisfy G10. See [rework verification](evidence/rework-verification.md) for current results and limitations. The original [verification](evidence/verification.md) records the earlier S1 revision.
+
+
 [S1 實作票 #15](https://github.com/Himegragi/LcarsUI/issues/15) 的交付：以正式的 C01 標籤、C02 按鈕、C03 單行文字欄位組成最小 V01 編輯表單，分別以 Minimal Web 與 Material-inspired 外觀啟動。兩套外觀共用同一份表單邏輯、編輯狀態及驗收案例；差異只在呈現與部件安排。資料只在記憶體。
 
 這不是穩定公開 API。型別與回呼形式仍可能隨 S2–S5 調整。

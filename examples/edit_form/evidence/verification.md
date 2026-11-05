@@ -1,5 +1,7 @@
 # S1 驗收紀錄
 
+> Historical record for the original S1 revision. Current rework results are in [rework-verification.md](rework-verification.md).
+
 票：[#15 S1：以 C++20 元件實作雙外觀最小編輯表單](https://github.com/Himegragi/LcarsUI/issues/15)。分支 `s1/minimal-edit-form`，基底 `e6d3fb3`（既有 MVP）。下列結果對應程式碼提交 `7aa136c`；本紀錄另以後續提交保存。原型分支 `prototype/component-showcase`（`ae4dced`）的 82 項結果**未**轉算為本票通過。
 
 狀態用語：通過／部分／未執行／受阻。截圖只佐證位置與呈現；值、結果、焦點、歷史一律以可查詢紀錄核對。
