@@ -1,3 +1,21 @@
+# Checkbox and radio verification - issue #17 (2026-11-05)
+
+Production and test code: commit `b6708843a70009ba7d31d2fea1d6b6ddcabcd2bc`, based on and merged with local integration tip `c8a58c0ca2c9463a63efceb5dd8d1fa883fd3ce7` (already an ancestor). The evidence-only commit follows it. The form uses typed handles and connected application-owned values; the native tests use the internal host seam for real input and geometry. Both appearances run the same form and cases.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 5/5 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 42/42 cases and 189 checks, including typed connections, mixed rejection and N03 |
+| Release desktop build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release`; includes public consumer and native host |
+| Native host, both appearances | 38/38 checks passed, 0 failed | [host results](ticket-17-host/host.tsv); F09 checkbox Space/click, radio arrow/click, disabled option and apply; [Web](ticket-17-host/web-initial.bmp), [Material](ticket-17-host/material-initial.bmp) |
+| Clipboard stress, both appearances | 400/400 checks passed, 0 failed | [clipboard results](ticket-17-clipboard/clipboard.tsv), 100 repetitions per appearance including forced contention |
+| Real Microsoft Bopomofo, both appearances | 36/36 checks passed, 0 blocked or failed | [IME results](ticket-17-ime/ime.tsv), [events](ticket-17-ime/ime-events.log); real foreground `SendInput` |
+
+The form suite has nine cases executed for each of two appearances and two ID sets (36 case executions, 304 checks). Radio tests include initially empty selection, disabled first/last options, an all-disabled group that can be exited, boundary navigation, and pointer hit geometry. Mixed confirmation tests cover a single batch, retained drafts, per-field errors and first-error focus. The independent consumer has compile-time checks that boolean, option and text source types do not implicitly convert. First tests for checkbox, radio, mixed confirmation, pointer geometry, form integration, source conflicts and available semantic actions were observed failing before the respective implementation. Earlier intermediate runs also caught the changed native focus order and incorrect Chinese source encoding; both were corrected before the recorded runs.
+
+All project C++ translation units in the compile databases use C++20: 10/10 core-only and 16/16 desktop. Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060/OpenGL 3.3; Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Trailing whitespace in the saved text evidence was normalized; outcomes and event text were retained. The 150% render is forced scale, not a real cross-monitor DPI migration. User trial, UIA, MCP, full cross-page behavior and actual cross-monitor DPI migration were not run; they remain outside these results. Confirmation callbacks are synchronous, as in S1; full asynchronous command handling remains outside this slice. F09's slider portion belongs to a later ticket and is not claimed here.
+
+---
+
 # Component type dispatch verification - issue #16 (2026-11-05)
 
 The production code tested is commit `0df8e06`, based on local integration tip `f0561f018dda303d69eceda567411a34d8bcf01f`. The evidence-only commit follows it. Component type registration is internal: it does not expose a new public plug-in API or change the application's typed handles and data connections. The test-only type supplies its own geometry, painted color, hit region and keyboard/pointer behavior. Both appearances exercise it through the existing layout and core seams and the real Win32 host; the host test rejects a click inside its bounds but outside its hit region, and checks one activation each from a click and Enter. Before the implementation, the test failed to compile because the dispatch seam did not exist; the distinct geometry/hit and paint extensions were also checked red before implementation.
