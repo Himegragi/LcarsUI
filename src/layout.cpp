@@ -65,6 +65,7 @@ Node grid(std::vector<Node> children, int min_column, int gap) {
     Node n; n.type = Node::Type::grid; n.children = std::move(children); n.min_column = min_column; n.gap = gap; return n;
 }
 Node scroll(Node child) { Node n; n.type = Node::Type::scroll; n.children.push_back(std::move(child)); return n; }
+Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
 }
 
@@ -91,6 +92,9 @@ const Placement* Frame::find(const SliderHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const DropdownHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const TabsHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
 std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y) const {
@@ -167,7 +171,11 @@ struct Arranger {
 
     int height(const Node& node, int width) {
         switch (node.type) {
-        case Node::Type::control: return build(node, width).bounds.h;
+        case Node::Type::control: {
+            auto id = ui.layout_id(node.component);
+            if (id && ui.available(*id).status == Status::hidden) return 0;
+            return build(node, width).bounds.h;
+        }
         case Node::Type::scroll: return 0;  // fills what it is given
         default: {
             std::vector<Placement> scratch;
@@ -180,6 +188,8 @@ struct Arranger {
         int pad = d(node.padding), gap = d(node.gap);
         switch (node.type) {
         case Node::Type::control: {
+            auto id = ui.layout_id(node.component);
+            if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
             out.push_back(std::move(p));
@@ -232,6 +242,11 @@ struct Arranger {
             return y - r.y;
         }
         case Node::Type::scroll: return place_scroll(node.children.front(), r, out);
+        case Node::Type::pinned: {
+            int header = place(node.children[0], {r.x, r.y, r.w, 0}, out);
+            place(node.children[1], {r.x, r.y + header, r.w, std::max(0, r.h - header)}, out);
+            return r.h;
+        }
         case Node::Type::stack: {
             int tallest = 0;
             for (const auto& child : node.children) tallest = std::max(tallest, place(child, r, out));

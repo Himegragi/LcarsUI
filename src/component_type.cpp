@@ -308,6 +308,42 @@ public:
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
 };
+class Tabs final : public ComponentType {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto semantics = *c.ui.describe(c.control.id);
+        int height = c.appearance.button_height(c.measure.line_height(c.placement.text_size), c.scale);
+        int count = static_cast<int>(semantics.options.size());
+        for (int i = 0; i < count; ++i) {
+            int left = c.width * i / count, right = c.width * (i + 1) / count;
+            c.placement.options.push_back({left, 0, right - left, height});
+            auto label = semantics.options[static_cast<std::size_t>(i)].label;
+            if (!semantics.options[static_cast<std::size_t>(i)].enabled) label += u" (disabled)";
+            if (semantics.options[static_cast<std::size_t>(i)].invalid) label += u" (error)";
+            c.placement.lines.push_back({{left + scaled(c.scale, 4), (height - c.measure.line_height(c.placement.text_size)) / 2,
+                                         std::max(0, right - left - scaled(c.scale, 8)), height}, std::move(label)});
+        }
+        c.placement.bounds = {0, 0, c.width, height};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto palette = c.appearance.palette();
+        for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
+            const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
+            c.fill(rect, option.selected ? palette.selection : palette.surface);
+            if (option.selected) c.fill({rect.x, rect.y + rect.h - scaled(c.scale, 3), rect.w, scaled(c.scale, 3)}, palette.accent);
+            if (c.semantics.focused && c.semantics.candidate && *c.semantics.candidate == option.value)
+                c.fill({rect.x, rect.y, rect.w, scaled(c.scale, 2)}, palette.accent);
+            c.clip(rect);
+            const auto& line = c.placement.lines[i];
+            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);
+        }
+        c.clip(c.placement.clip);
+    }
+    bool has_activate_operation() const override { return true; }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
+};
+Tabs tabs;
 Slider slider;
 Dropdown dropdown;
 RadioGroup radio_group;
@@ -319,7 +355,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::tabs, &tabs}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

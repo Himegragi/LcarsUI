@@ -29,7 +29,7 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 
 namespace layout {
 struct Node {
-    enum class Type { control, column, row, grid, scroll, stack } type = Type::column;
+    enum class Type { control, column, row, grid, scroll, stack, pinned } type = Type::column;
     ComponentHandle component;   // control: non-owning typed reference
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
@@ -42,6 +42,7 @@ Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
 Node scroll(Node child);  // S1 supports one scroll region per frame
+Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 }
 
@@ -75,6 +76,7 @@ struct Frame {
     const Placement* find(const RadioGroupHandle& handle) const;
     const Placement* find(const SliderHandle& handle) const;
     const Placement* find(const DropdownHandle& handle) const;
+    const Placement* find(const TabsHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x

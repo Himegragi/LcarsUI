@@ -11,10 +11,10 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown };
+enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, tabs };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
-enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history };
+enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
 struct Result {
     Status status = Status::ok;
     std::u16string message;
@@ -50,7 +50,7 @@ enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, re
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
-struct OptionSemantics { OptionValue value; std::u16string label; bool enabled = true, selected = false; };
+struct OptionSemantics { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
 struct Semantics {
     std::string id;
@@ -304,7 +304,27 @@ private:
     std::string id_;
 };
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
+class TabsHandle {
+public:
+    TabsHandle() = default;
+    Result activate(OptionValue page) const;
+    Result enable_page(OptionValue page, bool enabled) const;
+    Result focus() const;
+    Query<OptionValue> active() const;
+    Query<Semantics> describe() const;
+    Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    TabsHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, TabsHandle>;
+// Page membership is explicit, using component handles. Page identities remain stable on reorder.
+struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
@@ -333,6 +353,7 @@ public:
     // Throws std::invalid_argument when minimum >= maximum or step <= 0.
     SliderHandle add_slider(Control control, SliderRange range);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
+    TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,

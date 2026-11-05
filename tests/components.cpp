@@ -1026,8 +1026,47 @@ void dropdown_programmatic_edits_request_a_frame() {
     check(frames > 0, "Restoring the source requests repaint");
 }
 
+void tabs_require_explicit_activation_and_guard_hidden_pages() {
+    Ui ui({});
+    auto first = ui.add_button({.id = "first", .kind = Kind::button});
+    auto second = ui.add_button({.id = "second", .kind = Kind::button});
+    int clicks = 0;
+    second.bind([&] { ++clicks; return Result{}; });
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+        {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}},
+        {{"two"}, u"Two", true, {second}}});
+    auto& host = detail::access(ui);
+    check(second.invoke().status == Status::hidden, "Hidden page refuses public activation");
+    check(tabs.activate({"blocked"}).status == Status::disabled, "Disabled tab refuses activation");
+    tabs.focus(); host.key_down({.key = Key::right});
+    check(*tabs.active() == OptionValue{"one"} && tabs.describe()->candidate == OptionValue{"two"}, "Arrow skips disabled tab without activating");
+    host.key_down({.key = Key::enter});
+    check(*tabs.active() == OptionValue{"two"} && bool(second.invoke()) && clicks == 1, "Enter activates the focused page");
+    check(first.invoke().status == Status::hidden, "Previous page is hidden");
+}
+
+void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
+    Ui ui({});
+    auto first = ui.add_text({.id = "first-field", .kind = Kind::text});
+    auto second = ui.add_text({.id = "second-field", .kind = Kind::text});
+    auto submit = ui.add_button({.id = "submit", .kind = Kind::button});
+    auto source = TextSource{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
+    first.connect_source(source); second.connect_source(source);
+    auto tabs = ui.add_tabs({.id = "pages", .kind = Kind::tabs}, {
+        {{"one"}, u"One", true, {first, submit}}, {{"two"}, u"Two", true, {second}}});
+    ui.connect_confirmation(submit, {second, first}, [=](const auto&) {
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
+    });
+    check(submit.invoke().status == Status::invalid_value, "Application rejects the batch");
+    check(*tabs.active() == OptionValue{"two"} && second.describe()->focused, "First invalid field's page opens and receives focus");
+    check(tabs.describe()->options[0].invalid && first.describe()->invalid && second.describe()->invalid,
+          "Errors on the other page remain discoverable from its tab");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G11 cross-page rejection", cross_page_confirmation_reveals_first_error_and_marks_other_pages},
+        {"C09 manual tabs and hidden admission", tabs_require_explicit_activation_and_guard_hidden_pages},
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
         {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
         {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},

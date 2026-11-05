@@ -23,6 +23,11 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
+    TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
+    ComponentHandle tabs_layout_handle(const Control& control);
+    Result tabs_key_down(KeyPress key);
+    Result activate_tab(const Id& id, OptionValue page);
+    Result focus_error(const Id& id);
     ComponentHandle dropdown_layout_handle(const Control& control);
     Result dropdown_key_down(KeyPress key);
     void close_popup();
@@ -114,6 +119,7 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
 private:
+    friend class ::lcars::TabsHandle;
     friend class ::lcars::TextHandle;
     friend class ::lcars::ButtonHandle;
     friend class ::lcars::LabelHandle;
@@ -167,6 +173,13 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, DropdownField, std::less<>> dropdowns_;
+    struct TabsState {
+        std::vector<TabPage> pages;
+        std::size_t active = 0, candidate = 0;
+        std::function<void(OptionValue, OptionValue)> changed;
+    };
+    std::map<Id, TabsState, std::less<>> tabs_;
+    std::map<Id, std::pair<Id, std::size_t>, std::less<>> page_members_;
     Id popup_source_;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);

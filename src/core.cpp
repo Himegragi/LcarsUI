@@ -50,7 +50,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider || control.kind == Kind::dropdown) throw std::invalid_argument("Component requires typed creation");
+        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::tabs) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -646,6 +646,106 @@ std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) cons
         else return item.ui_ == this && !item.lifetime_.expired() ? std::optional<Id>(item.id_) : std::nullopt;
     }, handle);
 }
+TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages) {
+    if (control.kind != Kind::tabs || control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
+        throw std::invalid_argument("Invalid tabs component");
+    std::set<std::string> values;
+    std::set<Id> members;
+    for (const auto& page : pages) {
+        if (page.value.id.empty() || !values.insert(page.value.id).second) throw std::invalid_argument("Duplicate page identity");
+        for (const auto& handle : page.members) {
+            auto member = layout_id(handle);
+            if (!member || page_members_.contains(*member) || !members.insert(*member).second)
+                throw std::invalid_argument("Invalid or duplicate page member");
+        }
+    }
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    for (std::size_t i = 0; i < pages.size(); ++i)
+        for (const auto& handle : pages[i].members) page_members_.emplace(*layout_id(handle), std::make_pair(id, i));
+    tabs_.emplace(id, TabsState{std::move(pages), 0, 0, {}});
+    bind(id, [this, id] { auto& t = tabs_.at(id); return activate_tab(id, t.pages[t.candidate].value); });
+    return TabsHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) { return TabsHandle(this, lifetime_, c.id); }
+Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
+    if (auto r = available(id); !r) return r;
+    auto& t = tabs_.at(id);
+    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+    if (!it->enabled) return {Status::disabled, u"Page is disabled"};
+    auto next = static_cast<std::size_t>(it - t.pages.begin());
+    if (next == t.active) { t.candidate = next; return {}; }
+    // Finish an edit while its page is still admitted.
+    if (auto member = page_members_.find(focus_); member != page_members_.end() && member->second.first == id && member->second.second == t.active)
+        if (auto r = move_focus(id); !r) return r;
+    close_popup();
+    auto old = t.pages[t.active].value;
+    t.active = t.candidate = next;
+    if (t.changed) {
+        try { t.changed(old, page); }
+        catch (...) { stopped_ = true; return {Status::failed, u"Page change notification failed"}; }
+    }
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::focus_error(const Id& id) {
+    if (auto member = page_members_.find(id); member != page_members_.end()) {
+        auto& tabs = tabs_.at(member->second.first);
+        auto page = tabs.pages[member->second.second].value;
+        if (auto result = activate_tab(member->second.first, page); !result) return result;
+    }
+    return focus(id);
+}
+Result TabsHandle::activate(OptionValue page) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->activate_tab(id_, std::move(page));
+}
+Result TabsHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result TabsHandle::enable_page(OptionValue page, bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& t = ui_->tabs_.at(id_);
+    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+    auto index = static_cast<std::size_t>(it - t.pages.begin());
+    if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
+    it->enabled = enabled;
+    if (!enabled && index == t.candidate) t.candidate = t.active;
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
+}
+Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    ui_->tabs_.at(id_).changed = std::move(callback); return {};
+}
+Query<Semantics> TabsHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<OptionValue> TabsHandle::active() const {
+    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+    return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
+}
+Result detail::UiState::tabs_key_down(KeyPress key) {
+    auto& t = tabs_.at(focus_);
+    if (key.key == Key::left || key.key == Key::right) {
+        int dir = key.key == Key::left ? -1 : 1;
+        int i = static_cast<int>(t.candidate);
+        for (std::size_t n = 0; n < t.pages.size(); ++n) {
+            i = (i + dir + static_cast<int>(t.pages.size())) % static_cast<int>(t.pages.size());
+            if (t.pages[static_cast<std::size_t>(i)].enabled) { t.candidate = static_cast<std::size_t>(i); break; }
+        }
+        if (invalidate_) invalidate_();
+        return {};
+    }
+    return command_key_down(key);
+}
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto result = ui_->configuration_access(id_); !result) return result;
@@ -795,7 +895,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
                 set_error(it->id_, error.message);
                 if (!error.message.empty() && (!first || index < *first)) first = index;
             }
-            if (first) focus(fields[*first].id_);
+            if (first) focus_error(fields[*first].id_);
         }
         auto notification = notify();
         return notification ? outcome.result : notification;
@@ -878,7 +978,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
                     if (field_id == *id) { set_error(*id, error.message); if (!error.message.empty() && (!first || i < *first)) first = i; break; }
                 }
             }
-            if (first) std::visit([&](const auto& h) { focus(h.id_); }, fields[*first]);
+            if (first) std::visit([&](const auto& h) { focus_error(h.id_); }, fields[*first]);
         }
         auto notification = notify(); return notification ? outcome.result : notification;
     });
@@ -1033,6 +1133,23 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             if (selected) s.value = option.label;
         }
     }
+    if (auto it = tabs_.find(id); it != tabs_.end()) {
+        const auto& t = it->second;
+        s.candidate = t.pages[t.candidate].value;
+        for (std::size_t i = 0; i < t.pages.size(); ++i) {
+            const auto& page = t.pages[i];
+            bool invalid = false;
+            for (const auto& member : page.members) {
+                auto member_id = layout_id(member);
+                if (member_id) {
+                    auto error = errors_.find(*member_id);
+                    if (error != errors_.end() && !error->second.empty()) { invalid = true; break; }
+                }
+            }
+            s.options.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
+            if (i == t.active) s.value = page.label;
+        }
+    }
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -1109,6 +1226,8 @@ Result detail::UiState::available(std::string_view id) const {
     auto control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (!control->enabled) return {Status::disabled, u"目前無法執行"};
+    if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
+        return {Status::hidden, u"Page is hidden"};
     if (control->page == "dialog" && !modal_) return {Status::disabled, u"對話框尚未開啟"};
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};
@@ -1434,7 +1553,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         auto& f = dropdowns_.at(control->id);
         if (popup_source_ == id && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
     }
-    else if (control->kind == Kind::radio_group || control->kind == Kind::slider) { pointer_armed_ = control->id; pointer_option_ = option; }
+    else if (control->kind == Kind::radio_group || control->kind == Kind::slider || control->kind == Kind::tabs) { pointer_armed_ = control->id; pointer_option_ = option; }
     else component_type(control->kind).pointer_down(*this);
     return {};
 }
@@ -1450,6 +1569,10 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
         }
         if (pressed_option || option) return {};
         return DropdownHandle(this, lifetime_, armed).open();
+    }
+    if (auto it = tabs_.find(armed); it != tabs_.end()) {
+        if (!pressed_option || pressed_option != option || *option >= it->second.pages.size()) return {};
+        return activate_tab(armed, it->second.pages[*option].value);
     }
     if (numerics_.contains(armed)) return {};
     if (auto it = radios_.find(armed); it != radios_.end()) {
@@ -1499,6 +1622,7 @@ LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(
 CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
 SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
+TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {

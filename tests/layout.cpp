@@ -336,8 +336,26 @@ void stack_and_popup_edges_follow_paint_order() {
     }
 }
 
+void inactive_page_members_do_not_paint_or_hit() {
+    Ui ui({});
+    auto first = ui.add_button({.id = "one", .kind = Kind::button, .label = u"One"});
+    auto second = ui.add_button({.id = "two", .kind = Kind::button, .label = u"Two"});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"one"}, u"One", true, {first}}, {{"two"}, u"Two", true, {second}}});
+    auto root = layout::column({layout::control(tabs), layout::control(first), layout::control(second)});
+    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(root, ui, *look, measure, 400, 300, 1.f, scroll);
+        check(frame.find(first) && !frame.find(second), "Only current page is laid out");
+        tabs.activate({"two"});
+        frame = arrange(root, ui, *look, measure, 400, 300, 1.f, scroll);
+        check(!frame.find(first) && frame.find(second), "Switch replaces the visible page");
+        tabs.activate({"one"});
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"C09 only active page is drawn", inactive_page_members_do_not_paint_or_hit},
         {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},
         {"R05 dropdown states are readable", dropdown_states_are_readable_without_color},
         {"B04 stack and popup edge placement", stack_and_popup_edges_follow_paint_order},
