@@ -88,12 +88,20 @@ public:
 };
 // Well-formed UTF-16, no control characters, within the given length.
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
+// The application owns the model. Its subscription returns a disconnection function.
+struct TextSource {
+    std::function<std::u16string()> read;
+    std::function<std::function<void()>(std::function<void()>)> subscribe;
+};
 class Ui;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
 class TextHandle {
 public:
     TextHandle() = default;
     Result set_value(std::u16string value) const;
+    Result connect_source(TextSource source) const;
+    bool source_conflict() const;
+    Result use_latest() const;
     std::optional<Semantics> describe() const;
 private:
     friend class Ui;
@@ -172,6 +180,9 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
 private:
+    friend class TextHandle;
+    Result connect_source(const Id& id, TextSource source);
+    void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
@@ -180,6 +191,10 @@ private:
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
+        TextSource source;
+        std::u16string source_value, origin;
+        bool has_source_value = false;
+        std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
     std::map<Id, Action, std::less<>> actions_;

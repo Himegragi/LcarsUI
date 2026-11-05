@@ -60,7 +60,10 @@ Ui::Ui(std::vector<Control> controls) : controls_(std::move(controls)) {
         if (!control.target.empty() && (control.kind != Kind::label || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
-Ui::~Ui() { lifetime_.reset(); }
+Ui::~Ui() {
+    lifetime_.reset();
+    for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
+}
 TextHandle Ui::add_text(Control control) {
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
         !valid_single_line(control.value, control.max_length))
@@ -71,6 +74,55 @@ TextHandle Ui::add_text(Control control) {
     controls_.push_back(std::move(control));
     edits_.emplace(id, std::move(field));
     return TextHandle(this, lifetime_, std::move(id));
+}
+Result TextHandle::connect_source(TextSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    return ui_->connect_source(id_, std::move(source));
+}
+Result Ui::connect_source(const Id& id, TextSource source) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"????? UI ???"};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_found, u"?????"};
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"???????????"};
+    if (it->second.disconnect) it->second.disconnect();
+    it->second.source = std::move(source);
+    it->second.has_source_value = false;
+    auto weak = std::weak_ptr<void>(lifetime_);
+    it->second.disconnect = it->second.source.subscribe([weak, this, id] {
+        if (!weak.expired()) source_changed(id);
+    });
+    source_changed(id);
+    return {};
+}
+void Ui::source_changed(const Id& id) {
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.source.read) return;
+    auto& field = it->second;
+    auto latest = field.source.read();
+    if (!valid_single_line(latest, find(id)->max_length)) return;
+    const bool clean = !field.has_source_value || field.session.text == field.source_value;
+    field.source_value = latest;
+    field.has_source_value = true;
+    if (clean) {
+        replace_text(id, latest);
+        field.origin = latest;
+    }
+}
+bool TextHandle::source_conflict() const {
+    if (lifetime_.expired()) return false;
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end()) return false;
+    const auto& field = it->second;
+    return field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
+}
+Result TextHandle::use_latest() const {
+    if (lifetime_.expired()) return {Status::not_found, u"?????"};
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"??????"};
+    auto latest = it->second.source_value;
+    auto result = ui_->set_value(id_, latest);
+    if (result) it->second.origin = std::move(latest);
+    return result;
 }
 Result TextHandle::set_value(std::u16string value) const {
     if (lifetime_.expired()) return {Status::not_found, u"?????"};

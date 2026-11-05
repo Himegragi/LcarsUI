@@ -390,8 +390,46 @@ void handles_expire_with_their_component_tree() {
           "A retained handle cannot keep the component tree alive or operate after its end");
 }
 
+void source_updates_follow_the_component_lifetime() {
+    std::u16string model = u"first";
+    std::function<void()> changed;
+    TextHandle field;
+    {
+        Ui ui({});
+        field = ui.add_text({.id = "source.field", .kind = Kind::text});
+        field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
+            changed = std::move(callback);
+            return [&] { changed = {}; };
+        }});
+        check(field.describe()->value == u"first", "A field reads its initial value from the app model");
+        model = u"second";
+        changed();
+        check(field.describe()->value == u"second", "A source notification refreshes an unedited field");
+    }
+    check(!changed, "Ending the component tree disconnects its source subscription");
+}
+
+void source_conflict_keeps_draft_until_cancelled() {
+    std::u16string model = u"original";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "conflict.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
+        changed = std::move(callback); return [&] { changed = {}; };
+    }});
+    field.set_value(u"draft");
+    model = u"newest";
+    changed();
+    check(field.describe()->value == u"draft" && field.source_conflict(),
+          "A different source value preserves the draft and signals the conflict");
+    check(bool(field.use_latest()) && field.describe()->value == u"newest" && !field.source_conflict(),
+          "Choosing the latest value discards the draft and clears the conflict");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G11 source conflicts preserve drafts until cancel", source_conflict_keeps_draft_until_cancelled},
+        {"G10 source updates follow component lifetime", source_updates_follow_the_component_lifetime},
         {"G10 typed handles expire with their component tree", handles_expire_with_their_component_tree},
         {"C01 labels associate by target id", labels_associate_by_target_id},
         {"C01 field error has one source", field_error_has_one_source},
