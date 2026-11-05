@@ -1,3 +1,21 @@
+# Tabs and page scopes - issue #21 (2026-11-05)
+
+Production and tests: `6342f07`, based on `integration/first-component-batch` at `067bf41`; merging that local tip before verification reported already up to date. The evidence-only commit follows. V01 is unchanged when used alone; the desktop example enables the three-page assembly. Public handles and data connections drive application behavior; native event and geometry tests use the internal host seam. Both appearances run the same scenarios.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only CTest | 5/5 suites passed | `build.ps1 -Configuration Release -CoreOnly`; components 55/55 cases and 239 checks, layout 18/18 cases and 111 checks; form 14/14 cases under each of two appearances and two ID sets (412 cumulative checks) |
+| Release desktop CTest, initial | 5/6 suites passed; native 42/44 checks passed | [host results](ticket-21-host-initial/host.tsv): one Web copy and one Material paste check failed. Other native checks, including C09 in both appearances, passed. |
+| Release desktop CTest, retry | 6/6 suites passed; native 44/44 checks passed | [host results](ticket-21-host-retry/host.tsv); same binary, rerun after the clipboard stress and IME checks. This does not erase the initial failures. |
+| Clipboard stress | 383/400 passed, 17 failed | [results](ticket-21-clipboard/clipboard.tsv), 100 repetitions per appearance: ordinary copy/paste 194/200; forced contention 189/200. No clipboard fix was made in this ticket. |
+| Real Microsoft Bopomofo | 38/38 passed, 0 blocked or failed | [results](ticket-21-ime/ime.tsv), [events](ticket-21-ime/ime-events.log). One foreground-input run, including a real tab click during composition for each appearance. The preedit committed once, focus moved to the tabs, the page switched, the undo depth was one, and Apply did not run. |
+
+C09 coverage includes manual keyboard activation, disabled-page pointer and programmatic rejection, modal admission, hidden controls including disabled ones, fixed tab geometry, and independent page state. G11 is exercised for text and mixed confirmation groups across pages, including first-error page activation, focus and first-frame scroll reveal, and a visible/semantic marker for errors on other pages. New tests were observed red before their corresponding implementations; a disabled hidden-control rendering case and nested page-change callback case were also observed red before correction. L07/L08/R07 use the V02 placeholder search draft and a sample-selection flag, together with V01 draft, applied value, undo history and horizontal/vertical offsets. Actual list selection T006, filtering, list data, and list scrollbar behavior await integration of #20. V03 is a placeholder.
+
+Windows 11 Pro N build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. All project C++ translation units in the Release compile databases use C++20: 10/10 core-only and 16/16 desktop. The native layout matrix covers 960x720 and 640x480 DIP at forced 100% and 150%; forced scaling is not a real cross-monitor DPI migration. Native-run bitmaps were temporary outputs and are not retained here. User trial, UIA, MCP, actual cross-monitor DPI migration, and the portions delegated to #20 were not verified. Confirmation callbacks remain synchronous. Trailing whitespace in the saved logs was normalized without changing outcomes.
+
+---
+
 # Dropdown and overlay verification - issue #19 (2026-11-05)
 
 Production and tests: commit `d1e32d89d440128703799da78e3f336281f840d2`, based on local integration tip `e43966dc300b6733a326f07bd276ea199cb3d3db`. Merging that tip reported already up to date. The following evidence-only commit records these runs. The form uses typed handles and an application-owned region source in the same confirmation group as name, notices, mode and volume. Both appearances run the same application and cases; native input uses the host interface.
