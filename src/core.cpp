@@ -880,6 +880,25 @@ Result TabsHandle::activate(OptionValue page) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->activate_tab(id_, std::move(page));
 }
+Result detail::UiState::add_page_button(const Id& id, OptionValue page, ButtonHandle button) {
+    if (auto r = configuration_access(id); !r) return r;
+    auto member = layout_id(button);
+    if (!member || !find(*member) || removed(*member) || page_members_.contains(*member) ||
+        std::find(dialog_.members.begin(), dialog_.members.end(), *member) != dialog_.members.end())
+        return {Status::invalid_value, u"Invalid page member"};
+    auto& t = tabs_.at(id);
+    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+    auto index = static_cast<std::size_t>(it - t.pages.begin());
+    it->members.push_back(button);
+    page_members_.emplace(*member, std::make_pair(id, index));
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result TabsHandle::add_button(OptionValue page, ButtonHandle button) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->add_page_button(id_, std::move(page), button);
+}
 Result TabsHandle::focus() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->focus(id_);

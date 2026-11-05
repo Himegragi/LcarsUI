@@ -29,6 +29,7 @@ public:
     ComponentHandle tabs_layout_handle(const Control& control);
     Result tabs_key_down(KeyPress key);
     Result activate_tab(const Id& id, OptionValue page);
+    Result add_page_button(const Id& id, OptionValue page, ButtonHandle button);
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
     DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);

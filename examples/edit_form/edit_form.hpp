@@ -26,6 +26,7 @@ private:
     int volume_applied_ = 40;
     int progress_ = 50;
     int dialog_confirmations_ = 0;
+    unsigned temporary_generation_ = 0;
     std::u16string dialog_result_ = u"No result";
     bool notices_applied_ = true;
     std::optional<lcars::OptionValue> mode_applied_ = lcars::OptionValue{"normal"};

@@ -333,6 +333,8 @@ void dialog_escape_and_removed_opener() {
     check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.reset_v03.describe()->focused &&
           h.dialog_temporary.invoke().status == Status::not_found,
           "Escape cancels once and returns focus to the permanent fallback");
+    check(bool(h.reset_v03.invoke()) && bool(h.dialog_temporary.invoke()) && h.dialog_cancel.describe()->focused,
+          "Reset recreates the removed temporary opener");
 }
 
 void dialog_removed_opener_can_confirm() {

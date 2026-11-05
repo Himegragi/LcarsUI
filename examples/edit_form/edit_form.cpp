@@ -155,7 +155,16 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.progress_below.bind([this] { update_progress(-10); return Result{}; });
         handles.progress_above.bind([this] { update_progress(110); return Result{}; });
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
-        handles.reset_v03.bind([this] { update_progress(50); dialog_confirmations_ = 0; dialog_result_ = u"No result"; scroll.offset = 0; return handles.reset_v03.focus(); });
+        handles.reset_v03.bind([this] {
+            if (!handles.dialog_temporary.describe()) {
+                auto id = ids_.title + ".pages.v03.temporary." + std::to_string(++temporary_generation_);
+                auto replacement = ui.add_button({.id = std::move(id), .kind = Kind::button, .label = u"Temporary opener..."});
+                if (auto result = handles.tabs.add_button({"v03"}, replacement); !result) return result;
+                handles.dialog_temporary = replacement;
+                handles.dialog_temporary.bind([this] { return handles.dialog.open(handles.dialog_temporary); });
+            }
+            update_progress(50); dialog_confirmations_ = 0; dialog_result_ = u"No result"; scroll.offset = 0; return handles.reset_v03.focus();
+        });
         handles.dialog_open = ui.add_button({.id = prefix + "v03.open", .kind = Kind::button, .label = u"Reset progress..."});
         handles.dialog_temporary = ui.add_button({.id = prefix + "v03.temporary", .kind = Kind::button, .label = u"Temporary opener..."});
         handles.dialog_from_form = ui.add_button({.id = prefix + "v01.open", .kind = Kind::button, .label = u"Open progress confirmation..."});

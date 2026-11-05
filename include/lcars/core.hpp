@@ -327,6 +327,8 @@ public:
     TabsHandle() = default;
     Result activate(OptionValue page) const;
     Result enable_page(OptionValue page, bool enabled) const;
+    // Owner configuration: attach a newly created button to an existing page.
+    Result add_button(OptionValue page, ButtonHandle button) const;
     Result focus() const;
     Query<OptionValue> active() const;
     Query<Semantics> describe() const;
