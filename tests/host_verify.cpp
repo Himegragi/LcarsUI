@@ -732,6 +732,46 @@ void layout_matrix(const Appearance& appearance, Report& report, const std::file
         }
     }
 }
+void page_size_scale_matrix(const Appearance& appearance, Report& report) {
+    struct Size { int w, h; };
+    for (auto page : {"v01", "v02", "v03"}) for (auto size : {Size{960, 720}, Size{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true);
+            auto& h = f.form.handles;
+            h.tabs.activate({page});
+            int w = static_cast<int>(size.w * scale), ht = static_cast<int>(size.h * scale);
+            ScrollState initial;
+            auto frame = f.host.layout(w, ht, scale, initial, {});
+            bool within = true, clean = true;
+            for (std::size_t i = 0; i < frame.items.size(); ++i) {
+                auto a = intersect(frame.items[i].bounds, frame.items[i].clip);
+                if (a.w && (a.x < 0 || a.x + a.w > w)) within = false;
+                for (std::size_t j = i + 1; j < frame.items.size(); ++j) {
+                    auto b = intersect(frame.items[j].bounds, frame.items[j].clip);
+                    if (a.w && a.h && b.w && b.h && overlaps(a, b)) clean = false;
+                }
+            }
+            int reached = 0, entries = 0; std::string missing;
+            for (const auto& id : detail::access(f.form.ui).focus_order()) {
+                ScrollState probe;
+                auto revealed = f.host.layout(w, ht, scale, probe, id);
+                auto* item = detail::find_placement(revealed, id);
+                ++entries;
+                if (!item) continue;
+                auto area = intersect(item->bounds, item->clip);
+                auto* hit = area.w && area.h ? revealed.hit(area.x + area.w / 2, area.y + area.h / 2) : nullptr;
+                if ((area == item->bounds || item->kind == Kind::list) && hit && hit->id == id) ++reached;
+                else missing += id + " ";
+            }
+            bool expected = std::string_view(page) == "v01" ? frame.find(h.name) != nullptr :
+                            std::string_view(page) == "v02" ? frame.find(f.form.list->handles.list) != nullptr : frame.find(h.progress) != nullptr;
+            std::string detail = std::string(page) + " " + std::to_string(size.w) + "x" + std::to_string(size.h) +
+                " " + std::to_string(static_cast<int>(scale * 100)) + "%: visible overlap=" + std::to_string(!clean) +
+                ", width=" + std::to_string(within) + ", entries revealed/hit=" + std::to_string(reached) + "/" + std::to_string(entries) + "; missing=" + missing;
+            report.check("X02-page-matrix", expected && within && clean && reached == entries, detail);
+        }
+}
+
 }
 
 // ---- Real input session: SendInput through the OS input stack and the Microsoft Bopomofo IME ----
@@ -1319,6 +1359,7 @@ int run(const std::filesystem::path& folder) {
         resize_first_frame_matches_next(*appearance, report, 1.f);
         resize_first_frame_matches_next(*appearance, report, 1.5f);
         layout_matrix(*appearance, report, folder, tag);
+        page_size_scale_matrix(*appearance, report);
     }
     std::cout << report.checks << " native checks, " << report.failures << " failures\n";
     return report.failures ? 1 : 0;
