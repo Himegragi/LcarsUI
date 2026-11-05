@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "component_type.hpp"
 // Assembled showcase acceptance through public operations and the host input seam.
 // Every case runs for both appearances and both the shipped and alternate ID sets (AC02).
 #include "check.hpp"
@@ -674,6 +675,110 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
     check(frame.hit(popup.bounds.x + 1, popup.bounds.y + 1) != &popup, "Tooltip does not intercept pointer input");
 }
 
+// Record the text sent to the component paint adapter, independently of layout's line lists.
+struct PaintTextProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    std::u16string drawn;
+    void fill(Rect, Color) override {}
+    void rounded(Rect, int, Color) override {}
+    void clip(Rect) override {}
+    void text(std::u16string_view value, int, int, int, Color) override { drawn += value; }
+};
+void visible_text_agrees_with_semantics_on_each_page() {
+    edit_form::Form form(ids, true);
+    auto& host = detail::access(form.ui);
+    test::FakeMeasure measure;
+    for (auto page : {"v01", "v02", "v03"}) {
+        form.handles.tabs.activate({page});
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+        for (const auto& item : frame.items) {
+            auto semantic = host.describe(item.id);
+            check(bool(semantic), "X04 every arranged control has semantics");
+            PaintTextProbe paint(host, item, *semantic, *appearance, 1.f, true);
+            detail::component_type(item.kind).paint(paint);
+            auto contains = [&](std::u16string value) {
+                value.erase(std::remove(value.begin(), value.end(), u'\n'), value.end());
+                return value.empty() || paint.drawn.find(value) != std::u16string::npos;
+            };
+            if (item.kind == Kind::label || item.kind == Kind::text)
+                check(contains(semantic->value), "X04 label or field value is sent to paint");
+            if (item.kind == Kind::text || item.kind == Kind::button || item.kind == Kind::checkbox ||
+                item.kind == Kind::radio_group || item.kind == Kind::dropdown || item.kind == Kind::slider || item.kind == Kind::progress)
+                check(contains(semantic->name), "X04 component name is sent to paint");
+            if (item.kind == Kind::dropdown || item.kind == Kind::slider || item.kind == Kind::progress)
+                check(contains(semantic->value), "X04 value is sent to paint");
+            if (item.kind == Kind::radio_group || item.kind == Kind::list || item.kind == Kind::tabs)
+                for (const auto& option : semantic->options)
+                    check(contains(option.label), "X04 option label is sent to paint");
+        }
+    }
+}
+
+void popup_and_scroll_matrix() {
+    struct Size { int w, h; };
+    for (auto size : {Size{960, 720}, Size{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        const int w = int(size.w * scale), height = int(size.h * scale);
+        auto inside = [&](Rect r) { return r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= height; };
+        edit_form::Form form(ids, true);
+        auto& h = form.handles;
+        auto& host = detail::access(form.ui);
+        test::FakeMeasure measure;
+        auto draw = [&](std::string_view reveal = {}) {
+            return arrange(form.page(), form.ui, *appearance, measure, w, height, scale, form.scroll, reveal);
+        };
+        auto dropdown_id = h.region.describe()->id;
+        draw(dropdown_id);
+        check(bool(h.region.open()), "X02 open dropdown after scroll reveal");
+        auto dropdown = draw(dropdown_id);
+        auto pop = std::find_if(dropdown.overlays.begin(), dropdown.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
+        check(pop != dropdown.overlays.end() && inside(pop->bounds) && !pop->options.empty(), "X02 dropdown stays in window after reveal");
+        auto row = pop->options.front();
+        auto hit = dropdown.hit(row.x + row.w / 2, row.y + row.h / 2);
+        check(hit && hit->popup && hit->id == dropdown_id, "X02 dropdown receives the topmost hit");
+        check(bool(h.region.cancel()), "X02 dropdown closes after interaction");
+
+        check(bool(h.tabs.activate({"v02"})), "X02 open list page");
+        auto& list = form.list->handles.list;
+        check(bool(list.focus()), "X02 focus list");
+        host.key_down({Key::end});
+        auto list_frame = draw(list.describe()->id);
+        auto* list_item = list_frame.find(list);
+        check(list_item && !list_item->options.empty() && form.list->list_scroll.offset > 0 &&
+              intersect(list_item->options.back(), list_item->clip) == list_item->options.back(),
+              "X02 End scrolls nested list to the last visible row");
+
+        check(bool(h.tabs.activate({"v03"})), "X02 open popup page");
+        std::uint64_t now = 0;
+        host.tooltip_clock([&] { return now; }); host.window_active(true);
+        auto source_id = h.progress_half.describe()->id;
+        draw(source_id); h.progress_half.focus(); now = 600; host.tooltip_time(now);
+        auto tooltip = draw(source_id);
+        auto tip = std::find_if(tooltip.overlays.begin(), tooltip.overlays.end(), [](const Placement& p) { return p.tooltip; });
+        check(tip != tooltip.overlays.end() && inside(tip->bounds) && *h.progress_tip.visible(), "X02 tooltip appears inside the window after scroll reveal");
+        check(bool(h.dialog_open.invoke()), "X02 open modal dialog");
+        auto dialog = draw();
+        auto* cancel = dialog.find(h.dialog_cancel);
+        auto* dialog_hit = cancel ? dialog.hit(cancel->bounds.x + cancel->bounds.w / 2, cancel->bounds.y + cancel->bounds.h / 2) : nullptr;
+        check(dialog.modal && inside(dialog.modal_panel) && cancel && dialog_hit && dialog_hit->id == cancel->id && !*h.progress_tip.visible(),
+              "X02 dialog bounds and hit are valid and tooltip closes");
+        check(bool(h.dialog_cancel.invoke()), "X02 cancel dialog");
+    }
+}
+
+void repeated_v03_remove_reset_keeps_storage_bounded() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    auto& host = detail::access(form.ui);
+    h.tabs.activate({"v03"});
+    const auto baseline = host.storage_counts();
+    auto old = h.dialog_temporary;
+    for (int i = 0; i < 1000; ++i) {
+        check(bool(h.dialog_temporary.remove()) && bool(h.reset_v03.invoke()), "Remove and reset the V03 opener");
+        check(host.storage_counts() == baseline && bool(h.dialog_temporary.describe()), "Reset has bounded component and page storage");
+        check(old.describe().status == Status::not_found, "Original opener remains stale");
+    }
+}
+
 void v03_reset_restores_the_temporary_source_and_keeps_other_pages() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
@@ -856,6 +961,9 @@ int main() {
         {"N05 disabled tabs in each appearance", disabled_tabs_under_the_appearance},
         {"X01 keyboard journey", keyboard_completes_the_three_page_journey},
         {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
+        {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
+        {"X02 popup and scroll size/scale matrix", popup_and_scroll_matrix},
+        {"P08 repeated removal and reset storage", repeated_v03_remove_reset_keeps_storage_bounded},
         {"P08 reset and page isolation", v03_reset_restores_the_temporary_source_and_keeps_other_pages},
         {"P06 tooltip layout", tooltip_layout_is_readable_and_pointer_transparent},
         {"C11 tooltip lifetime and window focus", tooltip_window_modal_and_source_lifetime},
