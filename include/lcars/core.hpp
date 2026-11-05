@@ -19,6 +19,15 @@ struct Result {
     std::u16string message;
     explicit operator bool() const { return status == Status::ok; }
 };
+// A query reports failure separately from a legitimate false or empty value.
+template<class T> struct Query {
+    Status status = Status::ok;
+    std::u16string message;
+    std::optional<T> value;
+    explicit operator bool() const { return status == Status::ok && value.has_value(); }
+    const T* operator->() const { return &value.value(); }
+    const T& operator*() const { return value.value(); }
+};
 // Public text field limit in UTF-16 units. A field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
@@ -42,7 +51,7 @@ struct Semantics {
     std::string id;
     Kind kind = Kind::label;
     std::u16string name, value, description, error;
-    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false;
+    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     std::string target;
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
@@ -100,20 +109,24 @@ public:
     TextHandle() = default;
     Result set_value(std::u16string value) const;
     Result undo() const;
+    Result redo() const;
+    Result select(unsigned anchor, unsigned caret) const;
+    Result copy() const;
+    Result cut() const;
     Result paste(std::u16string_view text) const;
     Result focus() const;
     Result on_blur(std::function<void()> callback) const;
     Result set_error(std::u16string message) const;
     Result reset_to_source() const;
     Result enable(bool enabled) const;
-    Result read_only(bool enabled) const;
+    Result read_only(bool is_read_only) const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
     Result confirm() const;
-    bool source_conflict() const;
+    Query<bool> source_conflict() const;
     Result use_latest() const;
-    std::optional<Semantics> describe() const;
+    Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
     TextHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
@@ -129,7 +142,8 @@ public:
     Result focus() const;
     Result bind(std::function<Result()> action) const;
     Result enable(bool enabled) const;
-    bool executing() const;
+    Query<bool> executing() const;
+    Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
     ButtonHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
@@ -142,6 +156,7 @@ class LabelHandle {
 public:
     LabelHandle() = default;
     Result connect_source(std::function<std::u16string()> read) const;
+    Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
     LabelHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)

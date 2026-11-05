@@ -79,7 +79,7 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
     state.connect_source([this] {
         std::u16string state = mode_ == Mode::read_only ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
         if (name_.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
-        if (name_.source_conflict()) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
+        if (name_.source_conflict().value.value_or(false)) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
         return u"\u72c0\u614b\uff1a" + state;
     });
     draft.connect_source([this] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + name_.describe()->value; });
@@ -124,7 +124,7 @@ void Form::update_source(std::u16string value) {
     refresh_conflict();
 }
 void Form::refresh_conflict() {
-    latest_.enable(mode_ != Mode::disabled && mode_ != Mode::read_only && name_.source_conflict());
+    latest_.enable(mode_ != Mode::disabled && mode_ != Mode::read_only && name_.source_conflict().value.value_or(false));
 }
 void Form::set_mode(Mode mode) {
     mode_ = mode;

@@ -91,6 +91,7 @@ LabelHandle detail::UiState::add_label(Control control) {
 }
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
     if (!read) return {Status::invalid_value, u"A label source requires a reader"};
     ui_->bind_text(id_, std::move(read));
     return {};
@@ -101,7 +102,9 @@ Result ButtonHandle::focus() const {
 }
 Result ButtonHandle::bind(std::function<Result()> action) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
     if (!action) return {Status::invalid_value, u"An action is required"};
+    if (ui_->confirmation_buttons_.contains(id_)) return {Status::invalid_value, u"Confirmation action cannot be rebound"};
     ui_->bind(id_, std::move(action));
     return {};
 }
@@ -132,14 +135,15 @@ Result TextHandle::enable(bool enabled) const {
     ui_->enable(id_, enabled);
     return {};
 }
-Result TextHandle::read_only(bool enabled) const {
+Result TextHandle::read_only(bool is_read_only) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto result = ui_->configuration_access(id_); !result) return result;
-    ui_->set_read_only(id_, enabled);
+    ui_->set_read_only(id_, is_read_only);
     return {};
 }
 Result TextHandle::reset_to_source() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
     auto it = ui_->edits_.find(id_);
     if (it == ui_->edits_.end() || !it->second.has_source_value)
         return {Status::invalid_value, u"Text source is not connected"};
@@ -151,8 +155,10 @@ Result ButtonHandle::invoke() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->invoke(id_);
 }
-bool ButtonHandle::executing() const {
-    return !lifetime_.expired() && ui_->executing_ == id_;
+Query<bool> ButtonHandle::executing() const {
+    auto snapshot = describe();
+    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+    return {Status::ok, {}, snapshot->executing};
 }
 Result TextHandle::paste(std::u16string_view text) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -161,6 +167,22 @@ Result TextHandle::paste(std::u16string_view text) const {
 Result TextHandle::undo() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->undo(id_);
+}
+Result TextHandle::redo() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->redo(id_);
+}
+Result TextHandle::select(unsigned anchor, unsigned caret) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select(id_, anchor, caret);
+}
+Result TextHandle::copy() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->copy(id_);
+}
+Result TextHandle::cut() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->cut(id_);
 }
 Result detail::UiState::configuration_access(std::string_view id) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
@@ -172,13 +194,17 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalid_value, u"Invalid confirmation group"};
+    if (auto result = configuration_access(button.id_); !result) return result;
+    if (actions_.contains(button.id_)) return {Status::invalid_value, u"Confirmation button already has an action"};
+    std::set<Id> members;
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate || it->second.confirmed)
-            return {Status::invalid_value, u"A text source requires read and subscribe"};
+            it->second.confirmation_member || it->second.immediate || it->second.confirmed || !members.insert(field.id_).second)
+            return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
+    confirmation_buttons_.insert(button.id_);
     bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
         std::vector<TextChange> changes;
         for (const auto& handle : fields) {
@@ -239,7 +265,7 @@ Result TextHandle::confirm() const {
     if (it == ui_->edits_.end() || !it->second.confirmed)
         return {Status::invalid_value, u"No confirmed write is connected"};
     auto& field = it->second;
-    if (field.submitting || field.session.composing || ui_->dispatching_)
+    if (field.submitting || field.session.composing || ui_->dispatching_ || ui_->invoking_)
         return {Status::busy, u"Operation is already executing"};
     TextChange change{*this, field.session.text, field.origin};
     field.submitting = true;
@@ -291,12 +317,10 @@ void detail::UiState::source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-bool TextHandle::source_conflict() const {
-    if (lifetime_.expired()) return false;
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end()) return false;
-    const auto& field = it->second;
-    return field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
+Query<bool> TextHandle::source_conflict() const {
+    auto snapshot = describe();
+    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+    return {Status::ok, {}, snapshot->source_conflict};
 }
 Result TextHandle::use_latest() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -317,9 +341,20 @@ Result TextHandle::set_value(std::u16string value) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->set_value(id_, std::move(value));
 }
-std::optional<Semantics> TextHandle::describe() const {
-    if (lifetime_.expired()) return std::nullopt;
-    return ui_->describe(id_);
+Query<Semantics> TextHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<Semantics> ButtonHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<Semantics> LabelHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
 }
 std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
@@ -339,13 +374,17 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         if (other.role == TextRole::name) s.name = text(other.id);
         else if (other.role == TextRole::description) s.description = text(other.id);
     }
+    if (auto it = edits_.find(id); it != edits_.end()) {
+        const auto& field = it->second;
+        s.source_conflict = field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
+    }
     if (!s.focusable) return s;
     s.operations.push_back(Operation::focus);
     if (control->kind == Kind::button && !s.executing) s.operations.push_back(Operation::activate);
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
-        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member || field.immediate || field.confirmed)) {
+        if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
@@ -397,7 +436,7 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
-    if (it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed)
+    if (!it->second.has_source_value || (!it->second.confirmation_member && !it->second.immediate && !it->second.confirmed))
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};

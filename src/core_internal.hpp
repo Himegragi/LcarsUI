@@ -3,6 +3,7 @@
 // Applications use lcars/core.hpp and typed handles instead.
 #include "lcars/core.hpp"
 #include <map>
+#include <set>
 #include <thread>
 
 namespace lcars {
@@ -108,6 +109,7 @@ private:
     };
     std::map<Id, Field, std::less<>> edits_;
     std::map<Id, Action, std::less<>> actions_;
+    std::set<Id, std::less<>> confirmation_buttons_;
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     Clipboard* clipboard_ = nullptr;

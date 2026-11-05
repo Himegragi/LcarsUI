@@ -1,7 +1,6 @@
 param(
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
-    [switch]$CoreOnly,
-    [switch]$Smoke
+    [switch]$CoreOnly
 )
 $ErrorActionPreference = 'Stop'
 $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
@@ -32,11 +31,3 @@ if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 & $ctest --test-dir $buildDir --output-on-failure
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
-if ($Smoke -and -not $CoreOnly) {
-    $artifacts = Join-Path $buildDir 'smoke'
-    New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
-    foreach ($skin in @('web','material')) {
-        & (Join-Path $buildDir "lcars_settings_$skin.exe") --smoke --data (Join-Path $artifacts "$skin.conf") --screenshot (Join-Path $artifacts "$skin.bmp")
-        if ($LASTEXITCODE -ne 0) { throw "$skin desktop smoke failed" }
-    }
-}

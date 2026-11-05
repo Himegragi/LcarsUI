@@ -2,10 +2,23 @@
 // C01-C03 behavior through the public core interface only; no window, GPU or font backend.
 #include "check.hpp"
 #include "lcars/core.hpp"
+#include <thread>
 using namespace lcars;
 using test::check;
 
 namespace {
+// Application-owned source fixtures give legacy host input tests explicit write timing.
+void populate(Ui& ui, std::vector<Control> controls) {
+    for (auto& control : controls) {
+        if (control.kind == Kind::text) {
+            auto model = std::make_shared<std::u16string>(control.value);
+            auto field = ui.add_text(std::move(control));
+            check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect fixture source");
+            check(bool(field.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect fixture write");
+        } else if (control.kind == Kind::button) ui.add_button(std::move(control));
+        else ui.add_label(std::move(control));
+    }
+}
 std::vector<Control> name_form() {
     return {
         {.id = "name.label", .kind = Kind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
@@ -17,7 +30,7 @@ std::vector<Control> name_form() {
 }
 
 void labels_associate_by_target_id() {
-    Ui ui(name_form());
+    Ui ui({}); populate(ui, name_form());
     auto field = detail::access(ui).describe("name");
     check(field && field->name == u"顯示名稱", "Field name comes from its name label");
     check(field->description == u"單行文字", "Description label is queryable from the field");
@@ -29,7 +42,7 @@ void labels_associate_by_target_id() {
 }
 
 void field_error_has_one_source() {
-    Ui ui(name_form());
+    Ui ui({}); populate(ui, name_form());
     check(bool(detail::access(ui).set_error("name", u"請填寫顯示名稱")), "Owner sets a field error");
     auto field = detail::access(ui).describe("name");
     check(field->invalid && field->error == u"請填寫顯示名稱", "Field reports invalid with its message");
@@ -49,7 +62,7 @@ std::vector<Control> form_with_buttons() {
 KeyPress press(Key key, bool shift = false) { return {.key = key, .shift = shift}; }
 
 void tab_order_skips_labels_and_disabled() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     check(detail::access(ui).focused().empty(), "Nothing focused initially");
     std::vector<Id> forward;
     for (int i = 0; i < 4; ++i) { detail::access(ui).key_down(press(Key::tab)); forward.push_back(detail::access(ui).focused()); }
@@ -67,7 +80,7 @@ void tab_order_skips_labels_and_disabled() {
 }
 
 void button_activates_once_per_press() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     int applies = 0, resets = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).bind("reset", [&] { ++resets; return Result{}; });
@@ -113,7 +126,7 @@ std::vector<Control> two_fields() {
 }
 
 void typing_records_one_history_entry_per_input() {
-    Ui ui(two_fields());
+    Ui ui({}); populate(ui, two_fields());
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 5, 5);
     for (auto ch : std::u16string(u"AB")) detail::access(ui).text_input(std::u16string(1, ch));
@@ -143,7 +156,7 @@ bool at(Ui& ui, unsigned anchor, unsigned caret) {
 
 void caret_moves_by_code_point_and_extends_with_shift() {
     // "A", U+20000 (two UTF-16 units), "B", "中": UTF-16 length 5.
-    Ui ui({{.id = "t", .kind = Kind::text, .value = u"A\U00020000B中"}});
+    Ui ui({}); populate(ui, {{.id = "t", .kind = Kind::text, .value = u"A\U00020000B中"}});
     detail::access(ui).focus("t");
     detail::access(ui).key_down(press(Key::home));
     check(at(ui, 0, 0), "Home puts the caret at the start");
@@ -175,7 +188,7 @@ struct MemoryClipboard final : Clipboard {
 };
 
 void paste_turns_each_line_break_into_one_space() {
-    Ui ui(name_form());
+    Ui ui({}); populate(ui, name_form());
     MemoryClipboard clipboard;
     detail::access(ui).set_clipboard(&clipboard);
     detail::access(ui).focus("name");
@@ -201,7 +214,7 @@ void paste_turns_each_line_break_into_one_space() {
 }
 
 void read_only_allows_viewing_and_copying_only() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     MemoryClipboard clipboard;
     detail::access(ui).set_clipboard(&clipboard);
     detail::access(ui).focus("name");
@@ -226,7 +239,7 @@ void read_only_allows_viewing_and_copying_only() {
 }
 
 void disabled_field_refuses_every_entry_and_keeps_data() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     int applies = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).focus("name");
@@ -246,7 +259,7 @@ void disabled_field_refuses_every_entry_and_keeps_data() {
 }
 
 void composition_commits_once_and_never_applies() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     int applies = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).focus("name");
@@ -289,7 +302,7 @@ void composition_commits_once_and_never_applies() {
 }
 
 void focus_notifications_queue_instead_of_recursing() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     std::vector<std::pair<Id, Id>> heard;
     int depth = 0, deepest = 0;
     detail::access(ui).on_focus([&](const Id& from, const Id& to) {
@@ -307,7 +320,7 @@ void focus_notifications_queue_instead_of_recursing() {
 }
 
 void keyboard_editing_obeys_the_same_admission() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 2, 2);
     detail::access(ui).modal(true);
@@ -328,7 +341,7 @@ void keyboard_editing_obeys_the_same_admission() {
 }
 
 void over_limit_edit_is_rejected_whole() {
-    Ui ui({{.id = "code", .kind = Kind::text, .value = u"AB", .max_length = 4}});
+    Ui ui({}); populate(ui, {{.id = "code", .kind = Kind::text, .value = u"AB", .max_length = 4}});
     check(Control{.id = "x", .kind = Kind::text}.max_length == default_max_text_length && default_max_text_length == 4096,
           "The default limit is public");
     detail::access(ui).focus("code");
@@ -350,7 +363,7 @@ bool has(const std::vector<Operation>& actions, Operation operation) {
 }
 
 void owner_hears_focus_moves_and_semantics_list_actions() {
-    Ui ui(form_with_buttons());
+    Ui ui({}); populate(ui, form_with_buttons());
     std::vector<std::pair<Id, Id>> moves;
     detail::access(ui).on_focus([&](const Id& from, const Id& to) {
         moves.emplace_back(from, to);
@@ -379,11 +392,74 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
 }
 }
 
+void public_text_operations_obey_restrictions() {
+    Ui ui({}); MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
+    auto field = ui.add_text({.id = "public.text", .kind = Kind::text});
+    field.connect_source({[] { return std::u16string(u"alpha"); }, [](std::function<void()>) { return [] {}; }});
+    field.connect_confirmed([](const TextChange&) { return Result{}; });
+    check(bool(field.select(0, 5)) && bool(field.copy()) && clipboard.content == u"alpha", "Public selection and copy");
+    check(bool(field.cut()) && field.describe()->value.empty(), "Public cut");
+    check(bool(field.undo()) && bool(field.redo()) && field.describe()->value.empty(), "Public undo and redo");
+    field.read_only(true);
+    check(field.cut().status == Status::read_only && field.redo().status == Status::read_only && bool(field.copy()),
+          "Read-only public operations share admission rules");
+}
+
+void handle_queries_report_expiry() {
+    TextHandle field; ButtonHandle button; LabelHandle label;
+    {
+        Ui ui({});
+        field = ui.add_text({.id = "query.field", .kind = Kind::text});
+        button = ui.add_button({.id = "query.button", .kind = Kind::button});
+        label = ui.add_label({.id = "query.label", .kind = Kind::label});
+        check(button.describe()->kind == Kind::button && label.describe()->kind == Kind::label,
+              "Button and label expose semantic snapshots");
+    }
+    check(field.describe().status == Status::not_found && field.source_conflict().status == Status::not_found &&
+          button.describe().status == Status::not_found && button.executing().status == Status::not_found &&
+          label.describe().status == Status::not_found, "Expired queries return an explicit error");
+}
+
+void configuration_requires_ui_thread() {
+    Ui ui({});
+    auto field = ui.add_text({.id = "thread.field", .kind = Kind::text});
+    auto label = ui.add_label({.id = "thread.label", .kind = Kind::label});
+    field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
+    Status reset = Status::ok, connect = Status::ok;
+    std::thread worker([&] {
+        reset = field.reset_to_source().status;
+        connect = label.connect_source([] { return std::u16string(u"wrong"); }).status;
+    });
+    worker.join();
+    check(reset == Status::wrong_thread && connect == Status::wrong_thread, "Configuration rejects another thread");
+}
+
+void group_action_cannot_be_replaced() {
+    Ui ui({});
+    auto field = ui.add_text({.id = "group.field", .kind = Kind::text});
+    auto button = ui.add_button({.id = "group.button", .kind = Kind::button});
+    field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
+    int submitted = 0, replacement = 0;
+    check(bool(ui.connect_confirmation(button, {field}, [&](const auto&) { ++submitted; return ConfirmationResult{}; })), "Group connects");
+    auto rebind = button.bind([&] { ++replacement; return Result{}; });
+    check(rebind.status == Status::invalid_value, "Rebinding a confirmation button returns an error");
+    check(bool(button.invoke()) && submitted == 1 && replacement == 0, "The original confirmation still runs");
+}
+
+void unconnected_text_rejects_edits() {
+    Ui ui({});
+    auto field = ui.add_text({.id = "unconnected", .kind = Kind::text, .value = u"initial"});
+    check(field.set_value(u"changed").status == Status::invalid_value && field.describe()->value == u"initial",
+          "An unconnected field rejects edits and retains its value");
+}
+
 void handles_expire_with_their_component_tree() {
     TextHandle field;
     {
         Ui ui({});
         field = ui.add_text({.id = "handle.field", .kind = Kind::text, .value = u"initial"});
+        field.connect_source({[] { return std::u16string(u"initial"); }, [](std::function<void()>) { return [] {}; }});
+        field.connect_confirmed([](const TextChange&) { return Result{}; });
         check(bool(field.set_value(u"edited")) && field.describe()->value == u"edited",
               "Typed handle edits and describes its field");
     }
@@ -425,9 +501,9 @@ void source_conflict_keeps_draft_until_cancelled() {
     field.set_value(u"draft");
     model = u"newest";
     changed();
-    check(field.describe()->value == u"draft" && field.source_conflict(),
+    check(field.describe()->value == u"draft" && field.source_conflict().value.value_or(false),
           "A different source value preserves the draft and signals the conflict");
-    check(bool(field.use_latest()) && field.describe()->value == u"newest" && !field.source_conflict(),
+    check(bool(field.use_latest()) && field.describe()->value == u"newest" && !field.source_conflict().value.value_or(false),
           "Choosing the latest value discards the draft and clears the conflict");
 }
 
@@ -488,7 +564,7 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
         ++calls;
         if (calls == 1) {
-            check(apply.executing() && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
+            check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
             check(bool(field.set_value(u"newer")), "The field remains editable while the action executes");
         } else second_origin = changes[0].origin;
         model = changes[0].value;
@@ -498,7 +574,7 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     field.set_value(u"sent");
     auto accepted = apply.invoke();
     check(bool(accepted), "The first confirmation succeeds");
-    check(!apply.executing() && calls == 1, "Execution state resets and callback runs once");
+    check(!apply.executing().value.value_or(false) && calls == 1, "Execution state resets and callback runs once");
     check(model == u"sent", "The submitted value reaches the model");
     check(field.describe()->value == u"newer", "Edits during execution stay in the field");
     check(bool(apply.invoke()) && model == u"newer" && second_origin == u"sent",
@@ -530,7 +606,7 @@ void source_update_during_composition_keeps_preedit() {
     check(detail::access(ui).edit("ime.source")->composing && detail::access(ui).edit("ime.source")->preedit == u"preedit",
           "Source updates never discard an active composition");
     detail::access(ui).composition_commit(u"text");
-    check(field.describe()->value == u"textone" && field.source_conflict(),
+    check(field.describe()->value == u"textone" && field.source_conflict().value.value_or(false),
           "The committed composition remains a conflicting draft");
 }
 
@@ -617,6 +693,11 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
 
 int main() {
     const test::Case cases[] = {
+        {"Public text operations obey restrictions", public_text_operations_obey_restrictions},
+        {"Handle queries report expiry", handle_queries_report_expiry},
+        {"Configuration requires UI thread", configuration_requires_ui_thread},
+        {"G11 confirmation action cannot be replaced", group_action_cannot_be_replaced},
+        {"G10 unconnected text rejects edits", unconnected_text_rejects_edits},
         {"G10 standalone confirmed connection", ungrouped_confirmed_connection_writes_only_on_confirm},
         {"G10 source notifications request a repaint", source_notifications_request_a_repaint},
         {"G10 cancel clears rejection without writing", cancelling_a_rejected_draft_clears_its_error_without_writing},

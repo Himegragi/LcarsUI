@@ -168,7 +168,11 @@ void pointer_hits_map_to_the_painted_caret_positions() {
 }
 
 void long_text_keeps_caret_visible_and_reset_clears_offset() {
-    Ui ui({{.id = "name", .kind = Kind::text, .value = std::u16string(60, u'A')}, {.id = "apply", .kind = Kind::button, .label = u"套用"}});
+    Ui ui({});
+    auto name_field = ui.add_text({.id = "name", .kind = Kind::text, .value = std::u16string(60, u'A')});
+    ui.add_button({.id = "apply", .kind = Kind::button});
+    name_field.connect_source({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
+    name_field.connect_confirmed([](const TextChange&) { return Result{}; });
     FakeMeasure measure;
     ScrollState scroll;
     auto page = layout::column({layout::control("name"), layout::control("apply")});
