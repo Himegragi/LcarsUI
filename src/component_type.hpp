@@ -1,0 +1,68 @@
+#pragma once
+// Internal dispatch for the component types implemented by this slice. Applications continue
+// to use the typed handles in the public headers; this is not a public plug-in API.
+#include "lcars/core.hpp"
+#include "lcars/layout.hpp"
+
+namespace lcars::detail {
+class UiState;
+struct ComponentLayout {
+    UiState& ui;
+    const Control& control;
+    const Appearance& appearance;
+    TextMeasure& measure;
+    Placement& placement;
+    int width;
+    float scale;
+};
+class ComponentPaint {
+public:
+    ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
+                   const Appearance& look, float render_scale, bool active_window)
+        : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window) {}
+    virtual ~ComponentPaint() = default;
+    UiState& ui;
+    const Placement& placement;
+    const Semantics& semantics;
+    const Appearance& appearance;
+    float scale;
+    bool window_focused;
+    virtual void fill(Rect rect, Color color) = 0;
+    virtual void rounded(Rect rect, int radius, Color color) = 0;
+    virtual void clip(Rect rect) = 0;
+    // The y coordinate is the top of the line box, not its baseline.
+    virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
+};
+class ComponentType {
+public:
+    virtual ~ComponentType() = default;
+    virtual ComponentHandle handle(UiState&, const Control&) const = 0;
+    virtual void arrange(ComponentLayout&) const = 0;
+    virtual void paint(ComponentPaint&) const = 0;
+    // A negative width means the component shares its row's remaining space.
+    virtual int natural_width(const ComponentLayout&) const { return -1; }
+    virtual bool hit(const Placement& p, int x, int y) const {
+        return p.bounds.contains(x, y) && p.clip.contains(x, y);
+    }
+    virtual bool can_focus() const { return true; }
+    virtual bool can_target() const { return false; }
+    virtual bool accepts_pointer() const { return true; }
+    virtual bool selects_text() const { return false; }
+    virtual bool has_activate_operation() const { return false; }
+    virtual Result key_down(UiState&, KeyPress) const { return {}; }
+    virtual void pointer_down(UiState&) const {}
+};
+const ComponentType& component_type(Kind kind);
+
+// Temporary internal registration supports extension tests without changing any dispatch point.
+// Its lifetime must encompass every UI using the registered type, on the UI thread.
+class ScopedComponentType {
+public:
+    ScopedComponentType(Kind kind, const ComponentType& type);
+    ~ScopedComponentType();
+    ScopedComponentType(const ScopedComponentType&) = delete;
+    ScopedComponentType& operator=(const ScopedComponentType&) = delete;
+private:
+    Kind kind_;
+};
+}

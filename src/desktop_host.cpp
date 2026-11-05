@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "component_type.hpp"
 #include "desktop_host.hpp"
 #include <windowsx.h>
 #include <imm.h>
@@ -34,7 +35,6 @@ std::u16string composition(HIMC imc, DWORD kind) {
     std::u16string value(static_cast<std::size_t>(bytes) / 2, u'\0');
     return ImmGetCompositionStringW(imc, kind, value.data(), bytes) == bytes ? value : std::u16string{};
 }
-Rect offset(Rect r, Rect origin) { return {r.x + origin.x, r.y + origin.y, r.w, r.h}; }
 std::wstring wide(std::u16string_view text) { return std::wstring(text.begin(), text.end()); }
 
 LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
@@ -224,55 +224,24 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_focused) {
     const auto p = appearance_.palette();
     const Rect whole{0, 0, canvas.width, canvas.height};
-    auto d = [&](int v) { return std::max(1, static_cast<int>(std::lround(v * s))); };
-    auto lines = [&](const std::vector<Line>& block, int pixels, Color color) {
-        for (const auto& line : block)
-            text_.draw(canvas, text_.shape(line.text, pixels), line.bounds.x, line.bounds.y + ShapedMeasure::baseline(pixels), color);
+    struct PaintAdapter final : ComponentPaint {
+        Canvas& canvas;
+        Text& renderer;
+        PaintAdapter(UiState& ui, const Placement& item, const Semantics& semantics, const Appearance& appearance,
+                     float scale, bool window_focused, Canvas& target, Text& text)
+            : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text) {}
+        void fill(Rect rect, Color color) override { canvas.fill(rect, color); }
+        void rounded(Rect rect, int radius, Color color) override { canvas.rounded(rect, radius, color); }
+        void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
+        void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
+            renderer.draw(canvas, renderer.shape(value, pixels), x, y + ShapedMeasure::baseline(pixels), color);
+        }
     };
     for (const auto& item : frame.items) {
         canvas.clip = intersect(item.clip, whole);
         auto semantics = detail::access(ui_).describe(item.id);
-        bool focused = semantics->focused, enabled = semantics->enabled;
-        if (item.kind == Kind::label) {
-            lines(item.lines, item.text_size, p.text);
-        } else if (item.kind != Kind::text) {  // button, toggle, navigation
-            int ring = focused ? d(3) : d(1);
-            canvas.rounded(item.bounds, d(appearance_.radius()), focused ? p.accent : enabled ? p.border : p.background);
-            Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
-            canvas.rounded(inner, std::max(0, d(appearance_.radius()) - ring), enabled ? p.surface : p.background);
-            lines(item.lines, item.text_size, enabled ? p.text : p.muted);
-        } else {
-            const auto& f = item.field;
-            auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
-            int ring = focused ? d(2) : d(1);
-            Color edge = semantics->invalid ? p.error : focused ? p.accent : p.border;
-            canvas.rounded(surface, d(appearance_.radius()), f.underline ? (enabled ? p.surface : p.background) : edge);
-            if (!f.underline) {
-                Rect inner{surface.x + ring, surface.y + ring, surface.w - 2 * ring, surface.h - 2 * ring};
-                canvas.rounded(inner, std::max(0, d(appearance_.radius()) - ring), enabled ? p.surface : p.background);
-            } else {
-                canvas.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge);
-            }
-            int caption = item.caption_size;
-            lines(item.label_lines, caption, semantics->invalid ? p.error : p.muted);
-            lines(item.description_lines, caption, p.muted);
-            lines(item.error_lines, caption, p.error);
-            const auto* session = detail::access(ui_).edit(item.id);
-            canvas.clip = intersect(canvas.clip, editor);
-            auto x0 = item.caret_x(0);
-            auto at = [&](unsigned offset) { return item.caret_x(offset); };
-            if (focused) {
-                unsigned first = session->begin();
-                unsigned last = session->composing ? first + static_cast<unsigned>(session->preedit.size()) : session->end();
-                if (last > first) {
-                    if (session->composing) canvas.fill({at(first), editor.y + editor.h - d(2), at(last) - at(first), d(2)}, p.accent);
-                    else canvas.fill({at(first), editor.y, at(last) - at(first), editor.h}, p.selection);
-                }
-            }
-            text_.draw(canvas, text_.shape(session->visible(), item.text_size), x0, editor.y + ShapedMeasure::baseline(item.text_size),
-                       enabled ? p.text : p.muted);
-            if (focused && window_focused && enabled) canvas.fill({at(session->visible_caret()), editor.y, d(1) + 1, editor.h}, p.accent);
-        }
+        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
+        detail::component_type(item.kind).paint(adapter);
     }
     canvas.clip = whole;
     if (frame.thumb.h) {
@@ -309,7 +278,7 @@ void DesktopHost::sync_ime() {
     const auto& id = detail::access(ui_).focused();
     synced_focus_ = id;
     auto semantics = id.empty() ? std::nullopt : detail::access(ui_).describe(id);
-    bool writable = semantics && semantics->kind == Kind::text && semantics->enabled && !semantics->read_only;
+    bool writable = semantics && detail::access(ui_).edit(id) && semantics->enabled && !semantics->read_only;
     const auto* focused_session = detail::access(ui_).edit(id);
     if (input_context_ && ImmGetCompositionStringW(input_context_, GCS_COMPSTR, nullptr, 0) > 0 &&
         !(focused_session && focused_session->composing)) {
@@ -416,11 +385,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             return 0;
         }
         const auto* hit = frame_.hit(x, y);
-        if (!hit || hit->kind == Kind::label) return 0;
+        if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
         finish_composition();
         if (detail::access(ui_).pointer_down(id)) {
-            if (hit->kind == Kind::text) {
+            if (detail::component_type(hit->kind).selects_text()) {
                 auto offset = detail::placement_text_offset(frame_, id, x);
                 auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
                 detail::access(ui_).select(id, anchor, offset);

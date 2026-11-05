@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "component_type.hpp"
 #include <stdexcept>
 namespace lcars {
 namespace {
@@ -47,6 +48,7 @@ std::u16string EditSession::visible() const {
 detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(controls)) {
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
+        (void)detail::component_type(control.kind);
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (control.kind == Kind::text) {
@@ -57,7 +59,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         }
     }
     for (const auto& control : controls_)
-        if (!control.target.empty() && (control.kind != Kind::label || !ids.contains(control.target)))
+        if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
 detail::UiState::~UiState() {
@@ -92,10 +94,12 @@ LabelHandle detail::UiState::add_label(Control control) {
 ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     auto control = find(id);
     if (!control) return {};
-    if (control->kind == Kind::text) return TextHandle(this, lifetime_, control->id);
-    if (control->kind == Kind::label) return LabelHandle(this, lifetime_, control->id);
-    return ButtonHandle(this, lifetime_, control->id);
+    return component_type(control->kind).handle(*this, *control);
 }
+ComponentHandle detail::UiState::text_layout_handle(const Control& control) { return TextHandle(this, lifetime_, control.id); }
+ComponentHandle detail::UiState::label_layout_handle(const Control& control) { return LabelHandle(this, lifetime_, control.id); }
+ComponentHandle detail::UiState::button_layout_handle(const Control& control) { return ButtonHandle(this, lifetime_, control.id); }
+
 std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) const {
     return std::visit([this](const auto& item) -> std::optional<Id> {
         using T = std::decay_t<decltype(item)>;
@@ -396,7 +400,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     }
     if (!s.focusable) return s;
     s.operations.push_back(Operation::focus);
-    if (control->kind == Kind::button && !s.executing) s.operations.push_back(Operation::activate);
+    if (component_type(control->kind).has_activate_operation() && !s.executing) s.operations.push_back(Operation::activate);
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
@@ -598,7 +602,7 @@ void detail::UiState::bind(Id id, Action action) {
     actions_.insert_or_assign(std::move(id), std::move(action));
 }
 Result detail::UiState::focusable(const Control& control) const {
-    if (control.kind == Kind::label) return {Status::not_supported, u"標籤不能取得焦點"};
+    if (!component_type(control.kind).can_focus()) return {Status::not_supported, u"標籤不能取得焦點"};
     return available(control.id);
 }
 std::vector<Id> detail::UiState::focus_order() const {
@@ -682,12 +686,17 @@ Result detail::UiState::key_down(KeyPress key) {
     const auto* control = find(focus_);
     if (!control) return {};
     if (auto result = available(focus_); !result) return result;
-    if (control->kind == Kind::text) return edit_key(key);
-    if (control->kind != Kind::button || key.repeat) return {};
+    return component_type(control->kind).key_down(*this, key);
+}
+Result detail::UiState::text_key_down(KeyPress key) { return edit_key(key); }
+Result detail::UiState::command_key_down(KeyPress key) {
+    if (key.repeat) return {};
     if (key.key == Key::enter) return invoke(focus_);
     if (key.key == Key::space) key_armed_ = focus_;
     return {};
 }
+void detail::UiState::command_pointer_down() { pointer_armed_ = focus_; }
+
 namespace {
 // Code-point stepping is the S1 support boundary: no grapheme clusters, no RTL.
 unsigned step(std::u16string_view text, unsigned pos, int direction) {
@@ -750,7 +759,7 @@ Result detail::UiState::pointer_down(std::string_view id) {
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     if (auto result = move_focus(control->id); !result) return result;
-    if (control->kind == Kind::button) pointer_armed_ = control->id;
+    component_type(control->kind).pointer_down(*this);
     return {};
 }
 Result detail::UiState::pointer_up(std::string_view id) {

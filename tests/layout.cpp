@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "test_component.hpp"
 // B01-B03 arrangement through the public layout seam with a deterministic fake text backend.
 #include "check.hpp"
 #include "fake_measure.hpp"
@@ -9,6 +10,25 @@ using test::FakeMeasure;
 namespace {
 layout::Node host_control(Ui& ui, std::string_view id, int text_size = 0) {
     return layout::control(detail::access(ui).layout_handle(id), text_size);
+}
+void registered_component_reaches_layout_hit_and_input() {
+    constexpr auto test_kind = static_cast<Kind>(100);
+    TestComponent component;
+    detail::ScopedComponentType registration(test_kind, component);
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        Ui ui({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
+        auto& host = detail::access(ui);
+        int activations = 0;
+        host.bind("probe", [&] { ++activations; return Result{}; });
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(host_control(ui, "probe"), ui, *appearance, measure, 200, 100, 1.f, scroll);
+        const auto* hit = frame.hit(4, 4);
+        check(hit && hit->id == "probe" && hit->lines[0].text == u"Test component", "Registered component is arranged and hit");
+        check(hit->bounds.w == 80 && hit->bounds.h == 30 && !frame.hit(60, 4), "Registered geometry and hit policy are honored");
+        check(static_cast<bool>(host.pointer_down(hit->id)) && static_cast<bool>(host.pointer_up(hit->id)), "Pointer reaches registered behavior");
+        check(static_cast<bool>(host.key_down({.key = Key::enter})), "Keyboard reaches registered behavior");
+        check(activations == 2, "Pointer and keyboard each activate once");
+    }
 }
 void layout_rejects_foreign_or_expired_handles() {
     Ui first({}), second({});
@@ -214,6 +234,7 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
 
 int main() {
     const test::Case cases[] = {
+        {"Registered component reaches layout, hit and input", registered_component_reaches_layout_hit_and_input},
         {"Layout rejects foreign and expired handles", layout_rejects_foreign_or_expired_handles},
         {"AC05 long label wraps and pushes following controls down", long_label_wraps_and_pushes_following_controls_down},
         {"AC05 Latin words wrap at spaces", latin_words_wrap_at_spaces},

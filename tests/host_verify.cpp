@@ -4,6 +4,7 @@
 // TranslateMessage/DispatchMessage path; layout evidence is rasterized offscreen.
 // --ime additionally drives the real Microsoft Bopomofo IME with SendInput (foreground needed).
 #include "desktop_host.hpp"
+#include "test_component.hpp"
 #include "edit_form.hpp"
 #include <imm.h>
 #include <msctf.h>
@@ -93,6 +94,39 @@ struct Fixture {
         return n;
     }
 };
+
+void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
+    constexpr auto test_kind = static_cast<Kind>(100);
+    TestComponent component;
+    detail::ScopedComponentType registration(test_kind, component);
+    Ui ui({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
+    auto& state = detail::access(ui);
+    int activations = 0;
+    state.bind("probe", [&] { ++activations; return Result{}; });
+    ScrollState scroll;
+    DesktopOptions options;
+    DesktopHost host(ui, appearance, [&] { return layout::control(state.layout_handle("probe")); }, scroll, options, false, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(200, 100);
+    host.pump();
+    host.paint();
+    Canvas pixels(1, 1, {0, 0, 0});
+    host.render(200, 100, 1.f, folder / (report.appearance + "-registered-component.bmp"), &pixels);
+    const std::size_t sample = (static_cast<std::size_t>(100 - 1 - 20) * 200 + 70) * 4;
+    bool painted = pixels.pixels[sample] == 17 && pixels.pixels[sample + 1] == 91 && pixels.pixels[sample + 2] == 173;
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(host.window(), message, w, l); host.pump(); };
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(60, 4));
+    post(WM_LBUTTONUP, 0, MAKELPARAM(60, 4));
+    bool outside = activations == 0;
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(4, 4));
+    post(WM_LBUTTONUP, 0, MAKELPARAM(4, 4));
+    bool pointer = activations == 1;
+    post(WM_KEYDOWN, VK_RETURN, key_lparam(VK_RETURN, false, false));
+    bool keyboard = activations == 2;
+    report.check("registered-component", painted && outside && pointer && keyboard,
+                 "custom color and hit region render; inside click and Enter each activate once");
+}
 
 void space_activation_does_not_leak(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -679,6 +713,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        registered_component_uses_native_host(*appearance, report, folder);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);

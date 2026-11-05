@@ -25,6 +25,13 @@ public:
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
+    // Internal adapters used by registered component types.
+    ComponentHandle text_layout_handle(const Control& control);
+    ComponentHandle label_layout_handle(const Control& control);
+    ComponentHandle button_layout_handle(const Control& control);
+    Result text_key_down(KeyPress key);
+    Result command_key_down(KeyPress key);
+    void command_pointer_down();
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     UiState(const UiState&)=delete;

@@ -1,5 +1,6 @@
 #include "lcars/layout.hpp"
 #include "core_internal.hpp"
+#include "component_type.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -81,12 +82,12 @@ const Placement* Frame::find(const LabelHandle& handle) const {
 }
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = items.rbegin(); it != items.rend(); ++it)
-        if (it->bounds.contains(x, y) && it->clip.contains(x, y)) return &*it;
+        if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
 }
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
     const auto* p = detail::find_placement(frame, id);
-    if (!p || p->kind != Kind::text) return 0;
+    if (!p || !component_type(p->kind).selects_text()) return 0;
     return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
 }
 unsigned Frame::text_offset(const TextHandle& handle, int x) const {
@@ -104,8 +105,6 @@ int Frame::offset_for_thumb(int thumb_top) const {
 
 namespace {
 using layout::Node;
-// Buttons and the other command kinds share one presentation: a titled, naturally sized target.
-bool command(Kind kind) { return kind == Kind::button || kind == Kind::toggle || kind == Kind::navigation; }
 void translate(Placement& p, int dx, int dy) {
     auto move = [&](Rect& r) { r.x += dx; r.y += dy; };
     move(p.bounds);
@@ -123,31 +122,15 @@ struct Arranger {
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
     int pixels(int size) const { return d(size ? size : appearance.text_size()); }
 
-    std::vector<Line> block(std::u16string_view text, int size, int x, int y, int width) {
-        std::vector<Line> lines;
-        if (text.empty()) return lines;
-        int height = measure.line_height(size);
-        for (auto& line : wrap(measure, text, size, width)) {
-            lines.push_back({{x, y, width, height}, std::move(line)});
-            y += height;
-        }
-        return lines;
-    }
-    static int height_of(const std::vector<Line>& lines) {
-        return lines.empty() ? 0 : lines.back().bounds.y + lines.back().bounds.h - lines.front().bounds.y;
-    }
-    bool natural_width(const Node& node) const {
+    int component_width(const Node& node) {
         auto id = node.type == Node::Type::control ? ui.layout_id(node.component) : std::nullopt;
-        auto c = id ? ui.find(*id) : nullptr;
-        return c && command(c->kind);
+        auto control = id ? ui.find(*id) : nullptr;
+        if (!control) return -1;
+        Placement p;
+        p.text_size = pixels(node.text_size);
+        detail::ComponentLayout context{ui, *control, appearance, measure, p, 0, scale};
+        return detail::component_type(control->kind).natural_width(context);
     }
-    int button_width(const Node& node) {
-        auto id = ui.layout_id(node.component);
-        auto c = id ? ui.find(*id) : nullptr;
-        if (!c) throw std::invalid_argument("Layout references an invalid component");
-        return static_cast<int>(std::ceil(measure.measure(c->label, pixels(node.text_size)).width)) + 2 * appearance.button_padding(scale);
-    }
-
     Placement build(const Node& node, int width) {
         auto id = ui.layout_id(node.component);
         const auto* control = id ? ui.find(*id) : nullptr;
@@ -155,47 +138,9 @@ struct Arranger {
         Placement p;
         p.id = control->id; p.kind = control->kind;
         p.text_size = pixels(node.text_size);
-        int line = measure.line_height(p.text_size);
-        if (control->kind == Kind::label) {
-            p.lines = block(ui.text(control->id), p.text_size, 0, 0, width);
-            p.bounds = {0, 0, width, height_of(p.lines)};
-        } else if (command(control->kind)) {
-            int w = std::min(width, button_width(node)), h = appearance.button_height(line, scale);
-            p.bounds = {0, 0, w, h};
-            auto title = measure.measure(control->label, p.text_size);
-            p.lines.push_back({{(w - static_cast<int>(title.width)) / 2, (h - line) / 2, static_cast<int>(std::ceil(title.width)), line}, control->label});
-        } else {
-            field(p, *control, width, line);  // Kind::text
-        }
+        detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale};
+        detail::component_type(control->kind).arrange(context);
         return p;
-    }
-    void field(Placement& p, const Control& control, int width, int line) {
-        auto semantics = *ui.describe(control.id);
-        auto name = semantics.name;
-        if (control.read_only) name += u"（唯讀）";
-        if (!control.enabled) name += u"（停用）";
-        int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
-        // First pass learns each role carrier's width from the appearance, second fixes heights.
-        auto probe = appearance.arrange_field(width, {line, line, line, line}, scale);
-        auto label = block(name, caption, 0, 0, probe.label.w);
-        auto description = block(semantics.description, caption, 0, 0, probe.description.w);
-        auto error = block(semantics.error, caption, 0, 0, probe.error.w);
-        p.field = appearance.arrange_field(width, {height_of(label), height_of(description), height_of(error), line}, scale);
-        auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
-        anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
-        p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
-        p.bounds = {0, 0, width, p.field.height};
-        const auto* session = ui.edit(control.id);
-        p.run = measure.measure(session->visible(), p.text_size);
-        float offset = ui.text_offset(control.id) * scale, room = static_cast<float>(p.field.editor.w - d(2));
-        if (ui.focused() == control.id) {
-            float caret = p.run.x(session->visible_caret());
-            if (caret - offset > room) offset = caret - room;
-            if (caret < offset) offset = caret;
-        }
-        offset = std::clamp(offset, 0.f, std::max(0.f, p.run.width - room));
-        ui.set_text_offset(control.id, offset / scale);
-        p.offset = offset;
     }
 
     int height(const Node& node, int width) {
@@ -232,14 +177,15 @@ struct Arranger {
         case Node::Type::row: {
             int fixed = 0, flexible = 0;
             for (const auto& child : node.children) {
-                if (natural_width(child)) fixed += button_width(child); else ++flexible;
+                if (auto width = component_width(child); width >= 0) fixed += width; else ++flexible;
             }
             int total_gap = gap * std::max(0, static_cast<int>(node.children.size()) - 1);
             int share = flexible ? std::max(0, (r.w - fixed - total_gap) / flexible) : 0;
             std::vector<int> widths, heights;
             int x = r.x, tallest = 0;
             for (const auto& child : node.children) {
-                widths.push_back(natural_width(child) ? std::min(button_width(child), std::max(0, r.x + r.w - x)) : share);
+                auto natural = component_width(child);
+                widths.push_back(natural >= 0 ? std::min(natural, std::max(0, r.x + r.w - x)) : share);
                 heights.push_back(height(child, widths.back()));
                 tallest = std::max(tallest, heights.back());
                 x += widths.back() + gap;
