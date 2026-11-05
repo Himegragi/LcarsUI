@@ -1,0 +1,801 @@
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-1 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-1 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-1 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-1 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-2 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-2 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-2 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-2 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-3 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-3 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-3 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-3 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-4 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-4 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-4 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-4 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-5 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-5 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-5 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-5 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-6 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-6 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-6 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-6 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-7 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-7 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-7 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-7 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-8 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-8 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-8 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-8 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-9 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-9 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-9 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-9 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-10 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-10 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-10 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-10 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-11 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-11 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-11 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-11 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-12 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-12 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-12 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-12 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-13 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-13 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-13 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-13 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-14 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-14 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-14 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-14 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-15 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-15 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-15 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-15 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-16 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-16 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-16 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-16 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-17 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-17 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-17 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-17 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-18 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-18 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-18 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-18 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-19 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-19 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-19 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-19 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-20 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-20 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-20 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-20 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-21 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-21 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-21 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-21 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-22 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-22 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-22 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-22 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-23 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-23 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-23 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-23 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-24 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-24 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-24 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-24 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-25 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-25 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-25 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-25 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-26 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-26 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-26 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-26 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-27 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-27 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-27 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-27 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-28 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-28 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-28 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-28 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-29 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-29 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-29 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-29 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-30 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-30 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-30 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-30 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-31 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-31 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-31 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-31 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-32 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-32 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-32 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-32 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-33 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-33 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-33 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-33 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-34 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-34 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-34 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-34 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-35 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-35 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-35 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-35 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-36 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-36 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-36 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-36 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-37 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-37 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-37 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-37 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-38 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-38 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-38 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-38 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-39 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-39 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-39 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-39 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-40 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-40 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-40 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-40 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-41 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-41 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-41 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-41 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-42 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-42 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-42 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-42 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-43 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-43 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-43 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-43 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-44 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-44 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-44 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-44 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-45 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-45 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-45 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-45 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-46 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-46 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-46 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-46 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-47 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-47 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-47 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-47 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-48 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-48 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-48 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-48 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-49 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-49 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-49 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-49 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-50 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-50 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-50 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-50 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-51 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-51 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-51 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-51 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-52 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-52 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-52 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-52 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-53 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-53 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-53 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-53 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-54 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-54 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-54 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-54 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-55 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-55 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-55 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-55 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-56 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-56 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-56 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-56 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-57 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-57 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-57 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-57 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-58 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-58 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-58 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-58 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-59 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-59 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-59 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-59 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-60 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-60 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-60 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-60 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-61 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-61 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-61 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-61 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-62 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-62 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-62 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-62 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-63 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-63 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-63 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-63 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-64 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-64 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-64 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-64 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-65 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-65 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-65 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-65 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-66 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-66 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-66 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-66 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-67 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-67 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-67 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-67 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-68 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-68 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-68 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-68 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-69 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-69 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-69 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-69 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-70 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-70 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-70 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-70 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-71 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-71 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-71 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-71 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-72 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-72 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-72 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-72 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-73 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-73 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-73 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-73 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-74 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-74 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-74 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-74 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-75 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-75 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-75 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-75 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-76 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-76 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-76 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-76 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-77 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-77 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-77 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-77 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-78 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-78 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-78 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-78 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-79 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-79 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-79 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-79 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-80 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-80 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-80 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-80 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-81 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-81 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-81 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-81 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-82 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-82 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-82 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-82 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-83 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-83 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-83 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-83 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-84 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-84 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-84 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-84 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-85 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-85 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-85 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-85 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-86 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-86 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-86 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-86 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-87 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-87 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-87 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-87 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-88 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-88 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-88 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-88 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-89 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-89 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-89 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-89 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-90 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-90 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-90 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-90 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-91 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-91 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-91 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-91 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-92 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-92 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-92 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-92 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-93 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-93 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-93 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-93 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-94 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-94 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-94 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-94 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-95 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-95 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-95 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-95 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-96 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-96 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-96 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-96 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-97 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-97 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-97 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-97 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-98 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-98 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-98 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-98 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-99 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-99 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-99 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-99 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-100 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web-100 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-100 AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material-100 AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+400 native clipboard checks, 0 failures

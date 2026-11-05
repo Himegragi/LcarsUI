@@ -1,5 +1,53 @@
 # First component batch acceptance — issue #25
 
+## Removal and acceptance follow-up (2026-11-06)
+
+**Current result: NOT COMPLETED.** This section supersedes the review-fix status below; the remaining sections are historical. The final code/test commit is `99d96ec`; local `integration/first-component-batch` at `532c0e8` was already an ancestor. Final verification used Windows 11 Pro N 26H2 build 26300.9711, clang-cl 19.1.5, OpenGL 3.3.0 NVIDIA 610.88, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 / ChtIME.exe 6.2.26100.9278. The final evidence commit follows the tested code.
+
+| Item | Current result | Evidence and limit |
+| --- | --- | --- |
+| S-H1 | Passed for the supported button removal API | `components` tests request self-removal in an action, see storage retained through the callback, reject dispatch to the pending target, and verify reclamation and stale identity after reusing the ID. A focus-callback regression checks pointer target revalidation. The test seam checks control, page map and member vector, actions, errors, tooltips, live identity, pending removals and confirmation connection sizes after 1,000 cycles; captured callbacks are released. The assembled V03 test runs 1,000 remove/reset cycles for each appearance and ID set. Confirmation fields can be reconnected after their button is removed. Removal of other component types is not offered by this API. |
+| P-B3 | Passed | `TabsHandle::add_member` accepts a general `ComponentHandle`, rejects foreign and duplicate members, and obeys hidden-page admission. The V03 temporary opener uses it; P04 cancel/confirm and P08 reset remain in the assembled suite. |
+| X02 | Partial, matrix below | The prior 24 native page/size/forced-scale/appearance overlap and reveal/hit samples pass on the final build. New core layout tests cross the applicable popup and scroll checks below with both sizes, scales, appearances and ID sets. They use the host/core input seam and fake text metrics, not actual OS wheel/thumb input or raster inspection for every combination. Scrolling while a popup is open and all pointer/keyboard dismissal variants are not crossed with every sample. |
+| X04 | Partial | On all three pages and both appearances/ID sets, the new paint-command probe compares arranged controls' applicable semantic names, values and option labels with text actually sent to each component's paint adapter. It does not inspect final pixels, clipped visibility, every modal/hidden component, or every applicable disabled, read-only, selection, error and source-conflict visual state. Existing focused conflict/restriction tests remain supplementary; the requested exhaustive comparison is open. |
+| D01 | Failed / incomplete | [Final probe](removal-final/dpi/dpi.tsv): 10/12 checks pass at 150% <-> 125%. Selection and composition pass in both directions for both appearances; Material popup checks pass both ways. Web popup forward and return checks fail. The recorded combined predicate does not distinguish absent overlay, out-of-bounds geometry, and hit failure; cause is not established. 100% <-> 150% and visual inspection of the OS candidate window remain open. |
+| E01 real IME | Blocked | The single requested [final run](removal-final/ime/ime.tsv) passed 6 checks through active Bopomofo preedit, then stopped after foreground moved away. The remaining scenarios and Material appearance were not run on this final build. Prior 46/46 evidence below is historical. |
+| Clipboard | Passed in this run | [Solo stress](removal-final/clipboard/clipboard.tsv) 400/400, 100 repetitions x two appearances x ordinary and forced 60 ms contention. Prior unexplained intermittent failures remain undiagnosed; Unicode text only is restored. |
+
+### X02 automated per-sample table
+
+P means the listed core layout/input-seam checks passed at the given physical size and forced scale in that appearance, with both shipped and alternate IDs. The 24 native overlap/reveal checks are recorded separately in [Release CTest output](removal-final/release-tests.log). The interaction tests use fake font metrics and do not close the limits in the X02 row above.
+
+| Page | DIP size | Scale | Web | Material | Interaction exercised |
+| --- | --- | --- | --- | --- | --- |
+| V01 | 960x720 | 100% | P | P | Dropdown: reveal, open, bounds, topmost hit, cancel |
+| V01 | 960x720 | 150% | P | P | Dropdown: reveal, open, bounds, topmost hit, cancel |
+| V01 | 640x480 | 100% | P | P | Dropdown: reveal, open, bounds, topmost hit, cancel |
+| V01 | 640x480 | 150% | P | P | Dropdown: reveal, open, bounds, topmost hit, cancel |
+| V02 | 960x720 | 100% | P | P | List: focus, End, nested scroll and last row visible |
+| V02 | 960x720 | 150% | P | P | List: focus, End, nested scroll and last row visible |
+| V02 | 640x480 | 100% | P | P | List: focus, End, nested scroll and last row visible |
+| V02 | 640x480 | 150% | P | P | List: focus, End, nested scroll and last row visible |
+| V03 | 960x720 | 100% | P | P | Tooltip: reveal, delay and bounds; dialog: bounds, hit, cancel |
+| V03 | 960x720 | 150% | P | P | Tooltip: reveal, delay and bounds; dialog: bounds, hit, cancel |
+| V03 | 640x480 | 100% | P | P | Tooltip: reveal, delay and bounds; dialog: bounds, hit, cancel |
+| V03 | 640x480 | 150% | P | P | Tooltip: reveal, delay and bounds; dialog: bounds, hit, cancel |
+
+### Final verification
+
+- [Debug desktop](removal-final/debug.log): **7/7** CTest entries; [Release desktop](removal-final/release.log): **7/7**, including **86/86** native checks; [Release core-only](removal-final/core.log): **6/6**.
+- [Release case output](removal-final/release-tests.log): components **67/67** (4,273 checks), layout **22/22** (124), list-page **6/6** (20), showcase **39/39** for each appearance and ID set (156 case executions; 13,692 cumulative checks).
+- Real IME **6/7 checks passed, one blocked**; DPI **10/12 passed**; clipboard **400/400 passed**. Failed and blocked cases are not acceptance passes.
+
+### Not completed on this build
+
+1. Finish X04's per-component visible-versus-semantic comparison, including applicable restrictions, conflicts, modal content and actual drawn output.
+2. Complete X02's uncrossed popup/scroll interactions, especially scrolling with an open popup and pointer/keyboard dismissal combinations, at each applicable size/scale/appearance.
+3. Investigate the two final Web DPI popup failures, then verify real **100% <-> 150%** transitions in both directions for both appearances, including actual candidate-window position. The available run used 150% <-> 125%.
+4. Rerun the full real Bopomofo IME suite with uninterrupted foreground; the required single run was blocked after six passes.
+5. The historical clipboard intermittency has no established cause. User trial U01 and UIA/screen-reader and MCP adapter work remain open, as do the previously documented deferred design refactors.
+
+
 **Result: NOT COMPLETED.** The required 100%↔150% monitor sample and several complete cross-scenario / appearance-specific cases remain open below. A passing subcheck or a blocked sample is not a passing batch.
 
 The tested code is `796809d`, on top of local integration `01272acc71d3d85a6b4bf68136a4f558ea1cc1c6`; the local integration tip was merged and was already an ancestor. The production host fix is `afe67bd`; the next commit adds acceptance tests only, so the native IME, DPI and clipboard executables exercise the same production and host-verification code. This report and evidence are in the following evidence-only commit. Windows 11 Pro N 26H2 build 26300.9711; clang-cl 19.1.5; NVIDIA GeForce RTX 3060, driver 610.88, OpenGL 3.3.0. Microsoft Bopomofo: IMTCTIP.DLL 6.2.26100.9711, ChtIME.exe 6.2.26100.9278. Per-monitor-aware enumeration returned DISPLAY1 144 DPI (150%, 1920×1080 physical pixels) and DISPLAY2 120 DPI (125%, 1080×1920 physical pixels). The latter is **not** 100%.
@@ -131,7 +179,7 @@ In the tables, **P** means the listed expected outcome was observed for that app
 
 The new close test first failed twice with a retained `composing=1` after destruction ([before fix](ticket-25-ime-before-fix.tsv)); the host now cancels the native and retained composition before releasing its window. An initial DPI probe incorrectly treated field-relative editor coordinates as window-relative; [its two failures](ticket-25-dpi-probe-before-correction.tsv) were probe errors, corrected before the final physical-click run. Neither intermediate run is counted as a final pass. Trailing whitespace was removed from the saved host and event logs without changing outcomes. Forced-scale images supplement geometry rather than replace assertions: [Web long error](ticket-25-host/web-640x480-100-long-error.bmp), [Material long error](ticket-25-host/material-640x480-100-long-error.bmp).
 
-## Not completed (current review-fix build)
+## Not completed (historical review-fix build)
 
 1. **S-H1 and P-B3:** Implement safe-point structural removal, bounded storage and stale-handle identity without per-removed-component tombstones; test many remove/reset cycles and reentrant callbacks. Resolve the button-specific tab insertion API as a general capability or move it to the test seam.
 2. **D01:** In Windows Settings > System > Display, select one of the first two horizontally ordered displays and set Scale to 100%; leave the other at 150%. Confirm the applied values, close Settings, stop interacting, and run `build/Release/lcars_host_verify.exe --dpi --evidence DIR`. For both appearances inspect the candidate window itself while the verifier moves the composing field in each direction; check that the real candidate follows the caret. Record the OS and IME versions, enumerated DPI, all results, and restore the previous display scale. The automated candidate-position request is not visual confirmation.

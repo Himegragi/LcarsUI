@@ -1,0 +1,43 @@
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/Debug/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/user/.t3/worktrees/LcarsUI/t3-df719c8d/build/Debug
+[1/13] Building CXX object CMakeFiles\lcars_components_tests.dir\tests\components.cpp.obj
+[2/13] Building CXX object CMakeFiles\lcars_core.dir\src\core.cpp.obj
+[3/13] Linking CXX static library lcars_core.lib
+[4/13] Linking CXX executable lcars_tests.exe
+[5/13] Linking CXX executable lcars_components_tests.exe
+[6/13] Linking CXX executable lcars_layout_tests.exe
+[7/13] Linking CXX executable lcars_edit_form_tests.exe
+[8/13] Linking CXX executable lcars_list_page_tests.exe
+[9/13] Linking CXX executable lcars_edit_form_web.exe
+[10/13] Linking CXX executable lcars_list_page_web.exe
+[11/13] Linking CXX executable lcars_edit_form_material.exe
+[12/13] Linking CXX executable lcars_list_page_material.exe
+[13/13] Linking CXX executable lcars_host_verify.exe
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-df719c8d/build/Debug
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-df719c8d/build/Debug
+    Start 1: core_regressions
+1/7 Test #1: core_regressions .................   Passed    0.03 sec
+    Start 2: components
+2/7 Test #2: components .......................   Passed    0.06 sec
+    Start 3: layout
+3/7 Test #3: layout ...........................   Passed    0.06 sec
+    Start 4: edit_form
+4/7 Test #4: edit_form ........................   Passed    1.88 sec
+    Start 5: list_page
+5/7 Test #5: list_page ........................   Passed    0.03 sec
+    Start 6: consumer_example
+6/7 Test #6: consumer_example .................   Passed    3.14 sec
+    Start 7: host_native
+7/7 Test #7: host_native ......................   Passed  118.15 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) = 123.36 sec

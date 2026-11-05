@@ -1,0 +1,9 @@
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web ENV Windows build 26300.9711 (26H2); IMTCTIP.DLL 6.2.26100.9711; ChtIME.exe 6.2.26100.9278; DPI scale 1.500000
+PASS web AC07-real Space press, repeat and release on the error fixture: focus to name, no space leaked, one history entry => draft='' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web AC07-real-typing A real Space typed afterwards inserts one space => draft=' ' composing=0 preedit='' focus=form.name history=2 applies=0
+PASS web IME-profile langid=0x0404 Microsoft Bopomofo TIP
+PASS web IME-mode conversion=0x1 (native Chinese mode)
+PASS web F02-compose ㄨㄛˇ updates the preedit only; committed text unchanged => draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0
+FAIL web BLOCKED foreground moved away from the test window; input stopped
+7 real-input checks, 1 not passing
