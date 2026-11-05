@@ -176,6 +176,7 @@ private:
     struct TabsState {
         std::vector<TabPage> pages;
         std::size_t active = 0, candidate = 0;
+        bool switching = false;
         std::function<void(OptionValue, OptionValue)> changed;
     };
     std::map<Id, TabsState, std::less<>> tabs_;

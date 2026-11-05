@@ -336,6 +336,32 @@ void stack_and_popup_edges_follow_paint_order() {
     }
 }
 
+void cross_page_error_is_revealed_in_first_frame() {
+    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+        Ui ui({});
+        auto current = ui.add_text({.id = "current", .kind = Kind::text});
+        auto remote = ui.add_text({.id = "remote", .kind = Kind::text});
+        auto filler = ui.add_label({.id = "filler", .kind = Kind::label, .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10"});
+        auto submit = ui.add_button({.id = "apply", .kind = Kind::button});
+        auto source = TextSource{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
+        current.connect_source(source); remote.connect_source(source);
+        auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+            {{"one"}, u"One", true, {current, submit}}, {{"two"}, u"Two", true, {filler, remote}}});
+        ui.connect_mixed_confirmation(submit, {remote, current}, [=](const auto&) {
+            return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
+        });
+        auto root = layout::pinned(layout::control(tabs), layout::scroll(layout::column({layout::control(current), layout::control(submit), layout::control(filler), layout::control(remote)})));
+        submit.invoke();
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(root, ui, *look, measure, 400, 200, 1.f, scroll, detail::access(ui).focused());
+        auto field = frame.find(remote);
+        check(*tabs.active() == OptionValue{"two"} && field && field->bounds.y >= frame.viewport.y &&
+              field->bounds.y + field->bounds.h <= frame.viewport.y + frame.viewport.h && scroll.offset > 0,
+              "The first invalid field's page is selected and revealed before the first frame");
+        check(frame.find(tabs)->lines[0].text.find(u"!") != std::u16string::npos, "Other page error is visible on its tab");
+    }
+}
+
 void inactive_page_members_do_not_paint_or_hit() {
     Ui ui({});
     auto first = ui.add_button({.id = "one", .kind = Kind::button, .label = u"One"});
@@ -344,8 +370,10 @@ void inactive_page_members_do_not_paint_or_hit() {
     auto root = layout::column({layout::control(tabs), layout::control(first), layout::control(second)});
     for (const auto* look : {&web_appearance(), &material_appearance()}) {
         FakeMeasure measure; ScrollState scroll;
+        second.enable(false);
         auto frame = arrange(root, ui, *look, measure, 400, 300, 1.f, scroll);
-        check(frame.find(first) && !frame.find(second), "Only current page is laid out");
+        check(frame.find(first) && !frame.find(second), "Disabled controls on hidden pages are not laid out");
+        second.enable(true);
         tabs.activate({"two"});
         frame = arrange(root, ui, *look, measure, 400, 300, 1.f, scroll);
         check(!frame.find(first) && frame.find(second), "Switch replaces the visible page");
@@ -355,6 +383,7 @@ void inactive_page_members_do_not_paint_or_hit() {
 
 int main() {
     const test::Case cases[] = {
+        {"G11 reveal cross-page error", cross_page_error_is_revealed_in_first_frame},
         {"C09 only active page is drawn", inactive_page_members_do_not_paint_or_hit},
         {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},
         {"R05 dropdown states are readable", dropdown_states_are_readable_without_color},

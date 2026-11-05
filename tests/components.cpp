@@ -1045,6 +1045,34 @@ void tabs_require_explicit_activation_and_guard_hidden_pages() {
     check(first.invoke().status == Status::hidden, "Previous page is hidden");
 }
 
+void tab_change_notifications_do_not_recurse() {
+    Ui ui({});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}});
+    int calls = 0; Status nested = Status::ok;
+    tabs.on_page_change([&](OptionValue, OptionValue) { if (++calls == 1) nested = tabs.activate({"one"}).status; });
+    check(bool(tabs.activate({"two"})) && nested == Status::busy && calls == 1 && *tabs.active() == OptionValue{"two"},
+          "A nested page switch is rejected while the change is being delivered");
+}
+
+void tabs_respect_modal_and_disabled_pointer_targets() {
+    Ui ui({});
+    auto page = ui.add_button({.id = "page", .kind = Kind::button});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+        {{"one"}, u"One", true, {page}}, {{"disabled"}, u"Disabled", false, {}}, {{"two"}, u"Two", true, {}}});
+    auto& host = detail::access(ui);
+    host.pointer_down("tabs", 1);
+    check(host.pointer_up("tabs", 1).status == Status::disabled && *tabs.active() == OptionValue{"one"}, "Disabled pointer target cannot activate");
+    tabs.focus(); host.key_down({.key = Key::right}); host.key_down({.key = Key::space});
+    check(*tabs.active() == OptionValue{"one"}, "Space waits for release");
+    host.key_up(Key::space);
+    check(*tabs.active() == OptionValue{"two"}, "Space release activates candidate");
+    host.modal(true);
+    check(tabs.activate({"one"}).status == Status::blocked_by_modal && page.invoke().status != Status::ok,
+          "Modal blocks background navigation and operations");
+    host.modal(false);
+    check(tabs.enable_page({"two"}, false).status == Status::invalid_value, "The active page cannot be disabled");
+}
+
 void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     Ui ui({});
     auto first = ui.add_text({.id = "first-field", .kind = Kind::text});
@@ -1065,6 +1093,8 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
 
 int main() {
     const test::Case cases[] = {
+        {"G07 page changes do not recurse", tab_change_notifications_do_not_recurse},
+        {"C09 disabled and modal admission", tabs_respect_modal_and_disabled_pointer_targets},
         {"G11 cross-page rejection", cross_page_confirmation_reveals_first_error_and_marks_other_pages},
         {"C09 manual tabs and hidden admission", tabs_require_explicit_activation_and_guard_hidden_pages},
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},

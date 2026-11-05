@@ -663,7 +663,7 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
     controls_.push_back(std::move(control));
     for (std::size_t i = 0; i < pages.size(); ++i)
         for (const auto& handle : pages[i].members) page_members_.emplace(*layout_id(handle), std::make_pair(id, i));
-    tabs_.emplace(id, TabsState{std::move(pages), 0, 0, {}});
+    tabs_.emplace(id, TabsState{std::move(pages), 0, 0, false, {}});
     bind(id, [this, id] { auto& t = tabs_.at(id); return activate_tab(id, t.pages[t.candidate].value); });
     return TabsHandle(this, lifetime_, std::move(id));
 }
@@ -671,6 +671,9 @@ ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) { return T
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     if (auto r = available(id); !r) return r;
     auto& t = tabs_.at(id);
+    if (t.switching) return {Status::busy, u"Page change is already in progress"};
+    t.switching = true;
+    struct SwitchingGuard { bool& flag; ~SwitchingGuard() { flag = false; } } guard{t.switching};
     auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
     if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
     if (!it->enabled) return {Status::disabled, u"Page is disabled"};
@@ -1225,9 +1228,9 @@ Result detail::UiState::available(std::string_view id) const {
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
-    if (!control->enabled) return {Status::disabled, u"目前無法執行"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
+    if (!control->enabled) return {Status::disabled, u"目前無法執行"};
     if (control->page == "dialog" && !modal_) return {Status::disabled, u"對話框尚未開啟"};
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};

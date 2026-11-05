@@ -318,9 +318,16 @@ public:
         for (int i = 0; i < count; ++i) {
             int left = c.width * i / count, right = c.width * (i + 1) / count;
             c.placement.options.push_back({left, 0, right - left, height});
-            auto label = semantics.options[static_cast<std::size_t>(i)].label;
-            if (!semantics.options[static_cast<std::size_t>(i)].enabled) label += u" (disabled)";
-            if (semantics.options[static_cast<std::size_t>(i)].invalid) label += u" (error)";
+            const auto& option = semantics.options[static_cast<std::size_t>(i)];
+            std::u16string prefix = option.invalid ? u"! " : u"";
+            if (!option.enabled) prefix += u"[-] ";
+            auto label = option.label;
+            int room = std::max(0, right - left - scaled(c.scale, 8));
+            while (!label.empty() && c.measure.measure(prefix + label, c.placement.text_size).width > room) {
+                if (label.back() >= 0xdc00 && label.back() <= 0xdfff && label.size() > 1) label.pop_back();
+                label.pop_back();
+            }
+            label = prefix + label;
             c.placement.lines.push_back({{left + scaled(c.scale, 4), (height - c.measure.line_height(c.placement.text_size)) / 2,
                                          std::max(0, right - left - scaled(c.scale, 8)), height}, std::move(label)});
         }
@@ -334,11 +341,9 @@ public:
             if (option.selected) c.fill({rect.x, rect.y + rect.h - scaled(c.scale, 3), rect.w, scaled(c.scale, 3)}, palette.accent);
             if (c.semantics.focused && c.semantics.candidate && *c.semantics.candidate == option.value)
                 c.fill({rect.x, rect.y, rect.w, scaled(c.scale, 2)}, palette.accent);
-            c.clip(rect);
             const auto& line = c.placement.lines[i];
             c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);
         }
-        c.clip(c.placement.clip);
     }
     bool has_activate_operation() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
