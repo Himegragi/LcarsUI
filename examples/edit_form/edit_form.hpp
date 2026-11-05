@@ -4,6 +4,7 @@
 // from the caller so the framework never depends on these names.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
+#include "list_page.hpp"
 #include <array>
 
 namespace edit_form {
@@ -30,8 +31,7 @@ private:
     bool offline_disabled_ = false;
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
-    bool pages_ = false, sample_selected_ = false;
-    std::u16string search_source_;
+    bool pages_ = false;
     std::array<int, 3> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_;
 public:
@@ -39,10 +39,10 @@ public:
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
-        lcars::TextHandle name, search;
+        lcars::TextHandle name;
         lcars::TabsHandle tabs;
-        lcars::ButtonHandle choose_sample, reset_v02, reset_v03;
-        lcars::LabelHandle v02_title, v02_result, v03_title;
+        lcars::ButtonHandle reset_v03;
+        lcars::LabelHandle v03_title;
         lcars::CheckboxHandle notices;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
@@ -52,11 +52,11 @@ public:
     } handles;
     lcars::Ui ui;
     lcars::ScrollState scroll;
+    std::unique_ptr<list_page::Page> list;
     lcars::layout::Node page() const;
     const Ids& ids() const { return ids_; }
     const std::u16string& applied() const { return applied_; }
     int applies() const { return applies_; }
-    bool sample_selected() const { return sample_selected_; }
     int volume_applied() const { return volume_applied_; }
     bool notices_applied() const { return notices_applied_; }
     std::optional<lcars::OptionValue> mode_applied() const { return mode_applied_; }

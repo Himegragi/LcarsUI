@@ -253,16 +253,17 @@ void pages_keep_independent_drafts_history_and_scroll() {
     check(offset > 0 && saved_scroll > 0, "V01 has horizontal and vertical offsets to preserve");
     check(bool(h.tabs.activate({"v02"})), "Open V02");
     check(h.name.set_value(u"blocked").status == Status::hidden, "Hidden V01 cannot be edited");
-    h.search.set_value(u"common"); h.choose_sample.invoke();
+    auto& list = form.list->handles;
+    list.search.set_value(u"\u5171\u7528\u7bc4\u672c"); list.list.select({"T006"});
     check(bool(h.tabs.activate({"v01"})), "Return to V01");
     check(*h.name.draft() == u"a very long draft that needs horizontal scrolling in a narrow field", "V01 draft survives switch");
     check(form.applied() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V01 applied value survives switch");
     check(form.scroll.offset == saved_scroll, "V01 vertical offset survives switch");
     check(detail::access(form.ui).text_offset(ids.name) == offset, "V01 horizontal offset survives switch");
     h.tabs.activate({"v02"});
-    check(*h.search.draft() == u"common" && form.sample_selected(), "V02 placeholder search and selection survive a switch");
-    h.reset_v02.invoke();
-    check(h.reset_v02.describe()->focused && h.search.draft()->empty() && !form.sample_selected(), "V02 reset affects only its own state and keeps focus");
+    check(*list.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
+    list.reset.invoke();
+    check(list.reset.describe()->focused && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->options.size() == 20, "V02 reset restores the real list and keeps focus");
     h.tabs.activate({"v01"});
     check(form.scroll.offset == saved_scroll && detail::access(form.ui).text_offset(ids.name) == offset && bool(h.name.undo()) &&
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");

@@ -104,14 +104,14 @@ void tabs_native(const Appearance& appearance, Report& report) {
     f.tap(VK_RIGHT);
     bool candidate = *h.tabs.active() == OptionValue{"v01"} && h.tabs.describe()->candidate == OptionValue{"v02"};
     f.tap(VK_RETURN); f.settle();
-    bool activated = *h.tabs.active() == OptionValue{"v02"} && !f.host.frame().find(h.name) && f.host.frame().find(h.search);
-    h.search.set_value(u"sample"); h.choose_sample.invoke();
+    bool activated = *h.tabs.active() == OptionValue{"v02"} && !f.host.frame().find(h.name) && f.host.frame().find(f.form.list->handles.search);
+    f.form.list->handles.search.set_value(u"\u5171\u7528\u7bc4\u672c"); f.form.list->handles.list.select({"T006"});
     f.host.paint(); auto tab = f.host.frame().find(h.tabs);
     auto first = tab->options[0]; POINT point{first.x + first.w / 2, first.y + first.h / 2};
     f.mouse(WM_LBUTTONDOWN, point, MK_LBUTTON); f.mouse(WM_LBUTTONUP, point); f.settle();
-    bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && h.search.set_value(u"blocked").status == Status::hidden;
+    bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && f.form.list->handles.search.set_value(u"blocked").status == Status::hidden;
     h.tabs.activate({"v02"});
-    bool retained = *h.search.draft() == u"sample" && f.form.sample_selected();
+    bool retained = *f.form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && f.form.list->selection() == OptionValue{"T006"};
     report.check("C09-native", candidate && activated && pointer && retained,
         "Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive");
 }

@@ -132,33 +132,20 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         return Result{};
     });
     if (pages_) {
-        // V02 is deliberately a small state-bearing placeholder for the list from #20.
         const auto prefix = i.title + ".pages.";
-        handles.v02_title = ui.add_label({.id = prefix + "v02.title", .kind = Kind::label, .value = u"List page (placeholder)"});
-        handles.search = ui.add_text({.id = prefix + "v02.search", .kind = Kind::text, .label = u"Search (placeholder)"});
-        handles.choose_sample = ui.add_button({.id = prefix + "v02.choose", .kind = Kind::button, .label = u"Select sample T006"});
-        handles.reset_v02 = ui.add_button({.id = prefix + "v02.reset", .kind = Kind::button, .label = u"Reset page"});
-        handles.v02_result = ui.add_label({.id = prefix + "v02.result", .kind = Kind::label});
+        list = std::make_unique<list_page::Page>(&ui, &scroll, prefix + "v02.");
         handles.v03_title = ui.add_label({.id = prefix + "v03.title", .kind = Kind::label, .value = u"Confirmation and help (placeholder)"});
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
         handles.reset_v03.bind([this] { scroll.offset = 0; return handles.reset_v03.focus(); });
-        handles.search.connect_source({[this] { return search_source_; }, [](std::function<void()>) { return [] {}; }});
-        handles.search.connect_confirmed([](const TextChange&) { return Result{}; });
-        handles.v02_result.connect_source([this] { return sample_selected_ ? u"Sample: T006" : u"Sample: none"; });
-        handles.choose_sample.bind([this] { sample_selected_ = true; return Result{}; });
-        handles.reset_v02.bind([this] {
-            sample_selected_ = false;
-            handles.search.reset_to_source();
-            scroll.offset = 0;
-            return handles.reset_v02.focus();
-        });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
                 handles.name_error, handles.notices, handles.mode, handles.region, handles.volume, handles.volume_latest,
                 handles.offline_disabled, handles.region_empty, handles.apply, handles.state, handles.draft, handles.result,
                 handles.count, handles.latest}},
-            {{"v02"}, u"List", true, {handles.v02_title, handles.search, handles.choose_sample, handles.reset_v02, handles.v02_result}},
+            {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
+                list->handles.hundred, list->handles.sort, list->handles.disable_eight, list->handles.reset,
+                list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.reset_v03}}
         });
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
@@ -256,8 +243,7 @@ layout::Node Form::page() const {
     auto active = *handles.tabs.active();
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
-    else if (active.id == "v02") content = layout::scroll(column({control(handles.v02_title, 24), control(handles.search),
-        row({control(handles.choose_sample), control(handles.reset_v02)}), control(handles.v02_result)}, 16, 24));
+    else if (active.id == "v02") content = list->page();
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.reset_v03)}, 16, 24));
     return pinned(control(handles.tabs), std::move(content));
 }

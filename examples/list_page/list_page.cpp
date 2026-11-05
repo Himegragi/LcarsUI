@@ -5,19 +5,21 @@
 namespace list_page {
 using namespace lcars;
 
-Page::Page() : ui({}) {
-    handles.title = ui.add_label({.id = "title", .kind = Kind::label, .value = u"範本清單"});
-    handles.zero = ui.add_button({.id = "zero", .kind = Kind::button, .label = u"0 筆"});
-    handles.one = ui.add_button({.id = "one", .kind = Kind::button, .label = u"1 筆"});
-    handles.twenty = ui.add_button({.id = "twenty", .kind = Kind::button, .label = u"20 筆"});
-    handles.hundred = ui.add_button({.id = "hundred", .kind = Kind::button, .label = u"100 筆"});
-    handles.sort = ui.add_button({.id = "sort", .kind = Kind::button, .label = u"反轉排序"});
-    handles.disable_eight = ui.add_button({.id = "disable", .kind = Kind::button, .label = u"停用／啟用 T008"});
-    handles.reset = ui.add_button({.id = "reset", .kind = Kind::button, .label = u"重設"});
-    handles.search = ui.add_text({.id = "search", .kind = Kind::text, .label = u"搜尋名稱"});
-    handles.list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"範本"}, {});
-    handles.erase = ui.add_button({.id = "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false});
-    handles.detail = ui.add_label({.id = "detail", .kind = Kind::label});
+Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
+    : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>(std::vector<Control>{})),
+      ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
+    handles.title = ui.add_label({.id = prefix + "title", .kind = Kind::label, .value = u"範本清單"});
+    handles.zero = ui.add_button({.id = prefix + "zero", .kind = Kind::button, .label = u"0 筆"});
+    handles.one = ui.add_button({.id = prefix + "one", .kind = Kind::button, .label = u"1 筆"});
+    handles.twenty = ui.add_button({.id = prefix + "twenty", .kind = Kind::button, .label = u"20 筆"});
+    handles.hundred = ui.add_button({.id = prefix + "hundred", .kind = Kind::button, .label = u"100 筆"});
+    handles.sort = ui.add_button({.id = prefix + "sort", .kind = Kind::button, .label = u"反轉排序"});
+    handles.disable_eight = ui.add_button({.id = prefix + "disable", .kind = Kind::button, .label = u"停用／啟用 T008"});
+    handles.reset = ui.add_button({.id = prefix + "reset", .kind = Kind::button, .label = u"重設"});
+    handles.search = ui.add_text({.id = prefix + "search", .kind = Kind::text, .label = u"搜尋名稱"});
+    handles.list = ui.add_list({.id = prefix + "list", .kind = Kind::list, .label = u"範本"}, {});
+    handles.erase = ui.add_button({.id = prefix + "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false});
+    handles.detail = ui.add_label({.id = prefix + "detail", .kind = Kind::label});
     handles.search.connect_source({[this] { return search_; }, [this](auto changed) {
         search_changed_ = std::move(changed); return [this] { search_changed_ = {}; };
     }});
@@ -38,7 +40,7 @@ Page::Page() : ui({}) {
     });
     handles.zero.bind([this] { return sample(0); }); handles.one.bind([this] { return sample(1); });
     handles.twenty.bind([this] { return sample(20); }); handles.hundred.bind([this] { return sample(100); });
-    handles.reset.bind([this] { return sample(20); });
+    handles.reset.bind([this] { auto result = sample(20); if (result) return handles.reset.focus(); return result; });
     handles.sort.bind([this] { descending_ = !descending_; return refresh(); });
     handles.disable_eight.bind([this] { disabled_eight_ = !disabled_eight_; return refresh(); });
     handles.erase.bind([this] {
