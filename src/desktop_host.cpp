@@ -411,7 +411,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         info->ptMinTrackSize = {static_cast<LONG>(400 * scale()), static_cast<LONG>(300 * scale())};
         return 0;
     }
-    case WM_CLOSE: PostQuitMessage(0); return 0;
+    case WM_CLOSE:
+        // Use the same IME completion policy as a focus transition before the host is torn down.
+        log_ime(L"host:close");
+        finish_composition();
+        PostQuitMessage(0); return 0;
     case WM_SETFOCUS: {
         detail::access(ui_).window_active(true);
         POINT point{};

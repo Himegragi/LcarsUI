@@ -1086,7 +1086,7 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         events << "E01-close-before-destroy\t" << live.events() << '\n';
         live.owner.reset();
         bool close_ok = close_started && run_result == 0 && !session->composing &&
-                        detail::access(ui).text(ids.name) == u"測試使用者" && live.history() == 0 && live.form.applies() == 0;
+                        detail::access(ui).text(ids.name) == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && live.history() == 1 && live.form.applies() == 0;
         report.check("E01-close", close_ok,
                      "WM_CLOSE exits the real host loop and destroys its window; before: " + close_before +
                      " => after destruction: " + live.state());
