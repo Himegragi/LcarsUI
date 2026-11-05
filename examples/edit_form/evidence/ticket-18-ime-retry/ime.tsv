@@ -1,0 +1,9 @@
+appearance	case	status	evidence
+web	ENV	PASS	Windows build 26300.9711 (26H2); IMTCTIP.DLL 6.2.26100.9711; ChtIME.exe 6.2.26100.9278; DPI scale 1.500000
+web	AC07-real	PASS	Space press, repeat and release on the error fixture: focus to name, no space leaked, one history entry => draft='' composing=0 preedit='' focus=form.name history=1 applies=0
+web	AC07-real-typing	PASS	A real Space typed afterwards inserts one space => draft=' ' composing=0 preedit='' focus=form.name history=2 applies=0
+web	IME-profile	PASS	langid=0x0404 Microsoft Bopomofo TIP
+web	IME-mode	PASS	conversion=0x1 (native Chinese mode)
+web	BLOCKED	FAIL	foreground moved away from the test window; input stopped
+material	ENV	PASS	Windows build 26300.9711 (26H2); IMTCTIP.DLL 6.2.26100.9711; ChtIME.exe 6.2.26100.9278; DPI scale 1.500000
+material	BLOCKED	FAIL	foreground moved away from the test window; input stopped

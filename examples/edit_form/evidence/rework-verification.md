@@ -1,3 +1,24 @@
+# Volume slider verification - issue #18 (2026-11-05)
+
+Production and test code: commit `4a0545982f62b8e553884f3d8a2685a875a9f243`, based on local integration tip `e2c3cf05ce7904b8f8a1bdb6c977db81fd3ea3bf`; merging that tip reported already up to date. The following evidence-only commit records these runs. The form and public driver use typed handles and connections; native input and geometry use the internal host interface. Both appearances run the same cases and application logic.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 5/5 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 47/47 cases, 209 checks; layout 13/13 cases, 87 checks |
+| Release desktop build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release`; includes native host and independent consumer |
+| Native host, both appearances | 40/40 checks passed, 0 failed | [host results](ticket-18-host/host.tsv), including slider arrow, Home/End, real Win32 drag, apply and disabled admission; [Web](ticket-18-host/web-960x720-100-initial.bmp), [Material](ticket-18-host/material-960x720-100-initial.bmp) |
+| Clipboard stress, both appearances | 400/400 checks passed, 0 failed | [clipboard results](ticket-18-clipboard/clipboard.tsv), 100 repetitions per appearance, including forced contention |
+| Real Microsoft Bopomofo, first attempt | 27 passed, 1 blocked | [IME results](ticket-18-ime/ime.tsv), [events](ticket-18-ime/ime-events.log); Web completed, Material stopped when foreground moved away |
+| Real Microsoft Bopomofo, retry | 6 passed, 2 blocked | [IME results](ticket-18-ime-retry/ime.tsv), [events](ticket-18-ime-retry/ime-events.log); both appearances stopped when foreground moved away |
+
+The real-IME verifier records `BLOCKED` rows as `FAIL` in its TSV and returns a nonzero exit code. No input was sent after losing the test window. Material's full IME sequence remains unverified; the retry does not turn either blocked run into a pass. The verifier used real foreground input, not simulated model updates.
+
+The form suite contains 11 cases executed for both appearances and two ID sets (44 executions, 328 checks). Numeric coverage includes group submission and rejection, an edit during submission, source conflict and latest value, disconnection and expired handles. N04 covers range -3 to 8 with step 4, upward midpoint ties, the shorter final interval, both endpoints, and invalid configurations. The layout test checks shared slider track/hit geometry and dragging for both appearances. The independent consumer checks incompatible typed sources and the lack of string-ID application operations. The initial tests for numeric connection, non-divisible keyboard steps, form integration, track geometry, source recovery, conflict action and missing range were observed failing before their fixes.
+
+Windows 11 Pro N build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. All project C++ translation units in the Release compile databases specify C++20: 10/10 core-only and 16/16 desktop. Native layout covers 960x720 and 640x480 DIP at forced 100% and 150%; forced scale is not a real cross-monitor DPI migration. Only the two representative initial bitmaps were retained from the native run; other bitmap names in its TSV were temporary outputs. User trial, UIA, MCP, full cross-page behavior and actual cross-monitor DPI migration were not run. Confirmation callbacks remain synchronous, as in the prior slice.
+
+---
+
 # Checkbox and radio verification - issue #17 (2026-11-05)
 
 Production and test code: commit `b6708843a70009ba7d31d2fea1d6b6ddcabcd2bc`, based on and merged with local integration tip `c8a58c0ca2c9463a63efceb5dd8d1fa883fd3ce7` (already an ancestor). The evidence-only commit follows it. The form uses typed handles and connected application-owned values; the native tests use the internal host seam for real input and geometry. Both appearances run the same form and cases.
