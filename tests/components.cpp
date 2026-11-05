@@ -448,6 +448,11 @@ void configuration_requires_ui_thread() {
     });
     worker.join();
     check(reset == Status::wrong_thread && connect == Status::wrong_thread, "Configuration rejects another thread");
+    auto fault = ui.add_button({.id = "thread.fault", .kind = Kind::button});
+    fault.bind([]() -> Result { throw std::runtime_error("failure"); });
+    check(fault.invoke().status == Status::failed && field.reset_to_source().status == Status::failed &&
+          label.connect_source([] { return std::u16string(u"late"); }).status == Status::failed,
+          "Stopped UI rejects both configuration paths");
 }
 
 void group_action_cannot_be_replaced() {
