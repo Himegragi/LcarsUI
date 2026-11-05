@@ -56,7 +56,7 @@ public:
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
         lcars::DropdownHandle region;
-        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, offline_disabled, region_empty;
+        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, notices_latest, mode_latest, region_latest, offline_disabled, region_empty;
         lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
     } handles;
     // Page model must outlive Ui subscriptions and their disconnect callbacks.
@@ -76,6 +76,8 @@ public:
     // An external application change to the same model (also useful to exercise conflicts).
     void update_source(std::u16string value);
     void update_volume_source(int value);
+    void update_mode_source(lcars::OptionValue value);
+    void update_region_source(lcars::OptionValue value);
     void update_progress(int value);
 private:
     bool validate();

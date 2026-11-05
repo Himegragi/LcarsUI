@@ -39,6 +39,7 @@ public:
     virtual FieldLayout arrange_field(int width, const FieldText& text, float scale) const = 0;
     virtual int button_height(int line_height, float scale) const = 0;
     virtual int button_padding(float scale) const = 0;
+    virtual std::u16string_view conflict_notice() const { return u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09"; }
     virtual int text_size() const { return 16; }  // body text in DIP
 };
 const Appearance& web_appearance();

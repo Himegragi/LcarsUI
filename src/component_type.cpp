@@ -26,6 +26,13 @@ int command_width(const ComponentLayout& c) {
 }
 int scaled(float scale, int value) { return std::max(1, static_cast<int>(std::lround(value * scale))); }
 Rect offset(Rect rect, Rect origin) { return {rect.x + origin.x, rect.y + origin.y, rect.w, rect.h}; }
+int conflict_lines(ComponentLayout& c, int y, bool conflict) {
+    if (!conflict) return y;
+    auto& p = c.placement;
+    p.description_lines = block(c.measure, c.appearance.conflict_notice(), p.text_size, c.width);
+    for (auto& line : p.description_lines) line.bounds.y += y;
+    return y + height_of(p.description_lines);
+}
 void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
     for (const auto& line : lines) c.text(line.text, pixels, line.bounds.x, line.bounds.y, color);
 }
@@ -153,6 +160,7 @@ public:
         c.placement.bounds.w = std::min(c.width, c.placement.bounds.w + extra);
         for (auto& line : c.placement.lines) line.bounds.x += extra;
         auto semantics = *c.ui.describe(c.control.id);
+        c.placement.bounds.h = conflict_lines(c, c.placement.bounds.h, semantics.source_conflict);
         if (semantics.invalid) {
             auto& p = c.placement;
             p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
@@ -162,10 +170,11 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         Command::paint(c);
+        paint_lines(c, c.placement.description_lines, c.placement.text_size, c.appearance.palette().muted);
         paint_lines(c, c.placement.error_lines, c.placement.text_size, c.appearance.palette().error);
         auto p = c.appearance.palette();
         int size = scaled(c.scale, 14), x = c.placement.bounds.x + scaled(c.scale, 8);
-        int y = c.placement.bounds.y + (c.placement.bounds.h - size) / 2;
+        int y = c.placement.bounds.y + (c.appearance.button_height(c.placement.lines.front().bounds.h, c.scale) - size) / 2;
         c.fill({x, y, size, size}, c.semantics.enabled ? p.border : p.muted);
         int inset = scaled(c.scale, 2);
         c.fill({x + inset, y + inset, size - inset * 2, size - inset * 2}, p.surface);
@@ -192,6 +201,7 @@ public:
             p.lines.push_back({{scaled(c.scale, 26), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 26)), line}, option.label + (option.enabled ? u"" : u"\uff08\u505c\u7528\uff09")});
             y += row;
         }
+        y = conflict_lines(c, y, semantics.source_conflict);
         if (semantics.invalid) {
             p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
             for (auto& l : p.error_lines) l.bounds.y += y;
@@ -215,6 +225,7 @@ public:
             c.text(label.text, item.text_size, label.bounds.x, label.bounds.y, option.enabled && c.semantics.enabled ? p.text : p.muted);
             if (c.semantics.focused && option.selected) c.fill({r.x, r.y + r.h - scaled(c.scale, 2), r.w, scaled(c.scale, 2)}, p.accent);
         }
+        paint_lines(c, item.description_lines, item.text_size, p.muted);
         paint_lines(c, item.error_lines, item.text_size, p.error);
     }
     int natural_width(const ComponentLayout&) const override { return -1; }
@@ -264,6 +275,7 @@ public:
         p.lines.push_back({{0, 0, c.width, line}, s.name + (s.enabled ? u"" : u"\uff08\u505c\u7528\uff09")});
         p.lines.push_back({{scaled(c.scale, 8), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 16)), line}, s.value.empty() ? u"\u672a\u9078\u53d6" : s.value});
         int y = line + row;
+        y = conflict_lines(c, y, s.source_conflict);
         if (s.invalid) {
             p.error_lines = block(c.measure, s.error, p.text_size, c.width);
             for (auto& l : p.error_lines) l.bounds.y += y;
@@ -299,6 +311,7 @@ public:
             c.text(u"\u25be", c.placement.text_size, bounds.x + std::max(0, bounds.w - scaled(c.scale, 20)), line.y,
                    c.semantics.enabled ? palette.text : palette.muted);
         }
+        paint_lines(c, c.placement.description_lines, c.placement.text_size, palette.muted);
         paint_lines(c, c.placement.error_lines, c.placement.text_size, palette.error);
     }
     int natural_width(const ComponentLayout&) const override { return -1; }
@@ -312,7 +325,7 @@ public:
         auto semantics = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, 10), track_height = scaled(c.scale, 18);
         auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : u"\uff08\u505c\u7528\uff09");
-        if (semantics.source_conflict) title += u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09";
+        if (semantics.source_conflict) title += c.appearance.conflict_notice();
         p.lines = block(c.measure, title, p.text_size, c.width);
         int y = height_of(p.lines) + scaled(c.scale, 4);
         p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};

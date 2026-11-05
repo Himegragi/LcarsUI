@@ -54,6 +54,9 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     handles.region = ui.add_dropdown({.id = i.region, .kind = Kind::dropdown, .label = u"\u5730\u5340"}, regions());
     handles.volume = ui.add_slider({.id = i.volume, .kind = Kind::slider, .label = u"\u97f3\u91cf"}, {0, 100, 5}).value.value();
     handles.volume_latest = ui.add_button({.id = i.volume_latest, .kind = Kind::button, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
+    handles.notices_latest = ui.add_button({.id = i.notices + ".latest", .kind = Kind::button, .label = u"\u63d0\u793a\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
+    handles.mode_latest = ui.add_button({.id = i.mode + ".latest", .kind = Kind::button, .label = u"\u6a21\u5f0f\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
+    handles.region_latest = ui.add_button({.id = i.region + ".latest", .kind = Kind::button, .label = u"\u5730\u5340\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
     handles.offline_disabled = ui.add_button({.id = i.offline_disabled, .kind = Kind::button, .label = u"\u505c\u7528\u96e2\u7dda"});
     handles.region_empty = ui.add_button({.id = i.region_empty, .kind = Kind::button, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"});
     handles.apply = ui.add_button({.id = i.apply, .kind = Kind::button, .label = u"套用"});
@@ -122,6 +125,9 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     });
     handles.long_text.bind([this] { long_intro_ = !long_intro_; return Result{}; });
     handles.reset.bind([this] { return reset(); });
+    handles.notices_latest.bind([this] { auto result = handles.notices.use_latest(); refresh_conflict(); return result; });
+    handles.mode_latest.bind([this] { auto result = handles.mode.use_latest(); refresh_conflict(); return result; });
+    handles.region_latest.bind([this] { auto result = handles.region.use_latest(); refresh_conflict(); return result; });
     handles.volume_latest.bind([this] { auto result = handles.volume.use_latest(); refresh_conflict(); return result; });
     handles.latest.bind([this] { auto result = handles.name.use_latest(); refresh_conflict(); return result; });
     handles.error.bind([this] {
@@ -186,7 +192,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
-                handles.name_error, handles.notices, handles.mode, handles.region, handles.volume, handles.volume_latest,
+                handles.name_error, handles.notices, handles.notices_latest, handles.mode, handles.mode_latest, handles.region, handles.region_latest, handles.volume, handles.volume_latest,
                 handles.offline_disabled, handles.region_empty, handles.apply, handles.state, handles.draft, handles.result,
                 handles.count, handles.latest}},
             {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
@@ -241,11 +247,20 @@ void Form::update_volume_source(int value) {
     if (volume_changed_) volume_changed_();
     refresh_conflict();
 }
+void Form::update_mode_source(OptionValue value) {
+    mode_applied_ = std::move(value); if (mode_changed_) mode_changed_(); refresh_conflict();
+}
+void Form::update_region_source(OptionValue value) {
+    region_applied_ = std::move(value); if (region_changed_) region_changed_(); refresh_conflict();
+}
 void Form::update_progress(int value) {
     progress_ = value;
     if (progress_changed_) progress_changed_();
 }
 void Form::refresh_conflict() {
+    handles.notices_latest.enable(mode_ != Mode::disabled && handles.notices.describe()->source_conflict);
+    handles.mode_latest.enable(mode_ != Mode::disabled && handles.mode.describe()->source_conflict);
+    handles.region_latest.enable(mode_ != Mode::disabled && handles.region.describe()->source_conflict);
     handles.volume_latest.enable(mode_ != Mode::disabled && handles.volume.describe()->source_conflict);
     handles.latest.enable(mode_ != Mode::disabled && mode_ != Mode::read_only && handles.name.source_conflict().value.value_or(false));
 }
@@ -283,7 +298,9 @@ Result Form::reset() {
 layout::Node Form::page() const {
     using namespace layout;
     std::vector<Node> fields{control(handles.name)};
-    fields.push_back(control(handles.notices)); fields.push_back(control(handles.mode)); fields.push_back(control(handles.region));
+    fields.push_back(control(handles.notices)); fields.push_back(control(handles.notices_latest));
+    fields.push_back(control(handles.mode)); fields.push_back(control(handles.mode_latest));
+    fields.push_back(control(handles.region)); fields.push_back(control(handles.region_latest));
     fields.push_back(control(handles.volume)); fields.push_back(control(handles.volume_latest));
     fields.push_back(row({control(handles.apply), control(handles.latest), control(handles.state)}, 16));
     auto form = layout::scroll(column({

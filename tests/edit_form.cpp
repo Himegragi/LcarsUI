@@ -251,6 +251,43 @@ void volume_conflict_offers_latest() {
           !form.handles.volume.describe()->source_conflict, "Use latest discards the volume draft");
 }
 
+void checkbox_conflict_is_visible_and_can_use_latest() {
+    bool source = true; std::function<void()> changed;
+    Ui ui({});
+    auto box = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"});
+    box.connect_source({[&] { return source; }, [&](std::function<void()> cb) { changed = std::move(cb); return [] {}; }});
+    box.connect_confirmed([&](const BoolChange&) {
+        box.toggle(); source = false; changed();
+        return Result{Status::invalid_value, u"Rejected"};
+    });
+    box.toggle(); box.confirm();
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(layout::control(box), ui, *appearance, measure, 400, 400, 1.f, scroll);
+    const auto* placed = frame.find(box);
+    check(box.describe()->source_conflict && *box.draft() && placed && !placed->description_lines.empty(),
+          "A source update during a rejected confirmation keeps the draft and displays a conflict");
+    check(box.use_latest() && !*box.draft() && !box.describe()->source_conflict,
+          "Use latest adopts the checkbox source");
+}
+
+void option_conflicts_are_visible_and_can_use_latest() {
+    edit_form::Form form(ids);
+    auto& h = form.handles;
+    h.mode.select({"focus"}); h.region.select({"central"});
+    form.update_mode_source({"offline"}); form.update_region_source({"south"});
+    test::FakeMeasure measure; ScrollState scroll;
+    auto mode_frame = arrange(layout::control(h.mode), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto region_frame = arrange(layout::control(h.region), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto mode = mode_frame.find(h.mode); auto region = region_frame.find(h.region);
+    check(h.mode.describe()->source_conflict && h.region.describe()->source_conflict && mode && region &&
+          !mode->description_lines.empty() && !region->description_lines.empty() &&
+          h.mode_latest.describe()->enabled && h.region_latest.describe()->enabled,
+          "Conflicts preserve drafts, show notices and enable both latest actions");
+    check(h.mode_latest.invoke() && h.region_latest.invoke() && *h.mode.draft() == OptionValue{"offline"} &&
+          *h.region.draft() == OptionValue{"south"} && !h.mode.describe()->source_conflict && !h.region.describe()->source_conflict,
+          "Each latest action adopts its own source value");
+}
+
 void initial_values_apply_and_reset() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
@@ -836,6 +873,8 @@ int main() {
         {"N08 R11 V02 neighbors", v02_disabled_and_filtered_neighbors},
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"F01 five fields apply once", all_five_fields_apply_once},
+        {"G11 checkbox conflict is visible and recoverable", checkbox_conflict_is_visible_and_can_use_latest},
+        {"G11 option conflicts are visible and recoverable", option_conflicts_are_visible_and_can_use_latest},
         {"G11 volume conflict", volume_conflict_offers_latest},
         {"F09 volume confirmation", volume_is_a_confirmed_form_field},
         {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},
