@@ -11,6 +11,35 @@ namespace {
 layout::Node host_control(Ui& ui, std::string_view id, int text_size = 0) {
     return layout::control(detail::access(ui).layout_handle(id), text_size);
 }
+struct AlternatePresentation final : Appearance {
+    const Appearance& base = web_appearance();
+    std::string_view name() const override { return "alternate"; }
+    Palette palette() const override { return base.palette(); }
+    FieldParts field(Rect r, int size) const override { return base.field(r, size); }
+    int radius() const override { return base.radius(); }
+    FieldLayout arrange_field(int w, const FieldText& text, float scale) const override { return base.arrange_field(w, text, scale); }
+    int button_height(int line, float scale) const override { return base.button_height(line, scale); }
+    int button_padding(float scale) const override { return base.button_padding(scale); }
+    ComponentPresentation presentation = [] {
+        ComponentPresentation value;
+        value.disabled_suffix = u" [off]";
+        value.radio_label_offset = 42;
+        return value;
+    }();
+    const ComponentPresentation& component_presentation() const override { return presentation; }
+};
+void appearance_controls_component_words_and_geometry() {
+    Ui ui({});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Mode"},
+                                  {{{"a"}, u"Alpha", false}});
+    FakeMeasure measure; ScrollState scroll;
+    AlternatePresentation alternate;
+    auto frame = arrange(layout::control(radio), ui, alternate, measure, 300, 200, 1.f, scroll);
+    auto* placed = frame.find(radio);
+    check(placed && placed->lines.size() == 2 && placed->lines[1].text == u"Alpha [off]" &&
+          placed->lines[1].bounds.x == 42, "Appearance controls disabled wording and option geometry");
+}
+
 void registered_component_reaches_layout_hit_and_input() {
     constexpr auto test_kind = static_cast<Kind>(100);
     TestComponent component;
@@ -438,6 +467,7 @@ void assembled_layout_handles_long_text_and_larger_type() {
 
 int main() {
     const test::Case cases[] = {
+        {"Appearance controls component words and geometry", appearance_controls_component_words_and_geometry},
         {"G11 reveal cross-page error", cross_page_error_is_revealed_in_first_frame},
         {"C09 only active page is drawn", inactive_page_members_do_not_paint_or_hit},
         {"B03 nested reveal", nested_scroll_reveals_the_list_target},

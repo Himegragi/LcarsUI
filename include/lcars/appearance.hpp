@@ -1,5 +1,6 @@
 #pragma once
 #include <string_view>
+#include <string>
 namespace lcars {
 struct Color { unsigned char r, g, b; };
 struct Rect {
@@ -25,6 +26,20 @@ struct FieldLayout {
     int height = 0;
     bool underline = false;
 };
+// Appearance-owned wording and DIP dimensions used by common component presentations.
+struct ComponentPresentation {
+    std::u16string read_only_suffix = u"\uff08\u552f\u8b80\uff09";
+    std::u16string disabled_suffix = u"\uff08\u505c\u7528\uff09";
+    std::u16string conflict_suffix = u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09";
+    std::u16string no_selection = u"\u672a\u9078\u53d6";
+    std::u16string no_items = u"\u6c92\u6709\u9805\u76ee";
+    std::u16string no_options = u"\u6c92\u6709\u53ef\u7528\u9078\u9805";
+    std::u16string selected_marker = u"\u2713 ", unselected_marker = u"  ";
+    std::u16string invalid_tab_marker = u"! ", disabled_tab_marker = u"[-] ", dropdown_marker = u"\u25be";
+    int thin = 1, inset = 2, focus = 3, gap_small = 4, gap = 8, slider_pad = 10;
+    int row_padding = 12, indicator = 14, body_spacing = 16, slider_height = 18;
+    int dropdown_marker_space = 20, checkbox_extra = 24, radio_label_offset = 26;
+};
 // Visual structure only: an appearance arranges role carriers and colors. It never validates,
 // edits text or handles events, so a second appearance cannot change behavior.
 class Appearance {
@@ -39,7 +54,10 @@ public:
     virtual FieldLayout arrange_field(int width, const FieldText& text, float scale) const = 0;
     virtual int button_height(int line_height, float scale) const = 0;
     virtual int button_padding(float scale) const = 0;
-    virtual std::u16string_view conflict_notice() const { return u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09"; }
+    virtual const ComponentPresentation& component_presentation() const {
+        static const ComponentPresentation defaults;
+        return defaults;
+    }
     virtual int text_size() const { return 16; }  // body text in DIP
 };
 const Appearance& web_appearance();
