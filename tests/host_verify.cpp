@@ -6,6 +6,7 @@
 #include "desktop_host.hpp"
 #include "test_component.hpp"
 #include "edit_form.hpp"
+#include "list_page.hpp"
 #include <imm.h>
 #include <msctf.h>
 #include <algorithm>
@@ -126,6 +127,46 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     bool keyboard = activations == 2;
     report.check("registered-component", painted && outside && pointer && keyboard,
                  "custom color and hit region render; inside click and Enter each activate once");
+}
+
+void list_native(const Appearance& appearance, Report& report) {
+    list_page::Page page;
+    DesktopOptions options;
+    DesktopHost host(page.ui, appearance, [&] { return page.page(); }, page.scroll, options, false, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE); host.force_scale(1.f); host.client_size(640, 480);
+    page.handles.hundred.invoke(); page.handles.search.focus(); host.pump(); host.paint();
+    auto post = [&](UINT msg, WPARAM w, LPARAM l) { PostMessageW(host.window(), msg, w, l); host.pump(); };
+    page.handles.list.focus(); host.pump();
+    post(WM_KEYDOWN, VK_END, key_lparam(VK_END, false, false));
+    post(WM_KEYUP, VK_END, key_lparam(VK_END, false, true));
+    host.paint();
+    auto item = host.frame().find(page.handles.list);
+    auto visible = [&](Rect r) { auto v = host.frame().viewport; return r.y >= v.y && r.y + r.h <= v.y + v.h; };
+    bool end = item && item->options.size() == 100 && visible(item->options.back()) && page.selection() == OptionValue{"T100"};
+    report.check("R02-native-end", end, "End selects T100 and reveals its entire row at 640x480");
+
+    page.handles.hundred.invoke(); page.handles.search.focus(); host.pump(); host.paint();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), 0); host.paint();
+    bool wheel = host.frame().offset > 0;
+    auto frame = host.frame();
+    POINT start{frame.thumb.x + frame.thumb.w / 2, frame.thumb.y + frame.thumb.h / 2};
+    POINT finish{start.x, frame.track.y + frame.track.h - frame.thumb.h / 2};
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(start.x, start.y));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(finish.x, finish.y));
+    post(WM_LBUTTONUP, 0, MAKELPARAM(finish.x, finish.y)); host.paint();
+    item = host.frame().find(page.handles.list);
+    bool dragged = host.frame().offset == host.frame().maximum && item && visible(item->options.back());
+    bool clicked = false;
+    if (dragged) {
+        auto r = item->options.back(); POINT point{r.x + 8, r.y + r.h / 2};
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y));
+        post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y));
+        clicked = page.selection() == OptionValue{"T100"};
+    }
+    page.handles.one.invoke(); host.pump(); host.paint();
+    bool clamped = host.frame().offset <= host.frame().maximum;
+    report.check("L06-N07-native-scroll", wheel && dragged && clicked && clamped,
+        "wheel=" + std::to_string(wheel) + ", thumb drag=" + std::to_string(dragged) + ", click T100=" + std::to_string(clicked) + ", shrink clamped=" + std::to_string(clamped));
 }
 
 void space_activation_does_not_leak(const Appearance& appearance, Report& report) {
@@ -810,6 +851,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        list_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);
