@@ -122,7 +122,7 @@ std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y)
 }
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
-        if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
+        if (!it->tooltip && detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     if (modal) return nullptr;
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
@@ -409,6 +409,27 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
             popup.options.push_back(r);
             popup.lines.push_back({{r.x + static_cast<int>(std::lround(8 * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(16 * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
         }
+        a.frame.overlays.push_back(std::move(popup));
+    }
+    // Tooltip content follows its source's appearance and is transparent to hit testing.
+    if (!a.frame.modal) for (const auto& source : a.frame.items) {
+        const auto* text = detail::access(ui).tooltip_text(source.id);
+        auto visible = intersect(source.bounds, source.clip);
+        if (!text || visible.w <= 0 || visible.h <= 0) continue;
+        int margin = std::max(1, static_cast<int>(std::lround(8 * scale)));
+        int pad = margin;
+        int w = std::max(0, std::min(width - 2 * margin, static_cast<int>(std::lround(320 * scale))));
+        int line_height = measure.line_height(source.text_size);
+        auto lines = wrap(measure, *text, source.text_size, std::max(1, w - 2 * pad));
+        int h = std::min(height, static_cast<int>(lines.size()) * line_height + 2 * pad);
+        int x = std::clamp(visible.x, 0, std::max(0, width - w));
+        int y = visible.y + visible.h + h <= height ? visible.y + visible.h : visible.y - h;
+        y = std::clamp(y, 0, std::max(0, height - h));
+        Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = popup.tooltip = true;
+        popup.text_size = source.text_size; popup.bounds = {x, y, w, h}; popup.clip = window;
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            popup.lines.push_back({{x + pad, y + pad + static_cast<int>(i) * line_height,
+                                    std::max(0, w - 2 * pad), line_height}, std::move(lines[i])});
         a.frame.overlays.push_back(std::move(popup));
     }
     return std::move(a.frame);

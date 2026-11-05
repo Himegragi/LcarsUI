@@ -51,6 +51,7 @@ public:
         lcars::ButtonHandle progress_zero, progress_half, progress_full, progress_below, progress_above;
         lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_result;
         lcars::ProgressHandle progress;
+        lcars::TooltipHandle progress_tip;
         lcars::CheckboxHandle notices;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;

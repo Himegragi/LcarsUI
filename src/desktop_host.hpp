@@ -74,6 +74,8 @@ private:
     void draw(Canvas& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
+    void schedule_tooltip();
+    void update_hover(int x, int y);
     void follow_focus();               // notice focus moved by application or semantic calls
     std::string synced_focus_;
     void after_input(const std::string& focus_before);

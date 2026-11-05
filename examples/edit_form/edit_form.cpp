@@ -139,6 +139,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.progress_source = ui.add_label({.id = prefix + "v03.source", .kind = Kind::label});
         handles.progress_zero = ui.add_button({.id = prefix + "v03.zero", .kind = Kind::button, .label = u"0%"});
         handles.progress_half = ui.add_button({.id = prefix + "v03.half", .kind = Kind::button, .label = u"50%"});
+        handles.progress_tip = ui.add_tooltip(handles.progress_half, u"Set the displayed progress to 50%.");
         handles.progress_full = ui.add_button({.id = prefix + "v03.full", .kind = Kind::button, .label = u"100%"});
         handles.progress_below = ui.add_button({.id = prefix + "v03.below", .kind = Kind::button, .label = u"-10"});
         handles.progress_above = ui.add_button({.id = prefix + "v03.above", .kind = Kind::button, .label = u"110"});

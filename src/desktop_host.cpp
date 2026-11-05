@@ -13,6 +13,7 @@
 namespace lcars::detail {
 namespace {
 const wchar_t* window_class = L"LcarsUI.DesktopHost";
+constexpr UINT_PTR tooltip_timer = 1;
 
 Key map_key(WPARAM vk) {
     switch (vk) {
@@ -129,7 +130,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
-        detail::access(ui_).on_invalidate([this] { if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         detail::access(ui_).before_focus([this] { finish_composition(); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
@@ -141,6 +143,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
     detail::access(ui_).on_invalidate({});
+    detail::access(ui_).tooltip_clock({});
+    if (window_) KillTimer(window_, tooltip_timer);
     detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
@@ -167,6 +171,19 @@ void DesktopHost::dispatch(MSG& message) {
     TranslateMessage(&message);
     DispatchMessageW(&message);
     follow_focus();
+}
+void DesktopHost::schedule_tooltip() {
+    if (!window_) return;
+    KillTimer(window_, tooltip_timer);
+    if (auto deadline = detail::access(ui_).tooltip_deadline()) {
+        auto now = static_cast<std::uint64_t>(GetTickCount64());
+        auto wait = *deadline > now ? *deadline - now : 1;
+        SetTimer(window_, tooltip_timer, static_cast<UINT>(std::min<std::uint64_t>(wait, USER_TIMER_MAXIMUM)), nullptr);
+    }
+}
+void DesktopHost::update_hover(int x, int y) {
+    const auto* hit = frame_.hit(x, y);
+    detail::access(ui_).tooltip_hover(hit && !hit->popup ? hit->id : std::string_view{});
 }
 void DesktopHost::follow_focus() {
     if (detail::access(ui_).focused() == synced_focus_) return;
@@ -262,6 +279,18 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
+        if (item.tooltip) {
+            canvas.rounded(item.bounds, static_cast<int>(appearance_.radius() * s), p.border);
+            int inset = std::max(1, static_cast<int>(std::lround(1 * s)));
+            Rect inner{item.bounds.x + inset, item.bounds.y + inset,
+                       std::max(0, item.bounds.w - 2 * inset), std::max(0, item.bounds.h - 2 * inset)};
+            canvas.rounded(inner, static_cast<int>(appearance_.radius() * s), p.surface);
+            canvas.clip = intersect(canvas.clip, inner);
+            for (const auto& line : item.lines)
+                text_.draw(canvas, text_.shape(line.text, item.text_size), line.bounds.x,
+                           line.bounds.y + ShapedMeasure::baseline(item.text_size), p.text);
+            continue;
+        }
         auto semantics = detail::access(ui_).describe(item.id);
         if (!semantics || (!frame.modal && !semantics->expanded)) continue;
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
@@ -366,9 +395,23 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_CLOSE: PostQuitMessage(0); return 0;
-    case WM_SETFOCUS: sync_ime(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SETFOCUS: {
+        detail::access(ui_).window_active(true);
+        POINT point{};
+        if (GetFocus() == window_ && GetCursorPos(&point) && ScreenToClient(window_, &point)) update_hover(point.x, point.y);
+        sync_ime(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    }
+    case WM_TIMER:
+        if (w == tooltip_timer) {
+            KillTimer(window_, tooltip_timer);
+            detail::access(ui_).tooltip_time(GetTickCount64());
+            schedule_tooltip();
+            return 0;
+        }
+        break;
     case WM_KILLFOCUS:
         log_ime(L"wm:killfocus");
+        detail::access(ui_).window_active(false);
         detail::access(ui_).cancel_input();
         drag_ = Drag::none;
         InvalidateRect(window_, nullptr, FALSE);
@@ -440,8 +483,14 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (hit->kind == Kind::list) reveal_.clear();
         return 0;
     }
+    case WM_MOUSELEAVE:
+        detail::access(ui_).tooltip_hover({});
+        return 0;
     case WM_MOUSEMOVE: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
+        TrackMouseEvent(&track);
+        update_hover(x, y);
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
             const auto& id = detail::access(ui_).focused();
             if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));

@@ -156,6 +156,44 @@ void progress_native(const Appearance& appearance, Report& report, const std::fi
     report.check("P07-progress", passed, "Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints");
 }
 
+void tooltip_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.tabs.activate({"v03"});
+    SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+    h.progress_half.focus(); f.settle();
+    bool initially_hidden = h.progress_tip.visible() && !*h.progress_tip.visible();
+    Sleep(550); f.host.pump(); f.host.paint();
+    bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused &&
+        std::any_of(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& p) { return p.tooltip; });
+    f.tap(VK_ESCAPE); Sleep(550); f.host.pump();
+    bool escaped = !*h.progress_tip.visible() && h.progress_half.describe()->focused;
+    SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0);
+    SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+    bool refocus_waits = !*h.progress_tip.visible();
+    Sleep(550); f.host.pump(); f.host.paint();
+    bool returned = *h.progress_tip.visible() && h.progress_half.describe()->focused;
+    bool geometry = true;
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        int width = static_cast<int>(size.first * scale), height = static_cast<int>(size.second * scale);
+        auto frame = f.host.render(width, height, scale, folder / (report.appearance + "-tooltip-" +
+            std::to_string(size.first) + "-" + std::to_string(static_cast<int>(scale * 100)) + ".bmp"));
+        auto tip = std::find_if(frame.overlays.begin(), frame.overlays.end(), [](const auto& p) { return p.tooltip; });
+        geometry = geometry && tip != frame.overlays.end();
+        if (tip != frame.overlays.end()) {
+            geometry = geometry && tip->bounds.x >= 0 && tip->bounds.y >= 0 && tip->bounds.x + tip->bounds.w <= width &&
+                tip->bounds.y + tip->bounds.h <= height && !tip->lines.empty();
+            for (const auto& line : tip->lines) geometry = geometry && intersect(line.bounds, tip->bounds) == line.bounds;
+        }
+    }
+    f.form.update_progress(0); f.tap(VK_SPACE);
+    bool space = f.form.progress() == 50;
+    report.check("P05-P06-R08-tooltip-messages", initially_hidden && shown && escaped && refocus_waits && returned && geometry && space,
+        "initial=" + std::to_string(initially_hidden) + ", focus=" + std::to_string(shown) + ", escape=" + std::to_string(escaped) +
+        ", refocus-delay=" + std::to_string(refocus_waits) + ", returned=" + std::to_string(returned) + ", geometry=" + std::to_string(geometry) +
+        ", space=" + std::to_string(space));
+}
+
 void dialog_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
@@ -997,6 +1035,31 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
                "Clicking inside the composing field commits once, then places the caret; before: " + before);
 
         profiles.us();
+        live.form.handles.tabs.activate({"v03"});
+        live.form.handles.progress_zero.focus(); live.wait(150);
+        auto source_id = live.form.handles.progress_half.describe()->id;
+        auto source_bounds = detail::find_placement(live.host.frame(), source_id)->bounds;
+        POINT hover_point{source_bounds.x + source_bounds.w / 2, source_bounds.y + source_bounds.h / 2};
+        ClientToScreen(live.host.window(), &hover_point);
+        SetCursorPos(hover_point.x, hover_point.y);
+        live.wait(650);
+        bool pointer_shown = *live.form.handles.progress_tip.visible() && live.form.handles.progress_zero.describe()->focused;
+        POINT away_point{10, 10}; ClientToScreen(live.host.window(), &away_point);
+        SetCursorPos(away_point.x, away_point.y); live.wait(150);
+        bool pointer_left = !*live.form.handles.progress_tip.visible();
+        report.check("P05-real-pointer", pointer_shown && pointer_left,
+                     "Physical pointer dwell displays the tooltip without taking focus; leaving closes it");
+        live.form.handles.progress_half.focus();
+        live.wait(650);
+        bool visible_before = *live.form.handles.progress_tip.visible();
+        live.foreground(live.helper);
+        bool hidden_away = !*live.form.handles.progress_tip.visible();
+        live.foreground(live.host.window());
+        bool fresh_delay = !*live.form.handles.progress_tip.visible();
+        live.wait(600);
+        bool visible_after = *live.form.handles.progress_tip.visible() && live.form.handles.progress_half.describe()->focused;
+        report.check("R08-real-window-focus", visible_before && hidden_away && fresh_delay && visible_after,
+                     "Real foreground switch closes and restarts the delay; tooltip returns without taking source focus");
         live.wait(200);
         return true;
     } catch (const Blocked& blocked) {
@@ -1030,6 +1093,7 @@ int run(const std::filesystem::path& folder) {
         tabs_native(*appearance, report, folder);
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);
+        tooltip_native(*appearance, report, folder);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);

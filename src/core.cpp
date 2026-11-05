@@ -793,6 +793,7 @@ TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16strin
     return TooltipHandle(this, lifetime_, *id);
 }
 void detail::UiState::refresh_tooltips() {
+    if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
         bool eligible = window_active_ && !modal_ && (focus_ == id || tooltip_hover_ == id) && bool(available(id));
@@ -808,6 +809,18 @@ void detail::UiState::refresh_tooltips() {
         }
     }
     if (changed && invalidate_) invalidate_();
+}
+std::optional<std::uint64_t> detail::UiState::tooltip_deadline() const {
+    std::optional<std::uint64_t> deadline;
+    for (const auto& [id, tip] : tooltips_) {
+        if (tip.eligible && !tip.visible && !tip.dismissed && (!deadline || tip.deadline < *deadline))
+            deadline = tip.deadline;
+    }
+    return deadline;
+}
+const std::u16string* detail::UiState::tooltip_text(std::string_view id) const {
+    auto it = tooltips_.find(id);
+    return it != tooltips_.end() && it->second.visible ? &it->second.text : nullptr;
 }
 void detail::UiState::tooltip_time(std::uint64_t now) {
     tooltip_now_ = now;
@@ -825,6 +838,7 @@ void detail::UiState::tooltip_hover(std::string_view id) {
 void detail::UiState::window_active(bool active) {
     if (window_active_ == active) return;
     window_active_ = active;
+    if (!active) tooltip_hover_.clear();
     refresh_tooltips();
 }
 Query<bool> TooltipHandle::visible() const {
@@ -1437,6 +1451,10 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         s.labels.push_back(other.id);
         if (other.role == TextRole::name) s.name = text(other.id);
         else if (other.role == TextRole::description) s.description = text(other.id);
+    }
+    if (auto tip = tooltips_.find(id); tip != tooltips_.end()) {
+        if (!s.description.empty()) s.description += u"\n";
+        s.description += tip->second.text;
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
         const auto& field = it->second;

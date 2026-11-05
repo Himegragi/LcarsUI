@@ -60,6 +60,7 @@ struct Placement {
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
     bool clipped = false;         // clip has been assigned, including an empty intersection
     bool popup = false;           // an overlay belongs to its source, outside normal layout flow
+    bool tooltip = false;         // explanatory overlay: never receives pointer input
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
     std::vector<Line> lines;      // labels and command titles

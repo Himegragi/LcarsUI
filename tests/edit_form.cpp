@@ -289,6 +289,7 @@ void tooltip_keyboard_delay_and_escape() {
     auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
     auto other = ui.add_button({.id = "other", .kind = Kind::button, .label = u"Other"});
     auto tip = ui.add_tooltip(source, u"Set progress to 50%", 100);
+    check(source.describe()->description == u"Set progress to 50%", "The source exposes the tooltip as its semantic description");
     auto& host = detail::access(ui);
     host.tooltip_time(1000);
     host.window_active(true);
@@ -344,6 +345,42 @@ void tooltip_window_modal_and_source_lifetime() {
     check(!*tip.visible(), "Disabling the source cancels pending and visible tooltips");
     source.enable(true); source.focus(); host.tooltip_time(1450); source.remove(); host.tooltip_time(2000);
     check(tip.visible().status == Status::not_found, "Removal invalidates the tooltip and its pending timer");
+}
+
+void tooltip_layout_is_readable_and_pointer_transparent() {
+    Ui ui({});
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"});
+    auto tip = ui.add_tooltip(source, u"An explanation that wraps near a window edge", 0);
+    auto& host = detail::access(ui);
+    host.window_active(true); source.focus();
+    test::FakeMeasure measure; ScrollState scroll;
+    auto root = layout::column({layout::control(source)}, 0, 8);
+    auto frame = arrange(root, ui, *appearance, measure, 160, 110, 1.f, scroll);
+    check(*tip.visible() && frame.overlays.size() == 1, "A visible tooltip produces an overlay");
+    auto& popup = frame.overlays.front();
+    check(popup.bounds.x >= 0 && popup.bounds.y >= 0 && popup.bounds.x + popup.bounds.w <= 160 &&
+          popup.bounds.y + popup.bounds.h <= 110 && popup.lines.size() > 1,
+          "Tooltip wraps and stays inside a narrow window");
+    for (const auto& line : popup.lines)
+        check(intersect(line.bounds, popup.bounds) == line.bounds, "Each line remains within the tooltip");
+    check(frame.hit(popup.bounds.x + 1, popup.bounds.y + 1) != &popup, "Tooltip does not intercept pointer input");
+}
+
+void v03_reset_restores_the_temporary_source_and_keeps_other_pages() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    h.name.set_value(u"Retained V01 draft");
+    h.tabs.activate({"v03"});
+    auto old_source = h.dialog_temporary;
+    h.dialog_temporary.invoke(); h.dialog_remove_temporary.invoke(); h.dialog_confirm.invoke();
+    h.progress_full.invoke();
+    check(form.progress() == 100 && form.dialog_confirmations() == 1 && !old_source.describe(),
+          "The confirmed result and removed temporary source precede reset");
+    h.reset_v03.invoke();
+    check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.dialog_result.describe()->value.find(u"No result") != std::u16string::npos &&
+          h.dialog_temporary.describe() && !old_source.describe(), "Reset restores the initial model and creates a fresh temporary source");
+    h.tabs.activate({"v01"});
+    check(*h.name.draft() == u"Retained V01 draft", "Resetting V03 preserves the V01 draft");
 }
 
 void dialog_cancel_preserves_progress() {
@@ -501,6 +538,8 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"P08 reset and page isolation", v03_reset_restores_the_temporary_source_and_keeps_other_pages},
+        {"P06 tooltip layout", tooltip_layout_is_readable_and_pointer_transparent},
         {"C11 tooltip lifetime and window focus", tooltip_window_modal_and_source_lifetime},
         {"P05 tooltip pointer visit", tooltip_pointer_visit_can_restart_after_escape},
         {"P05 tooltip keyboard delay and Escape", tooltip_keyboard_delay_and_escape},

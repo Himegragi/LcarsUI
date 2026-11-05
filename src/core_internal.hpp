@@ -34,7 +34,10 @@ public:
     ListHandle add_list(Control control, std::vector<RadioOption> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
     void tooltip_time(std::uint64_t now);
+    void tooltip_clock(std::function<std::uint64_t()> clock) { tooltip_clock_ = std::move(clock); }
+    std::optional<std::uint64_t> tooltip_deadline() const;
     void tooltip_hover(std::string_view id);
+    const std::u16string* tooltip_text(std::string_view id) const;
     void window_active(bool active);
     void refresh_tooltips();
     DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
@@ -220,6 +223,7 @@ private:
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     std::uint64_t tooltip_now_ = 0;
+    std::function<std::uint64_t()> tooltip_clock_;
     bool window_active_ = false;
     Id popup_source_;
     struct DialogState {
