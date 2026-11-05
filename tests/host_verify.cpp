@@ -206,7 +206,7 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
         for (float scale : {1.f, 1.5f}) {
             int width = static_cast<int>(size.first * scale), height = static_cast<int>(size.second * scale);
             auto sample = f.host.render(width, height, scale, folder / (report.appearance + "-dialog-" + std::to_string(size.first) + "-" + std::to_string(static_cast<int>(scale * 100)) + ".bmp"));
-            for (auto button : {h.dialog_cancel, h.dialog_confirm, h.dialog_remove_temporary}) {
+            for (auto button : {h.dialog_cancel, h.dialog_confirm}) {
                 auto p = sample.find(button);
                 if (!p) { geometry = false; continue; }
                 auto b = p->bounds;
@@ -971,18 +971,18 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         record("E01-page-switch", switched && live.history() == 1,
                "Real tab click during composition commits once, focuses tabs and switches page; before: " + page_before);
 
-        // The same dialog has a V01 opener to exercise a real composing field opening it.
+        // The host seam opens the dialog while the real field is composing.
         live.start_in_name();
         live.type("JI3");
         auto dialog_before = live.state();
         live.host.paint();
-        live.click(live.form.handles.dialog_from_form.describe()->id);
+        live.form.handles.dialog.open(live.form.handles.name);
         bool opened = *live.form.handles.dialog.is_open() && live.form.handles.dialog_cancel.describe()->focused &&
             !session->composing && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" &&
             live.form.progress() == 50 && live.form.dialog_confirmations() == 0;
         if (*live.form.handles.dialog.is_open()) live.form.handles.dialog_cancel.invoke();
-        record("E01-dialog-open", opened && live.history() == 1 && live.form.handles.dialog_from_form.describe()->focused,
-               "Real pointer opener completes composition once, focuses cancel, and cancellation restores opener; before: " + dialog_before);
+        record("E01-dialog-open", opened && live.history() == 1 && live.form.handles.name.describe()->focused,
+               "Host seam opens the dialog and completes composition once, focuses cancel, and cancellation restores the field; before: " + dialog_before);
 
         live.start_in_name();
         live.chord(VK_CONTROL, 'A');

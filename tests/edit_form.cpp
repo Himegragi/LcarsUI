@@ -643,7 +643,7 @@ void v03_reset_restores_the_temporary_source_and_keeps_other_pages() {
     h.name.set_value(u"Retained V01 draft");
     h.tabs.activate({"v03"});
     auto old_source = h.dialog_temporary;
-    h.dialog_temporary.invoke(); h.dialog_remove_temporary.invoke(); h.dialog_confirm.invoke();
+    h.dialog_temporary.invoke(); h.dialog_temporary.remove(); h.dialog_confirm.invoke();
     h.progress_full.invoke();
     check(form.progress() == 100 && form.dialog_confirmations() == 1 && !old_source.describe(),
           "The confirmed result and removed temporary source precede reset");
@@ -658,7 +658,11 @@ void dialog_cancel_preserves_progress() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
     h.tabs.activate({"v03"});
+    check(h.progress_half.describe()->description == u"?????????????????", "V03 tooltip uses the specified text");
     check(bool(h.dialog_open.invoke()), "Open dialog");
+    check(h.dialog_title.describe()->value == u"??????" && h.dialog_body.describe()->value == u"????? 0%???????????" &&
+          h.dialog_cancel.describe()->name == u"??" && h.dialog_confirm.describe()->name == u"????",
+          "Dialog uses the specified title and button text");
     check(h.dialog_cancel.describe()->focused, "Dialog starts on cancel");
     check(bool(h.dialog_cancel.invoke()), "Cancel dialog");
     check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused,
@@ -682,7 +686,7 @@ void dialog_confines_input_and_confirms_once() {
     check(host.pointer_down(h.progress_full.describe()->id).status == Status::blocked_by_modal,
           "Background pointer input is blocked");
     host.key_down({Key::tab, true});
-    check(h.dialog_remove_temporary.describe()->focused, "Shift+Tab wraps within the dialog");
+    check(h.dialog_confirm.describe()->focused, "Shift+Tab wraps within the dialog");
     host.key_down({Key::tab});
     check(h.dialog_cancel.describe()->focused, "Tab wraps back to cancel");
     host.key_down({Key::tab});
@@ -698,9 +702,9 @@ void dialog_escape_and_removed_opener() {
     auto& host = detail::access(form.ui);
     h.tabs.activate({"v03"});
     h.dialog_temporary.invoke();
-    check(bool(h.dialog_remove_temporary.invoke()), "Remove the temporary opener with the dialog fixture");
+    check(bool(h.dialog_temporary.remove()), "Remove the temporary opener with the dialog fixture");
     host.key_down({Key::escape});
-    check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.reset_v03.describe()->focused &&
+    check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused &&
           h.dialog_temporary.invoke().status == Status::not_found,
           "Escape cancels once and returns focus to the permanent fallback");
     check(bool(h.reset_v03.invoke()) && bool(h.dialog_temporary.invoke()) && h.dialog_cancel.describe()->focused,
@@ -710,9 +714,9 @@ void dialog_escape_and_removed_opener() {
 void dialog_removed_opener_can_confirm() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
-    h.tabs.activate({"v03"}); h.dialog_temporary.invoke(); h.dialog_remove_temporary.invoke();
+    h.tabs.activate({"v03"}); h.dialog_temporary.invoke(); h.dialog_temporary.remove();
     check(bool(h.dialog_confirm.invoke()) && form.progress() == 0 && form.dialog_confirmations() == 1 &&
-          h.reset_v03.describe()->focused && h.dialog_confirm.invoke().status != Status::ok,
+          h.dialog_open.describe()->focused && h.dialog_confirm.invoke().status != Status::ok,
           "Confirm settles once and restores the permanent fallback after removal");
 }
 

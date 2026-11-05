@@ -46,10 +46,10 @@ public:
         lcars::TextHandle name;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
-        lcars::ButtonHandle dialog_open, dialog_temporary, dialog_from_form, dialog_remove_temporary, dialog_cancel, dialog_confirm;
+        lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;
         lcars::DialogHandle dialog;
         lcars::ButtonHandle progress_zero, progress_half, progress_full, progress_below, progress_above;
-        lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_result;
+        lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_body, dialog_result;
         lcars::ProgressHandle progress;
         lcars::TooltipHandle progress_tip;
         lcars::CheckboxHandle notices;
