@@ -1,6 +1,6 @@
 # V01 最小編輯表單（S1）
 
-> **Rework status (2026-11-05): verified.** Applications use typed handles and data connections; host and regression drivers use a separate internal interface. See [rework verification](evidence/rework-verification.md) for the results and limits. The original [verification](evidence/verification.md) records the earlier S1 revision.
+> **Review-fix status (2026-11-05):** Applications and the V01 acceptance driver use typed handles and data connections; native input and geometry checks use the internal host interface. See [rework verification](evidence/rework-verification.md) for the results and limits. The original [verification](evidence/verification.md) records the earlier S1 revision.
 
 
 [S1 實作票 #15](https://github.com/Himegragi/LcarsUI/issues/15) 的交付：以正式的 C01 標籤、C02 按鈕、C03 單行文字欄位組成最小 V01 編輯表單，分別以 Minimal Web 與 Material-inspired 外觀啟動。兩套外觀共用同一份表單邏輯、編輯狀態及驗收案例；差異只在呈現與部件安排。資料只在記憶體。
@@ -41,7 +41,7 @@
 
 ## 驗證
 
-The behavior drivers use the internal host/test interface; the independent consumer exercises the application-facing handles and checks that string-ID operations are unavailable.
+The V01 behavior cases drive the assembled form through public handles; native keyboard, pointer, focus traversal and geometry checks use the host/test interface. The independent consumer also checks that string-ID layout and operations are unavailable.
 
 | 入口 | 內容 |
 | --- | --- |
