@@ -130,6 +130,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).on_invalidate([this] { if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        detail::access(ui_).before_focus([this] { finish_composition(); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
     } catch (...) {
@@ -140,6 +141,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
     detail::access(ui_).on_invalidate({});
+    detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
     ImmAssociateContext(window_, input_context_);
@@ -252,10 +254,16 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
             canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
         }
     }
+    if (frame.modal) {
+        canvas.clip = whole;
+        for (int y = 0; y < canvas.height; ++y)
+            for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, {0, 0, 0}, 110);
+        canvas.rounded(frame.modal_panel, static_cast<int>(appearance_.radius() * s), p.surface);
+    }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
         auto semantics = detail::access(ui_).describe(item.id);
-        if (!semantics || !semantics->expanded) continue;
+        if (!semantics || (!frame.modal && !semantics->expanded)) continue;
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
         detail::component_type(item.kind).paint(adapter);
     }
@@ -377,6 +385,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
         return 0;
     case WM_MOUSEWHEEL: {
+        if (frame_.modal) return 0;
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
@@ -396,7 +405,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
         if (!hit || !hit->popup) detail::access(ui_).close_popup();
-        if (!hit || !hit->popup) {
+        if (!frame_.modal && (!hit || !hit->popup)) {
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.

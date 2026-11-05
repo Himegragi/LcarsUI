@@ -71,9 +71,17 @@ Node scroll(Node child, ScrollState& state, int height) {
 }
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
+Node modal(Node background, Node content, DialogHandle dialog) {
+    Node n; n.type = Node::Type::modal; n.dialog = std::move(dialog);
+    n.children.push_back(std::move(background)); n.children.push_back(std::move(content)); return n;
+}
 }
 
 const Placement* detail::find_placement(const Frame& frame, std::string_view id) {
+    if (frame.modal) {
+        auto overlay = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const Placement& p) { return p.id == id; });
+        if (overlay != frame.overlays.end()) return &*overlay;
+    }
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
@@ -115,6 +123,7 @@ std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y)
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
+    if (modal) return nullptr;
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
@@ -190,6 +199,7 @@ struct Arranger {
         switch (node.type) {
         case Node::Type::control: {
             auto id = ui.layout_id(node.component);
+            if (id && ui.removed(*id)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             bool previous = measuring; measuring = true;
             int result = build(node, width).bounds.h;
@@ -210,6 +220,7 @@ struct Arranger {
         switch (node.type) {
         case Node::Type::control: {
             auto id = ui.layout_id(node.component);
+            if (id && ui.removed(*id)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
@@ -275,6 +286,26 @@ struct Arranger {
             int tallest = 0;
             for (const auto& child : node.children) tallest = std::max(tallest, place(child, r, out));
             return tallest;
+        }
+        case Node::Type::modal: {
+            place(node.children[0], r, out);
+            auto open = node.dialog.is_open();
+            if (!open || !*open) return r.h;
+            int margin = d(20), padding = d(20);
+            int w = std::max(0, std::min(d(480), r.w - 2 * margin));
+            int content_width = std::max(0, w - 2 * padding);
+            int h = std::min(std::max(0, r.h - 2 * margin), height(node.children[1], content_width) + 2 * padding);
+            Rect panel{r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h};
+            frame.modal = true; frame.modal_panel = panel;
+            std::vector<Placement> modal_items;
+            place(node.children[1], {panel.x + padding, panel.y + padding, content_width, std::max(0, h - 2 * padding)}, modal_items);
+            for (auto& p : modal_items) {
+                p.popup = true;
+                p.clip = p.clipped ? intersect(p.clip, panel) : panel;
+                p.clipped = true;
+                frame.overlays.push_back(std::move(p));
+            }
+            return r.h;
         }
         }
         return 0;

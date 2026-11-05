@@ -156,6 +156,27 @@ void progress_native(const Appearance& appearance, Report& report, const std::fi
     report.check("P07-progress", passed, "Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints");
 }
 
+void dialog_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.tabs.activate({"v03"}); h.dialog_open.focus(); f.settle();
+    f.tap(VK_RETURN); f.settle();
+    auto frame = f.host.render(960, 720, 1.f, folder / (report.appearance + "-dialog.bmp"));
+    bool initial = frame.modal && frame.find(h.dialog_cancel) && frame.find(h.dialog_confirm) && h.dialog_cancel.describe()->focused;
+    POINT mask{1, 1};
+    f.mouse(WM_LBUTTONDOWN, mask, MK_LBUTTON); f.mouse(WM_LBUTTONUP, mask); f.settle();
+    bool shield = *h.dialog.is_open() && h.dialog_cancel.describe()->focused && f.form.progress() == 50;
+    f.tap(VK_TAB);
+    bool tab = h.dialog_confirm.describe()->focused;
+    f.key(VK_RETURN); f.key(VK_RETURN, true); f.key_up(VK_RETURN); f.settle();
+    bool once = f.form.progress() == 0 && f.form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused && !*h.dialog.is_open();
+    report.check("P02-P03-dialog", initial && shield && tab && once,
+        "Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus");
+    h.reset_v03.invoke(); h.dialog_open.invoke(); f.tap(VK_ESCAPE); f.settle();
+    report.check("P01-dialog-escape", f.form.progress() == 50 && f.form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused && !*h.dialog.is_open(),
+        "Escape cancels and returns focus without changing progress");
+}
+
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     constexpr auto test_kind = static_cast<Kind>(100);
     TestComponent component;
@@ -892,6 +913,19 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         record("E01-page-switch", switched && live.history() == 1,
                "Real tab click during composition commits once, focuses tabs and switches page; before: " + page_before);
 
+        // The same dialog has a V01 opener to exercise a real composing field opening it.
+        live.start_in_name();
+        live.type("JI3");
+        auto dialog_before = live.state();
+        live.host.paint();
+        live.click(live.form.handles.dialog_from_form.describe()->id);
+        bool opened = *live.form.handles.dialog.is_open() && live.form.handles.dialog_cancel.describe()->focused &&
+            !session->composing && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" &&
+            live.form.progress() == 50 && live.form.dialog_confirmations() == 0;
+        if (*live.form.handles.dialog.is_open()) live.form.handles.dialog_cancel.invoke();
+        record("E01-dialog-open", opened && live.history() == 1 && live.form.handles.dialog_from_form.describe()->focused,
+               "Real pointer opener completes composition once, focuses cancel, and cancellation restores opener; before: " + dialog_before);
+
         live.start_in_name();
         live.chord(VK_CONTROL, 'A');
         live.type("JI3");
@@ -979,6 +1013,7 @@ int run(const std::filesystem::path& folder) {
         report.appearance = tag;
         tabs_native(*appearance, report, folder);
         progress_native(*appearance, report, folder);
+        dialog_native(*appearance, report, folder);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);

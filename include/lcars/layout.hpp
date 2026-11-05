@@ -31,8 +31,9 @@ struct ScrollState { int offset = 0; };  // physical pixels, clamped by every ar
 
 namespace layout {
 struct Node {
-    enum class Type { control, column, row, grid, scroll, stack, pinned } type = Type::column;
+    enum class Type { control, column, row, grid, scroll, stack, pinned, modal } type = Type::column;
     ComponentHandle component;   // control: non-owning typed reference
+    DialogHandle dialog;
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
@@ -49,6 +50,7 @@ Node scroll(Node child);  // fills available space, using arrange's scroll state
 Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
+Node modal(Node background, Node content, DialogHandle dialog);
 }
 
 struct Line { Rect bounds; std::u16string text; };
@@ -80,6 +82,8 @@ struct Frame {
     std::vector<Placement> items;
     std::vector<ScrollRegion> regions; // outermost first, innermost last
     std::vector<Placement> overlays; // painted and hit above normal content and scrollbars
+    bool modal = false;
+    Rect modal_panel;
     Rect viewport, track, thumb;  // scroll region and its bar; thumb empty when nothing scrolls
     int extent = 0, maximum = 0, offset = 0;
     const Placement* find(const TextHandle& handle) const;

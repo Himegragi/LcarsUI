@@ -784,6 +784,66 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
     return TabsHandle(this, lifetime_, std::move(id));
 }
 ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) { return TabsHandle(this, lifetime_, c.id); }
+DialogHandle detail::UiState::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+    auto first = layout_id(initial), backup = layout_id(fallback);
+    if (dialog_.configured || !first || !backup || !find(*first) || !find(*backup) || removed(*first) || removed(*backup) || !result || members.empty()) throw std::invalid_argument("Invalid dialog");
+    std::set<Id> unique;
+    for (const auto& member : members) {
+        auto id = layout_id(member);
+        if (!id || !find(*id) || removed(*id) || page_members_.contains(*id) || !unique.insert(*id).second)
+            throw std::invalid_argument("Invalid dialog member");
+    }
+    if (!unique.contains(*first) || unique.contains(*backup)) throw std::invalid_argument("Invalid dialog focus targets");
+    dialog_.members.assign(unique.begin(), unique.end());
+    dialog_.initial = *first; dialog_.fallback = *backup; dialog_.result = std::move(result); dialog_.configured = true;
+    for (const auto& id : dialog_.members) const_cast<Control*>(find(id))->page = "dialog";
+    return DialogHandle(this, lifetime_);
+}
+Result detail::UiState::open_dialog(const ComponentHandle& opener) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (!dialog_.configured || modal_ || dialog_.transitioning) return {Status::busy, u"Dialog already open or transitioning"};
+    auto source = layout_id(opener);
+    if (!source) return {Status::not_found, u"Invalid opener"};
+    if (auto r = available(*source); !r) return r;
+    const auto* initial = find(dialog_.initial);
+    if (!initial || !initial->enabled || removed(dialog_.initial)) return {Status::disabled, u"Initial focus is unavailable"};
+    dialog_.transitioning = true;
+    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog_.transitioning};
+    dialog_.opener = *source;
+    // Finish the previous edit while background operations are still admitted.
+    if (auto r = move_focus(dialog_.initial); !r) return r;
+    modal(true);
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::settle_dialog(bool confirmed) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (dialog_.transitioning) return {Status::busy, u"Dialog is transitioning"};
+    if (!modal_ || !dialog_.configured) return {Status::invalid_value, u"Dialog is not open"};
+    dialog_.transitioning = true;
+    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog_.transitioning};
+    modal_ = false;
+    auto source = std::exchange(dialog_.opener, {});
+    auto target = find(source);
+    if (!target || !focusable(*target)) target = find(dialog_.fallback);
+    if (target && focusable(*target)) move_focus(target->id); else move_focus({});
+    try { dialog_.result(confirmed); }
+    catch (...) { stopped_ = true; return {Status::failed, u"Dialog result failed"}; }
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result DialogHandle::open(ComponentHandle opener) const {
+    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(opener);
+}
+Result DialogHandle::settle(bool confirmed) const {
+    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->settle_dialog(confirmed);
+}
+Query<bool> DialogHandle::is_open() const {
+    if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(ui_->dialog_.initial); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->modal_};
+}
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     if (auto r = available(id); !r) return r;
     auto& t = tabs_.at(id);
@@ -890,6 +950,18 @@ Result ButtonHandle::enable(bool enabled) const {
     ui_->enable(id_, enabled);
     return {};
 }
+Result ButtonHandle::remove() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (ui_->executing_ == id_) return {Status::busy, u"Button action is executing"};
+    if (std::find(ui_->dialog_.members.begin(), ui_->dialog_.members.end(), id_) != ui_->dialog_.members.end() || id_ == ui_->dialog_.fallback)
+        return {Status::invalid_value, u"Dialog focus targets must remain alive"};
+    ui_->removed_.insert(id_);
+    if (ui_->focus_ == id_) ui_->move_focus({});
+    ui_->actions_.erase(id_);
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
+}
 Result TextHandle::focus() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->focus(id_);
@@ -966,7 +1038,7 @@ Result TextHandle::cut() const {
 Result detail::UiState::configuration_access(std::string_view id) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
-    if (!find(id)) return {Status::not_found, u"Component no longer exists"};
+    if (!find(id) || removed(id)) return {Status::not_found, u"Component no longer exists"};
     return {};
 }
 Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
@@ -1366,7 +1438,7 @@ Result detail::UiState::available(std::string_view id) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
-    if (!control) return {Status::not_found, u"Component no longer exists"};
+    if (!control || removed(id)) return {Status::not_found, u"Component no longer exists"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
     if (!control->enabled) return {Status::disabled, u"目前無法執行"};
@@ -1544,6 +1616,7 @@ std::vector<Id> detail::UiState::focus_order() const {
 // (ADR 0003: no direct recursion into subscribers).
 Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
+    if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
     key_armed_.clear(); pointer_armed_.clear();
     if (!composing_.empty()) {
@@ -1611,6 +1684,10 @@ Result detail::UiState::focus(std::string_view id) {
     return move_focus(control->id);
 }
 Result detail::UiState::key_down(KeyPress key) {
+    if (modal_ && dialog_.configured && key.key == Key::escape) {
+        if (key.repeat) return {};
+        return settle_dialog(false);
+    }
     if (key.key == Key::tab) {
         auto order = focus_order();
         if (order.empty()) return {Status::not_found, u"沒有可聚焦的元件"};
@@ -1784,6 +1861,9 @@ ProgressHandle Ui::add_progress(Control control) { return state_->add_progress(s
 TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
 ListHandle Ui::add_list(Control control, std::vector<RadioOption> items) { return state_->add_list(std::move(control), std::move(items)); }
+DialogHandle Ui::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+    return state_->add_dialog(std::move(members), initial, fallback, std::move(result));
+}
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));

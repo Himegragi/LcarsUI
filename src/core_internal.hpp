@@ -31,6 +31,9 @@ public:
     Result activate_tab(const Id& id, OptionValue page);
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
+    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
+    Result open_dialog(const ComponentHandle& opener);
+    Result settle_dialog(bool confirmed);
     ComponentHandle list_layout_handle(const Control& control);
     Result list_key_down(KeyPress key);
     ComponentHandle dropdown_layout_handle(const Control& control);
@@ -71,12 +74,15 @@ public:
     Result set_value(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
     Result available(std::string_view id) const;
+    bool removed(std::string_view id) const { return removed_.contains(id); }
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
     // Host requests a new frame when a source notification changes the view.
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
+    // Native input methods must finalize before core changes the focused editing target.
+    void before_focus(std::function<void()> callback) { before_focus_ = std::move(callback); }
     // A label whose text is read from owner data on demand, so the label never holds a copy.
     void bind_text(std::string_view id, std::function<std::u16string()> provider);
     // Focus. Declaration order is the Tab order; labels and unavailable controls are skipped.
@@ -134,6 +140,7 @@ private:
     friend class ::lcars::ProgressHandle;
     friend class ::lcars::DropdownHandle;
     friend class ::lcars::ListHandle;
+    friend class ::lcars::DialogHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -198,6 +205,12 @@ private:
     };
     std::map<Id, ListField, std::less<>> lists_;
     Id popup_source_;
+    struct DialogState {
+        std::vector<Id> members;
+        Id initial, fallback, opener;
+        std::function<void(bool)> result;
+        bool configured = false, transitioning = false;
+    } dialog_;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
     struct NumericField {
@@ -220,6 +233,7 @@ private:
     void bool_source_changed(const Id& id);
     std::map<Id, Action, std::less<>> actions_;
     std::set<Id, std::less<>> confirmation_buttons_;
+    std::set<Id, std::less<>> removed_;
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     std::optional<std::size_t> pointer_option_;
@@ -239,6 +253,7 @@ private:
     Result notify();
     std::function<void()> changed_, invalidate_;
     std::function<void(const Id&, const Id&)> focus_moved_;
+    std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false;
 };

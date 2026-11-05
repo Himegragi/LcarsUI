@@ -180,6 +180,8 @@ public:
     Result focus() const;
     Result bind(std::function<Result()> action) const;
     Result enable(bool enabled) const;
+    // Owner configuration: permanently remove this button; existing handles become invalid.
+    Result remove() const;
     Query<bool> executing() const;
     Query<Semantics> describe() const;
 private:
@@ -358,6 +360,20 @@ private:
     std::string id_;
 };
 using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
+// A single window-modal dialog, assembled from ordinary typed components. The opener and
+// fallback are non-owning handles; the result callback runs once for each successful opening.
+class DialogHandle {
+public:
+    DialogHandle() = default;
+    Result open(ComponentHandle opener) const;
+    Result settle(bool confirmed) const;
+    Query<bool> is_open() const;
+private:
+    friend class detail::UiState;
+    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime) : ui_(ui), lifetime_(std::move(lifetime)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+};
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 struct TextChange {
@@ -391,6 +407,8 @@ public:
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
+    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial_focus,
+                            ButtonHandle fallback, std::function<void(bool)> result);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,

@@ -155,18 +155,38 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.progress_below.bind([this] { update_progress(-10); return Result{}; });
         handles.progress_above.bind([this] { update_progress(110); return Result{}; });
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
-        handles.reset_v03.bind([this] { update_progress(50); scroll.offset = 0; return handles.reset_v03.focus(); });
+        handles.reset_v03.bind([this] { update_progress(50); dialog_confirmations_ = 0; dialog_result_ = u"No result"; scroll.offset = 0; return handles.reset_v03.focus(); });
+        handles.dialog_open = ui.add_button({.id = prefix + "v03.open", .kind = Kind::button, .label = u"Reset progress..."});
+        handles.dialog_temporary = ui.add_button({.id = prefix + "v03.temporary", .kind = Kind::button, .label = u"Temporary opener..."});
+        handles.dialog_from_form = ui.add_button({.id = prefix + "v01.open", .kind = Kind::button, .label = u"Open progress confirmation..."});
+        handles.dialog_result = ui.add_label({.id = prefix + "v03.result", .kind = Kind::label});
+        handles.dialog_result.connect_source([this] {
+            auto count = std::to_string(dialog_confirmations_);
+            return u"Result: " + dialog_result_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
+        });
+        handles.dialog_title = ui.add_label({.id = prefix + "dialog.title", .kind = Kind::label, .value = u"Reset progress to 0%?"});
+        handles.dialog_remove_temporary = ui.add_button({.id = prefix + "dialog.remove", .kind = Kind::button, .label = u"Test: remove temporary opener"});
+        handles.dialog_cancel = ui.add_button({.id = prefix + "dialog.cancel", .kind = Kind::button, .label = u"Cancel"});
+        handles.dialog_confirm = ui.add_button({.id = prefix + "dialog.confirm", .kind = Kind::button, .label = u"Confirm"});
+        handles.dialog = ui.add_dialog({handles.dialog_title, handles.dialog_remove_temporary, handles.dialog_cancel, handles.dialog_confirm}, handles.dialog_cancel, handles.reset_v03,
+            [this](bool confirmed) { dialog_result_ = confirmed ? u"Confirmed" : u"Cancelled"; if (confirmed) { update_progress(0); ++dialog_confirmations_; } });
+        handles.dialog_open.bind([this] { return handles.dialog.open(handles.dialog_open); });
+        handles.dialog_temporary.bind([this] { return handles.dialog.open(handles.dialog_temporary); });
+        handles.dialog_from_form.bind([this] { return handles.dialog.open(handles.dialog_from_form); });
+        handles.dialog_remove_temporary.bind([this] { return handles.dialog_temporary.remove(); });
+        handles.dialog_cancel.bind([this] { return handles.dialog.settle(false); });
+        handles.dialog_confirm.bind([this] { return handles.dialog.settle(true); });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
                 handles.name_error, handles.notices, handles.mode, handles.region, handles.volume, handles.volume_latest,
                 handles.offline_disabled, handles.region_empty, handles.apply, handles.state, handles.draft, handles.result,
-                handles.count, handles.latest}},
+                handles.count, handles.latest, handles.dialog_from_form}},
             {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
                 list->handles.hundred, list->handles.sort, list->handles.disable_eight, list->handles.reset,
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
-            {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source,
-                handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03}}
+            {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
+                handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}}
         });
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : 2; };
@@ -255,11 +275,16 @@ Result Form::reset() {
 
 layout::Node Form::page() const {
     using namespace layout;
+    std::vector<Node> fields{control(handles.name)};
+    if (pages_) fields.push_back(control(handles.dialog_from_form));
+    fields.push_back(control(handles.notices)); fields.push_back(control(handles.mode)); fields.push_back(control(handles.region));
+    fields.push_back(control(handles.volume)); fields.push_back(control(handles.volume_latest));
+    fields.push_back(row({control(handles.apply), control(handles.latest), control(handles.state)}, 16));
     auto form = layout::scroll(column({
         control(handles.title, 24),
         control(handles.intro),
         grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.offline_disabled), control(handles.region_empty), control(handles.reset)}, 120, 8),
-        grid({column({control(handles.name), control(handles.notices), control(handles.mode), control(handles.region), control(handles.volume), control(handles.volume_latest), row({control(handles.apply), control(handles.latest), control(handles.state)}, 16)}, 12),
+        grid({column(std::move(fields), 12),
               column({control(handles.draft), control(handles.result), control(handles.count)}, 8)},
              360, 32),
     }, 16, 24));
@@ -268,9 +293,10 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source),
+    else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));
-    return pinned(control(handles.tabs), std::move(content));
+    return modal(pinned(control(handles.tabs), std::move(content)),
+        column({control(handles.dialog_title, 20), row({control(handles.dialog_cancel), control(handles.dialog_confirm)}), control(handles.dialog_remove_temporary)}, 16), handles.dialog);
 }
 }

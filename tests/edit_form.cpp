@@ -284,6 +284,66 @@ void pages_keep_independent_drafts_history_and_scroll() {
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
 }
 
+void dialog_cancel_preserves_progress() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    h.tabs.activate({"v03"});
+    check(bool(h.dialog_open.invoke()), "Open dialog");
+    check(h.dialog_cancel.describe()->focused, "Dialog starts on cancel");
+    check(bool(h.dialog_cancel.invoke()), "Cancel dialog");
+    check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused,
+          "Cancel preserves progress and returns focus to its opener");
+}
+
+void dialog_confines_input_and_confirms_once() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    auto& host = detail::access(form.ui);
+    test::FakeMeasure measure;
+    h.tabs.activate({"v03"});
+    h.dialog_open.invoke();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
+    const auto* cancel = frame.find(h.dialog_cancel);
+    check(cancel && frame.hit(cancel->bounds.x + 2, cancel->bounds.y + 2) == cancel && !frame.hit(1, 1),
+          "Dialog controls are above an input-blocking mask");
+    check(h.progress_full.invoke().status == Status::blocked_by_modal &&
+          h.tabs.activate({"v01"}).status == Status::blocked_by_modal && form.progress() == 50,
+          "Background operations and page switching are blocked");
+    check(host.pointer_down(h.progress_full.describe()->id).status == Status::blocked_by_modal,
+          "Background pointer input is blocked");
+    host.key_down({Key::tab, true});
+    check(h.dialog_remove_temporary.describe()->focused, "Shift+Tab wraps within the dialog");
+    host.key_down({Key::tab});
+    check(h.dialog_cancel.describe()->focused, "Tab wraps back to cancel");
+    host.key_down({Key::tab});
+    check(h.dialog_confirm.describe()->focused, "Tab enters confirm");
+    host.key_down({Key::enter}); host.key_down({Key::enter, false, false, true}); host.key_up(Key::enter);
+    check(form.progress() == 0 && form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused,
+          "Confirm settles once and restores opener focus");
+}
+
+void dialog_escape_and_removed_opener() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    auto& host = detail::access(form.ui);
+    h.tabs.activate({"v03"});
+    h.dialog_temporary.invoke();
+    check(bool(h.dialog_remove_temporary.invoke()), "Remove the temporary opener with the dialog fixture");
+    host.key_down({Key::escape});
+    check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.reset_v03.describe()->focused &&
+          h.dialog_temporary.invoke().status == Status::not_found,
+          "Escape cancels once and returns focus to the permanent fallback");
+}
+
+void dialog_removed_opener_can_confirm() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    h.tabs.activate({"v03"}); h.dialog_temporary.invoke(); h.dialog_remove_temporary.invoke();
+    check(bool(h.dialog_confirm.invoke()) && form.progress() == 0 && form.dialog_confirmations() == 1 &&
+          h.reset_v03.describe()->focused && h.dialog_confirm.invoke().status != Status::ok,
+          "Confirm settles once and restores the permanent fallback after removal");
+}
+
 void progress_displays_clamped_values_without_changing_the_model() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
@@ -377,6 +437,10 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"P01 cancel dialog", dialog_cancel_preserves_progress},
+        {"P02 P03 modal input and confirm", dialog_confines_input_and_confirms_once},
+        {"P04 removed opener and Escape", dialog_escape_and_removed_opener},
+        {"P04 removed opener and confirm", dialog_removed_opener_can_confirm},
         {"P07 progress display and source", progress_displays_clamped_values_without_changing_the_model},
         {"L07 L08 R07 page scopes", pages_keep_independent_drafts_history_and_scroll},
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
