@@ -110,6 +110,8 @@ public:
     Result read_only(bool enabled) const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
+    Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
+    Result confirm() const;
     bool source_conflict() const;
     Result use_latest() const;
     std::optional<Semantics> describe() const;
@@ -251,7 +253,7 @@ private:
         bool has_source_value = false;
         bool submitting = false;
         bool confirmation_member = false;
-        std::function<Result(const TextChange&)> immediate;
+        std::function<Result(const TextChange&)> immediate, confirmed;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;

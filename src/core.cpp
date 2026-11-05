@@ -168,7 +168,7 @@ Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fie
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate)
+            it->second.confirmation_member || it->second.immediate || it->second.confirmed)
             return {Status::invalid_value, u"A text source requires read and subscribe"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -211,10 +211,44 @@ Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> wr
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (std::this_thread::get_id() != ui_->owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || !write)
+    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || it->second.confirmed || !write)
         return {Status::invalid_value, u"Immediate write needs an ungrouped connected source"};
     it->second.immediate = std::move(write);
     return {};
+}
+Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (std::this_thread::get_id() != ui_->owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || it->second.immediate || !write)
+        return {Status::invalid_value, u"Confirmed write needs an ungrouped connected source"};
+    it->second.confirmed = std::move(write);
+    return {};
+}
+Result TextHandle::confirm() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->available(id_); !result) return result;
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end() || !it->second.confirmed)
+        return {Status::invalid_value, u"No confirmed write is connected"};
+    auto& field = it->second;
+    if (field.submitting || field.session.composing || ui_->dispatching_)
+        return {Status::busy, u"Operation is already executing"};
+    TextChange change{*this, field.session.text, field.origin};
+    field.submitting = true;
+    Result result;
+    try { result = field.confirmed(change); }
+    catch (...) { field.submitting = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    field.submitting = false;
+    if (result) {
+        field.origin = change.value;
+        ui_->set_error(id_, u"");
+    } else {
+        ui_->set_error(id_, result.message);
+        ui_->focus(id_);
+    }
+    auto notification = ui_->notify();
+    return notification ? result : notification;
 }
 Result TextHandle::connect_source(TextSource source) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -304,7 +338,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
-        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member || field.immediate)) {
+        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member || field.immediate || field.confirmed)) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
@@ -356,7 +390,7 @@ Result Ui::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
-    if (it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate)
+    if (it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed)
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};

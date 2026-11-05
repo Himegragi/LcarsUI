@@ -598,8 +598,25 @@ void source_notifications_request_a_repaint() {
           "An external model update makes the new value visible to the host");
 }
 
+void ungrouped_confirmed_connection_writes_only_on_confirm() {
+    std::u16string model = u"before", origin;
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "single.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    field.connect_confirmed([&](const TextChange& change) {
+        origin = change.origin;
+        model = change.value;
+        changed();
+        return Result{};
+    });
+    check(bool(field.set_value(u"draft")) && model == u"before", "Confirmed mode retains the draft without an immediate write");
+    check(bool(field.confirm()) && model == u"draft" && origin == u"before", "Confirm submits the draft and its origin");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G10 standalone confirmed connection", ungrouped_confirmed_connection_writes_only_on_confirm},
         {"G10 source notifications request a repaint", source_notifications_request_a_repaint},
         {"G10 cancel clears rejection without writing", cancelling_a_rejected_draft_clears_its_error_without_writing},
         {"G10 explicit immediate write retains rejected draft", explicit_immediate_write_keeps_a_rejected_draft},
