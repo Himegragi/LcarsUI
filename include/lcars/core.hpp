@@ -94,6 +94,7 @@ struct TextSource {
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
+struct TextChange;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
 class TextHandle {
 public:
@@ -107,6 +108,7 @@ public:
     void enable(bool enabled) const;
     void read_only(bool enabled) const;
     Result connect_source(TextSource source) const;
+    Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     bool source_conflict() const;
     Result use_latest() const;
     std::optional<Semantics> describe() const;
@@ -245,6 +247,7 @@ private:
         bool has_source_value = false;
         bool submitting = false;
         bool confirmation_member = false;
+        std::function<Result(const TextChange&)> immediate;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
@@ -258,6 +261,7 @@ private:
     bool notifying_focus_ = false;
     Result writable(std::string_view id, Field*& field);
     Result replace_selection(std::string_view id, Field& field, std::u16string_view insertion);
+    Result finish_edit(std::string_view id, Field& field);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
     Result notify();

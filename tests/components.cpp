@@ -551,8 +551,41 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     check(sent_origin == u"latest", "A fresh draft starts from the current source, not an older conflict origin");
 }
 
+void explicit_immediate_write_keeps_a_rejected_draft() {
+    std::u16string model = u"initial";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "immediate.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    field.connect_immediate([&](const TextChange& change) {
+        if (change.value == u"bad") return Result{Status::invalid_value, u"Rejected"};
+        model = change.value;
+        changed();
+        return Result{};
+    });
+    check(bool(field.set_value(u"accepted")) && model == u"accepted", "Immediate writes reach the app modification entry");
+    check(field.set_value(u"bad").status == Status::invalid_value && field.describe()->value == u"bad" &&
+          field.describe()->error == u"Rejected" && model == u"accepted",
+          "A rejected immediate write keeps the draft and its reason");
+}
+
+void cancelling_a_rejected_draft_clears_its_error_without_writing() {
+    std::u16string model = u"saved";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "cancel.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    int writes = 0;
+    field.connect_immediate([&](const TextChange&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
+    field.set_value(u"bad");
+    check(bool(field.use_latest()) && field.describe()->value == u"saved" && !field.describe()->invalid && writes == 1,
+          "Cancelling restores the source, clears its rejection, and makes no new write");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G10 cancel clears rejection without writing", cancelling_a_rejected_draft_clears_its_error_without_writing},
+        {"G10 explicit immediate write retains rejected draft", explicit_immediate_write_keeps_a_rejected_draft},
         {"G11 a fresh draft starts at the current source", editing_again_after_matching_the_source_uses_the_new_origin},
         {"G11 source updates preserve composition", source_update_during_composition_keeps_preedit},
         {"G10 connected text requires explicit write timing", connected_text_requires_explicit_write_timing},

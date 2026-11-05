@@ -152,7 +152,8 @@ Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fie
         return {Status::invalid_value, u"Invalid confirmation group"};
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
-        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value)
+        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
+            it->second.confirmation_member || it->second.immediate)
             return {Status::invalid_value, u"A text source requires read and subscribe"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -189,6 +190,15 @@ Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fie
         auto notification = notify();
         return notification ? outcome.result : notification;
     });
+    return {};
+}
+Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (std::this_thread::get_id() != ui_->owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || !write)
+        return {Status::invalid_value, u"Immediate write needs an ungrouped connected source"};
+    it->second.immediate = std::move(write);
     return {};
 }
 Result TextHandle::connect_source(TextSource source) const {
@@ -236,8 +246,14 @@ Result TextHandle::use_latest() const {
     auto it = ui_->edits_.find(id_);
     if (it == ui_->edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
+    const bool was_submitting = it->second.submitting;
+    it->second.submitting = true;
     auto result = ui_->set_value(id_, latest);
-    if (result) it->second.origin = std::move(latest);
+    it->second.submitting = was_submitting;
+    if (result) {
+        it->second.origin = std::move(latest);
+        ui_->set_error(id_, u"");
+    }
     return result;
 }
 Result TextHandle::set_value(std::u16string value) const {
@@ -272,7 +288,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
-        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member)) {
+        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member || field.immediate)) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
@@ -324,7 +340,7 @@ Result Ui::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
-    if (it->second.has_source_value && !it->second.confirmation_member)
+    if (it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate)
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
@@ -351,7 +367,7 @@ Result Ui::replace_selection(std::string_view id, Field& field, std::u16string_v
     session.text = std::move(next);
     session.select(caret, caret);
     const_cast<Control*>(find(id))->value = session.text;
-    return notify();
+    return finish_edit(id, field);
 }
 Result Ui::travel(std::string_view id, bool forward) {
     Field* field = nullptr;
@@ -368,7 +384,23 @@ Result Ui::travel(std::string_view id, bool forward) {
     session.text = std::move(snapshot.text);
     session.select(snapshot.selection.anchor, snapshot.selection.caret);
     const_cast<Control*>(find(id))->value = session.text;
-    return notify();
+    return finish_edit(id, *field);
+}
+Result Ui::finish_edit(std::string_view id, Field& field) {
+    Result result;
+    if (field.immediate && !field.submitting) {
+        auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+        field.submitting = true;
+        try { result = field.immediate(change); }
+        catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        field.submitting = false;
+        if (result) {
+            field.origin = change.value;
+            set_error(id, u"");
+        } else set_error(id, result.message);
+    }
+    auto notification = notify();
+    return notification ? result : notification;
 }
 Result Ui::undo(std::string_view id) { return travel(id, false); }
 Result Ui::redo(std::string_view id) { return travel(id, true); }
