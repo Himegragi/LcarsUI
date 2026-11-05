@@ -307,8 +307,16 @@ void progress_displays_clamped_values_without_changing_the_model() {
               p->progress_fill.w == p->progress_track.w * c.shown / 100,
               "Rendered text and filled track agree");
     }
+    h.tabs.activate({"v02"});
+    form.list->handles.search.set_value(u"\u5171\u7528\u7bc4\u672c");
+    form.list->handles.list.select({"T006"});
+    h.tabs.activate({"v03"});
+    check(form.progress() == 110 && h.progress.describe()->value == u"100%", "Progress survives page switches");
     check(bool(h.reset_v03.invoke()) && form.progress() == 50 && h.progress.describe()->value == u"50%",
           "Reset restores V03 progress to 50%");
+    h.tabs.activate({"v02"});
+    check(*form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"},
+          "Resetting V03 preserves V02 search and selection");
     h.tabs.activate({"v01"});
     check(*h.name.draft() == u"kept draft", "Resetting V03 preserves the V01 draft");
 }

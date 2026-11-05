@@ -1,3 +1,21 @@
+# V03 progress - issue #22 (2026-11-05)
+
+Production: `91b654d`, based on local integration `c1d1e6c`; merging the local integration tip reported already up to date. The subsequent evidence commit adds only the extra page-isolation assertions and this record. V03 owns the source in the application, initially 50, and connects it to a read-only typed progress handle. The displayed percentage is clamped to 0–100, while the source label and application model retain the original value. The display does not infer a business result from 100%. The dialog and tooltip remain for #23 and #24.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 61/61 cases; edit form 15/15 cases for each appearance and ID set (508 cumulative checks after the added isolation assertions) |
+| Release desktop build and CTest | 7/7 suites passed, 0 failed; 54/54 native checks | `build.ps1 -Configuration Release`; [host results](ticket-22-host/host.tsv) |
+| P07, both appearances | Passed for 0, 50, 100, -10 and 110 | Public handle and frame checks run in all four appearance/ID combinations; native keyboard activation checks source and clamped semantic values against painted track pixels. [Web 50%](ticket-22-host/web-v03-50.bmp), [Material 50%](ticket-22-host/material-v03-50.bmp), [Web 110 source](ticket-22-host/web-v03-p07.bmp), [Material 110 source](ticket-22-host/material-v03-p07.bmp). An external source notification also triggered repaint. |
+| Clipboard stress, both appearances | 400/400 passed, 0 failed | [results](ticket-22-clipboard/clipboard.tsv); 100 repetitions per appearance, including the 60 ms forced-contention case |
+| Real Microsoft Bopomofo, one run | 38/38 passed, 0 failed or blocked | [results](ticket-22-ime/ime.tsv), [events](ticket-22-ime/ime-events.log); real foreground input, including the composition/page-switch path in each appearance |
+
+The initial P07 test failed to compile before the component existed. A later source-lifecycle test failed because the first implementation did not identify progress as read-only; the implementation was corrected before the passing runs. The tests also check expiry and subscription disconnection, V03 reset to 50%, progress retention across page switches, and preservation of V01 draft and V02 search/selection after reset. The final two isolation checks were added after the desktop, clipboard and IME runs; they changed no production or native-host code, and core-only CTest was rerun afterwards.
+
+Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Host layout checks include 960×720 and 640×480 DIP at forced 100% and 150%; the retained V03 images are 960×720 at forced 100%. Forced scaling does not establish real cross-monitor DPI behavior. Real cross-monitor DPI migration, UIA/MCP, user trial, the remaining E01 matrix, and the later V03 dialog and tooltip scenarios remain open. Host and IME event-log trailing whitespace was normalized without changing the outcomes.
+
+---
+
 # Integrated V02 and nested scrolling - issues #20 and #21 (2026-11-05)
 
 Production and tests: `9224592`, based on local integration `10bf9ff`. V02 is the same page, model and list code in both the standalone example and the tabbed showcase. V03 remains a placeholder. Applications drive the page through typed handles and data connections; native input uses the host interface. Both appearances use the same scenarios.
