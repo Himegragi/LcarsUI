@@ -224,7 +224,7 @@ private:
     Id tooltip_hover_;
     std::uint64_t tooltip_now_ = 0;
     std::function<std::uint64_t()> tooltip_clock_;
-    bool window_active_ = false;
+    bool window_active_ = false, pointer_focus_ = false;
     Id popup_source_;
     struct DialogState {
         std::vector<Id> members;

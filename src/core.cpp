@@ -796,7 +796,7 @@ void detail::UiState::refresh_tooltips() {
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
-        bool eligible = window_active_ && !modal_ && (focus_ == id || tooltip_hover_ == id) && bool(available(id));
+        bool eligible = window_active_ && !modal_ && ((focus_ == id && !pointer_focus_) || tooltip_hover_ == id) && bool(available(id));
         if (eligible != tip.eligible) {
             tip.eligible = eligible;
             tip.visible = false;
@@ -1768,6 +1768,8 @@ Result detail::UiState::composition_cancel() {
     return {};
 }
 Result detail::UiState::focus(std::string_view id) {
+    pointer_focus_ = false;
+    refresh_tooltips();
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
@@ -1788,6 +1790,8 @@ Result detail::UiState::key_down(KeyPress key) {
         return settle_dialog(false);
     }
     if (key.key == Key::tab) {
+        pointer_focus_ = false;
+        refresh_tooltips();
         auto order = focus_order();
         if (order.empty()) return {Status::not_found, u"沒有可聚焦的元件"};
         auto it = std::find(order.begin(), order.end(), focus_);
@@ -1872,7 +1876,9 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
+    pointer_focus_ = true;
     if (auto result = move_focus(control->id); !result) return result;
+    refresh_tooltips();
     if (control->kind == Kind::dropdown) {
         pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
         auto& f = dropdowns_.at(control->id);

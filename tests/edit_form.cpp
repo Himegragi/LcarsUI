@@ -578,6 +578,23 @@ void tooltip_pointer_visit_can_restart_after_escape() {
     check(!*tip.visible(), "Leaving the source closes the tooltip");
 }
 
+void tooltip_pointer_focus_ends_on_leave() {
+    Ui ui({});
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
+    auto tip = ui.add_tooltip(source, u"Help", 100);
+    auto& host = detail::access(ui);
+    host.tooltip_time(0); host.window_active(true);
+    host.tooltip_hover("source");
+    host.pointer_down("source"); host.pointer_up("source");
+    host.tooltip_time(100);
+    check(*tip.visible() && source.describe()->focused, "Pointer dwell shows the focused source tooltip");
+    host.tooltip_hover("");
+    check(!*tip.visible() && source.describe()->focused, "Leaving after a pointer click hides the tooltip without changing focus");
+    host.key_down({Key::tab});
+    host.tooltip_time(200);
+    check(*tip.visible(), "Keyboard focus makes the source eligible again");
+}
+
 void tooltip_window_modal_and_source_lifetime() {
     Ui ui({});
     auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"});
@@ -805,6 +822,7 @@ int main() {
         {"P05 tooltip keyboard delay and Escape", tooltip_keyboard_delay_and_escape},
         {"P01 cancel dialog", dialog_cancel_preserves_progress},
         {"P02 P03 modal input and confirm", dialog_confines_input_and_confirms_once},
+        {"P05 pointer focus tooltip", tooltip_pointer_focus_ends_on_leave},
         {"P04 removed opener and Escape", dialog_escape_and_removed_opener},
         {"P04 removed opener and confirm", dialog_removed_opener_can_confirm},
         {"P07 progress display and source", progress_displays_clamped_values_without_changing_the_model},
