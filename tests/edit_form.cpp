@@ -75,7 +75,7 @@ void radio_boundaries_under_the_appearance() {
 
 void slider_non_divisible_under_the_appearance() {
     Ui ui({});
-    auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider}, {-3, 8, 4});
+    auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
     slider.connect_confirmed([](const NumericChange&) { return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
@@ -91,7 +91,7 @@ void slider_non_divisible_under_the_appearance() {
     check(*slider.draft() == 8, "End reaches non-divisible maximum");
     int rejected = 0;
     for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}})
-        try { ui.add_slider({.id = "invalid", .kind = Kind::slider}, range); } catch (const std::invalid_argument&) { ++rejected; }
+        if (ui.add_slider({.id = "invalid", .kind = Kind::slider}, range).status == Status::invalid_value) ++rejected;
     check(rejected == 4, "Invalid ranges and steps are rejected");
 }
 
@@ -487,7 +487,7 @@ void v02_disabled_and_filtered_neighbors() {
         identities = options[static_cast<std::size_t>(n - 1)].value == OptionValue{expected};
     }
     check(frame.find(h.list) && !page.selection() && h.list.describe()->candidate == OptionValue{"T009"} &&
-          h.list.select({"T008"}).status == Status::invalid_value && identities,
+          h.list.select({"T008"}).status == Status::disabled && identities,
           "Disabling selected T008 clears it, moves to T009 and keeps every identity");
     h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.set_value(u"範本 1");
     check(!page.selection() && h.list.describe()->candidate == OptionValue{"T010"}, "Filtering recovers the next surviving identity T010");

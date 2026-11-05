@@ -270,7 +270,9 @@ Result ListHandle::select(OptionValue value) const {
     auto& f = ui_->lists_.at(id_);
     if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
     if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
-    if (std::none_of(f.items.begin(), f.items.end(), [&](const auto& item) { return item.enabled && item.value == value; })) return {Status::invalid_value, u"Invalid list item"};
+    auto item = std::find_if(f.items.begin(), f.items.end(), [&](const auto& row) { return row.value == value; });
+    if (item == f.items.end()) return {Status::invalid_value, u"Invalid list item"};
+    if (!item->enabled) return {Status::disabled, u"List item is disabled"};
     if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
     if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
     f.writing = true; Result r;
@@ -622,6 +624,9 @@ SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
 ComponentHandle detail::UiState::slider_layout_handle(const Control& c) { return SliderHandle(this, lifetime_, c.id); }
 Result SliderHandle::set_value(int value) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->available(id_); !result) return result;
+    const auto range = ui_->numerics_.at(id_).range;
+    if (value < range.minimum || value > range.maximum) return {Status::invalid_value, u"Value is outside the slider range"};
     return ui_->slider_set_value(id_, value);
 }
 Result SliderHandle::focus() const {
@@ -1962,7 +1967,11 @@ ButtonHandle Ui::add_button(Control control) { return state_->add_button(std::mo
 LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(control)); }
 CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
 RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
-SliderHandle Ui::add_slider(Control control, SliderRange range) { return state_->add_slider(std::move(control), range); }
+Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
+    if (range.minimum >= range.maximum || range.step <= 0)
+        return {Status::invalid_value, u"Invalid slider range or step", std::nullopt};
+    return {Status::ok, {}, state_->add_slider(std::move(control), range)};
+}
 ProgressHandle Ui::add_progress(Control control) { return state_->add_progress(std::move(control)); }
 TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }

@@ -864,7 +864,7 @@ void unconnected_selection_controls_do_not_advertise_writes() {
 void slider_connected_draft_is_confirmed_as_a_number() {
     int model = 40;
     Ui ui({});
-    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5});
+    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
     auto apply = ui.add_button({.id = "apply.slider", .kind = Kind::button});
     slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
@@ -878,9 +878,12 @@ void slider_connected_draft_is_confirmed_as_a_number() {
 
 void slider_non_divisible_range_and_keyboard() {
     Ui ui({});
-    auto slider = ui.add_slider({.id = "level", .kind = Kind::slider}, {-3, 8, 4});
+    auto slider = ui.add_slider({.id = "level", .kind = Kind::slider}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
     slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+    check(slider.set_value(-4).status == Status::invalid_value && *slider.draft() == -3 &&
+          slider.set_value(9).status == Status::invalid_value && *slider.draft() == -3,
+          "Programmatic values outside the range are rejected without changing the draft");
     slider.set_value(3);
     check(*slider.draft() == 5, "A midpoint snaps to the higher step");
     slider.set_value(7);
@@ -902,7 +905,7 @@ void slider_non_divisible_range_and_keyboard() {
 void slider_rejects_invalid_ranges() {
     Ui ui({}); int rejected = 0;
     for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}}) {
-        try { ui.add_slider({.id = "invalid", .kind = Kind::slider}, range); } catch (const std::invalid_argument&) { ++rejected; }
+        if (ui.add_slider({.id = "invalid", .kind = Kind::slider}, range).status == Status::invalid_value) ++rejected;
     }
     check(rejected == 4, "Empty or reversed ranges and non-positive steps are rejected");
     bool missing_range = false;
@@ -935,7 +938,7 @@ void slider_source_conflict_and_invalid_updates() {
     SliderHandle saved;
     {
         Ui ui({});
-        saved = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5});
+        saved = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5}).value.value();
         auto apply = ui.add_button({.id = "send", .kind = Kind::button});
         saved.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
         ui.connect_mixed_confirmation(apply, {saved}, [&](const auto& changes) {
@@ -958,7 +961,7 @@ void slider_source_conflict_and_invalid_updates() {
 void slider_group_preserves_edits_during_submission() {
     int model = 40, submitted_origin = -1; std::function<void()> changed;
     Ui ui({});
-    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5});
+    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5}).value.value();
     auto apply = ui.add_button({.id = "apply", .kind = Kind::button});
     slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
     int calls = 0;
@@ -1150,7 +1153,7 @@ void list_focus_and_keyboard_use_enabled_items() {
     check(list.describe()->candidate == OptionValue{"T007"} && !selected, "Entry focuses the first enabled item without selecting");
     detail::access(ui).key_down({.key = Key::down, .shift = true, .ctrl = true});
     check(selected == OptionValue{"T009"} && list.describe()->candidate == selected, "Down skips disabled rows and modifiers do not add selections");
-    check(list.select({"T008"}).status == Status::invalid_value && selected == OptionValue{"T009"}, "Disabled rows reject public selection");
+    check(list.select({"T008"}).status == Status::disabled && selected == OptionValue{"T009"}, "Disabled rows reject public selection");
     detail::access(ui).key_down({.key = Key::tab});
     check(next.describe()->focused, "Tab exits the list");
 }

@@ -32,7 +32,7 @@ void disabling_a_selected_row_clears_it() {
     list.focus(); list.select({"T008"});
     check(bool(page.handles.disable_eight.invoke()), "Disable T008");
     check(!page.selection() && list.describe()->candidate == OptionValue{"T009"}, "Disabled selection clears and cursor advances");
-    check(list.select({"T008"}).status == Status::invalid_value, "Disabled row cannot be selected");
+    check(list.select({"T008"}).status == Status::disabled, "Disabled row cannot be selected");
     list.select({"T007"}); detail::access(page.ui).key_down({.key = Key::down});
     check(page.selection() == OptionValue{"T009"}, "Down skips disabled T008");
 }

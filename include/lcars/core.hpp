@@ -118,7 +118,8 @@ struct BoolSource {
 };
 // Integer sources also feed read-only progress displays, which accept values outside 0-100.
 // Integer slider values are the minimum plus whole steps, with the maximum also valid.
-// Edits clamp to the range and snap to the closest valid value; ties choose the higher value.
+// In-range edits snap to the closest valid value; ties choose the higher value.
+// Programmatic values outside the range are rejected; pointer and keyboard input clamp.
 // Arrow keys move to the adjacent valid value, including the shorter final interval; Home and End
 // select the exact endpoints.
 // The maximum is reachable even when the range is not divisible by the step. Source values
@@ -417,8 +418,8 @@ public:
     LabelHandle add_label(Control control);
     CheckboxHandle add_checkbox(Control control);
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
-    // Throws std::invalid_argument when minimum >= maximum or step <= 0.
-    SliderHandle add_slider(Control control, SliderRange range);
+    // Invalid ranges and steps return invalid_value without creating a component.
+    Query<SliderHandle> add_slider(Control control, SliderRange range);
     ProgressHandle add_progress(Control control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);

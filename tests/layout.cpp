@@ -259,7 +259,7 @@ void radio_options_share_geometry_with_pointer_input() {
 void slider_track_and_drag_share_geometry() {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         Ui ui({});
-        auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5});
+        auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
         slider.connect_confirmed([](const NumericChange&) { return Result{}; });
         test::FakeMeasure measure; ScrollState scroll;

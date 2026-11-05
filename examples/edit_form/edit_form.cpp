@@ -52,7 +52,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     handles.mode = ui.add_radio_group({.id = i.mode, .kind = Kind::radio_group, .label = u"\u6a21\u5f0f"},
         {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}});
     handles.region = ui.add_dropdown({.id = i.region, .kind = Kind::dropdown, .label = u"\u5730\u5340"}, regions());
-    handles.volume = ui.add_slider({.id = i.volume, .kind = Kind::slider, .label = u"\u97f3\u91cf"}, {0, 100, 5});
+    handles.volume = ui.add_slider({.id = i.volume, .kind = Kind::slider, .label = u"\u97f3\u91cf"}, {0, 100, 5}).value.value();
     handles.volume_latest = ui.add_button({.id = i.volume_latest, .kind = Kind::button, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
     handles.offline_disabled = ui.add_button({.id = i.offline_disabled, .kind = Kind::button, .label = u"\u505c\u7528\u96e2\u7dda"});
     handles.region_empty = ui.add_button({.id = i.region_empty, .kind = Kind::button, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"});
