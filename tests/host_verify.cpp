@@ -82,7 +82,7 @@ struct Fixture {
     }
     POINT center(std::string_view id) {
         host.paint();
-        auto r = host.frame().find(id)->bounds;
+        auto r = detail::find_placement(host.frame(), id)->bounds;
         return {r.x + r.w / 2, r.y + r.h / 2};
     }
     void mouse(UINT msg, POINT p, WPARAM w = 0) { post(msg, w, MAKELPARAM(p.x, p.y)); host.pump(); }
@@ -172,7 +172,7 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto& ui = f.form.ui;
     detail::access(ui).set_value(f.ids.name, u"Alpha 中文");
     f.host.paint();
-    const Placement field = *f.host.frame().find(f.ids.name);  // a copy: repaints replace the frame
+    const Placement field = *detail::find_placement(f.host.frame(), f.ids.name);  // a copy: repaints replace the frame
     auto x_of = [&](unsigned offset) {
         return field.bounds.x + field.field.editor.x + static_cast<int>(field.run.x(offset) - field.offset);
     };
@@ -263,14 +263,14 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     bool back = detail::access(f.form.ui).focused() == f.ids.apply;
     Canvas pixels(1, 1, {0, 0, 0});
     auto frame = f.host.render(900, 700, 1.f, folder / (tag + "-focus-apply.bmp"), &pixels);
-    auto r = frame.find(f.ids.apply)->bounds;
+    auto r = detail::find_placement(frame, f.ids.apply)->bounds;
     auto color_at = [&](int x, int y) {
         auto i = (static_cast<std::size_t>(pixels.height - 1 - y) * pixels.width + x) * 4;
         return Color{pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]};
     };
     auto accent = appearance.palette().accent, ring = color_at(r.x + 1, r.y + r.h / 2);
     bool visible = ring.r == accent.r && ring.g == accent.g && ring.b == accent.b;
-    auto other = frame.find(f.ids.reset)->bounds;
+    auto other = detail::find_placement(frame, f.ids.reset)->bounds;
     auto plain = color_at(other.x + 1, other.y + other.h / 2);
     bool distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
     std::string order;
@@ -303,7 +303,7 @@ void resize_first_frame_matches_next(const Appearance& appearance, Report& repor
     const Frame& second = f.host.frame();
     bool same = first.items.size() == second.items.size() && first.offset == second.offset;
     for (std::size_t i = 0; same && i < first.items.size(); ++i) same = first.items[i].bounds == second.items[i].bounds;
-    auto target = first.find(f.ids.apply)->bounds;
+    auto target = detail::find_placement(first, f.ids.apply)->bounds;
     const auto* hit = second.hit(target.x + target.w / 2, target.y + target.h / 2);
     bool visible = target.y >= 0 && target.y + target.h <= static_cast<int>(540 * scale);
     report.check(scale > 1 ? "R06-native-150" : "R06-native-100", deep > 0 && deep == deep_max && painted == 1 && first.viewport.w == static_cast<int>(720 * scale) && first.maximum > 0 && first.offset == first.maximum && first.offset < deep && same && visible && hit && hit->id == f.ids.apply,
@@ -336,15 +336,15 @@ void layout_matrix(const Appearance& appearance, Report& report, const std::file
                         if (overlaps(frame.items[i].bounds, frame.items[j].bounds)) clean = false;
                 bool inside = std::all_of(frame.items.begin(), frame.items.end(),
                                           [&](const Placement& p) { return p.bounds.x >= 0 && p.bounds.x + p.bounds.w <= w; });
-                auto field = frame.find(f.ids.name)->bounds, apply = frame.find(f.ids.apply)->bounds;
-                auto draft = frame.find(f.ids.draft)->bounds;
+                auto field = detail::find_placement(frame, f.ids.name)->bounds, apply = detail::find_placement(frame, f.ids.apply)->bounds;
+                auto draft = detail::find_placement(frame, f.ids.draft)->bounds;
                 bool arrangement = size.w == 960 ? draft.x > field.x && draft.y < apply.y + apply.h : draft.x == field.x && draft.y > apply.y;
                 // Every keyboard entry can be scrolled fully into the viewport.
                 int reachable = 0, entries = 0;
                 for (const auto& id : detail::access(ui).focus_order()) {
                     ScrollState probe;
                     auto revealed = f.host.layout(w, h, scale, probe, id);
-                    auto b = revealed.find(id)->bounds;
+                    auto b = detail::find_placement(revealed, id)->bounds;
                     ++entries;
                     if (b.y >= 0 && b.y + b.h <= h && revealed.hit(b.x + b.w / 2, b.y + b.h / 2)->id == id) ++reachable;
                 }
@@ -449,7 +449,7 @@ struct Live {
     void type(const char* keys) { for (const char* k = keys; *k; ++k) tap(static_cast<WORD>(*k)); wait(250); }
     void click(std::string_view id, int x_bias = 0) {
         guard();
-        auto r = host.frame().find(id)->bounds;
+        auto r = detail::find_placement(host.frame(), id)->bounds;
         POINT p{r.x + r.w / 2 + x_bias, r.y + r.h / 2};
         ClientToScreen(host.window(), &p);
         int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);

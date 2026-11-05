@@ -30,14 +30,14 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 namespace layout {
 struct Node {
     enum class Type { control, column, row, grid, scroll } type = Type::column;
-    std::string id;               // control
+    ComponentHandle component;   // control: non-owning typed reference
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
     int min_column = 0;  // grid: as many columns as fit at this width, at least one
     std::vector<Node> children;
 };
-Node control(std::string id, int text_size = 0);
+Node control(ComponentHandle component, int text_size = 0);
 Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
@@ -63,9 +63,12 @@ struct Frame {
     std::vector<Placement> items;
     Rect viewport, track, thumb;  // scroll region and its bar; thumb empty when nothing scrolls
     int extent = 0, maximum = 0, offset = 0;
-    const Placement* find(std::string_view id) const;
+    const Placement* find(const TextHandle& handle) const;
+    const Placement* find(const ButtonHandle& handle) const;
+    const Placement* find(const LabelHandle& handle) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
-    unsigned text_offset(std::string_view id, int x) const;  // field caret offset for a pointer x
+    unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
+    const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here
 };
 // reveal: when not empty, scroll so that control is fully visible (top-aligned if taller).

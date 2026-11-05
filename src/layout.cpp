@@ -55,7 +55,7 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 }
 
 namespace layout {
-Node control(Id id, int text_size) { Node n; n.type = Node::Type::control; n.id = std::move(id); n.text_size = text_size; return n; }
+Node control(ComponentHandle component, int text_size) { Node n; n.type = Node::Type::control; n.component = std::move(component); n.text_size = text_size; return n; }
 Node column(std::vector<Node> children, int gap, int padding) {
     Node n; n.type = Node::Type::column; n.children = std::move(children); n.gap = gap; n.padding = padding; return n;
 }
@@ -66,19 +66,32 @@ Node grid(std::vector<Node> children, int min_column, int gap) {
 Node scroll(Node child) { Node n; n.type = Node::Type::scroll; n.children.push_back(std::move(child)); return n; }
 }
 
-const Placement* Frame::find(std::string_view id) const {
-    auto it = std::find_if(items.begin(), items.end(), [&](const Placement& p) { return p.id == id; });
-    return it == items.end() ? nullptr : &*it;
+const Placement* detail::find_placement(const Frame& frame, std::string_view id) {
+    auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
+    return it == frame.items.end() ? nullptr : &*it;
+}
+const Placement* Frame::find(const TextHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const ButtonHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const LabelHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (it->bounds.contains(x, y) && it->clip.contains(x, y)) return &*it;
     return nullptr;
 }
-unsigned Frame::text_offset(std::string_view id, int x) const {
-    const auto* p = find(id);
+unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
+    const auto* p = detail::find_placement(frame, id);
     if (!p || p->kind != Kind::text) return 0;
     return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
+}
+unsigned Frame::text_offset(const TextHandle& handle, int x) const {
+    const auto* p = find(handle);
+    return p ? p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset) : 0;
 }
 int Placement::caret_x(unsigned offset) const {
     return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
@@ -124,16 +137,20 @@ struct Arranger {
         return lines.empty() ? 0 : lines.back().bounds.y + lines.back().bounds.h - lines.front().bounds.y;
     }
     bool natural_width(const Node& node) const {
-        auto c = node.type == Node::Type::control ? ui.find(node.id) : nullptr;
+        auto id = node.type == Node::Type::control ? ui.layout_id(node.component) : std::nullopt;
+        auto c = id ? ui.find(*id) : nullptr;
         return c && command(c->kind);
     }
     int button_width(const Node& node) {
-        auto c = ui.find(node.id);
+        auto id = ui.layout_id(node.component);
+        auto c = id ? ui.find(*id) : nullptr;
+        if (!c) throw std::invalid_argument("Layout references an invalid component");
         return static_cast<int>(std::ceil(measure.measure(c->label, pixels(node.text_size)).width)) + 2 * appearance.button_padding(scale);
     }
 
     Placement build(const Node& node, int width) {
-        const auto* control = ui.find(node.id);
+        auto id = ui.layout_id(node.component);
+        const auto* control = id ? ui.find(*id) : nullptr;
         if (!control) throw std::invalid_argument("Layout names an unknown control");
         Placement p;
         p.id = control->id; p.kind = control->kind;
@@ -291,6 +308,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     Arranger a{detail::access(ui), appearance, measure, scale, scroll, reveal, {}};
     Rect window{0, 0, width, height};
     a.frame.viewport = window;
+    a.frame.owner_ = &detail::access(ui);
     std::vector<Placement> items;
     a.place(root, window, items);
     for (auto& p : items) {

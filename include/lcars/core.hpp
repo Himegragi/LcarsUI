@@ -7,13 +7,14 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <variant>
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
 enum class Kind { text, toggle, button, navigation, label };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
-enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported };
+enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history };
 struct Result {
     Status status = Status::ok;
     std::u16string message;
@@ -101,6 +102,7 @@ struct TextSource {
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
+struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
@@ -127,8 +129,14 @@ public:
     Query<bool> source_conflict() const;
     Result use_latest() const;
     Query<Semantics> describe() const;
+    Query<std::u16string> draft() const;
+    bool operator==(const TextHandle& other) const {
+        return ui_ == other.ui_ && id_ == other.id_ &&
+               !lifetime_.owner_before(other.lifetime_) && !other.lifetime_.owner_before(lifetime_);
+    }
 private:
     friend class detail::UiState;
+    friend struct Frame;
     TextHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
         : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
@@ -146,6 +154,7 @@ public:
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
+    friend struct Frame;
     ButtonHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
         : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
@@ -159,17 +168,19 @@ public:
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
+    friend struct Frame;
     LabelHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
         : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle>;
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
 };
-struct FieldError { std::size_t index; std::u16string message; };
+struct FieldError { TextHandle field; std::u16string message; };
 struct ConfirmationResult {
     Result result;
     std::vector<FieldError> errors;

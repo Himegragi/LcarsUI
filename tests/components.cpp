@@ -144,7 +144,7 @@ void typing_records_one_history_entry_per_input() {
     detail::access(ui).key_down(ctrl(u'Y'));
     check(detail::access(ui).text("name") == u"測試使用者A", "Ctrl+Y redoes");
     detail::access(ui).text_input(u"C");
-    check(detail::access(ui).redo("name").status == Status::not_supported && detail::access(ui).text("name") == u"測試使用者AC", "A new edit clears the field's redo");
+    check(detail::access(ui).redo("name").status == Status::empty_history && detail::access(ui).text("name") == u"測試使用者AC", "A new edit clears the field's redo");
     check(detail::access(ui).undo("alias") && detail::access(ui).text("alias") == u"別名", "Each field keeps its own history");
 }
 
@@ -392,6 +392,22 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
 }
 }
 
+void confirmed_field_respects_shared_command_guard() {
+    Ui ui({});
+    auto field = ui.add_text({.id = "guard.field", .kind = Kind::text});
+    auto button = ui.add_button({.id = "guard.button", .kind = Kind::button});
+    field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
+    int writes = 0;
+    Status nested = Status::ok;
+    field.connect_confirmed([&](const TextChange&) { ++writes; nested = button.invoke().status; return Result{}; });
+    field.set_value(u"draft");
+    int commands = 0;
+    button.bind([&] { ++commands; return field.confirm(); });
+    check(button.invoke().status == Status::busy && writes == 0 && commands == 1, "A command cannot nest a standalone confirmation");
+    check(bool(field.confirm()) && writes == 1 && nested == Status::busy && commands == 1,
+          "Standalone confirmation works and blocks nested commands");
+}
+
 void public_text_operations_obey_restrictions() {
     Ui ui({}); MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
     auto field = ui.add_text({.id = "public.text", .kind = Kind::text});
@@ -449,8 +465,9 @@ void group_action_cannot_be_replaced() {
 void unconnected_text_rejects_edits() {
     Ui ui({});
     auto field = ui.add_text({.id = "unconnected", .kind = Kind::text, .value = u"initial"});
-    check(field.set_value(u"changed").status == Status::invalid_value && field.describe()->value == u"initial",
-          "An unconnected field rejects edits and retains its value");
+    auto snapshot = field.describe();
+    check(field.set_value(u"changed").status == Status::invalid_value && snapshot->value == u"initial" &&
+          !has(snapshot->operations, Operation::edit), "An unconnected field rejects edits and does not advertise editing");
 }
 
 void handles_expire_with_their_component_tree() {
@@ -501,8 +518,11 @@ void source_conflict_keeps_draft_until_cancelled() {
     field.set_value(u"draft");
     model = u"newest";
     changed();
-    check(field.describe()->value == u"draft" && field.source_conflict().value.value_or(false),
+    check(field.describe()->value == u"draft" && field.describe()->source_conflict && field.source_conflict().value.value_or(false),
           "A different source value preserves the draft and signals the conflict");
+    field.enable(false);
+    check(field.describe()->source_conflict, "Conflict remains visible in disabled semantics");
+    field.enable(true);
     check(bool(field.use_latest()) && field.describe()->value == u"newest" && !field.source_conflict().value.value_or(false),
           "Choosing the latest value discards the draft and clears the conflict");
 }
@@ -542,7 +562,7 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
     ui.connect_confirmation(apply, {first, second}, [&](const std::vector<TextChange>& changes) {
         check(changes.size() == 2 && changes[0].value == u"bad one" && changes[1].value == u"bad two",
               "Both drafts arrive together");
-        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{1, u"second problem"}, {0, u"first problem"}}};
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
     });
     first.set_value(u"bad one");
     second.set_value(u"bad two");
@@ -693,6 +713,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
 
 int main() {
     const test::Case cases[] = {
+        {"Standalone confirmation shares command guard", confirmed_field_respects_shared_command_guard},
         {"Public text operations obey restrictions", public_text_operations_obey_restrictions},
         {"Handle queries report expiry", handle_queries_report_expiry},
         {"Configuration requires UI thread", configuration_requires_ui_thread},

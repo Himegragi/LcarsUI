@@ -27,6 +27,11 @@ public:
     explicit Form(Ids ids = default_ids());
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
+    struct Handles {
+        lcars::TextHandle name;
+        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest;
+        lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
+    } handles;
     lcars::Ui ui;
     lcars::ScrollState scroll;
     lcars::layout::Node page() const;
@@ -36,8 +41,6 @@ public:
     // An external application change to the same model (also useful to exercise conflicts).
     void update_source(std::u16string value);
 private:
-    lcars::TextHandle name_;
-    lcars::ButtonHandle apply_, latest_, reset_;
     bool validate();
     lcars::ConfirmationResult apply(const std::vector<lcars::TextChange>& changes);
     void refresh_conflict();

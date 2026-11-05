@@ -89,6 +89,20 @@ LabelHandle detail::UiState::add_label(Control control) {
     controls_.push_back(std::move(control));
     return LabelHandle(this, lifetime_, std::move(id));
 }
+ComponentHandle detail::UiState::layout_handle(std::string_view id) {
+    auto control = find(id);
+    if (!control) return {};
+    if (control->kind == Kind::text) return TextHandle(this, lifetime_, control->id);
+    if (control->kind == Kind::label) return LabelHandle(this, lifetime_, control->id);
+    return ButtonHandle(this, lifetime_, control->id);
+}
+std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) const {
+    return std::visit([this](const auto& item) -> std::optional<Id> {
+        using T = std::decay_t<decltype(item)>;
+        if constexpr (std::is_same_v<T, std::monostate>) return std::nullopt;
+        else return item.ui_ == this && !item.lifetime_.expired() ? std::optional<Id>(item.id_) : std::nullopt;
+    }, handle);
+}
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto result = ui_->configuration_access(id_); !result) return result;
@@ -143,13 +157,16 @@ Result TextHandle::read_only(bool is_read_only) const {
 }
 Result TextHandle::reset_to_source() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value)
+    return ui_->reset_to_source(id_);
+}
+Result detail::UiState::reset_to_source(const Id& id) {
+    if (auto result = configuration_access(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.has_source_value)
         return {Status::invalid_value, u"Text source is not connected"};
-    ui_->replace_text(id_, it->second.source_value);
+    replace_text(id, it->second.source_value);
     it->second.origin = it->second.source_value;
-    return ui_->set_error(id_, u"");
+    return set_error(id, u"");
 }
 Result ButtonHandle::invoke() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -229,9 +246,11 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
         if (!outcome.result) {
             std::optional<std::size_t> first;
             for (const auto& error : outcome.errors) {
-                if (error.index >= fields.size()) continue;
-                set_error(fields[error.index].id_, error.message);
-                if (!error.message.empty() && (!first || error.index < *first)) first = error.index;
+                auto it = std::find(fields.begin(), fields.end(), error.field);
+                if (it == fields.end()) continue;
+                const auto index = static_cast<std::size_t>(it - fields.begin());
+                set_error(it->id_, error.message);
+                if (!error.message.empty() && (!first || index < *first)) first = index;
             }
             if (first) focus(fields[*first].id_);
         }
@@ -242,53 +261,41 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
 }
 Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (std::this_thread::get_id() != ui_->owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || it->second.confirmed || !write)
-        return {Status::invalid_value, u"Immediate write needs an ungrouped connected source"};
-    it->second.immediate = std::move(write);
-    return {};
+    return ui_->connect_write(id_, std::move(write), true);
 }
 Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (std::this_thread::get_id() != ui_->owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value || it->second.confirmation_member || it->second.immediate || !write)
-        return {Status::invalid_value, u"Confirmed write needs an ungrouped connected source"};
-    it->second.confirmed = std::move(write);
+    return ui_->connect_write(id_, std::move(write), false);
+}
+Result detail::UiState::connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate) {
+    if (auto result = configuration_access(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.has_source_value || it->second.confirmation_member ||
+        (immediate ? bool(it->second.confirmed) : bool(it->second.immediate)) || !write)
+        return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    (immediate ? it->second.immediate : it->second.confirmed) = std::move(write);
     return {};
 }
 Result TextHandle::confirm() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->available(id_); !result) return result;
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.confirmed)
+    return ui_->confirm(id_);
+}
+Result detail::UiState::confirm(const Id& id) {
+    if (auto result = available(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.confirmed)
         return {Status::invalid_value, u"No confirmed write is connected"};
     auto& field = it->second;
-    if (field.submitting || field.session.composing || ui_->dispatching_ || ui_->invoking_)
+    if (field.submitting || field.session.composing || dispatching_ || invoking_)
         return {Status::busy, u"Operation is already executing"};
-    TextChange change{*this, field.session.text, field.origin};
-    field.submitting = true;
-    Result result;
-    try { result = field.confirmed(change); }
-    catch (...) { field.submitting = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    field.submitting = false;
-    if (result) {
-        field.origin = change.value;
-        ui_->set_error(id_, u"");
-    } else {
-        ui_->set_error(id_, result.message);
-        ui_->focus(id_);
-    }
-    auto notification = ui_->notify();
-    return notification ? result : notification;
+    return submit_field(id, field, field.confirmed, true);
 }
 Result TextHandle::connect_source(TextSource source) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->connect_source(id_, std::move(source));
 }
 Result detail::UiState::connect_source(const Id& id, TextSource source) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
     if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
@@ -324,16 +331,20 @@ Query<bool> TextHandle::source_conflict() const {
 }
 Result TextHandle::use_latest() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    auto it = ui_->edits_.find(id_);
-    if (it == ui_->edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
+    return ui_->use_latest(id_);
+}
+Result detail::UiState::use_latest(const Id& id) {
+    if (auto result = configuration_access(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
     const bool was_submitting = it->second.submitting;
     it->second.submitting = true;
-    auto result = ui_->set_value(id_, latest);
+    auto result = set_value(id, latest);
     it->second.submitting = was_submitting;
     if (result) {
         it->second.origin = std::move(latest);
-        ui_->set_error(id_, u"");
+        set_error(id, u"");
     }
     return result;
 }
@@ -345,6 +356,11 @@ Query<Semantics> TextHandle::describe() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
     if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<std::u16string> TextHandle::draft() const {
+    auto snapshot = describe();
+    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+    return {Status::ok, {}, snapshot->value};
 }
 Query<Semantics> ButtonHandle::describe() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
@@ -462,7 +478,6 @@ Result detail::UiState::replace_selection(std::string_view id, Field& field, std
     field.future.clear();
     session.text = std::move(next);
     session.select(caret, caret);
-    const_cast<Control*>(find(id))->value = session.text;
     return finish_edit(id, field);
 }
 Result detail::UiState::travel(std::string_view id, bool forward) {
@@ -470,7 +485,7 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     if (auto result = writable(id, field); !result) return result;
     auto& from = forward ? field->future : field->past;
     auto& to = forward ? field->past : field->future;
-    if (from.empty()) return {Status::not_supported, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
+    if (from.empty()) return {Status::empty_history, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
     auto& session = field->session;
     if (field->has_source_value && !field->submitting && session.text == field->source_value)
         field->origin = field->source_value;
@@ -479,24 +494,31 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     from.pop_back();
     session.text = std::move(snapshot.text);
     session.select(snapshot.selection.anchor, snapshot.selection.caret);
-    const_cast<Control*>(find(id))->value = session.text;
     return finish_edit(id, *field);
 }
-Result detail::UiState::finish_edit(std::string_view id, Field& field) {
+Result detail::UiState::submit_field(std::string_view id, Field& field,
+        const std::function<Result(const TextChange&)>& write, bool command) {
+    auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+    field.submitting = true;
+    if (command) invoking_ = true;
     Result result;
-    if (field.immediate && !field.submitting) {
-        auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
-        field.submitting = true;
-        try { result = field.immediate(change); }
-        catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    try { result = write(change); }
+    catch (...) {
         field.submitting = false;
-        if (result) {
-            field.origin = change.value;
-            set_error(id, u"");
-        } else set_error(id, result.message);
+        if (command) invoking_ = false;
+        stopped_ = true;
+        return {Status::failed, u"Modification failed"};
     }
+    if (command) invoking_ = false;
+    field.submitting = false;
+    if (result) { field.origin = change.value; set_error(id, u""); }
+    else { set_error(id, result.message); if (command) focus(id); }
     auto notification = notify();
     return notification ? result : notification;
+}
+Result detail::UiState::finish_edit(std::string_view id, Field& field) {
+    if (field.immediate && !field.submitting) return submit_field(id, field, field.immediate, false);
+    return notify();
 }
 Result detail::UiState::undo(std::string_view id) { return travel(id, false); }
 Result detail::UiState::redo(std::string_view id) { return travel(id, true); }
@@ -767,7 +789,6 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     field.session.text = std::move(value);
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0;
-    control->value = field.session.text;
 }
 Ui::Ui(std::vector<Control> controls) : state_(std::make_unique<detail::UiState>(std::move(controls))) {}
 Ui::~Ui() = default;

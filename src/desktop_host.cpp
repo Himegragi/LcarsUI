@@ -321,7 +321,7 @@ void DesktopHost::sync_ime() {
         ImmAssociateContext(window_, writable ? input_context_ : nullptr);
         ime_associated_ = writable;
     }
-    const auto* field = writable ? frame_.find(id) : nullptr;
+    const auto* field = writable ? detail::find_placement(frame_, id) : nullptr;
     if (!field || GetFocus() != window_) return;
     const auto* session = detail::access(ui_).edit(id);
     int x = field->caret_x(session->visible_caret());
@@ -421,7 +421,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         finish_composition();
         if (detail::access(ui_).pointer_down(id)) {
             if (hit->kind == Kind::text) {
-                auto offset = frame_.text_offset(id, x);
+                auto offset = detail::placement_text_offset(frame_, id, x);
                 auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
                 detail::access(ui_).select(id, anchor, offset);
                 drag_ = Drag::text;
@@ -435,7 +435,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
             const auto& id = detail::access(ui_).focused();
-            if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, frame_.text_offset(id, x));
+            if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             scroll_.offset = frame_.offset_for_thumb(drag_offset_ + (y - drag_origin_));
@@ -517,7 +517,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_IME_REQUEST:
         if (w == IMR_QUERYCHARPOSITION && l) {
             auto info = reinterpret_cast<IMECHARPOSITION*>(l);
-            const auto* field = frame_.find(detail::access(ui_).focused());
+            const auto* field = detail::find_placement(frame_, detail::access(ui_).focused());
             const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))

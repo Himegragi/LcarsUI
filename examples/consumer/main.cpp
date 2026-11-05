@@ -50,6 +50,11 @@ static_assert(!HasAvailable<lcars::Ui>);
 template <class T> concept HasInput = requires(T& ui, std::string_view id) { ui.text_input(std::u16string_view{}); };
 static_assert(!HasInput<lcars::Ui>);
 
+template<class T> concept FindsByString = requires(T& frame, std::string_view id) { frame.find(id); };
+static_assert(!FindsByString<lcars::Frame>);
+template<class T> concept LaysOutString = requires(T id) { lcars::layout::control(id); };
+static_assert(!LaysOutString<std::string>);
+
 namespace {
 // The application's pre-existing data model; LcarsUI never owns or copies it.
 struct Profile {
@@ -90,7 +95,7 @@ int main() {
     summary.connect_source([&] { return u"Saved " + profile.alias; });
     ui.connect_confirmation(save, {alias}, [&](const std::vector<TextChange>& changes) {
         if (changes[0].value.size() < 3) {
-            return ConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{0, u"At least three characters"}}};
+            return ConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{changes[0].field, u"At least three characters"}}};
         }
         profile.alias = changes[0].value;
         ++profile.saves;
@@ -113,11 +118,11 @@ int main() {
 
     Monospace measure;
     ScrollState scroll;
-    auto page = layout::column({layout::control("profile.alias"), layout::row({layout::control("profile.save"), layout::control("profile.summary")})}, 8, 16);
+    auto page = layout::column({layout::control(alias), layout::row({layout::control(save), layout::control(summary)})}, 8, 16);
     auto frame = arrange(page, ui, material_appearance(), measure, 480, 320, 1.f, scroll);
-    const auto* field = frame.find("profile.alias");
+    const auto* field = frame.find(alias);
     expect(field && field->label_lines.size() == 1 && field->label_lines[0].text == u"Alias", "framework layout carries the consumer's label");
-    const auto* placement = frame.find("profile.save");
+    const auto* placement = frame.find(save);
     const auto* hit = placement ? frame.hit(placement->bounds.x + 1, placement->bounds.y + 1) : nullptr;
     expect(hit && hit->id == "profile.save", "consumer IDs are hit-testable");
     std::printf("%s\n", failures ? "consumer FAILED" : "consumer OK");

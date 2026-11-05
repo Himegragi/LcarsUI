@@ -2,6 +2,7 @@
 // Internal host, layout, legacy prototype and regression driver interface.
 // Applications use lcars/core.hpp and typed handles instead.
 #include "lcars/core.hpp"
+#include "lcars/layout.hpp"
 #include <map>
 #include <set>
 #include <thread>
@@ -18,6 +19,12 @@ public:
     TextHandle add_text(Control control);
     ButtonHandle add_button(Control control);
     LabelHandle add_label(Control control);
+    Result reset_to_source(const Id& id);
+    Result use_latest(const Id& id);
+    Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
+    Result confirm(const Id& id);
+    ComponentHandle layout_handle(std::string_view id);
+    std::optional<Id> layout_id(const ComponentHandle& handle) const;
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     UiState(const UiState&)=delete;
@@ -120,6 +127,8 @@ private:
     Result writable(std::string_view id, Field*& field);
     Result replace_selection(std::string_view id, Field& field, std::u16string_view insertion);
     Result finish_edit(std::string_view id, Field& field);
+    Result submit_field(std::string_view id, Field& field,
+                        const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
     Result notify();
@@ -128,6 +137,8 @@ private:
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false;
 };
+const Placement* find_placement(const Frame& frame, std::string_view id);
+unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
 }
