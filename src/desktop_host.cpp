@@ -113,6 +113,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         ui_.set_clipboard(clipboard_.get());
+        ui_.on_invalidate([this] { if (window_) InvalidateRect(window_, nullptr, FALSE); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
     } catch (...) {
@@ -122,6 +123,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 }
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
+    ui_.on_invalidate({});
     ui_.set_clipboard(nullptr);
     if (!window_) return;
     ImmAssociateContext(window_, input_context_);

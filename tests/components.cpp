@@ -388,6 +388,8 @@ void handles_expire_with_their_component_tree() {
     }
     check(field.set_value(u"late").status == Status::not_found && !field.describe(),
           "A retained handle cannot keep the component tree alive or operate after its end");
+    check(field.enable(false).status == Status::not_found && field.read_only(true).status == Status::not_found,
+          "Configuration operations also report an expired component");
 }
 
 void source_updates_follow_the_component_lifetime() {
@@ -582,8 +584,23 @@ void cancelling_a_rejected_draft_clears_its_error_without_writing() {
           "Cancelling restores the source, clears its rejection, and makes no new write");
 }
 
+void source_notifications_request_a_repaint() {
+    std::u16string model = u"before";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "paint.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    int invalidations = 0;
+    ui.on_invalidate([&] { ++invalidations; });
+    model = u"after";
+    changed();
+    check(invalidations == 1 && field.describe()->value == u"after",
+          "An external model update makes the new value visible to the host");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G10 source notifications request a repaint", source_notifications_request_a_repaint},
         {"G10 cancel clears rejection without writing", cancelling_a_rejected_draft_clears_its_error_without_writing},
         {"G10 explicit immediate write retains rejected draft", explicit_immediate_write_keeps_a_rejected_draft},
         {"G11 a fresh draft starts at the current source", editing_again_after_matching_the_source_uses_the_new_origin},

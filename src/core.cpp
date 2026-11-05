@@ -105,8 +105,11 @@ Result ButtonHandle::bind(std::function<Result()> action) const {
     ui_->bind(id_, std::move(action));
     return {};
 }
-void ButtonHandle::enable(bool enabled) const {
-    if (!lifetime_.expired()) ui_->enable(id_, enabled);
+Result ButtonHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    ui_->enable(id_, enabled);
+    return {};
 }
 Result TextHandle::focus() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -116,11 +119,17 @@ Result TextHandle::set_error(std::u16string message) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->set_error(id_, std::move(message));
 }
-void TextHandle::enable(bool enabled) const {
-    if (!lifetime_.expired()) ui_->enable(id_, enabled);
+Result TextHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    ui_->enable(id_, enabled);
+    return {};
 }
-void TextHandle::read_only(bool enabled) const {
-    if (!lifetime_.expired()) ui_->set_read_only(id_, enabled);
+Result TextHandle::read_only(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    ui_->set_read_only(id_, enabled);
+    return {};
 }
 Result TextHandle::reset_to_source() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -145,6 +154,12 @@ Result TextHandle::paste(std::u16string_view text) const {
 Result TextHandle::undo() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->undo(id_);
+}
+Result Ui::configuration_access(std::string_view id) const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (!find(id)) return {Status::not_found, u"Component no longer exists"};
+    return {};
 }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
@@ -233,6 +248,7 @@ void Ui::source_changed(const Id& id) {
         replace_text(id, latest);
         field.origin = latest;
     }
+    if (invalidate_) invalidate_();
 }
 bool TextHandle::source_conflict() const {
     if (lifetime_.expired()) return false;

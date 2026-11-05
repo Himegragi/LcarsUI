@@ -88,7 +88,8 @@ public:
 };
 // Well-formed UTF-16, no control characters, within the given length.
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
-// The application owns the model. Its subscription returns a disconnection function.
+// The application owns the model. Notifications run on the UI thread; the source outlives the
+// connection. Its subscription returns a disconnection function.
 struct TextSource {
     std::function<std::u16string()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
@@ -105,8 +106,8 @@ public:
     Result focus() const;
     Result set_error(std::u16string message) const;
     Result reset_to_source() const;
-    void enable(bool enabled) const;
-    void read_only(bool enabled) const;
+    Result enable(bool enabled) const;
+    Result read_only(bool enabled) const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     bool source_conflict() const;
@@ -126,7 +127,7 @@ public:
     Result invoke() const;
     Result focus() const;
     Result bind(std::function<Result()> action) const;
-    void enable(bool enabled) const;
+    Result enable(bool enabled) const;
     bool executing() const;
 private:
     friend class Ui;
@@ -181,6 +182,8 @@ public:
     Result available(std::string_view id) const;
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
+    // Host requests a new frame when a source notification changes the view.
+    void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // A label whose text is read from owner data on demand, so the label never holds a copy.
@@ -232,6 +235,7 @@ public:
 private:
     friend class TextHandle;
     friend class ButtonHandle;
+    Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
@@ -265,7 +269,7 @@ private:
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
     Result notify();
-    std::function<void()> changed_;
+    std::function<void()> changed_, invalidate_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false;
