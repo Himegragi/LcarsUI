@@ -51,6 +51,19 @@ void region_is_in_the_form_confirmation_group() {
     check(bool(form.handles.apply.invoke()) && form.region_applied() == OptionValue{"central"} && form.applies() == 2, "Corrected region is explicitly selected and applied");
 }
 
+void all_five_fields_apply_once() {
+    edit_form::Form form(ids);
+    form.handles.name.set_value(u"\u5de5\u4f5c\u7ad9 A");
+    form.handles.notices.toggle(); form.handles.mode.select({"focus"});
+    form.handles.region.select({"south"}); form.handles.volume.set_value(65);
+    check(form.applies() == 0 && form.region_applied() == OptionValue{"north"} && form.volume_applied() == 40,
+          "Five edits remain drafts before Apply");
+    check(bool(form.handles.apply.invoke()) && form.applies() == 1 && form.applied() == u"\u5de5\u4f5c\u7ad9 A" &&
+          !form.notices_applied() && form.mode_applied() == OptionValue{"focus"} &&
+          form.region_applied() == OptionValue{"south"} && form.volume_applied() == 65,
+          "F01 applies all five values in one action");
+}
+
 void volume_is_a_confirmed_form_field() {
     edit_form::Form form(ids);
     check(*form.handles.volume.draft() == 40 && form.volume_applied() == 40 && form.handles.volume.describe()->name == u"\u97f3\u91cf", "Volume starts at 40 with its accessible name");
@@ -283,6 +296,7 @@ void both_appearances_give_same_results() {
 int main() {
     const test::Case cases[] = {
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
+        {"F01 five fields apply once", all_five_fields_apply_once},
         {"G11 volume conflict", volume_conflict_offers_latest},
         {"F09 volume confirmation", volume_is_a_confirmed_form_field},
         {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},

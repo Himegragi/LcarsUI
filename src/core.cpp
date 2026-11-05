@@ -369,6 +369,7 @@ Result DropdownHandle::enable(bool enabled) const {
 Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
     std::set<std::string> ids;
     for (const auto& o : options) if (o.value.id.empty() || !ids.insert(o.value.id).second) return {Status::invalid_value, u"Invalid dropdown option"};
     auto& f = ui_->dropdowns_.at(id_); f.options = std::move(options);
@@ -432,6 +433,7 @@ Result DropdownHandle::use_latest() const {
     auto& f = ui_->dropdowns_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
     auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return f.source_value && o.enabled && o.value == *f.source_value; });
     f.value = it == f.options.end() ? std::nullopt : f.source_value; f.origin = f.source_value;
+    if (ui_->invalidate_) ui_->invalidate_();
     ui_->set_error(id_, u""); return ui_->notify();
 }
 Result DropdownHandle::select(OptionValue value) const {
@@ -449,6 +451,7 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (f.value == value) return {};
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = std::move(value); set_error(id, u"");
+    if (invalidate_) invalidate_();
     DropdownChange change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
     if (!f.immediate || f.submitting) return notify();
     f.submitting = true; Result result;

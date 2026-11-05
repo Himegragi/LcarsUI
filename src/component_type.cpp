@@ -226,7 +226,7 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), row = c.appearance.button_height(line, c.scale);
-        p.lines.push_back({{0, 0, c.width, line}, s.name});
+        p.lines.push_back({{0, 0, c.width, line}, s.name + (s.enabled ? u"" : u"\uff08\u505c\u7528\uff09")});
         p.lines.push_back({{scaled(c.scale, 8), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 16)), line}, s.value.empty() ? u"\u672a\u9078\u53d6" : s.value});
         int y = line + row;
         if (s.invalid) {
@@ -240,13 +240,18 @@ public:
         auto palette = c.appearance.palette();
         auto bounds = c.placement.bounds;
         if (c.placement.popup) {
+            c.clip(bounds);
             c.fill(bounds, palette.surface);
+            if (c.semantics.options.empty()) {
+                paint_lines(c, c.placement.lines, c.placement.text_size, palette.muted);
+                return;
+            }
             for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
                 const auto& o = c.semantics.options[i];
                 const auto& r = c.placement.options[i];
                 if (c.semantics.candidate && *c.semantics.candidate == o.value) c.fill(r, palette.selection);
                 const auto& line = c.placement.lines[i];
-                c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
+                c.text(o.enabled ? line.text : line.text + u"\uff08\u505c\u7528\uff09", c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
             }
             return;
         }
@@ -254,6 +259,11 @@ public:
         int inset = scaled(c.scale, 2);
         c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
+        if (c.placement.lines.size() > 1) {
+            const auto& line = c.placement.lines[1].bounds;
+            c.text(u"\u25be", c.placement.text_size, bounds.x + std::max(0, bounds.w - scaled(c.scale, 20)), line.y,
+                   c.semantics.enabled ? palette.text : palette.muted);
+        }
         paint_lines(c, c.placement.error_lines, c.placement.text_size, palette.error);
     }
     int natural_width(const ComponentLayout&) const override { return -1; }

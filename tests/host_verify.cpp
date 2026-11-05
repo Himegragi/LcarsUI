@@ -165,6 +165,7 @@ void enter_activates_once(const Appearance& appearance, Report& report) {
 
 void pointer_activation_rules(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
+    f.form.handles.apply.focus(); f.settle();
     auto apply = f.center(f.ids.apply);
     POINT outside{2, 2};
     f.mouse(WM_LBUTTONDOWN, apply, MK_LBUTTON);
@@ -350,10 +351,39 @@ void slider_native(const Appearance& appearance, Report& report) {
         ", native drag=" + std::to_string(dragged) + ", apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
 }
 
+void dropdown_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    f.host.client_size(900, 1000); f.settle();
+    auto& region = f.form.handles.region;
+    region.focus(); f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN);
+    bool candidate = region.describe()->expanded && region.describe()->candidate == OptionValue{"south"} && *region.draft() == OptionValue{"north"};
+    f.tap(VK_ESCAPE);
+    bool escape = !region.describe()->expanded && region.describe()->focused && *region.draft() == OptionValue{"north"};
+    f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN); f.tap(VK_TAB);
+    bool tab = !region.describe()->expanded && f.form.handles.volume.describe()->focused && *region.draft() == OptionValue{"north"};
+    region.focus(); f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN);
+    auto old_intro = f.form.handles.intro.describe()->value;
+    auto target = f.center(f.ids.long_text);
+    f.mouse(WM_LBUTTONDOWN, target, MK_LBUTTON); f.mouse(WM_LBUTTONUP, target);
+    bool outside = !region.describe()->expanded && *region.draft() == OptionValue{"north"} &&
+        f.form.handles.long_text.describe()->focused && f.form.handles.intro.describe()->value != old_intro;
+    region.focus(); f.tap(VK_RETURN); f.host.paint();
+    bool pointer = false;
+    if (!f.host.frame().overlays.empty() && f.host.frame().overlays[0].options.size() == 3) {
+        auto rect = f.host.frame().overlays[0].options[2];
+        POINT pt{rect.x + rect.w / 2, rect.y + rect.h / 2};
+        f.mouse(WM_LBUTTONDOWN, pt, MK_LBUTTON); f.mouse(WM_LBUTTONUP, pt);
+        pointer = *region.draft() == OptionValue{"south"} && !region.describe()->expanded && f.form.region_applied() == OptionValue{"north"};
+    }
+    report.check("F07-dropdown-native", candidate && escape && tab && outside && pointer,
+        "candidate=" + std::to_string(candidate) + ", Escape=" + std::to_string(escape) + ", Tab=" + std::to_string(tab) +
+        ", outside action=" + std::to_string(outside) + ", popup click=" + std::to_string(pointer));
+}
+
 void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, const std::filesystem::path& folder, const std::string& tag) {
     Fixture f(appearance);
     std::vector<Id> seen;
-    for (int i = 0; i < 13; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
+    for (int i = 0; i < 15; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
     BYTE state[256]{};
     GetKeyboardState(state);
     state[VK_SHIFT] = 0x80;
@@ -376,7 +406,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     bool distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
     std::string order;
     for (const auto& id : seen) order += id + " ";
-    bool wraps = seen.size() == 13 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.volume && seen[10] == f.ids.offline_disabled && seen[11] == f.ids.apply && seen[12] == seen[0];
+    bool wraps = seen.size() == 15 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.region && seen[10] == f.ids.volume && seen[11] == f.ids.offline_disabled && seen[12] == f.ids.region_empty && seen[13] == f.ids.apply && seen[14] == seen[0];
     report.check("AC11-tab", wraps && back && visible && distinct,
                  "Tab order: " + order + "; Shift+Tab back to apply=" + (back ? "yes" : "no") + "; focused apply ring pixel is accent=" +
                      (visible ? "yes" : "NO") + ", unfocused reset ring is not=" + (distinct ? "yes" : "NO") + " (" + tag + "-focus-apply.bmp)");
@@ -783,6 +813,7 @@ int run(const std::filesystem::path& folder) {
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);
+        dropdown_native(*appearance, report);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);

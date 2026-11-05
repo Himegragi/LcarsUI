@@ -295,9 +295,52 @@ void dropdown_popup_overlaps_and_uses_topmost_hit() {
     }
 }
 
+void dropdown_states_are_readable_without_color() {
+    Ui ui({});
+    auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown, .label = u"Region"}, {});
+    field.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    FakeMeasure measure; ScrollState scroll;
+    field.open();
+    auto frame = arrange(layout::control(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    check(frame.find(field) && frame.find(field)->lines.size() >= 2 && !frame.overlays.empty() && !frame.overlays[0].lines.empty() &&
+          frame.find(field)->lines[1].text == u"\u672a\u9078\u53d6" && frame.overlays[0].lines[0].text == u"\u6c92\u6709\u53ef\u7528\u9078\u9805", "Empty dropdown explains its state in text");
+    field.enable(false);
+    frame = arrange(layout::control(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    check(frame.find(field)->lines[0].text.find(u"\u505c\u7528") != std::u16string::npos, "Disabled dropdown is labeled in text");
+}
+
+void stack_and_popup_edges_follow_paint_order() {
+    for (auto* look : {&web_appearance(), &material_appearance()}) {
+        for (float scale : {1.f, 1.5f}) {
+            Ui ui({});
+            auto lower = ui.add_button({.id = "lower", .kind = Kind::button, .label = u"Lower"});
+            auto upper = ui.add_button({.id = "upper", .kind = Kind::button, .label = u"Upper"});
+            FakeMeasure measure; ScrollState scroll;
+            auto stacked = arrange(layout::stack({layout::control(lower), layout::control(upper)}), ui, *look, measure, 200, 180, scale, scroll);
+            auto p = stacked.find(upper);
+            check(p && stacked.hit(p->bounds.x + 2, p->bounds.y + 2)->id == "upper", "Later stack child wins overlapping hits");
+            Ui other({});
+            auto filler = other.add_label({.id = "filler", .kind = Kind::label, .value = u"One\nTwo\nThree\nFour"});
+            auto dropdown = other.add_dropdown({.id = "region", .kind = Kind::dropdown, .label = u"Region"},
+                {{{"north"}, u"North"}, {{"central"}, u"Central"}, {{"south"}, u"South"}});
+            dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+            dropdown.connect_confirmed([](const DropdownChange&) { return Result{}; });
+            dropdown.open();
+            auto page = layout::scroll(layout::column({layout::control(filler), layout::control(dropdown)}, 0));
+            auto frame = arrange(page, other, *look, measure, static_cast<int>(240 * scale), static_cast<int>(180 * scale), scale, scroll, "region");
+            check(frame.overlays.size() == 1 && frame.overlays[0].bounds.y < frame.find(dropdown)->bounds.y &&
+                  inside(frame.overlays[0].bounds, {0, 0, static_cast<int>(240 * scale), static_cast<int>(180 * scale)}),
+                  "Popup flips above a bottom-edge anchor and stays in the window");
+        }
+    }
+}
+
 int main() {
     const test::Case cases[] = {
         {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},
+        {"R05 dropdown states are readable", dropdown_states_are_readable_without_color},
+        {"B04 stack and popup edge placement", stack_and_popup_edges_follow_paint_order},
         {"C07 slider track and drag", slider_track_and_drag_share_geometry},
         {"C05 radio pointer geometry", radio_options_share_geometry_with_pointer_input},
         {"Registered component reaches layout, hit and input", registered_component_reaches_layout_hit_and_input},

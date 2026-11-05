@@ -975,9 +975,63 @@ void dropdown_candidate_is_not_a_draft_until_confirmed() {
     check(*region.draft() == OptionValue{"south"} && model == OptionValue{"north"}, "Enter confirms only the draft");
 }
 
+void dropdown_leaving_and_replaced_options_are_safe() {
+    Ui ui({});
+    auto dropdown = ui.add_dropdown({.id = "region", .kind = Kind::dropdown},
+        {{{"north"}, u"North"}, {{"south"}, u"South"}});
+    auto next = ui.add_button({.id = "next", .kind = Kind::button});
+    int clicks = 0; next.bind([&] { ++clicks; return Result{}; });
+    dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+    dropdown.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    auto& host = detail::access(ui);
+    dropdown.open(); host.key_down({.key = Key::down}); host.key_down({.key = Key::tab});
+    check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && next.describe()->focused, "Tab cancels and advances");
+    dropdown.open(); host.key_down({.key = Key::down}); host.pointer_down("next"); host.pointer_up("next");
+    check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && clicks == 1 && next.describe()->focused, "Outside click cancels and preserves the clicked action");
+    dropdown.open(); host.pointer_down("region", 1);
+    dropdown.set_options({{{"south"}, u"South"}, {{"north"}, u"North"}});
+    host.pointer_up("region", 1);
+    check(*dropdown.draft() == OptionValue{"north"}, "Reordered options cannot turn a press into a different selection");
+    dropdown.set_options({});
+    check(!*dropdown.draft() && !dropdown.describe()->candidate, "Empty options clear value and candidate");
+    dropdown.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    check(!*dropdown.draft() && !dropdown.describe()->candidate, "Restoring options does not restore an invalidated value or candidate");
+    dropdown.enable(false);
+    check(dropdown.open().status == Status::disabled && dropdown.select({"north"}).status == Status::disabled, "Disabled dropdown refuses opening and selection");
+    dropdown.enable(true); host.modal(true);
+    check(dropdown.open().status == Status::blocked_by_modal && dropdown.select({"north"}).status == Status::blocked_by_modal, "Modal state blocks opening and selection");
+}
+
+void dropdown_option_changes_do_not_recurse_into_notifications() {
+    Ui ui({});
+    auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}});
+    field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    int calls = 0; Status nested = Status::ok;
+    ui.on_change([&] { if (++calls == 1) nested = field.set_options({}).status; });
+    field.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    check(calls == 1 && nested == Status::busy && field.describe()->options.size() == 2,
+          "An option update during a notification is refused without recursion or mutation");
+}
+
+void dropdown_programmatic_edits_request_a_frame() {
+    Ui ui({});
+    auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}, {{"south"}, u"South"}});
+    field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
+    field.select({"south"});
+    check(frames > 0, "A public selection requests repaint");
+    frames = 0; field.use_latest();
+    check(frames > 0, "Restoring the source requests repaint");
+}
+
 int main() {
     const test::Case cases[] = {
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
+        {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
+        {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},
+        {"G07 dropdown programmatic edits repaint", dropdown_programmatic_edits_request_a_frame},
         {"G11 edits during numeric submission", slider_group_preserves_edits_during_submission},
         {"G10 numeric source and conflict lifecycle", slider_source_conflict_and_invalid_updates},
         {"N04 non-divisible steps and keys", slider_non_divisible_range_and_keyboard},
