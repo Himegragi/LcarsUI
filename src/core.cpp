@@ -432,10 +432,10 @@ EditSession* detail::UiState::edit(std::string_view id) {
     auto it = edits_.find(id); return it == edits_.end() ? nullptr : &it->second.session;
 }
 Result detail::UiState::available(std::string_view id) const {
-    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"操作必須在 UI 執行緒"};
-    if (stopped_) return {Status::failed, u"介面已停止，請重新啟動"};
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
-    if (!control) return {Status::not_found, u"找不到元件"};
+    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (!control->enabled) return {Status::disabled, u"目前無法執行"};
     if (control->page == "dialog" && !modal_) return {Status::disabled, u"對話框尚未開啟"};
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
@@ -665,7 +665,7 @@ Result detail::UiState::composition_cancel() {
 }
 Result detail::UiState::focus(std::string_view id) {
     const auto* control = find(id);
-    if (!control) return {Status::not_found, u"找不到元件"};
+    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
@@ -747,7 +747,7 @@ Result detail::UiState::key_up(Key key) {
 }
 Result detail::UiState::pointer_down(std::string_view id) {
     const auto* control = find(id);
-    if (!control) return {Status::not_found, u"找不到元件"};
+    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     if (auto result = move_focus(control->id); !result) return result;
     if (control->kind == Kind::button) pointer_armed_ = control->id;
@@ -761,7 +761,7 @@ Result detail::UiState::pointer_up(std::string_view id) {
 void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     const auto* control = find(id);
-    if (!control) return {Status::not_found, u"找不到元件"};
+    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (control->kind == Kind::label) return {Status::not_supported, u"標籤不能帶有錯誤"};
     if (message.empty()) { if (auto it = errors_.find(id); it != errors_.end()) errors_.erase(it); }
     else errors_.insert_or_assign(control->id, std::move(message));
