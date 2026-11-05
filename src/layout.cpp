@@ -1,4 +1,5 @@
 #include "lcars/layout.hpp"
+#include "core_internal.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -99,7 +100,7 @@ void translate(Placement& p, int dx, int dy) {
         for (auto& line : *lines) move(line.bounds);
 }
 struct Arranger {
-    Ui& ui;
+    detail::UiState& ui;
     const Appearance& appearance;
     TextMeasure& measure;
     float scale;
@@ -287,7 +288,7 @@ struct Arranger {
 
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal) {
-    Arranger a{ui, appearance, measure, scale, scroll, reveal, {}};
+    Arranger a{detail::access(ui), appearance, measure, scale, scroll, reveal, {}};
     Rect window{0, 0, width, height};
     a.frame.viewport = window;
     std::vector<Placement> items;

@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 #include "settings.hpp"
 #include <atomic>
 #include <charconv>
@@ -138,36 +139,36 @@ App::App(std::filesystem::path file):ui(declarations()),file_(std::move(file)) {
     apply(saved_); previous_=values();
     ui.on_change([this]{ changed(); });
     for (const auto& page : {"general","preferences","profiles"})
-        ui.bind(std::string("nav.")+page,[this,page]{ page_=page; ui.replace_text("search",u""); return Result{}; });
-    ui.bind("save",[this]{return save();});
-    ui.bind("undo",[this]{return undo();});
-    ui.bind("redo",[this]{return redo();});
-    ui.bind("reset",[this]{ dialog_=Dialog::defaults;ui.modal(true);return Result{}; });
-    ui.bind("discard",[this]{ dialog_=Dialog::discard;ui.modal(true);return Result{}; });
-    ui.bind("dialog.cancel",[this]{ dialog_=Dialog::none;ui.modal(false);return Result{}; });
-    ui.bind("dialog.confirm",[this]{
-        auto choice=dialog_;dialog_=Dialog::none;ui.modal(false);
+        detail::access(ui).bind(std::string("nav.")+page,[this,page]{ page_=page; detail::access(ui).replace_text("search",u""); return Result{}; });
+    detail::access(ui).bind("save",[this]{return save();});
+    detail::access(ui).bind("undo",[this]{return undo();});
+    detail::access(ui).bind("redo",[this]{return redo();});
+    detail::access(ui).bind("reset",[this]{ dialog_=Dialog::defaults;detail::access(ui).modal(true);return Result{}; });
+    detail::access(ui).bind("discard",[this]{ dialog_=Dialog::discard;detail::access(ui).modal(true);return Result{}; });
+    detail::access(ui).bind("dialog.cancel",[this]{ dialog_=Dialog::none;detail::access(ui).modal(false);return Result{}; });
+    detail::access(ui).bind("dialog.confirm",[this]{
+        auto choice=dialog_;dialog_=Dialog::none;detail::access(ui).modal(false);
         if(choice==Dialog::defaults)return defaults();
         apply(saved_);changed();status_=u"已還原為最近儲存的設定";return Result{};
     });
     for(auto id:{"preferences.autosave","preferences.notifications"})
-        ui.bind(id,[this,id]{ui.check(id,!ui.find(id)->checked);changed();return Result{};});
-    ui.bind("preferences.font",[this]{auto v=values();v.ming_font=!v.ming_font;apply(v);changed();return Result{};});
-    ui.bind("preferences.smaller",[this]{auto v=values();v.font_size=std::max(16,v.font_size-2);apply(v);changed();return Result{};});
-    ui.bind("preferences.larger",[this]{auto v=values();v.font_size=std::min(26,v.font_size+2);apply(v);changed();return Result{};});
-    ui.bind("preset.focus",[this]{auto v=values();v.notifications=false;v.autosave=true;v.font_size=18;apply(v);changed();return Result{};});
-    ui.bind("preset.reading",[this]{auto v=values();v.font_size=24;v.ming_font=true;apply(v);changed();return Result{};});
-    ui.bind("preset.default",[this]{dialog_=Dialog::defaults;ui.modal(true);return Result{};});
+        detail::access(ui).bind(id,[this,id]{detail::access(ui).check(id,!detail::access(ui).find(id)->checked);changed();return Result{};});
+    detail::access(ui).bind("preferences.font",[this]{auto v=values();v.ming_font=!v.ming_font;apply(v);changed();return Result{};});
+    detail::access(ui).bind("preferences.smaller",[this]{auto v=values();v.font_size=std::max(16,v.font_size-2);apply(v);changed();return Result{};});
+    detail::access(ui).bind("preferences.larger",[this]{auto v=values();v.font_size=std::min(26,v.font_size+2);apply(v);changed();return Result{};});
+    detail::access(ui).bind("preset.focus",[this]{auto v=values();v.notifications=false;v.autosave=true;v.font_size=18;apply(v);changed();return Result{};});
+    detail::access(ui).bind("preset.reading",[this]{auto v=values();v.font_size=24;v.ming_font=true;apply(v);changed();return Result{};});
+    detail::access(ui).bind("preset.default",[this]{dialog_=Dialog::defaults;detail::access(ui).modal(true);return Result{};});
     refresh_commands();
 }
 Values App::values() const {
-    return {ui.find("profile.name")->value,ui.find("profile.workspace")->value,
-            ui.find("preferences.autosave")->checked,ui.find("preferences.notifications")->checked,
+    return {detail::access(ui).find("profile.name")->value,detail::access(ui).find("profile.workspace")->value,
+            detail::access(ui).find("preferences.autosave")->checked,detail::access(ui).find("preferences.notifications")->checked,
             ming_font_,font_size_};
 }
 void App::apply(const Values& v) {
-    ui.replace_text("profile.name",v.name); ui.replace_text("profile.workspace",v.workspace);
-    ui.check("preferences.autosave",v.autosave);ui.check("preferences.notifications",v.notifications);
+    detail::access(ui).replace_text("profile.name",v.name); detail::access(ui).replace_text("profile.workspace",v.workspace);
+    detail::access(ui).check("preferences.autosave",v.autosave);detail::access(ui).check("preferences.notifications",v.notifications);
     // Presentation preferences are application-owned, not inferred from the skin.
     ming_font_=v.ming_font; font_size_=v.font_size;
 }
@@ -180,8 +181,8 @@ void App::changed() {
     refresh_commands();
 }
 void App::refresh_commands() {
-    ui.enable("save",dirty());ui.enable("discard",dirty());ui.enable("undo",!undo_.empty());ui.enable("redo",!redo_.empty());
-    ui.enable("preferences.smaller",values().font_size>16);ui.enable("preferences.larger",values().font_size<26);
+    detail::access(ui).enable("save",dirty());detail::access(ui).enable("discard",dirty());detail::access(ui).enable("undo",!undo_.empty());detail::access(ui).enable("redo",!redo_.empty());
+    detail::access(ui).enable("preferences.smaller",values().font_size>16);detail::access(ui).enable("preferences.larger",values().font_size<26);
 }
 Result App::save() {
     auto result=write_file(file_,values());

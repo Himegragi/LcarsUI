@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 #include "desktop.hpp"
 #include "renderer_opengl.hpp"
 #include <windowsx.h>
@@ -41,7 +42,7 @@ struct Host {
     std::u16string input_error;
     explicit Host(Ui& model,const Appearance& skin,std::function<Screen()> screen):ui(model),appearance(skin),get_screen(std::move(screen)){}
     int d(int value) const {return static_cast<int>(std::lround(value*scale));}
-    EditSession* editor(){return ui.edit(focus);}
+    EditSession* editor(){return detail::access(ui).edit(focus);}
     Item* item(std::string_view id){auto it=std::find_if(items.begin(),items.end(),[&](auto& i){return i.id==id;});return it==items.end()?nullptr:&*it;}
     void invalidate(){if(window)InvalidateRect(window,nullptr,FALSE);}
     void cancel_composition(){
@@ -66,10 +67,10 @@ struct Host {
         scale=GetDpiForWindow(window)/96.f;text.set_ming(screen.ming_font);
         const int size=d(screen.font_size),small=d(14),left=d(244),width=canvas.width-left-d(36);
         content={left,d(270),width,std::max(0,canvas.height-d(420))};
-        if(ui.modal()!=was_modal){
-            if(ui.modal()){return_focus=focus;cancel_composition();focus="dialog.cancel";}
+        if(detail::access(ui).modal()!=was_modal){
+            if(detail::access(ui).modal()){return_focus=focus;cancel_composition();focus="dialog.cancel";}
             else focus=return_focus;
-            was_modal=ui.modal();
+            was_modal=detail::access(ui).modal();
         }
         items.clear();
         canvas.fill({0,0,d(208),canvas.height},p.panel);
@@ -79,7 +80,7 @@ struct Host {
         text.label(canvas,u"LCARS UI",{d(77),d(33),d(120),d(32)},d(21),p.text);
         text.label(canvas,u"設定管理",{d(26),d(94),d(160),d(25)},small,p.muted);
         int nav_y=d(136);
-        for(auto& c:ui.controls())if(c.kind==Kind::navigation){
+        for(auto& c:detail::access(ui).controls())if(c.kind==Kind::navigation){
             Rect r{d(16),nav_y,d(176),d(48)};
             bool selected=c.page==screen.page;
             if(selected||hover==c.id)canvas.rounded(r,d(appearance.radius()),selected?p.selection:p.background);
@@ -90,7 +91,7 @@ struct Host {
         text.label(canvas,u"DESKTOP / MVP 0.1",{d(24),canvas.height-d(75),d(176),d(24)},d(12),p.muted);
         auto skin=appearance.name();std::u16string skin_name(skin.begin(),skin.end());
         text.label(canvas,skin_name,{d(24),canvas.height-d(49),d(176),d(24)},d(12),p.muted);
-        auto query=lower(ui.find("search")->value);
+        auto query=lower(detail::access(ui).find("search")->value);
         if(query!=last_query){scroll=0;last_query=query;}
         text.label(canvas,query.empty()?screen.heading:u"搜尋結果",{left,d(35),width,d(48)},d(32),p.text);
         text.label(canvas,query.empty()?screen.description:u"顯示所有頁面中符合名稱的設定。",{left,d(98),width,d(28)},d(15),p.muted);
@@ -104,7 +105,7 @@ struct Host {
             canvas.rounded({parts.surface.x+d(1),parts.surface.y+d(1),parts.surface.w-d(2),parts.surface.h-d(2)},d(appearance.radius()),p.surface);
             if(parts.underline)canvas.fill({parts.surface.x+d(10),parts.surface.y+parts.surface.h-d(2),parts.surface.w-d(20),d(focused?2:1)},focused?p.accent:p.muted);
             text.label(canvas,c.label,parts.label,parts.underline?small:size,p.muted);
-            auto* e=ui.edit(c.id);auto layout=text.shape(e->visible(),size);
+            auto* e=detail::access(ui).edit(c.id);auto layout=text.shape(e->visible(),size);
             auto& offset=horizontal[c.id];float caret=layout.at(e->visible_caret());
             if(focused){
                 if(caret-offset>parts.editor.w-d(4))offset=caret-parts.editor.w+d(4);
@@ -126,9 +127,9 @@ struct Host {
             canvas.clip=old_clip;
             items.push_back({c.id,{r.x,r.y,r.w,std::max(parts.surface.y+parts.surface.h-r.y,size*2+d(40))},parts.editor,in_content});
         };
-        field(*ui.find("search"),{left,d(156),width,size*2+d(44)},false);
+        field(*detail::access(ui).find("search"),{left,d(156),width,size*2+d(44)},false);
         auto button=[&](const Control& c,Rect r,bool primary,bool in_content){
-            bool enabled=bool(ui.available(c.id)),focused=focus==c.id;
+            bool enabled=bool(detail::access(ui).available(c.id)),focused=focus==c.id;
             Color background=primary?p.accent:p.panel,ink=primary?p.on_accent:p.text;
             if(!enabled){background=p.background;ink=p.muted;}
             else if(hover==c.id||pressed==c.id)background=primary?p.accent:p.selection;
@@ -140,7 +141,7 @@ struct Host {
         };
         auto old_clip=canvas.clip;canvas.clip=content;
         int y=content.y-scroll,count=0;
-        for(auto& c:ui.controls())if(matches(c,screen,query)){
+        for(auto& c:detail::access(ui).controls())if(matches(c,screen,query)){
             ++count;
             if(c.kind==Kind::text){field(c,{left,y,width,size*2+d(48)},true);y+=size*2+d(76);}
             else if(c.kind==Kind::toggle){
@@ -164,21 +165,21 @@ struct Host {
         int footer_y=canvas.height-d(126);
         canvas.fill({left,footer_y,width,d(1)},p.border);
         auto status=input_error.empty()?screen.status:input_error;
-        if(ui.stopped())status=u"介面因操作錯誤停止，請重新啟動。";
+        if(detail::access(ui).stopped())status=u"介面因操作錯誤停止，請重新啟動。";
         text.label(canvas,status,{left,footer_y+d(14),width,d(25)},small,input_error.empty()?p.muted:p.error);
         int x=left;
         for(auto id:{"undo","redo","reset","discard","save"}){
             int w=d(std::string_view(id)=="save"?124:std::string_view(id)=="undo"||std::string_view(id)=="redo"?72:108);
-            button(*ui.find(id),{x,footer_y+d(56),w,d(44)},std::string_view(id)=="save",false);x+=w+d(10);
+            button(*detail::access(ui).find(id),{x,footer_y+d(56),w,d(44)},std::string_view(id)=="save",false);x+=w+d(10);
         }
-        if(ui.modal()){
+        if(detail::access(ui).modal()){
             for(int yy=0;yy<canvas.height;++yy)for(int xx=0;xx<canvas.width;++xx)canvas.blend(xx,yy,{20,25,35},125);
             Rect box{(canvas.width-d(620))/2,(canvas.height-d(250))/2,d(620),d(250)};
             canvas.rounded(box,d(18),p.panel);
             text.label(canvas,screen.dialog_title,{box.x+d(28),box.y+d(28),box.w-d(56),d(40)},d(25),p.text);
             text.label(canvas,screen.dialog_message,{box.x+d(28),box.y+d(91),box.w-d(56),d(50)},d(16),p.muted);
-            button(*ui.find("dialog.cancel"),{box.x+box.w-d(244),box.y+box.h-d(72),d(96),d(44)},false,false);
-            button(*ui.find("dialog.confirm"),{box.x+box.w-d(132),box.y+box.h-d(72),d(104),d(44)},true,false);
+            button(*detail::access(ui).find("dialog.cancel"),{box.x+box.w-d(244),box.y+box.h-d(72),d(96),d(44)},false,false);
+            button(*detail::access(ui).find("dialog.confirm"),{box.x+box.w-d(132),box.y+box.h-d(72),d(104),d(44)},true,false);
         }
         sync_ime();
     }
@@ -190,7 +191,7 @@ struct Host {
     }
     void sync_ime(){
         auto* e=editor();auto* i=item(focus);
-        if(!e||!i||!ui.available(focus)||GetFocus()!=window){
+        if(!e||!i||!detail::access(ui).available(focus)||GetFocus()!=window){
             if(caret_height){DestroyCaret();caret_height=0;}
             return;
         }
@@ -210,9 +211,9 @@ struct Host {
     }
     void report(Result result){if(!result)input_error=result.message;else input_error.clear();invalidate();}
     void activate(const Id& id){
-        if(!ui.available(id))return;
+        if(!detail::access(ui).available(id))return;
         cancel_composition();auto old_page=get_screen().page;
-        report(ui.invoke(id));
+        report(detail::access(ui).invoke(id));
         if(get_screen().page!=old_page)scroll=0;
         if(id=="dialog.cancel")closing=false;
         if(id=="dialog.confirm"&&closing&&!get_screen().dirty)PostQuitMessage(0);
@@ -220,7 +221,7 @@ struct Host {
     void replace_selection(std::u16string_view value){
         auto* e=editor();if(!e)return;
         auto next=e->text;auto first=e->begin();next.replace(first,e->end()-first,value);
-        auto result=ui.set_value(focus,std::move(next));
+        auto result=detail::access(ui).set_value(focus,std::move(next));
         if(result)e->select(first+static_cast<unsigned>(value.size()),first+static_cast<unsigned>(value.size()));
         report(result);
     }
@@ -264,7 +265,7 @@ struct Host {
     }
     void tab(bool backwards){
         std::vector<Item*> order;
-        for(auto& i:items)if(ui.available(i.id))order.push_back(&i);
+        for(auto& i:items)if(detail::access(ui).available(i.id))order.push_back(&i);
         if(order.empty())return;
         auto it=std::find_if(order.begin(),order.end(),[&](auto* i){return i->id==focus;});
         int index=it==order.end()?(backwards?0:-1):static_cast<int>(it-order.begin());
@@ -285,8 +286,8 @@ struct Host {
         case WM_SETFOCUS:invalidate();return 0;
         case WM_KILLFOCUS:cancel_composition();end_drag();DestroyCaret();caret_height=0;invalidate();return 0;
         case WM_CLOSE:
-            if(ui.stopped()){PostQuitMessage(1);return 0;}
-            if(ui.modal()) {activate("dialog.cancel");return 0;}
+            if(detail::access(ui).stopped()){PostQuitMessage(1);return 0;}
+            if(detail::access(ui).modal()) {activate("dialog.cancel");return 0;}
             if(get_screen().dirty){closing=true;activate("discard");return 0;}
             PostQuitMessage(0);return 0;
         case WM_MOUSEWHEEL:cancel_composition();scroll=std::clamp(scroll-GET_WHEEL_DELTA_WPARAM(w)*d(44)/WHEEL_DELTA,0,max_scroll);invalidate();return 0;
@@ -294,7 +295,7 @@ struct Host {
             if(editor()&&editor()->composing)return 0;
             SetFocus(window);pending_high=0;pressed.clear();
             for(auto it=items.rbegin();it!=items.rend();++it)if(it->bounds.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l))&&
-                (!it->in_content||content.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l)))&&ui.available(it->id)){
+                (!it->in_content||content.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l)))&&detail::access(ui).available(it->id)){
                 set_focus(it->id);
                 if(auto e=editor()){auto pos=mouse_offset(GET_X_LPARAM(l));e->select(w&MK_SHIFT?e->selection.anchor:pos,pos);dragging=true;SetCapture(window);}
                 else {pressed=it->id;SetCapture(window);}
@@ -308,7 +309,7 @@ struct Host {
                 if(auto e=editor())e->select(e->selection.anchor,mouse_offset(GET_X_LPARAM(l)));invalidate();return 0;
             }
             Id next;
-            for(auto& i:items)if(i.bounds.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l))&&(!i.in_content||content.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l)))&&ui.available(i.id))next=i.id;
+            for(auto& i:items)if(i.bounds.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l))&&(!i.in_content||content.contains(GET_X_LPARAM(l),GET_Y_LPARAM(l)))&&detail::access(ui).available(i.id))next=i.id;
             if(next!=hover){hover=next;invalidate();}
             return 0;
         }
@@ -321,9 +322,9 @@ struct Host {
         case WM_CANCELMODE:end_drag();pressed.clear();pending_high=0;cancel_composition();return 0;
         case WM_IME_SETCONTEXT:return DefWindowProcW(window,msg,w,l&~ISC_SHOWUICOMPOSITIONWINDOW);
         case WM_IME_STARTCOMPOSITION:
-            if(auto e=editor();e&&ui.available(focus)&&!ui.find(focus)->read_only){end_drag();pending_high=0;e->start_composition();invalidate();return 0;}break;
+            if(auto e=editor();e&&detail::access(ui).available(focus)&&!detail::access(ui).find(focus)->read_only){end_drag();pending_high=0;e->start_composition();invalidate();return 0;}break;
         case WM_IME_COMPOSITION:{
-            auto e=editor();if(!e||!ui.available(focus))return 0;
+            auto e=editor();if(!e||!detail::access(ui).available(focus))return 0;
             auto imc=ImmGetContext(window);if(!imc)return 0;
             if(l&GCS_RESULTSTR){auto value=composition(imc,GCS_RESULTSTR);e->cancel_composition();replace_selection(value);}
             if(l&GCS_COMPSTR){auto value=composition(imc,GCS_COMPSTR);auto caret=ImmGetCompositionStringW(imc,GCS_CURSORPOS,nullptr,0);e->update_composition(value,static_cast<unsigned>(std::max(0L,caret)));}
@@ -346,13 +347,13 @@ struct Host {
             if(e&&e->composing){if(w==VK_ESCAPE){cancel_composition();invalidate();return 0;}break;}
             pending_high=0;
             if(w==VK_TAB){tab(shift);return 0;}
-            if(w==VK_ESCAPE){if(ui.modal())activate("dialog.cancel");else if(!ui.find("search")->value.empty()){report(ui.set_value("search",u""));scroll=0;}return 0;}
+            if(w==VK_ESCAPE){if(detail::access(ui).modal())activate("dialog.cancel");else if(!detail::access(ui).find("search")->value.empty()){report(detail::access(ui).set_value("search",u""));scroll=0;}return 0;}
             if(ctrl&&w=='S'){activate("save");return 0;}
             if(ctrl&&w=='Z'){activate(shift?"redo":"undo");return 0;}
             if(ctrl&&w=='Y'){activate("redo");return 0;}
             if((w==VK_RETURN||w==VK_SPACE)&&!e){activate(focus);return 0;}
             if(w==VK_RETURN&&e){activate("save");return 0;}
-            if(!e||!ui.available(focus))break;
+            if(!e||!detail::access(ui).available(focus))break;
             if(ctrl&&w=='A')e->select(0,static_cast<unsigned>(e->text.size()));
             else if(ctrl&&w=='C')copy();
             else if(ctrl&&w=='X'){if(copy())replace_selection(u"");}
@@ -366,7 +367,7 @@ struct Host {
             invalidate();return 0;
         }
         case WM_CHAR:{
-            auto e=editor();if(!e||e->composing||!ui.available(focus)||w<32||w==127)return 0;
+            auto e=editor();if(!e||e->composing||!detail::access(ui).available(focus)||w<32||w==127)return 0;
             auto ch=static_cast<char16_t>(w);
             if(ch>=0xd800&&ch<=0xdbff){pending_high=ch;return 0;}
             if(ch>=0xdc00&&ch<=0xdfff){if(pending_high){std::u16string pair{pending_high,ch};pending_high=0;replace_selection(pair);}return 0;}
@@ -409,22 +410,22 @@ int run_desktop(Ui& ui,const Appearance& appearance,std::function<Screen()> scre
             host.draw(path);
         };
         host.draw(options.screenshot);
-        auto e=ui.edit("profile.name");auto original=e->text;
+        auto e=detail::access(ui).edit("profile.name");auto original=e->text;
         host.focus="profile.name";e->select(0,static_cast<unsigned>(e->text.size()));
         host.message(WM_CHAR,u'測',0);host.message(WM_CHAR,u'試',0);
         if(e->text!=u"測試")throw std::runtime_error("WM_CHAR must update the semantic value");
         host.activate("undo");host.activate("undo");
         if(e->text!=original)throw std::runtime_error("Keyboard edits must share application undo");
-        ui.invoke("reset");evidence("-dialog");
-        if(ui.set_value("profile.name",u"blocked").status!=Status::blocked_by_modal)throw std::runtime_error("Modal must block semantic writes");
+        detail::access(ui).invoke("reset");evidence("-dialog");
+        if(detail::access(ui).set_value("profile.name",u"blocked").status!=Status::blocked_by_modal)throw std::runtime_error("Modal must block semantic writes");
         host.activate("dialog.cancel");
-        ui.invoke("nav.preferences");evidence("-preferences");
-        ui.invoke("preferences.larger");ui.invoke("preferences.font");evidence("-font");
-        ui.invoke("undo");ui.invoke("undo");
-        ui.invoke("nav.general");host.draw();
-        ui.set_value("search",u"字型");evidence("-search");
+        detail::access(ui).invoke("nav.preferences");evidence("-preferences");
+        detail::access(ui).invoke("preferences.larger");detail::access(ui).invoke("preferences.font");evidence("-font");
+        detail::access(ui).invoke("undo");detail::access(ui).invoke("undo");
+        detail::access(ui).invoke("nav.general");host.draw();
+        detail::access(ui).set_value("search",u"字型");evidence("-search");
         if(!host.item("preferences.font")||host.item("profile.name"))throw std::runtime_error("Search must filter logical controls across pages");
-        ui.set_value("search",u"");host.draw();
+        detail::access(ui).set_value("search",u"");host.draw();
         host.focus="profile.name";e->select(0,static_cast<unsigned>(e->text.size()));
         host.message(WM_CHAR,0xd840,0);host.message(WM_CHAR,0xdc00,0);
         if(e->text!=u"\U00020000")throw std::runtime_error("Surrogate pair must be committed together");

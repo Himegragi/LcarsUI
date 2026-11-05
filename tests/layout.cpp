@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 // B01-B03 arrangement through the public layout seam with a deterministic fake text backend.
 #include "check.hpp"
 #include "fake_measure.hpp"
@@ -65,7 +66,7 @@ void field_roles_stay_with_their_field_in_both_appearances() {
         FakeMeasure measure;
         ScrollState scroll;
         auto before = arrange(page, ui, *appearance, measure, 240, 600, 1.f, scroll);
-        ui.set_error("name", u"名稱不能空白，也不能只有空格或全形空白字元");
+        detail::access(ui).set_error("name", u"名稱不能空白，也不能只有空格或全形空白字元");
         auto after = arrange(page, ui, *appearance, measure, 240, 600, 1.f, scroll);
         auto field = after.find("name");
         auto apply = after.find("apply");
@@ -171,18 +172,18 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
     FakeMeasure measure;
     ScrollState scroll;
     auto page = layout::column({layout::control("name"), layout::control("apply")});
-    ui.focus("name");
-    ui.select("name", 60, 60);
-    ui.text_input(u"Z");
+    detail::access(ui).focus("name");
+    detail::access(ui).select("name", 60, 60);
+    detail::access(ui).text_input(u"Z");
     auto frame = arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
     auto field = frame.find("name");
     float caret = field->run.x(61) - field->offset;
     check(field->offset > 0 && caret >= 0 && caret <= field->field.editor.w, "Caret at the end stays inside the editor");
-    ui.focus("apply");
+    detail::access(ui).focus("apply");
     arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
-    check(ui.text_offset("name") > 0, "Leaving the field keeps its display offset");
-    ui.replace_text("name", u"測試使用者");
-    check(ui.text_offset("name") == 0 && ui.undo("name").status == Status::not_supported, "Owner reset clears offset and history");
+    check(detail::access(ui).text_offset("name") > 0, "Leaving the field keeps its display offset");
+    detail::access(ui).replace_text("name", u"測試使用者");
+    check(detail::access(ui).text_offset("name") == 0 && detail::access(ui).undo("name").status == Status::not_supported, "Owner reset clears offset and history");
 }
 }
 

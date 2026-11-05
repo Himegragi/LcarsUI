@@ -30,14 +30,14 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 namespace layout {
 struct Node {
     enum class Type { control, column, row, grid, scroll } type = Type::column;
-    Id id;               // control
+    std::string id;               // control
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
     int min_column = 0;  // grid: as many columns as fit at this width, at least one
     std::vector<Node> children;
 };
-Node control(Id id, int text_size = 0);
+Node control(std::string id, int text_size = 0);
 Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
@@ -46,7 +46,7 @@ Node scroll(Node child);  // S1 supports one scroll region per frame
 
 struct Line { Rect bounds; std::u16string text; };
 struct Placement {
-    Id id;
+    std::string id;
     Kind kind = Kind::label;
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
     int text_size = 0;            // physical pixels

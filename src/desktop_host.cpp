@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 #include "desktop_host.hpp"
 #include <windowsx.h>
 #include <imm.h>
@@ -112,8 +113,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         input_context_ = ImmGetContext(window_);
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
-        ui_.set_clipboard(clipboard_.get());
-        ui_.on_invalidate([this] { if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        detail::access(ui_).set_clipboard(clipboard_.get());
+        detail::access(ui_).on_invalidate([this] { if (window_) InvalidateRect(window_, nullptr, FALSE); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
     } catch (...) {
@@ -123,8 +124,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 }
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
-    ui_.on_invalidate({});
-    ui_.set_clipboard(nullptr);
+    detail::access(ui_).on_invalidate({});
+    detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
     ImmAssociateContext(window_, input_context_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
@@ -151,8 +152,8 @@ void DesktopHost::dispatch(MSG& message) {
     follow_focus();
 }
 void DesktopHost::follow_focus() {
-    if (ui_.focused() == synced_focus_) return;
-    reveal_ = ui_.focused();
+    if (detail::access(ui_).focused() == synced_focus_) return;
+    reveal_ = detail::access(ui_).focused();
     sync_ime();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -217,7 +218,7 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     };
     for (const auto& item : frame.items) {
         canvas.clip = intersect(item.clip, whole);
-        auto semantics = ui_.describe(item.id);
+        auto semantics = detail::access(ui_).describe(item.id);
         bool focused = semantics->focused, enabled = semantics->enabled;
         if (item.kind == Kind::label) {
             lines(item.lines, item.text_size, p.text);
@@ -243,7 +244,7 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
             lines(item.label_lines, caption, semantics->invalid ? p.error : p.muted);
             lines(item.description_lines, caption, p.muted);
             lines(item.error_lines, caption, p.error);
-            const auto* session = ui_.edit(item.id);
+            const auto* session = detail::access(ui_).edit(item.id);
             canvas.clip = intersect(canvas.clip, editor);
             auto x0 = item.caret_x(0);
             auto at = [&](unsigned offset) { return item.caret_x(offset); };
@@ -268,35 +269,35 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
 }
 
 void DesktopHost::log_ime(const wchar_t* event, std::u16string_view detail) {
-    const auto* session = ui_.edit(ui_.focused());
+    const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
     std::wstring line = event;
-    line += L"\t" + wide(detail) + L"\tfocus=" + std::wstring(ui_.focused().begin(), ui_.focused().end());
+    line += L"\t" + wide(detail) + L"\tfocus=" + std::wstring(detail::access(ui_).focused().begin(), detail::access(ui_).focused().end());
     if (session) line += L"\ttext=" + wide(session->text) + L"\tcomposing=" + (session->composing ? L"1" : L"0") +
                          L"\tpreedit=" + wide(session->preedit);
     if (tracing_) ime_log_.push_back(std::move(line));  // bounded by the verification run
 }
 void DesktopHost::finish_composition() {
-    const auto* session = ui_.edit(ui_.focused());
+    const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
     if (!session || !session->composing) return;
     log_ime(L"host:complete-request");
     if (auto imc = ImmGetContext(window_)) {
         ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_COMPLETE, 0);
-        session = ui_.edit(ui_.focused());
+        session = detail::access(ui_).edit(detail::access(ui_).focused());
         if (session && session->composing) {
             // The IME did not deliver a result synchronously: discard on both sides.
             ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
-            ui_.composition_cancel();
+            detail::access(ui_).composition_cancel();
             log_ime(L"host:complete-ignored-canceled");
         }
         ImmReleaseContext(window_, imc);
     }
 }
 void DesktopHost::sync_ime() {
-    const auto& id = ui_.focused();
+    const auto& id = detail::access(ui_).focused();
     synced_focus_ = id;
-    auto semantics = id.empty() ? std::nullopt : ui_.describe(id);
+    auto semantics = id.empty() ? std::nullopt : detail::access(ui_).describe(id);
     bool writable = semantics && semantics->kind == Kind::text && semantics->enabled && !semantics->read_only;
-    const auto* focused_session = ui_.edit(id);
+    const auto* focused_session = detail::access(ui_).edit(id);
     if (input_context_ && ImmGetCompositionStringW(input_context_, GCS_COMPSTR, nullptr, 0) > 0 &&
         !(focused_session && focused_session->composing)) {
         // Core dropped or never took this composition (focus moved, owner reset): keep the IME in step.
@@ -309,7 +310,7 @@ void DesktopHost::sync_ime() {
     }
     const auto* field = writable ? frame_.find(id) : nullptr;
     if (!field || GetFocus() != window_) return;
-    const auto* session = ui_.edit(id);
+    const auto* session = detail::access(ui_).edit(id);
     int x = field->caret_x(session->visible_caret());
     int y = field->bounds.y + field->field.editor.y, h = field->field.editor.h;
     if (auto imc = ImmGetContext(window_)) {
@@ -326,7 +327,7 @@ void DesktopHost::sync_ime() {
     }
 }
 void DesktopHost::after_input(const Id& focus_before) {
-    if (ui_.focused() != focus_before) reveal_ = ui_.focused();
+    if (detail::access(ui_).focused() != focus_before) reveal_ = detail::access(ui_).focused();
     sync_ime();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -336,7 +337,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
                             : msg == WM_LBUTTONDOWN ? L"WM_LBUTTONDOWN" : msg == WM_LBUTTONUP ? L"WM_LBUTTONUP" : nullptr;
         if (name) {
-            const auto& focus = ui_.focused();
+            const auto& focus = detail::access(ui_).focused();
             trace_.push_back(std::wstring(name) + L"\t" + std::to_wstring(w) + L"\t" + ((l >> 30) & 1 ? L"repeat" : L"first") +
                              L"\tfocus=" + std::wstring(focus.begin(), focus.end()));
         }
@@ -366,20 +367,20 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_SETFOCUS: sync_ime(); InvalidateRect(window_, nullptr, FALSE); return 0;
     case WM_KILLFOCUS:
         log_ime(L"wm:killfocus");
-        ui_.cancel_input();
+        detail::access(ui_).cancel_input();
         drag_ = Drag::none;
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_ACTIVATE:
-        if (LOWORD(w) == WA_INACTIVE) ui_.cancel_input();
+        if (LOWORD(w) == WA_INACTIVE) detail::access(ui_).cancel_input();
         break;
     case WM_CANCELMODE:
-        ui_.cancel_input();
+        detail::access(ui_).cancel_input();
         drag_ = Drag::none;
         if (GetCapture() == window_) ReleaseCapture();
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(l) != window_) { ui_.cancel_input(); drag_ = Drag::none; }
+        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
         return 0;
     case WM_MOUSEWHEEL: {
         scroll_.offset -= GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
@@ -389,7 +390,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_LBUTTONDOWN: {
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        auto before = ui_.focused();
+        auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         if (frame_.thumb.h && frame_.track.contains(x, y)) {
             // Track click centers the thumb on the pointer; dragging then moves the thumb top.
@@ -405,11 +406,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (!hit || hit->kind == Kind::label) return 0;
         Id id = hit->id;
         finish_composition();
-        if (ui_.pointer_down(id)) {
+        if (detail::access(ui_).pointer_down(id)) {
             if (hit->kind == Kind::text) {
                 auto offset = frame_.text_offset(id, x);
-                auto anchor = (w & MK_SHIFT) ? ui_.edit(id)->selection.anchor : offset;
-                ui_.select(id, anchor, offset);
+                auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
+                detail::access(ui_).select(id, anchor, offset);
                 drag_ = Drag::text;
             }
             SetCapture(window_);
@@ -420,8 +421,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_MOUSEMOVE: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
-            const auto& id = ui_.focused();
-            if (auto* session = ui_.edit(id)) ui_.select(id, session->selection.anchor, frame_.text_offset(id, x));
+            const auto& id = detail::access(ui_).focused();
+            if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, frame_.text_offset(id, x));
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             scroll_.offset = frame_.offset_for_thumb(drag_offset_ + (y - drag_origin_));
@@ -431,11 +432,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     }
     case WM_LBUTTONUP: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        auto before = ui_.focused();
+        auto before = detail::access(ui_).focused();
         if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
             // Settle the press before releasing capture; capture loss would cancel it.
-            ui_.pointer_up(hit ? std::string_view(hit->id) : std::string_view{});
+            detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{});
         }
         drag_ = Drag::none;
         if (GetCapture() == window_) ReleaseCapture();
@@ -448,15 +449,15 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         KeyPress key{map_key(w), shift, ctrl, (l & (1LL << 30)) != 0, 0};
         if (ctrl && w >= 'A' && w <= 'Z') key.letter = static_cast<char16_t>(w);
         if (key.key == Key::other && !key.letter) break;
-        auto before = ui_.focused();
+        auto before = detail::access(ui_).focused();
         if (key.key == Key::tab) finish_composition();
-        ui_.key_down(key);
+        detail::access(ui_).key_down(key);
         after_input(before);
         return 0;
     }
     case WM_KEYUP: {
-        auto before = ui_.focused();
-        ui_.key_up(map_key(w));
+        auto before = detail::access(ui_).focused();
+        detail::access(ui_).key_up(map_key(w));
         after_input(before);
         return 0;
     }
@@ -469,8 +470,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             text = {pending_high_, ch};
         } else text = std::u16string(1, ch);
         pending_high_ = 0;
-        auto before = ui_.focused();
-        ui_.text_input(text);  // a focused button simply refuses committed characters
+        auto before = detail::access(ui_).focused();
+        detail::access(ui_).text_input(text);  // a focused button simply refuses committed characters
         after_input(before);
         return 0;
     }
@@ -481,13 +482,13 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (!imc) return 0;
         if (l & GCS_RESULTSTR) {
             auto result = composition(imc, GCS_RESULTSTR);
-            ui_.composition_commit(result);
+            detail::access(ui_).composition_commit(result);
             log_ime(L"wm:ime-result", result);
         }
         if (l & GCS_COMPSTR) {
             auto preedit = composition(imc, GCS_COMPSTR);
             auto caret = ImmGetCompositionStringW(imc, GCS_CURSORPOS, nullptr, 0);
-            ui_.composition_update(preedit, static_cast<unsigned>(std::max(0L, caret)));
+            detail::access(ui_).composition_update(preedit, static_cast<unsigned>(std::max(0L, caret)));
             log_ime(L"wm:ime-compose", preedit);
         }
         ImmReleaseContext(window_, imc);
@@ -495,7 +496,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_IME_ENDCOMPOSITION:
-        ui_.composition_cancel();  // no-op after a result; discards a canceled preedit
+        detail::access(ui_).composition_cancel();  // no-op after a result; discards a canceled preedit
         log_ime(L"wm:ime-end");
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
@@ -503,8 +504,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_IME_REQUEST:
         if (w == IMR_QUERYCHARPOSITION && l) {
             auto info = reinterpret_cast<IMECHARPOSITION*>(l);
-            const auto* field = frame_.find(ui_.focused());
-            const auto* session = ui_.edit(ui_.focused());
+            const auto* field = frame_.find(detail::access(ui_).focused());
+            const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))
                                          : session->selection.caret;

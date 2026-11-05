@@ -1,4 +1,4 @@
-#include "lcars/core.hpp"
+#include "core_internal.hpp"
 #include <stdexcept>
 namespace lcars {
 namespace {
@@ -44,7 +44,7 @@ std::u16string EditSession::visible() const {
     if (composing) value.replace(begin(), end() - begin(), preedit);
     return value;
 }
-Ui::Ui(std::vector<Control> controls) : controls_(std::move(controls)) {
+detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(controls)) {
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         if (control.id.empty() || !ids.emplace(control.id, true).second)
@@ -60,11 +60,11 @@ Ui::Ui(std::vector<Control> controls) : controls_(std::move(controls)) {
         if (!control.target.empty() && (control.kind != Kind::label || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
-Ui::~Ui() {
+detail::UiState::~UiState() {
     lifetime_.reset();
     for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
 }
-TextHandle Ui::add_text(Control control) {
+TextHandle detail::UiState::add_text(Control control) {
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
         !valid_single_line(control.value, control.max_length))
         throw std::invalid_argument("Invalid text component");
@@ -75,14 +75,14 @@ TextHandle Ui::add_text(Control control) {
     edits_.emplace(id, std::move(field));
     return TextHandle(this, lifetime_, std::move(id));
 }
-ButtonHandle Ui::add_button(Control control) {
+ButtonHandle detail::UiState::add_button(Control control) {
     if (control.kind != Kind::button || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid button component");
     Id id = control.id;
     controls_.push_back(std::move(control));
     return ButtonHandle(this, lifetime_, std::move(id));
 }
-LabelHandle Ui::add_label(Control control) {
+LabelHandle detail::UiState::add_label(Control control) {
     if (control.kind != Kind::label || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid label component");
     Id id = control.id;
@@ -114,6 +114,13 @@ Result ButtonHandle::enable(bool enabled) const {
 Result TextHandle::focus() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->focus(id_);
+}
+Result TextHandle::on_blur(std::function<void()> callback) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
+    else ui_->blur_callbacks_.erase(id_);
+    return {};
 }
 Result TextHandle::set_error(std::u16string message) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -155,13 +162,13 @@ Result TextHandle::undo() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->undo(id_);
 }
-Result Ui::configuration_access(std::string_view id) const {
+Result detail::UiState::configuration_access(std::string_view id) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (!find(id)) return {Status::not_found, u"Component no longer exists"};
     return {};
 }
-Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
+Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalid_value, u"Invalid confirmation group"};
@@ -254,7 +261,7 @@ Result TextHandle::connect_source(TextSource source) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->connect_source(id_, std::move(source));
 }
-Result Ui::connect_source(const Id& id, TextSource source) {
+Result detail::UiState::connect_source(const Id& id, TextSource source) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
@@ -269,7 +276,7 @@ Result Ui::connect_source(const Id& id, TextSource source) {
     source_changed(id);
     return {};
 }
-void Ui::source_changed(const Id& id) {
+void detail::UiState::source_changed(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.source.read) return;
     auto& field = it->second;
@@ -314,7 +321,7 @@ std::optional<Semantics> TextHandle::describe() const {
     if (lifetime_.expired()) return std::nullopt;
     return ui_->describe(id_);
 }
-std::optional<Semantics> Ui::describe(std::string_view id) const {
+std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return std::nullopt;
     Semantics s;
@@ -346,7 +353,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     }
     return s;
 }
-std::u16string Ui::text(std::string_view id) const {
+std::u16string detail::UiState::text(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return {};
     if (control->kind == Kind::label && control->role == TextRole::error) {
@@ -357,19 +364,19 @@ std::u16string Ui::text(std::string_view id) const {
     if (auto it = providers_.find(id); it != providers_.end()) return it->second();
     return control->value;
 }
-void Ui::bind_text(std::string_view id, std::function<std::u16string()> provider) {
+void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider) {
     const auto* control = find(id);
     if (!control || control->kind != Kind::label || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
     providers_.insert_or_assign(control->id, std::move(provider));
 }
-const Control* Ui::find(std::string_view id) const {
+const Control* detail::UiState::find(std::string_view id) const {
     auto it = std::find_if(controls_.begin(), controls_.end(), [&](const auto& control) { return control.id == id; });
     return it == controls_.end() ? nullptr : &*it;
 }
-EditSession* Ui::edit(std::string_view id) {
+EditSession* detail::UiState::edit(std::string_view id) {
     auto it = edits_.find(id); return it == edits_.end() ? nullptr : &it->second.session;
 }
-Result Ui::available(std::string_view id) const {
+Result detail::UiState::available(std::string_view id) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"操作必須在 UI 執行緒"};
     if (stopped_) return {Status::failed, u"介面已停止，請重新啟動"};
     auto control = find(id);
@@ -379,14 +386,14 @@ Result Ui::available(std::string_view id) const {
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};
 }
-Result Ui::set_value(std::string_view id, std::u16string value) {
+Result detail::UiState::set_value(std::string_view id, std::u16string value) {
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
     if (field->session.text == value) return {};
     field->session.select(0, static_cast<unsigned>(field->session.text.size()));
     return replace_selection(id, *field, value);
 }
-Result Ui::writable(std::string_view id, Field*& field) {
+Result detail::UiState::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
@@ -398,7 +405,7 @@ Result Ui::writable(std::string_view id, Field*& field) {
     return {};
 }
 // Every content change funnels through here so history, value mirror and notification agree.
-Result Ui::replace_selection(std::string_view id, Field& field, std::u16string_view insertion) {
+Result detail::UiState::replace_selection(std::string_view id, Field& field, std::u16string_view insertion) {
     auto& session = field.session;
     auto first = session.begin();
     auto next = session.text;
@@ -419,7 +426,7 @@ Result Ui::replace_selection(std::string_view id, Field& field, std::u16string_v
     const_cast<Control*>(find(id))->value = session.text;
     return finish_edit(id, field);
 }
-Result Ui::travel(std::string_view id, bool forward) {
+Result detail::UiState::travel(std::string_view id, bool forward) {
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
     auto& from = forward ? field->future : field->past;
@@ -436,7 +443,7 @@ Result Ui::travel(std::string_view id, bool forward) {
     const_cast<Control*>(find(id))->value = session.text;
     return finish_edit(id, *field);
 }
-Result Ui::finish_edit(std::string_view id, Field& field) {
+Result detail::UiState::finish_edit(std::string_view id, Field& field) {
     Result result;
     if (field.immediate && !field.submitting) {
         auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
@@ -452,16 +459,16 @@ Result Ui::finish_edit(std::string_view id, Field& field) {
     auto notification = notify();
     return notification ? result : notification;
 }
-Result Ui::undo(std::string_view id) { return travel(id, false); }
-Result Ui::redo(std::string_view id) { return travel(id, true); }
-Result Ui::notify() {
+Result detail::UiState::undo(std::string_view id) { return travel(id, false); }
+Result detail::UiState::redo(std::string_view id) { return travel(id, true); }
+Result detail::UiState::notify() {
     dispatching_ = true;
     try { if (changed_) changed_(); }
     catch (...) { stopped_ = true; dispatching_ = false; return {Status::failed, u"資料更新失敗，介面已停止"}; }
     dispatching_ = false;
     return {};
 }
-Result Ui::text_input(std::u16string_view text) {
+Result detail::UiState::text_input(std::u16string_view text) {
     auto committed = without_controls(text);
     if (committed.empty()) return {};
     Field* field = nullptr;
@@ -476,12 +483,12 @@ std::u16string paste_as_single_line(std::u16string_view text) {
     }
     return result;
 }
-Result Ui::paste(std::string_view id, std::u16string_view text) {
+Result detail::UiState::paste(std::string_view id, std::u16string_view text) {
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
     return replace_selection(id, *field, paste_as_single_line(text));
 }
-Result Ui::copy(std::string_view id) {
+Result detail::UiState::copy(std::string_view id) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
@@ -491,21 +498,21 @@ Result Ui::copy(std::string_view id) {
         return {Status::failed, u"無法寫入剪貼簿"};
     return {};
 }
-Result Ui::cut(std::string_view id) {
+Result detail::UiState::cut(std::string_view id) {
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
     if (field->session.begin() == field->session.end()) return {};
     if (auto result = copy(id); !result) return result;
     return replace_selection(id, *field, u"");
 }
-float Ui::text_offset(std::string_view id) const {
+float detail::UiState::text_offset(std::string_view id) const {
     auto it = edits_.find(id);
     return it == edits_.end() ? 0.f : it->second.offset;
 }
-void Ui::set_text_offset(std::string_view id, float offset) {
+void detail::UiState::set_text_offset(std::string_view id, float offset) {
     if (auto it = edits_.find(id); it != edits_.end()) it->second.offset = std::max(0.f, offset);
 }
-Result Ui::select(std::string_view id, unsigned anchor, unsigned caret) {
+Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned caret) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
@@ -513,7 +520,7 @@ Result Ui::select(std::string_view id, unsigned anchor, unsigned caret) {
     it->second.session.select(anchor, caret);
     return {};
 }
-Result Ui::invoke(std::string_view id) {
+Result detail::UiState::invoke(std::string_view id) {
     if (auto result = available(id); !result) return result;
     if (dispatching_ || invoking_) return {Status::busy, u"操作尚未結束"};
     for (const auto& [key, field] : edits_)
@@ -525,15 +532,15 @@ Result Ui::invoke(std::string_view id) {
     try { auto result = it->second(); invoking_ = false; executing_.clear(); return result; }
     catch (...) { stopped_ = true; invoking_ = false; executing_.clear(); return {Status::failed, u"操作失敗，介面已停止"}; }
 }
-void Ui::bind(Id id, Action action) {
+void detail::UiState::bind(Id id, Action action) {
     if (!find(id) || !action) throw std::invalid_argument("Action requires a known ID and a callback");
     actions_.insert_or_assign(std::move(id), std::move(action));
 }
-Result Ui::focusable(const Control& control) const {
+Result detail::UiState::focusable(const Control& control) const {
     if (control.kind == Kind::label) return {Status::not_supported, u"標籤不能取得焦點"};
     return available(control.id);
 }
-std::vector<Id> Ui::focus_order() const {
+std::vector<Id> detail::UiState::focus_order() const {
     std::vector<Id> order;
     for (const auto& control : controls_)
         if (focusable(control)) order.push_back(control.id);
@@ -541,7 +548,7 @@ std::vector<Id> Ui::focus_order() const {
 }
 // The new focus is readable at once; owner notifications queue behind the one being delivered
 // (ADR 0003: no direct recursion into subscribers).
-Result Ui::move_focus(Id next) {
+Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
     key_armed_.clear(); pointer_armed_.clear();
     if (!composing_.empty()) {
@@ -550,21 +557,27 @@ Result Ui::move_focus(Id next) {
         composition_commit(preedit);
     }
     auto previous = std::exchange(focus_, std::move(next));
-    if (!focus_moved_) return {};
+    if (!focus_moved_ && blur_callbacks_.empty()) return {};
     pending_focus_.emplace_back(std::move(previous), focus_);
     if (notifying_focus_) return {};
     notifying_focus_ = true;
     Result result;
     for (std::size_t i = 0; i < pending_focus_.size(); ++i) {
         auto [from, to] = pending_focus_[i];
-        try { focus_moved_(from, to); }
+        try {
+            if (auto it = blur_callbacks_.find(from); it != blur_callbacks_.end()) {
+                auto callback = it->second;
+                callback();
+            }
+            if (focus_moved_) focus_moved_(from, to);
+        }
         catch (...) { stopped_ = true; result = {Status::failed, u"焦點通知失敗，介面已停止"}; break; }
     }
     pending_focus_.clear();
     notifying_focus_ = false;
     return result;
 }
-Result Ui::composition_update(std::u16string preedit, unsigned caret) {
+Result detail::UiState::composition_update(std::u16string preedit, unsigned caret) {
     if (composing_.empty()) {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
@@ -573,7 +586,7 @@ Result Ui::composition_update(std::u16string preedit, unsigned caret) {
     edits_.at(composing_).session.update_composition(std::move(preedit), caret);
     return {};
 }
-Result Ui::composition_commit(std::u16string_view text) {
+Result detail::UiState::composition_commit(std::u16string_view text) {
     auto target = composing_.empty() ? focus_ : composing_;
     composition_cancel();
     if (!edits_.contains(target)) return {Status::invalid_value, u"沒有接收組字的文字欄位"};
@@ -583,19 +596,19 @@ Result Ui::composition_commit(std::u16string_view text) {
     if (committed.empty()) return {};
     return replace_selection(target, *field, committed);
 }
-Result Ui::composition_cancel() {
+Result detail::UiState::composition_cancel() {
     if (composing_.empty()) return {};
     edits_.at(composing_).session.cancel_composition();
     composing_.clear();
     return {};
 }
-Result Ui::focus(std::string_view id) {
+Result detail::UiState::focus(std::string_view id) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"找不到元件"};
     if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
-Result Ui::key_down(KeyPress key) {
+Result detail::UiState::key_down(KeyPress key) {
     if (key.key == Key::tab) {
         auto order = focus_order();
         if (order.empty()) return {Status::not_found, u"沒有可聚焦的元件"};
@@ -628,7 +641,7 @@ unsigned step(std::u16string_view text, unsigned pos, int direction) {
     return high(pos) && low(pos + 1) ? pos + 2 : pos + 1;
 }
 }
-Result Ui::edit_key(KeyPress key) {
+Result detail::UiState::edit_key(KeyPress key) {
     auto& session = edits_.at(focus_).session;
     if (session.composing) return {Status::busy, u"組字中，按鍵交由輸入法處理"};
     const auto size = static_cast<unsigned>(session.text.size());
@@ -666,12 +679,12 @@ Result Ui::edit_key(KeyPress key) {
     default: return {};
     }
 }
-Result Ui::key_up(Key key) {
+Result detail::UiState::key_up(Key key) {
     if (key != Key::space || key_armed_.empty() || key_armed_ != focus_) return {};
     auto target = std::exchange(key_armed_, {});
     return invoke(target);
 }
-Result Ui::pointer_down(std::string_view id) {
+Result detail::UiState::pointer_down(std::string_view id) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"找不到元件"};
     if (auto result = focusable(*control); !result) return result;
@@ -679,13 +692,13 @@ Result Ui::pointer_down(std::string_view id) {
     if (control->kind == Kind::button) pointer_armed_ = control->id;
     return {};
 }
-Result Ui::pointer_up(std::string_view id) {
+Result detail::UiState::pointer_up(std::string_view id) {
     auto armed = std::exchange(pointer_armed_, {});
     if (armed.empty() || armed != id) return {};
     return invoke(armed);
 }
-void Ui::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); }
-Result Ui::set_error(std::string_view id, std::u16string message) {
+void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); }
+Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"找不到元件"};
     if (control->kind == Kind::label) return {Status::not_supported, u"標籤不能帶有錯誤"};
@@ -693,19 +706,19 @@ Result Ui::set_error(std::string_view id, std::u16string message) {
     else errors_.insert_or_assign(control->id, std::move(message));
     return {};
 }
-void Ui::enable(std::string_view id, bool enabled) {
+void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Control*>(find(id));
     if (!control) return;
     control->enabled = enabled;
     if (!enabled && focus_ == control->id) move_focus({});
 }
-void Ui::set_read_only(std::string_view id, bool read_only) {
+void detail::UiState::set_read_only(std::string_view id, bool read_only) {
     if (auto* control = const_cast<Control*>(find(id))) control->read_only = read_only;
 }
-void Ui::check(std::string_view id, bool checked) {
+void detail::UiState::check(std::string_view id, bool checked) {
     if (auto* control = const_cast<Control*>(find(id))) control->checked = checked;
 }
-void Ui::replace_text(std::string_view id, std::u16string value) {
+void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     auto* control = const_cast<Control*>(find(id));
     auto it = edits_.find(id);
     if (!control || it == edits_.end() || !valid_single_line(value, control->max_length)) throw std::invalid_argument("Invalid owner refresh");
@@ -717,4 +730,17 @@ void Ui::replace_text(std::string_view id, std::u16string value) {
     field.past.clear(); field.future.clear(); field.offset = 0;
     control->value = field.session.text;
 }
+Ui::Ui(std::vector<Control> controls) : state_(std::make_unique<detail::UiState>(std::move(controls))) {}
+Ui::~Ui() = default;
+TextHandle Ui::add_text(Control control) { return state_->add_text(std::move(control)); }
+ButtonHandle Ui::add_button(Control control) { return state_->add_button(std::move(control)); }
+LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(control)); }
+Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
+        std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
+    return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
+}
+void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
+detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
+const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
+
 }

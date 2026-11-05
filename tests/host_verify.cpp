@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 // Native verification of the V01 form in a real Win32 window for both appearances.
 // Keyboard and mouse cases are posted to the window queue and pumped through the host's own
 // TranslateMessage/DispatchMessage path; layout evidence is rasterized offscreen.
@@ -85,8 +86,8 @@ struct Fixture {
     void mouse(UINT msg, POINT p, WPARAM w = 0) { post(msg, w, MAKELPARAM(p.x, p.y)); host.pump(); }
     int history() {  // undo depth, restored afterwards
         int n = 0;
-        while (form.ui.undo(ids.name)) ++n;
-        for (int i = 0; i < n; ++i) form.ui.redo(ids.name);
+        while (detail::access(form.ui).undo(ids.name)) ++n;
+        for (int i = 0; i < n; ++i) detail::access(form.ui).redo(ids.name);
         return n;
     }
 };
@@ -94,35 +95,35 @@ struct Fixture {
 void space_activation_does_not_leak(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
     auto& ui = f.form.ui;
-    ui.focus(f.ids.error);
+    detail::access(ui).focus(f.ids.error);
     f.host.trace().clear();
     f.key(VK_SPACE);
     f.key(VK_SPACE, true);
     f.key(VK_SPACE, true);
     f.key_up(VK_SPACE);
-    bool moved = ui.focused() == f.ids.name && ui.text(f.ids.name).empty();
+    bool moved = detail::access(ui).focused() == f.ids.name && detail::access(ui).text(f.ids.name).empty();
     int chars = 0;
     for (const auto& line : f.host.trace()) if (line.starts_with(L"WM_CHAR\t32\t")) ++chars;
     std::string trace;
     for (const auto& line : f.host.trace()) trace += narrow(line) + " | ";
     int history_after_activation = f.history();
     f.tap(VK_SPACE);
-    bool typed = ui.text(f.ids.name) == u" " && f.history() == history_after_activation + 1;
+    bool typed = detail::access(ui).text(f.ids.name) == u" " && f.history() == history_after_activation + 1;
     report.check("AC07-R01", moved && chars == 3 && history_after_activation == 1 && typed,
                  "translated WM_CHAR spaces=" + std::to_string(chars) + " delivered while the button held focus; name length after activation=" +
-                 std::to_string(ui.text(f.ids.name).size() - 1) + "; history entries after activation=" + std::to_string(history_after_activation) +
+                 std::to_string(detail::access(ui).text(f.ids.name).size() - 1) + "; history entries after activation=" + std::to_string(history_after_activation) +
                  " (the error fixture's blanking only); typing space afterwards=" + (typed ? "inserted once" : "WRONG") + "; trace: " + trace);
 }
 
 void enter_activates_once(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
-    f.form.ui.focus(f.ids.apply);
+    detail::access(f.form.ui).focus(f.ids.apply);
     f.key(VK_RETURN);
     f.key(VK_RETURN, true);
     f.key_up(VK_RETURN);
-    f.form.ui.focus(f.ids.name);
+    detail::access(f.form.ui).focus(f.ids.name);
     f.tap(VK_RETURN);
-    report.check("AC06-enter", f.form.applies() == 1 && f.form.ui.text(f.ids.name) == u"測試使用者",
+    report.check("AC06-enter", f.form.applies() == 1 && detail::access(f.form.ui).text(f.ids.name) == u"測試使用者",
                  "Enter press + auto-repeat on apply -> applies=" + std::to_string(f.form.applies()) + "; Enter in the name field adds nothing");
 }
 
@@ -141,12 +142,12 @@ void pointer_activation_rules(const Appearance& appearance, Report& report) {
     SendMessageW(f.host.window(), WM_CANCELMODE, 0, 0);
     f.mouse(WM_LBUTTONUP, apply);
     int canceled = f.form.applies();
-    f.form.ui.focus(f.ids.apply);
+    detail::access(f.form.ui).focus(f.ids.apply);
     f.key(VK_SPACE);
     SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0);
     f.key_up(VK_SPACE);
     int deactivated = f.form.applies();
-    f.form.ui.invoke(f.ids.disabled);
+    detail::access(f.form.ui).invoke(f.ids.disabled);
     f.settle();
     f.mouse(WM_LBUTTONDOWN, apply, MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, apply);
@@ -155,19 +156,19 @@ void pointer_activation_rules(const Appearance& appearance, Report& report) {
                  ", press+WM_CANCELMODE+release=" + std::to_string(canceled) + ", Space+WM_KILLFOCUS+release=" + std::to_string(deactivated) +
                  ", disabled click total=" + std::to_string(f.form.applies()));
     // AC10: with the data area disabled, the native pointer and keyboard cannot reach the name either.
-    auto before = f.form.ui.text(f.ids.name);
+    auto before = detail::access(f.form.ui).text(f.ids.name);
     f.mouse(WM_LBUTTONDOWN, f.center(f.ids.name), MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, f.center(f.ids.name));
     f.tap('X');
-    report.check("AC10-native-disabled", f.form.ui.focused() != f.ids.name && f.form.ui.text(f.ids.name) == before,
-                 "click on the disabled name then typing: focus=" + f.form.ui.focused() + ", text unchanged=" +
-                     (f.form.ui.text(f.ids.name) == before ? "yes" : "NO"));
+    report.check("AC10-native-disabled", detail::access(f.form.ui).focused() != f.ids.name && detail::access(f.form.ui).text(f.ids.name) == before,
+                 "click on the disabled name then typing: focus=" + detail::access(f.form.ui).focused() + ", text unchanged=" +
+                     (detail::access(f.form.ui).text(f.ids.name) == before ? "yes" : "NO"));
 }
 
 void pointer_selection_and_clipboard(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
     auto& ui = f.form.ui;
-    ui.set_value(f.ids.name, u"Alpha 中文");
+    detail::access(ui).set_value(f.ids.name, u"Alpha 中文");
     f.host.paint();
     const Placement field = *f.host.frame().find(f.ids.name);  // a copy: repaints replace the frame
     auto x_of = [&](unsigned offset) {
@@ -176,14 +177,14 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     int y = field.bounds.y + field.field.editor.y + field.field.editor.h / 2;
     f.mouse(WM_LBUTTONDOWN, {x_of(5), y}, MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, {x_of(5), y});
-    auto placed = ui.edit(f.ids.name)->selection;
+    auto placed = detail::access(ui).edit(f.ids.name)->selection;
     f.mouse(WM_LBUTTONDOWN, {x_of(8), y}, MK_LBUTTON | MK_SHIFT);
     f.mouse(WM_LBUTTONUP, {x_of(8), y});
-    auto extended = ui.edit(f.ids.name)->selection;
+    auto extended = detail::access(ui).edit(f.ids.name)->selection;
     f.mouse(WM_LBUTTONDOWN, {x_of(0), y}, MK_LBUTTON);
     f.mouse(WM_MOUSEMOVE, {x_of(5), y}, MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, {x_of(5), y});
-    auto dragged = ui.edit(f.ids.name)->selection;
+    auto dragged = detail::access(ui).edit(f.ids.name)->selection;
     detail::WindowsClipboard clipboard(f.host.window());
     auto saved = clipboard.read();
     f.chord('C');
@@ -191,9 +192,9 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     clipboard.write(u"X\r\nY");
     f.chord('A');
     f.chord('V');
-    auto pasted = ui.text(f.ids.name);
+    auto pasted = detail::access(ui).text(f.ids.name);
     f.chord('Z');
-    auto undone = ui.text(f.ids.name);
+    auto undone = detail::access(ui).text(f.ids.name);
     if (saved) clipboard.write(*saved);
     report.check("AC08-pointer-clipboard",
                  placed.anchor == 5 && placed.caret == 5 && extended.anchor == 5 && extended.caret == 8 && dragged.anchor == 0 &&
@@ -207,7 +208,7 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
 void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, const std::filesystem::path& folder, const std::string& tag) {
     Fixture f(appearance);
     std::vector<Id> seen;
-    for (int i = 0; i < 9; ++i) { f.tap(VK_TAB); seen.push_back(f.form.ui.focused()); }
+    for (int i = 0; i < 9; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
     BYTE state[256]{};
     GetKeyboardState(state);
     state[VK_SHIFT] = 0x80;
@@ -215,7 +216,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     f.tap(VK_TAB);
     state[VK_SHIFT] = 0;
     SetKeyboardState(state);
-    bool back = f.form.ui.focused() == f.ids.apply;
+    bool back = detail::access(f.form.ui).focused() == f.ids.apply;
     Canvas pixels(1, 1, {0, 0, 0});
     auto frame = f.host.render(900, 700, 1.f, folder / (tag + "-focus-apply.bmp"), &pixels);
     auto r = frame.find(f.ids.apply)->bounds;
@@ -239,7 +240,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
 void resize_first_frame_matches_next(const Appearance& appearance, Report& report, float scale) {
     Fixture f(appearance);
     f.host.force_scale(scale);
-    f.form.ui.invoke(f.ids.long_text);
+    detail::access(f.form.ui).invoke(f.ids.long_text);
     f.host.client_size(640, 480);
     f.host.pump();
     UpdateWindow(f.host.window());
@@ -278,8 +279,8 @@ void layout_matrix(const Appearance& appearance, Report& report, const std::file
                 Fixture f(appearance);
                 auto& ui = f.form.ui;
                 if (variant == 1) {
-                    ui.invoke(f.ids.long_text);
-                    ui.invoke(f.ids.error);
+                    detail::access(ui).invoke(f.ids.long_text);
+                    detail::access(ui).invoke(f.ids.error);
                 }
                 int w = static_cast<int>(size.w * scale), h = static_cast<int>(size.h * scale);
                 std::string name = tag + "-" + std::to_string(size.w) + "x" + std::to_string(size.h) + "-" +
@@ -296,7 +297,7 @@ void layout_matrix(const Appearance& appearance, Report& report, const std::file
                 bool arrangement = size.w == 960 ? draft.x > field.x && draft.y < apply.y + apply.h : draft.x == field.x && draft.y > apply.y;
                 // Every keyboard entry can be scrolled fully into the viewport.
                 int reachable = 0, entries = 0;
-                for (const auto& id : ui.focus_order()) {
+                for (const auto& id : detail::access(ui).focus_order()) {
                     ScrollState probe;
                     auto revealed = f.host.layout(w, h, scale, probe, id);
                     auto b = revealed.find(id)->bounds;
@@ -424,14 +425,14 @@ struct Live {
     int history() {
         auto& ui = form.ui;
         int n = 0;
-        while (ui.undo(ids.name)) ++n;
-        for (int i = 0; i < n; ++i) ui.redo(ids.name);
+        while (detail::access(ui).undo(ids.name)) ++n;
+        for (int i = 0; i < n; ++i) detail::access(ui).redo(ids.name);
         return n;
     }
     std::string state() {
-        const auto* s = form.ui.edit(ids.name);
+        const auto* s = detail::access(form.ui).edit(ids.name);
         return "draft='" + narrow(s->text) + "' composing=" + (s->composing ? "1" : "0") + " preedit='" + narrow(s->preedit) +
-               "' focus=" + form.ui.focused() + " history=" + std::to_string(history()) + " applies=" + std::to_string(form.applies());
+               "' focus=" + detail::access(form.ui).focused() + " history=" + std::to_string(history()) + " applies=" + std::to_string(form.applies());
     }
     std::string events() {
         std::string out;
@@ -440,15 +441,15 @@ struct Live {
         return out;
     }
     void clear_composition() {
-        for (int i = 0; i < 3 && form.ui.edit(ids.name)->composing; ++i) tap(VK_ESCAPE);
+        for (int i = 0; i < 3 && detail::access(form.ui).edit(ids.name)->composing; ++i) tap(VK_ESCAPE);
         wait(150);
-        if (form.ui.edit(ids.name)->composing) throw Blocked("a composition survived three Escape presses");
+        if (detail::access(form.ui).edit(ids.name)->composing) throw Blocked("a composition survived three Escape presses");
     }
     void start_in_name() {
         clear_composition();
-        form.ui.invoke(ids.reset);
-        form.ui.focus(ids.name);
-        form.ui.select(ids.name, 5, 5);
+        detail::access(form.ui).invoke(ids.reset);
+        detail::access(form.ui).focus(ids.name);
+        detail::access(form.ui).select(ids.name, 5, 5);
         wait(150);
         events();
     }
@@ -508,16 +509,16 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         };
 
         // AC07 with real input on the US layout: Space activates the error fixture, focus moves to the name.
-        ui.focus(ids.error);
+        detail::access(ui).focus(ids.error);
         live.wait(100);
         live.send(VK_SPACE, false);
         live.send(VK_SPACE, false);  // held: the second press arrives as an auto-repeat
         live.send(VK_SPACE, true);
         live.wait(150);
-        bool moved = ui.focused() == ids.name && ui.text(ids.name).empty() && live.history() == 1;
+        bool moved = detail::access(ui).focused() == ids.name && detail::access(ui).text(ids.name).empty() && live.history() == 1;
         record("AC07-real", moved, "Space press, repeat and release on the error fixture: focus to name, no space leaked, one history entry");
         live.tap(VK_SPACE);
-        record("AC07-real-typing", ui.text(ids.name) == u" " && live.history() == 2, "A real Space typed afterwards inserts one space");
+        record("AC07-real-typing", detail::access(ui).text(ids.name) == u" " && live.history() == 2, "A real Space typed afterwards inserts one space");
 
         if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated for this process");
         live.start_in_name();
@@ -532,23 +533,23 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         }
 
         live.type("JI3");
-        auto* session = ui.edit(ids.name);
+        auto* session = detail::access(ui).edit(ids.name);
         bool composing = session->composing && session->text == u"測試使用者" && !session->preedit.empty();
         record("F02-compose", composing, "ㄨㄛˇ updates the preedit only; committed text unchanged");
         live.tap(VK_RETURN);
         live.wait(200);
-        record("F02-confirm", ui.text(ids.name) == u"測試使用者我" && !session->composing && live.history() == 1 && live.form.applies() == 0,
+        record("F02-confirm", detail::access(ui).text(ids.name) == u"測試使用者我" && !session->composing && live.history() == 1 && live.form.applies() == 0,
                "Enter confirms one character once, one history entry, no apply");
         live.tap(VK_RETURN);
-        record("F02-enter-after", live.form.applies() == 0 && ui.text(ids.name) == u"測試使用者我", "A second Enter does not apply");
+        record("F02-enter-after", live.form.applies() == 0 && detail::access(ui).text(ids.name) == u"測試使用者我", "A second Enter does not apply");
         live.chord(VK_CONTROL, 'Z');
-        record("AC09-undo-commit", ui.text(ids.name) == u"測試使用者", "Ctrl+Z removes the whole confirmation in one step");
+        record("AC09-undo-commit", detail::access(ui).text(ids.name) == u"測試使用者", "Ctrl+Z removes the whole confirmation in one step");
 
         live.type("JI3");
         live.tap(VK_ESCAPE);
         live.wait(200);
         if (session->composing) { live.tap(VK_ESCAPE); live.wait(200); }
-        bool redo_kept = !session->composing && ui.text(ids.name) == u"測試使用者" && live.form.ui.describe(ids.name)->operations.back() == Operation::redo;
+        bool redo_kept = !session->composing && detail::access(ui).text(ids.name) == u"測試使用者" && detail::access(live.form.ui).describe(ids.name)->operations.back() == Operation::redo;
         record("E01-cancel", redo_kept, "Escape cancels the composition; committed text and the redo position survive");
 
         live.start_in_name();
@@ -556,15 +557,15 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         live.type("JI3");
         live.tap(VK_RETURN);
         live.wait(200);
-        bool replaced = ui.text(ids.name) == u"我" && live.history() == 1;
+        bool replaced = detail::access(ui).text(ids.name) == u"我" && live.history() == 1;
         live.chord(VK_CONTROL, 'Z');
-        record("E01-replace-selection", replaced && ui.text(ids.name) == u"測試使用者", "Confirmation replaces the selection as one undo entry");
+        record("E01-replace-selection", replaced && detail::access(ui).text(ids.name) == u"測試使用者", "Confirmation replaces the selection as one undo entry");
 
         live.start_in_name();
         live.type("JI3");
         live.chord(VK_CONTROL, 'Z');
         live.wait(200);
-        bool untouched = ui.text(ids.name) == u"測試使用者" && live.history() == 0;
+        bool untouched = detail::access(ui).text(ids.name) == u"測試使用者" && live.history() == 0;
         record("E01-shortcut-while-composing", untouched, "Ctrl+Z during composition goes to the IME and leaves committed history alone");
         if (session->composing) { live.tap(VK_ESCAPE); live.wait(150); }
         if (session->composing) { live.tap(VK_ESCAPE); live.wait(150); }
@@ -573,16 +574,16 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         live.type("JI3");
         live.tap(VK_TAB);
         live.wait(300);
-        record("E01-tab", session->composing && ui.focused() == ids.name && ui.text(ids.name) == u"測試使用者" && live.form.applies() == 0,
+        record("E01-tab", session->composing && detail::access(ui).focused() == ids.name && detail::access(ui).text(ids.name) == u"測試使用者" && live.form.applies() == 0,
                "Tab during composition is consumed by the IME: preedit kept, focus stays, nothing committed or applied");
         live.clear_composition();
-        record("E01-tab-then-escape", ui.text(ids.name) == u"測試使用者" && live.history() == 0, "Escape then discards that preedit cleanly");
+        record("E01-tab-then-escape", detail::access(ui).text(ids.name) == u"測試使用者" && live.history() == 0, "Escape then discards that preedit cleanly");
 
         live.start_in_name();
         live.type("JI3");
         auto before = live.state();
         live.click(ids.long_text);
-        record("E01-pointer", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && ui.focused() == ids.long_text && live.form.applies() == 0,
+        record("E01-pointer", !session->composing && detail::access(ui).text(ids.name) == u"測試使用者我" && live.history() == 1 && detail::access(ui).focused() == ids.long_text && live.form.applies() == 0,
                "Clicking another control commits the preedit once, then focus moves; before: " + before);
 
         live.start_in_name();
@@ -591,18 +592,18 @@ void ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         SetForegroundWindow(live.helper);
         live.wait(500);
         auto away = live.state();
-        report.check("E01-window-deactivate", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && live.form.applies() == 0,
+        report.check("E01-window-deactivate", !session->composing && detail::access(ui).text(ids.name) == u"測試使用者我" && live.history() == 1 && live.form.applies() == 0,
                      "The IME commits on native deactivation, once; before: " + before + " => " + away);
         events << "E01-window-deactivate\t" << live.events() << '\n';
         live.foreground(live.host.window());
-        record("E01-window-return", !session->composing && ui.focused() == ids.name && ui.text(ids.name) == u"測試使用者我" && live.history() == 1,
+        record("E01-window-return", !session->composing && detail::access(ui).focused() == ids.name && detail::access(ui).text(ids.name) == u"測試使用者我" && live.history() == 1,
                "Back in the window: focus kept on the name, nothing composing, the commit kept");
 
         live.start_in_name();
         live.type("JI3");
         before = live.state();
         live.click(ids.name, -100);
-        record("E01-pointer-same-field", !session->composing && ui.text(ids.name) == u"測試使用者我" && live.history() == 1 && ui.focused() == ids.name && live.form.applies() == 0,
+        record("E01-pointer-same-field", !session->composing && detail::access(ui).text(ids.name) == u"測試使用者我" && live.history() == 1 && detail::access(ui).focused() == ids.name && live.form.applies() == 0,
                "Clicking inside the composing field commits once, then places the caret; before: " + before);
 
         profiles.us();

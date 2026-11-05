@@ -85,7 +85,7 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
     draft.connect_source([this] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + name_.describe()->value; });
     result.connect_source([this] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_; });
     count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
-    ui.on_focus([this](const Id& from, const Id&) { if (from == ids_.name) validate(); });
+    name_.on_blur([this] { validate(); });
     ui.on_change([this] { if (name_.describe()->invalid) validate(); refresh_conflict(); });
     ui.connect_confirmation(apply_, {name_}, [this](const auto& changes) { return apply(changes); });
     normal.bind([this] { set_mode(Mode::normal); return Result{}; });

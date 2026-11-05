@@ -4,6 +4,52 @@
 #include <cstdio>
 #include <string>
 
+// An application sees only typed handles; string IDs cannot operate or look up components.
+template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
+static_assert(!HasFind<lcars::Ui>);
+template <class T> concept HasText = requires(T& ui, std::string_view id) { ui.text(id); };
+static_assert(!HasText<lcars::Ui>);
+template <class T> concept HasEdit = requires(T& ui, std::string_view id) { ui.edit(id); };
+static_assert(!HasEdit<lcars::Ui>);
+template <class T> concept HasSetValue = requires(T& ui, std::string_view id) { ui.set_value(id, std::u16string{}); };
+static_assert(!HasSetValue<lcars::Ui>);
+template <class T> concept HasInvoke = requires(T& ui, std::string_view id) { ui.invoke(id); };
+static_assert(!HasInvoke<lcars::Ui>);
+template <class T> concept HasBind = requires(T& ui, std::string_view id) { ui.bind(std::string(id), [] { return lcars::Result{}; }); };
+static_assert(!HasBind<lcars::Ui>);
+template <class T> concept HasBindText = requires(T& ui, std::string_view id) { ui.bind_text(id, [] { return std::u16string{}; }); };
+static_assert(!HasBindText<lcars::Ui>);
+template <class T> concept HasFocus = requires(T& ui, std::string_view id) { ui.focus(id); };
+static_assert(!HasFocus<lcars::Ui>);
+template <class T> concept HasPointerDown = requires(T& ui, std::string_view id) { ui.pointer_down(id); };
+static_assert(!HasPointerDown<lcars::Ui>);
+template <class T> concept HasPointerUp = requires(T& ui, std::string_view id) { ui.pointer_up(id); };
+static_assert(!HasPointerUp<lcars::Ui>);
+template <class T> concept HasUndo = requires(T& ui, std::string_view id) { ui.undo(id); };
+static_assert(!HasUndo<lcars::Ui>);
+template <class T> concept HasRedo = requires(T& ui, std::string_view id) { ui.redo(id); };
+static_assert(!HasRedo<lcars::Ui>);
+template <class T> concept HasPaste = requires(T& ui, std::string_view id) { ui.paste(id, std::u16string_view{}); };
+static_assert(!HasPaste<lcars::Ui>);
+template <class T> concept HasSelect = requires(T& ui, std::string_view id) { ui.select(id, 0, 0); };
+static_assert(!HasSelect<lcars::Ui>);
+template <class T> concept HasCopy = requires(T& ui, std::string_view id) { ui.copy(id); };
+static_assert(!HasCopy<lcars::Ui>);
+template <class T> concept HasCut = requires(T& ui, std::string_view id) { ui.cut(id); };
+static_assert(!HasCut<lcars::Ui>);
+template <class T> concept HasEnable = requires(T& ui, std::string_view id) { ui.enable(id, true); };
+static_assert(!HasEnable<lcars::Ui>);
+template <class T> concept HasReadOnly = requires(T& ui, std::string_view id) { ui.set_read_only(id, true); };
+static_assert(!HasReadOnly<lcars::Ui>);
+template <class T> concept HasSetError = requires(T& ui, std::string_view id) { ui.set_error(id, std::u16string{}); };
+static_assert(!HasSetError<lcars::Ui>);
+template <class T> concept HasReplaceText = requires(T& ui, std::string_view id) { ui.replace_text(id, std::u16string{}); };
+static_assert(!HasReplaceText<lcars::Ui>);
+template <class T> concept HasAvailable = requires(T& ui, std::string_view id) { ui.available(id); };
+static_assert(!HasAvailable<lcars::Ui>);
+template <class T> concept HasInput = requires(T& ui, std::string_view id) { ui.text_input(std::u16string_view{}); };
+static_assert(!HasInput<lcars::Ui>);
+
 namespace {
 // The application's pre-existing data model; LcarsUI never owns or copies it.
 struct Profile {
@@ -53,16 +99,15 @@ int main() {
     });
 
     alias.focus();
-    ui.key_down({.ctrl = true, .letter = u'A'});
-    ui.text_input(u"ab");
+    alias.set_value(u"ab");
     expect(save.invoke().status == Status::invalid_value && profile.saves == 0, "consumer validation rejects a short alias");
     expect(alias.describe()->error == u"At least three characters", "consumer error is attached to its own field");
-    ui.text_input(u"cdef");
+    alias.set_value(u"abcdef");
     save.focus();
-    ui.key_down({.key = Key::enter});
+    save.invoke();
     expect(profile.alias == u"abcdef" && profile.saves == 1, "consumer callback writes its existing data model once");
-    expect(ui.focused() == "profile.save" && ui.text_input(u"x").status == Status::invalid_value && alias.describe()->value == u"abcdef",
-           "a focused button refuses typed text and the field is untouched");
+    expect(!alias.describe()->focused && alias.describe()->value == u"abcdef",
+           "focus moves to the save button and the field is untouched");
     alias.focus();
     expect(alias.paste(u"0123456789").status == Status::invalid_value, "consumer-chosen length limit is enforced");
 

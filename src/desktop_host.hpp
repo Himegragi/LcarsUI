@@ -61,7 +61,7 @@ private:
     float forced_scale_ = 0;
     int frames_ = 0;
     bool failed_ = false;
-    Id reveal_;                        // focus target to scroll into view on the next arrange
+    std::string reveal_;                        // focus target to scroll into view on the next arrange
     enum class Drag { none, text, thumb } drag_ = Drag::none;
     int drag_origin_ = 0, drag_offset_ = 0;
     char16_t pending_high_ = 0;
@@ -74,8 +74,8 @@ private:
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
     void follow_focus();               // notice focus moved by application or semantic calls
-    Id synced_focus_;
-    void after_input(const Id& focus_before);
+    std::string synced_focus_;
+    void after_input(const std::string& focus_before);
     void log_ime(const wchar_t* event, std::u16string_view detail = {});
 };
 }

@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 // V01 minimal edit form acceptance through the assembled application's public operations.
 // Every case runs twice: with the shipped IDs and with an unrelated ID set (AC02).
 #include "check.hpp"
@@ -23,9 +24,9 @@ KeyPress ctrl(char16_t letter) { return {.ctrl = true, .letter = letter}; }
 void settle(edit_form::Form& form) {
     test::FakeMeasure measure;
     for (int width : {960, 640}) {
-        auto frame = arrange(form.page(), form.ui, *appearance, measure, width, 480, 1.f, form.scroll, form.ui.focused());
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, width, 480, 1.f, form.scroll, detail::access(form.ui).focused());
         auto field = frame.find(ids.name);
-        bool invalid = form.ui.describe(ids.name)->invalid;
+        bool invalid = detail::access(form.ui).describe(ids.name)->invalid;
         check(field && field->label_lines.size() == 1 && field->error_lines.empty() != invalid,
               "Under this appearance the name carries its label, and an error exactly when invalid");
     }
@@ -34,45 +35,45 @@ void settle(edit_form::Form& form) {
 void initial_values_apply_and_reset() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    check(ui.text(ids.name) == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Initial draft, result and count");
-    ui.set_value(ids.name, u"工作站 A");
-    check(form.applied() == u"測試使用者" && ui.text(ids.result).find(u"測試使用者") != std::u16string::npos,
+    check(detail::access(ui).text(ids.name) == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Initial draft, result and count");
+    detail::access(ui).set_value(ids.name, u"工作站 A");
+    check(form.applied() == u"測試使用者" && detail::access(ui).text(ids.result).find(u"測試使用者") != std::u16string::npos,
           "Editing changes only the draft");
-    check(ui.text(ids.draft).find(u"工作站 A") != std::u16string::npos, "Current draft is displayed");
-    check(bool(ui.invoke(ids.apply)) && form.applied() == u"工作站 A" && form.applies() == 1, "Valid apply updates result once");
-    ui.focus(ids.name);
-    ui.select(ids.name, 6, 6);
-    ui.text_input(u"，這是一段會超出欄位寬度的很長很長的名稱");
+    check(detail::access(ui).text(ids.draft).find(u"工作站 A") != std::u16string::npos, "Current draft is displayed");
+    check(bool(detail::access(ui).invoke(ids.apply)) && form.applied() == u"工作站 A" && form.applies() == 1, "Valid apply updates result once");
+    detail::access(ui).focus(ids.name);
+    detail::access(ui).select(ids.name, 6, 6);
+    detail::access(ui).text_input(u"，這是一段會超出欄位寬度的很長很長的名稱");
     test::FakeMeasure measure;
     arrange(form.page(), ui, *appearance, measure, 360, 240, 1.f, form.scroll, ids.apply);
-    check(ui.text_offset(ids.name) > 0 && form.scroll.offset > 0, "Long draft and small window scroll the field and the page");
-    ui.invoke(ids.disabled);
-    check(bool(ui.invoke(ids.reset)), "Reset works while the data area is disabled");
-    check(ui.text(ids.name) == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Reset restores initial values");
-    check(!ui.undo(ids.name) && ui.text_offset(ids.name) == 0 && form.scroll.offset == 0, "Reset clears history and display offsets");
-    check(ui.focused() == ids.reset && ui.describe(ids.name)->enabled, "Focus stays on reset; the data area is enabled again");
+    check(detail::access(ui).text_offset(ids.name) > 0 && form.scroll.offset > 0, "Long draft and small window scroll the field and the page");
+    detail::access(ui).invoke(ids.disabled);
+    check(bool(detail::access(ui).invoke(ids.reset)), "Reset works while the data area is disabled");
+    check(detail::access(ui).text(ids.name) == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Reset restores initial values");
+    check(!detail::access(ui).undo(ids.name) && detail::access(ui).text_offset(ids.name) == 0 && form.scroll.offset == 0, "Reset clears history and display offsets");
+    check(detail::access(ui).focused() == ids.reset && detail::access(ui).describe(ids.name)->enabled, "Focus stays on reset; the data area is enabled again");
     settle(form);
 }
 
 void blank_name_error_follows_blur_and_apply() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    ui.focus(ids.name);
-    ui.key_down(ctrl(u'A'));
-    ui.text_input(u"　 ");
-    ui.key_down(key(Key::tab));
-    auto name = ui.describe(ids.name);
-    check(name->invalid && name->error == u"請填寫顯示名稱" && ui.text(ids.name_error) == name->error, "Blur on a blank name shows its error");
-    check(ui.describe(ids.name_error)->target == ids.name, "The error is associated with the name field");
-    auto result = ui.invoke(ids.apply);
-    check(result.status == Status::invalid_value && ui.focused() == ids.name, "Invalid apply is rejected and focuses the name");
+    detail::access(ui).focus(ids.name);
+    detail::access(ui).key_down(ctrl(u'A'));
+    detail::access(ui).text_input(u"　 ");
+    detail::access(ui).key_down(key(Key::tab));
+    auto name = detail::access(ui).describe(ids.name);
+    check(name->invalid && name->error == u"請填寫顯示名稱" && detail::access(ui).text(ids.name_error) == name->error, "Blur on a blank name shows its error");
+    check(detail::access(ui).describe(ids.name_error)->target == ids.name, "The error is associated with the name field");
+    auto result = detail::access(ui).invoke(ids.apply);
+    check(result.status == Status::invalid_value && detail::access(ui).focused() == ids.name, "Invalid apply is rejected and focuses the name");
     check(form.applied() == u"測試使用者" && form.applies() == 0, "Invalid apply keeps the old result and count");
-    ui.text_input(u"有效名稱");
-    check(!ui.describe(ids.name)->invalid, "Fixing the name clears the error");
-    ui.invoke(ids.apply);
+    detail::access(ui).text_input(u"有效名稱");
+    check(!detail::access(ui).describe(ids.name)->invalid, "Fixing the name clears the error");
+    detail::access(ui).invoke(ids.apply);
     check(form.applies() == 1 && form.applied() == u"　 有效名稱", "Successful apply adds exactly one");
-    ui.focus(ids.name);
-    ui.key_down(key(Key::enter));
+    detail::access(ui).focus(ids.name);
+    detail::access(ui).key_down(key(Key::enter));
     check(form.applies() == 1, "Enter in the name field does not apply");
     settle(form);
 }
@@ -80,16 +81,16 @@ void blank_name_error_follows_blur_and_apply() {
 void apply_button_starts_once() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    ui.pointer_down(ids.apply);
-    ui.pointer_up({});
+    detail::access(ui).pointer_down(ids.apply);
+    detail::access(ui).pointer_up({});
     check(form.applies() == 0, "Pressing apply then releasing outside cancels");
-    ui.pointer_down(ids.apply);
-    ui.pointer_up(ids.apply);
-    ui.key_down(key(Key::space));
-    ui.key_down({.key = Key::space, .repeat = true});
-    ui.key_up(Key::space);
-    ui.key_down(key(Key::enter));
-    ui.key_down({.key = Key::enter, .repeat = true});
+    detail::access(ui).pointer_down(ids.apply);
+    detail::access(ui).pointer_up(ids.apply);
+    detail::access(ui).key_down(key(Key::space));
+    detail::access(ui).key_down({.key = Key::space, .repeat = true});
+    detail::access(ui).key_up(Key::space);
+    detail::access(ui).key_down(key(Key::enter));
+    detail::access(ui).key_down({.key = Key::enter, .repeat = true});
     check(form.applies() == 3, "Click, Space and Enter each apply once; holding a key does not repeat");
     settle(form);
 }
@@ -97,14 +98,14 @@ void apply_button_starts_once() {
 void paste_undo_redo_never_touches_applied() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    ui.focus(ids.name);
-    ui.key_down(ctrl(u'A'));
-    ui.paste(ids.name, u"Alpha\nBeta");
-    check(ui.text(ids.name) == u"Alpha Beta", "Pasted line break becomes a space");
-    ui.key_down(ctrl(u'Z'));
-    check(ui.text(ids.name) == u"測試使用者", "Undo restores the original name");
-    ui.key_down(ctrl(u'Y'));
-    check(ui.text(ids.name) == u"Alpha Beta" && form.applied() == u"測試使用者" && form.applies() == 0,
+    detail::access(ui).focus(ids.name);
+    detail::access(ui).key_down(ctrl(u'A'));
+    detail::access(ui).paste(ids.name, u"Alpha\nBeta");
+    check(detail::access(ui).text(ids.name) == u"Alpha Beta", "Pasted line break becomes a space");
+    detail::access(ui).key_down(ctrl(u'Z'));
+    check(detail::access(ui).text(ids.name) == u"測試使用者", "Undo restores the original name");
+    detail::access(ui).key_down(ctrl(u'Y'));
+    check(detail::access(ui).text(ids.name) == u"Alpha Beta" && form.applied() == u"測試使用者" && form.applies() == 0,
           "Redo restores the paste; the applied result never changes");
     settle(form);
 }
@@ -112,24 +113,24 @@ void paste_undo_redo_never_touches_applied() {
 void read_only_and_disabled_fixtures_restrict_and_recover() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    ui.focus(ids.name);
-    ui.text_input(u"!");
-    ui.invoke(ids.read_only);
-    check(ui.describe(ids.name)->read_only && ui.text(ids.state).find(u"唯讀") != std::u16string::npos,
+    detail::access(ui).focus(ids.name);
+    detail::access(ui).text_input(u"!");
+    detail::access(ui).invoke(ids.read_only);
+    check(detail::access(ui).describe(ids.name)->read_only && detail::access(ui).text(ids.state).find(u"唯讀") != std::u16string::npos,
           "Read-only state has readable text, not just color");
-    ui.focus(ids.name);
-    check(ui.text_input(u"x").status == Status::read_only && ui.undo(ids.name).status == Status::read_only,
+    detail::access(ui).focus(ids.name);
+    check(detail::access(ui).text_input(u"x").status == Status::read_only && detail::access(ui).undo(ids.name).status == Status::read_only,
           "Read-only name refuses input and undo");
-    ui.invoke(ids.disabled);
-    check(ui.text(ids.state).find(u"停用") != std::u16string::npos, "Disabled state has readable text");
-    std::vector<Status> refused{ui.focus(ids.name).status, ui.pointer_down(ids.apply).status,
-                                ui.set_value(ids.name, u"x").status, ui.invoke(ids.apply).status};
+    detail::access(ui).invoke(ids.disabled);
+    check(detail::access(ui).text(ids.state).find(u"停用") != std::u16string::npos, "Disabled state has readable text");
+    std::vector<Status> refused{detail::access(ui).focus(ids.name).status, detail::access(ui).pointer_down(ids.apply).status,
+                                detail::access(ui).set_value(ids.name, u"x").status, detail::access(ui).invoke(ids.apply).status};
     check(refused == std::vector<Status>(4, Status::disabled) && form.applies() == 0, "Pointer, keyboard and semantic retries are refused");
-    auto order = ui.focus_order();
+    auto order = detail::access(ui).focus_order();
     check(std::find(order.begin(), order.end(), ids.normal) != order.end() && std::find(order.begin(), order.end(), ids.name) == order.end(),
           "Recovery entry stays reachable while the name leaves the Tab order");
-    ui.invoke(ids.normal);
-    check(ui.text(ids.name) == u"!測試使用者" && bool(ui.undo(ids.name)), "Recovery keeps the draft and its history");
+    detail::access(ui).invoke(ids.normal);
+    check(detail::access(ui).text(ids.name) == u"!測試使用者" && bool(detail::access(ui).undo(ids.name)), "Recovery keeps the draft and its history");
     settle(form);
 }
 
@@ -137,30 +138,30 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
     std::vector<Id> seen;
-    for (int i = 0; i < 9; ++i) { ui.key_down(key(Key::tab)); seen.push_back(ui.focused()); }
+    for (int i = 0; i < 9; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
     std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.apply, ids.normal};
     check(seen == expected, "Tab reaches fixtures, name and apply, then wraps");
-    ui.key_down(key(Key::tab, true));
-    check(ui.focused() == ids.apply, "Shift+Tab walks back");
-    auto name = ui.describe(ids.name);
+    detail::access(ui).key_down(key(Key::tab, true));
+    check(detail::access(ui).focused() == ids.apply, "Shift+Tab walks back");
+    auto name = detail::access(ui).describe(ids.name);
     check(name->kind == Kind::text && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
           "Name field answers identity, type, name and value");
-    auto apply = ui.describe(ids.apply);
+    auto apply = detail::access(ui).describe(ids.apply);
     check(apply->kind == Kind::button && apply->name == u"套用" && apply->focused, "Apply answers its name and focus");
-    check(!ui.describe(ids.title)->focusable && !ui.describe(ids.result)->focusable, "Display text stays out of the Tab order");
-    ui.invoke(ids.error);
-    check(ui.describe(ids.name)->invalid && ui.focused() == ids.name, "Error fixture shows the name error and focuses it");
+    check(!detail::access(ui).describe(ids.title)->focusable && !detail::access(ui).describe(ids.result)->focusable, "Display text stays out of the Tab order");
+    detail::access(ui).invoke(ids.error);
+    check(detail::access(ui).describe(ids.name)->invalid && detail::access(ui).focused() == ids.name, "Error fixture shows the name error and focuses it");
     settle(form);
 }
 
 void source_updates_offer_the_latest_value() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
-    ui.set_value(ids.name, u"my draft");
+    detail::access(ui).set_value(ids.name, u"my draft");
     form.update_source(u"remote value");
-    check(ui.text(ids.name) == u"my draft" && ui.text(ids.state).find(u"\u4f86\u6e90\u5df2\u66f4\u65b0") != std::u16string::npos,
+    check(detail::access(ui).text(ids.name) == u"my draft" && detail::access(ui).text(ids.state).find(u"\u4f86\u6e90\u5df2\u66f4\u65b0") != std::u16string::npos,
           "An external change retains the draft and displays a conflict");
-    check(bool(ui.invoke(ids.latest)) && ui.text(ids.name) == u"remote value",
+    check(bool(detail::access(ui).invoke(ids.latest)) && detail::access(ui).text(ids.name) == u"remote value",
           "The user can discard the draft in favor of the latest source value");
 }
 
@@ -172,33 +173,33 @@ void both_appearances_give_same_results() {
         auto& ui = form.ui;
         test::FakeMeasure measure;
         std::vector<int> statuses;
-        auto step = [&](Result r) { statuses.push_back(static_cast<int>(r.status)); arrange(form.page(), ui, *each, measure, 640, 480, 1.f, form.scroll, ui.focused()); };
-        step(ui.focus(ids.name));
-        step(ui.key_down(ctrl(u'A')));
-        step(ui.paste(ids.name, u"Alpha\r\nBeta"));
-        step(ui.invoke(ids.apply));
-        step(ui.invoke(ids.read_only));
-        step(ui.paste(ids.name, u"x"));
-        step(ui.invoke(ids.disabled));
-        step(ui.invoke(ids.apply));
-        step(ui.invoke(ids.normal));
-        step(ui.focus(ids.name));
-        step(ui.key_down(ctrl(u'A')));
-        step(ui.text_input(u" "));
-        step(ui.invoke(ids.apply));
+        auto step = [&](Result r) { statuses.push_back(static_cast<int>(r.status)); arrange(form.page(), ui, *each, measure, 640, 480, 1.f, form.scroll, detail::access(ui).focused()); };
+        step(detail::access(ui).focus(ids.name));
+        step(detail::access(ui).key_down(ctrl(u'A')));
+        step(detail::access(ui).paste(ids.name, u"Alpha\r\nBeta"));
+        step(detail::access(ui).invoke(ids.apply));
+        step(detail::access(ui).invoke(ids.read_only));
+        step(detail::access(ui).paste(ids.name, u"x"));
+        step(detail::access(ui).invoke(ids.disabled));
+        step(detail::access(ui).invoke(ids.apply));
+        step(detail::access(ui).invoke(ids.normal));
+        step(detail::access(ui).focus(ids.name));
+        step(detail::access(ui).key_down(ctrl(u'A')));
+        step(detail::access(ui).text_input(u" "));
+        step(detail::access(ui).invoke(ids.apply));
         auto frame = arrange(form.page(), ui, *each, measure, 960, 720, 1.f, form.scroll);
         auto field = frame.find(ids.name);
         check(field && !field->error_lines.empty() && field->label_lines.front().text == u"顯示名稱",
               "Each appearance carries the name label and error with the field");
         std::vector<Semantics> snapshot;
-        for (const auto& control : ui.controls()) snapshot.push_back(*ui.describe(control.id));
+        for (const auto& control : detail::access(ui).controls()) snapshot.push_back(*detail::access(ui).describe(control.id));
         Semantics applied;
         applied.id = "applied";
         applied.value = form.applied() + u"/" + std::u16string(1, char16_t(u'0' + form.applies()));
         snapshot.push_back(applied);
         runs.push_back(std::move(snapshot));
         int depth = 0;  // measured last: walking history re-runs the form's fix-clears-error policy
-        while (ui.undo(ids.name)) ++depth;
+        while (detail::access(ui).undo(ids.name)) ++depth;
         statuses.push_back(depth);
         outcomes.push_back(statuses);
     }

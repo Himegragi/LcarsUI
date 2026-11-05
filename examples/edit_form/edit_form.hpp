@@ -7,10 +7,10 @@
 
 namespace edit_form {
 struct Ids {
-    lcars::Id title, intro;
-    lcars::Id normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
-    lcars::Id name_label, name, name_help, name_error, apply;
-    lcars::Id state, draft, result, count, latest;                        // displayed results
+    std::string title, intro;
+    std::string normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
+    std::string name_label, name, name_help, name_error, apply;
+    std::string state, draft, result, count, latest;                        // displayed results
 };
 Ids default_ids();
 
