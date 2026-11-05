@@ -1,3 +1,21 @@
+# V03 tooltip - issue #24 (2026-11-06)
+
+Production and tests: `330dcda`, based on local integration `1c67d42`; the local integration tip was merged and already an ancestor. V03 attaches the explanatory tooltip to the typed 50% button handle. The application still owns progress and the same application logic is used by both appearances.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 61/61, layout 21/21, form 24/24 for each appearance and ID set (676 cumulative checks), list 6/6 |
+| Release desktop build and CTest | 7/7 suites passed, 0 failed; 62/62 native checks | `build.ps1 -Configuration Release`; [host results](ticket-24-host/host.tsv) |
+| P05, P06, P08 and R08 | Passed for both appearances | Public handles verify configurable delay, Escape, pointer and focus eligibility, source removal, modal and page reset. Native message tests cover timing, focus, Space, and 960?720 / 640?480 DIP at forced 100% / 150%. [Web tooltip](ticket-24-host/web-tooltip-640-150.bmp), [Material tooltip](ticket-24-host/material-tooltip-640-150.bmp), [Web dialog](ticket-24-host/web-dialog-640-150.bmp), [Material dialog](ticket-24-host/material-dialog-640-150.bmp). |
+| Clipboard stress | 400/400 passed, 0 failed | [results](ticket-24-clipboard/clipboard.tsv), 100 repetitions per appearance, including the 60 ms forced-contention case |
+| Real Microsoft Bopomofo, one run | 44/44 passed, 0 failed or blocked | [results](ticket-24-ime/ime.tsv), [events](ticket-24-ime/ime-events.log). Physical pointer dwell/leave and an actual foreground switch away and back confirmed P05/R08 for each appearance. The IME composition, page and dialog cases also ran; the run was not interrupted. |
+
+The TDD keyboard and layout cases initially failed for missing functionality; a modal test exposed a visible tooltip surviving modal activation and was fixed. An intermediate native test posted pointer movement to a background window and failed because real Windows mouse-leave tracking cleared that artificial hover. The final message test records its narrower scope; physical dwell and leave were checked in the real-input run. Intermediate failures are not counted as final passes.
+
+Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Forced scaling is layout evidence, not a real cross-monitor DPI migration. Real cross-monitor DPI migration, UIA/MCP, user trial, and the remaining E01 matrix remain open.
+
+---
+
 # V03 modal dialog - issue #23 (2026-11-05)
 
 Production: `a946f24`, based on integration tip `9179e12`; native matrix and documentation: `f2a67a3`. The integration tip was merged locally and was already an ancestor. V03 owns the progress and result; confirmation sets progress to 0 and increments the count once. Cancel leaves progress unchanged. The temporary opener can be removed from inside the dialog; reset recreates it and keeps the old handle invalid.
