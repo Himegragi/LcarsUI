@@ -32,6 +32,7 @@ std::vector<Control> controls(const Ids& i) {
         {.id = i.draft, .kind = Kind::label},
         {.id = i.result, .kind = Kind::label},
         {.id = i.count, .kind = Kind::label},
+        {.id = i.latest, .kind = Kind::button, .label = u"\u6539\u7528\u6700\u65b0\u503c", .enabled = false},
     };
 }
 bool blank(std::u16string_view text) {
@@ -45,69 +46,102 @@ Ids default_ids() {
     i.normal = "fixture.normal"; i.read_only = "fixture.read_only"; i.disabled = "fixture.disabled";
     i.error = "fixture.error"; i.long_text = "fixture.long"; i.reset = "form.reset";
     i.name_label = "form.name.label"; i.name = "form.name"; i.name_help = "form.name.help"; i.name_error = "form.name.error";
-    i.apply = "form.apply"; i.state = "result.state"; i.draft = "result.draft"; i.result = "result.applied"; i.count = "result.count";
+    i.apply = "form.apply"; i.state = "result.state"; i.draft = "result.draft"; i.result = "result.applied"; i.count = "result.count"; i.latest = "form.latest";
     return i;
 }
 
-Form::Form(Ids ids) : ui(controls(ids)), ids_(std::move(ids)), applied_(initial_name) {
-    const auto& i = ids_;
-    ui.bind_text(i.intro, [this] { return long_intro_ ? long_intro : short_intro; });
-    ui.bind_text(i.state, [this] {
-        std::u16string state = mode_ == Mode::read_only ? u"名稱唯讀" : mode_ == Mode::disabled ? u"資料區停用" : u"正常";
-        if (ui.describe(ids_.name)->invalid) state += u"・名稱有錯誤";
-        return u"狀態：" + state;
+Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
+    auto declarations = controls(ids_);
+    ui.add_label(std::move(declarations[0]));
+    auto intro = ui.add_label(std::move(declarations[1]));
+    auto normal = ui.add_button(std::move(declarations[2]));
+    auto read_only = ui.add_button(std::move(declarations[3]));
+    auto disabled = ui.add_button(std::move(declarations[4]));
+    auto error = ui.add_button(std::move(declarations[5]));
+    auto long_text = ui.add_button(std::move(declarations[6]));
+    reset_ = ui.add_button(std::move(declarations[7]));
+    ui.add_label(std::move(declarations[8]));
+    name_ = ui.add_text(std::move(declarations[9]));
+    ui.add_label(std::move(declarations[10]));
+    ui.add_label(std::move(declarations[11]));
+    apply_ = ui.add_button(std::move(declarations[12]));
+    auto state = ui.add_label(std::move(declarations[13]));
+    auto draft = ui.add_label(std::move(declarations[14]));
+    auto result = ui.add_label(std::move(declarations[15]));
+    auto count = ui.add_label(std::move(declarations[16]));
+    latest_ = ui.add_button(std::move(declarations[17]));
+
+    name_.connect_source({[this] { return applied_; }, [this](std::function<void()> changed) {
+        source_changed_ = std::move(changed);
+        return [this] { source_changed_ = {}; };
+    }});
+    intro.connect_source([this] { return long_intro_ ? long_intro : short_intro; });
+    state.connect_source([this] {
+        std::u16string state = mode_ == Mode::read_only ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
+        if (name_.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
+        if (name_.source_conflict()) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
+        return u"\u72c0\u614b\uff1a" + state;
     });
-    ui.bind_text(i.draft, [this] { return u"目前編輯值：" + ui.text(ids_.name); });
-    ui.bind_text(i.result, [this] { return u"上次套用結果：" + applied_; });
-    ui.bind_text(i.count, [this] { auto n = std::to_string(applies_); return u"套用次數：" + std::u16string(n.begin(), n.end()); });
-    // Validation policy: on leaving the name, and while an error is shown so fixing clears it.
+    draft.connect_source([this] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + name_.describe()->value; });
+    result.connect_source([this] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_; });
+    count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
     ui.on_focus([this](const Id& from, const Id&) { if (from == ids_.name) validate(); });
-    ui.on_change([this] { if (ui.describe(ids_.name)->invalid) validate(); });
-    ui.bind(i.apply, [this] { return apply(); });
-    ui.bind(i.normal, [this] { set_mode(Mode::normal); return Result{}; });
-    ui.bind(i.read_only, [this] { set_mode(Mode::read_only); return Result{}; });
-    ui.bind(i.disabled, [this] { set_mode(Mode::disabled); return Result{}; });
-    ui.bind(i.long_text, [this] { long_intro_ = !long_intro_; return Result{}; });
-    ui.bind(i.reset, [this] { return reset(); });
-    ui.bind(i.error, [this] {
-        // A named fixture: blank the name as an undoable edit, then show its error.
+    ui.on_change([this] { if (name_.describe()->invalid) validate(); refresh_conflict(); });
+    ui.connect_confirmation(apply_, {name_}, [this](const auto& changes) { return apply(changes); });
+    normal.bind([this] { set_mode(Mode::normal); return Result{}; });
+    read_only.bind([this] { set_mode(Mode::read_only); return Result{}; });
+    disabled.bind([this] { set_mode(Mode::disabled); return Result{}; });
+    long_text.bind([this] { long_intro_ = !long_intro_; return Result{}; });
+    reset_.bind([this] { return reset(); });
+    latest_.bind([this] { auto result = name_.use_latest(); refresh_conflict(); return result; });
+    error.bind([this] {
         set_mode(Mode::normal);
-        ui.set_value(ids_.name, u"");
+        name_.set_value(u"");
         validate();
-        ui.focus(ids_.name);
+        name_.focus();
         return Result{};
     });
 }
 
 bool Form::validate() {
-    bool valid = !blank(ui.text(ids_.name));
-    ui.set_error(ids_.name, valid ? u"" : u"請填寫顯示名稱");
+    bool valid = !blank(name_.describe()->value);
+    name_.set_error(valid ? u"" : u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31");
     return valid;
 }
-Result Form::apply() {
-    if (!validate()) {
-        ui.focus(ids_.name);
-        return {Status::invalid_value, u"請填寫顯示名稱"};
+ConfirmationResult Form::apply(const std::vector<TextChange>& changes) {
+    if (blank(changes[0].value)) {
+        auto message = std::u16string(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31");
+        return {{Status::invalid_value, message}, {{0, message}}};
     }
-    applied_ = ui.text(ids_.name);
+    applied_ = changes[0].value;
     ++applies_;
+    if (source_changed_) source_changed_();
     return {};
+}
+void Form::update_source(std::u16string value) {
+    applied_ = std::move(value);
+    if (source_changed_) source_changed_();
+    refresh_conflict();
+}
+void Form::refresh_conflict() {
+    latest_.enable(mode_ != Mode::disabled && mode_ != Mode::read_only && name_.source_conflict());
 }
 void Form::set_mode(Mode mode) {
     mode_ = mode;
-    ui.set_read_only(ids_.name, mode == Mode::read_only);
-    ui.enable(ids_.name, mode != Mode::disabled);
-    ui.enable(ids_.apply, mode != Mode::disabled);
+    name_.read_only(mode == Mode::read_only);
+    name_.enable(mode != Mode::disabled);
+    apply_.enable(mode != Mode::disabled);
+    refresh_conflict();
 }
 Result Form::reset() {
     set_mode(Mode::normal);
     long_intro_ = false;
-    ui.replace_text(ids_.name, initial_name);
-    ui.set_error(ids_.name, u"");
-    applied_ = initial_name;
+    update_source(initial_name);
+    name_.reset_to_source();
+    refresh_conflict();
     applies_ = 0;
     scroll.offset = 0;
-    ui.focus(ids_.reset);
+    reset_.focus();
     return {};
 }
 
@@ -118,7 +152,7 @@ layout::Node Form::page() const {
         control(i.title, 24),
         control(i.intro),
         grid({control(i.normal), control(i.read_only), control(i.disabled), control(i.error), control(i.long_text), control(i.reset)}, 120, 8),
-        grid({column({control(i.name), row({control(i.apply), control(i.state)}, 16)}, 12),
+        grid({column({control(i.name), row({control(i.apply), control(i.latest), control(i.state)}, 16)}, 12),
               column({control(i.draft), control(i.result), control(i.count)}, 8)},
              360, 32),
     }, 16, 24));

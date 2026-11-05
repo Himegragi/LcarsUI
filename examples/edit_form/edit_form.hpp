@@ -10,21 +10,11 @@ struct Ids {
     lcars::Id title, intro;
     lcars::Id normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
     lcars::Id name_label, name, name_help, name_error, apply;
-    lcars::Id state, draft, result, count;                        // displayed results
+    lcars::Id state, draft, result, count, latest;                        // displayed results
 };
 Ids default_ids();
 
 class Form {
-public:
-    explicit Form(Ids ids = default_ids());
-    Form(const Form&) = delete;
-    Form& operator=(const Form&) = delete;
-    lcars::Ui ui;
-    lcars::ScrollState scroll;  // page view state; reset returns it to the top
-    lcars::layout::Node page() const;
-    const Ids& ids() const { return ids_; }
-    const std::u16string& applied() const { return applied_; }
-    int applies() const { return applies_; }
 private:
     enum class Mode { normal, read_only, disabled };
     Ids ids_;
@@ -32,9 +22,25 @@ private:
     int applies_ = 0;
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
+    std::function<void()> source_changed_;
+public:
+    explicit Form(Ids ids = default_ids());
+    Form(const Form&) = delete;
+    Form& operator=(const Form&) = delete;
+    lcars::Ui ui;
+    lcars::ScrollState scroll;
+    lcars::layout::Node page() const;
+    const Ids& ids() const { return ids_; }
+    const std::u16string& applied() const { return applied_; }
+    int applies() const { return applies_; }
+    // An external application change to the same model (also useful to exercise conflicts).
+    void update_source(std::u16string value);
+private:
+    lcars::TextHandle name_;
+    lcars::ButtonHandle apply_, latest_, reset_;
     bool validate();
-    lcars::Result apply();
+    lcars::ConfirmationResult apply(const std::vector<lcars::TextChange>& changes);
+    void refresh_conflict();
     void set_mode(Mode mode);
     lcars::Result reset();
-};
-}
+};}

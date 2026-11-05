@@ -14,7 +14,7 @@ edit_form::Ids alternate_ids() {
     edit_form::Ids i;
     i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
-    i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c";
+    i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c"; i.latest = "latest";
     return i;
 }
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
@@ -153,6 +153,17 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     settle(form);
 }
 
+void source_updates_offer_the_latest_value() {
+    edit_form::Form form(ids);
+    auto& ui = form.ui;
+    ui.set_value(ids.name, u"my draft");
+    form.update_source(u"remote value");
+    check(ui.text(ids.name) == u"my draft" && ui.text(ids.state).find(u"\u4f86\u6e90\u5df2\u66f4\u65b0") != std::u16string::npos,
+          "An external change retains the draft and displays a conflict");
+    check(bool(ui.invoke(ids.latest)) && ui.text(ids.name) == u"remote value",
+          "The user can discard the draft in favor of the latest source value");
+}
+
 void both_appearances_give_same_results() {
     std::vector<std::vector<Semantics>> runs;
     std::vector<std::vector<int>> outcomes;
@@ -204,6 +215,7 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"G11 source updates offer the latest value", source_updates_offer_the_latest_value},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},

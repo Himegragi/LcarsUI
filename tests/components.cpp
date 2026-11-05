@@ -417,6 +417,8 @@ void source_conflict_keeps_draft_until_cancelled() {
     field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
+    auto confirm = ui.add_button({.id = "conflict.apply", .kind = Kind::button});
+    ui.connect_confirmation(confirm, {field}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; });
     field.set_value(u"draft");
     model = u"newest";
     changed();
@@ -500,8 +502,60 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
           "The new draft starts from the submitted value");
 }
 
+void connected_text_requires_explicit_write_timing() {
+    std::u16string model = u"source";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "timing.field", .kind = Kind::text});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    check(field.set_value(u"draft").status == Status::invalid_value && field.describe()->value == u"source",
+          "A connected editable field without explicit write timing rejects editing");
+}
+
+void source_update_during_composition_keeps_preedit() {
+    std::u16string model = u"one";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "ime.source", .kind = Kind::text});
+    auto apply = ui.add_button({.id = "ime.apply", .kind = Kind::button});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    ui.connect_confirmation(apply, {field}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; });
+    field.focus();
+    ui.composition_update(u"preedit", 7);
+    model = u"external";
+    changed();
+    check(ui.edit("ime.source")->composing && ui.edit("ime.source")->preedit == u"preedit",
+          "Source updates never discard an active composition");
+    ui.composition_commit(u"text");
+    check(field.describe()->value == u"textone" && field.source_conflict(),
+          "The committed composition remains a conflicting draft");
+}
+
+void editing_again_after_matching_the_source_uses_the_new_origin() {
+    std::u16string model = u"old";
+    std::function<void()> changed;
+    Ui ui({});
+    auto field = ui.add_text({.id = "origin.field", .kind = Kind::text});
+    auto apply = ui.add_button({.id = "origin.apply", .kind = Kind::button});
+    field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
+    std::u16string sent_origin;
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
+        sent_origin = changes[0].origin;
+        return ConfirmationResult{};
+    });
+    field.set_value(u"draft");
+    model = u"latest"; changed();
+    field.set_value(u"latest");
+    field.set_value(u"another draft");
+    apply.invoke();
+    check(sent_origin == u"latest", "A fresh draft starts from the current source, not an older conflict origin");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G11 a fresh draft starts at the current source", editing_again_after_matching_the_source_uses_the_new_origin},
+        {"G11 source updates preserve composition", source_update_during_composition_keeps_preedit},
+        {"G10 connected text requires explicit write timing", connected_text_requires_explicit_write_timing},
         {"G11 confirmation blocks reentry but preserves new edits", confirmation_blocks_reentry_but_preserves_new_edits},
         {"G11 rejected group retains drafts and focuses first error", rejected_group_keeps_drafts_and_focuses_first_error},
         {"G11 confirmation submits draft and origin and keeps history", confirmation_submits_draft_and_origin_and_keeps_history},

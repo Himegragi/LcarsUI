@@ -100,6 +100,12 @@ public:
     TextHandle() = default;
     Result set_value(std::u16string value) const;
     Result undo() const;
+    Result paste(std::u16string_view text) const;
+    Result focus() const;
+    Result set_error(std::u16string message) const;
+    Result reset_to_source() const;
+    void enable(bool enabled) const;
+    void read_only(bool enabled) const;
     Result connect_source(TextSource source) const;
     bool source_conflict() const;
     Result use_latest() const;
@@ -116,10 +122,25 @@ class ButtonHandle {
 public:
     ButtonHandle() = default;
     Result invoke() const;
+    Result focus() const;
+    Result bind(std::function<Result()> action) const;
+    void enable(bool enabled) const;
     bool executing() const;
 private:
     friend class Ui;
     ButtonHandle(Ui* ui, std::weak_ptr<void> lifetime, Id id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    Ui* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    Id id_;
+};
+class LabelHandle {
+public:
+    LabelHandle() = default;
+    Result connect_source(std::function<std::u16string()> read) const;
+private:
+    friend class Ui;
+    LabelHandle(Ui* ui, std::weak_ptr<void> lifetime, Id id)
         : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     Ui* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
@@ -142,6 +163,7 @@ public:
     ~Ui();
     TextHandle add_text(Control control);
     ButtonHandle add_button(Control control);
+    LabelHandle add_label(Control control);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Ui(const Ui&)=delete;
@@ -222,6 +244,7 @@ private:
         std::u16string source_value, origin;
         bool has_source_value = false;
         bool submitting = false;
+        bool confirmation_member = false;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;

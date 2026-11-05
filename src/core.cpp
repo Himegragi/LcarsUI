@@ -82,12 +82,65 @@ ButtonHandle Ui::add_button(Control control) {
     controls_.push_back(std::move(control));
     return ButtonHandle(this, lifetime_, std::move(id));
 }
+LabelHandle Ui::add_label(Control control) {
+    if (control.kind != Kind::label || control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid label component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    return LabelHandle(this, lifetime_, std::move(id));
+}
+Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (!read) return {Status::invalid_value, u"A label source requires a reader"};
+    ui_->bind_text(id_, std::move(read));
+    return {};
+}
+Result ButtonHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result ButtonHandle::bind(std::function<Result()> action) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (!action) return {Status::invalid_value, u"An action is required"};
+    ui_->bind(id_, std::move(action));
+    return {};
+}
+void ButtonHandle::enable(bool enabled) const {
+    if (!lifetime_.expired()) ui_->enable(id_, enabled);
+}
+Result TextHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result TextHandle::set_error(std::u16string message) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_error(id_, std::move(message));
+}
+void TextHandle::enable(bool enabled) const {
+    if (!lifetime_.expired()) ui_->enable(id_, enabled);
+}
+void TextHandle::read_only(bool enabled) const {
+    if (!lifetime_.expired()) ui_->set_read_only(id_, enabled);
+}
+Result TextHandle::reset_to_source() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    auto it = ui_->edits_.find(id_);
+    if (it == ui_->edits_.end() || !it->second.has_source_value)
+        return {Status::invalid_value, u"Text source is not connected"};
+    ui_->replace_text(id_, it->second.source_value);
+    it->second.origin = it->second.source_value;
+    return ui_->set_error(id_, u"");
+}
 Result ButtonHandle::invoke() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->invoke(id_);
 }
 bool ButtonHandle::executing() const {
     return !lifetime_.expired() && ui_->executing_ == id_;
+}
+Result TextHandle::paste(std::u16string_view text) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->paste(id_, text);
 }
 Result TextHandle::undo() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -102,6 +155,7 @@ Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fie
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value)
             return {Status::invalid_value, u"A text source requires read and subscribe"};
     }
+    for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
     bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
         std::vector<TextChange> changes;
         for (const auto& handle : fields) {
@@ -132,7 +186,8 @@ Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fie
             }
             if (first) focus(fields[*first].id_);
         }
-        return outcome.result;
+        auto notification = notify();
+        return notification ? outcome.result : notification;
     });
     return {};
 }
@@ -164,7 +219,7 @@ void Ui::source_changed(const Id& id) {
     const bool clean = !field.has_source_value || field.session.text == field.source_value;
     field.source_value = latest;
     field.has_source_value = true;
-    if (clean && !field.submitting) {
+    if (clean && !field.submitting && !field.session.composing) {
         replace_text(id, latest);
         field.origin = latest;
     }
@@ -217,7 +272,7 @@ std::optional<Semantics> Ui::describe(std::string_view id) const {
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
-        if (!control->read_only && !field.session.composing) {
+        if (!control->read_only && !field.session.composing && (!field.has_source_value || field.confirmation_member)) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
@@ -269,6 +324,8 @@ Result Ui::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    if (it->second.has_source_value && !it->second.confirmation_member)
+        return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
     field = &it->second;
@@ -287,6 +344,8 @@ Result Ui::replace_selection(std::string_view id, Field& field, std::u16string_v
     }
     auto caret = first + static_cast<unsigned>(insertion.size());
     if (next == session.text) { session.select(caret, caret); return {}; }
+    if (field.has_source_value && !field.submitting && session.text == field.source_value)
+        field.origin = field.source_value;
     field.past.push_back({session.text, session.selection});
     field.future.clear();
     session.text = std::move(next);
@@ -301,6 +360,8 @@ Result Ui::travel(std::string_view id, bool forward) {
     auto& to = forward ? field->past : field->future;
     if (from.empty()) return {Status::not_supported, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
     auto& session = field->session;
+    if (field->has_source_value && !field->submitting && session.text == field->source_value)
+        field->origin = field->source_value;
     to.push_back({session.text, session.selection});
     auto snapshot = std::move(from.back());
     from.pop_back();

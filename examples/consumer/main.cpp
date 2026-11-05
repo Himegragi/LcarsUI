@@ -30,37 +30,41 @@ void expect(bool ok, const char* what) {
 int main() {
     using namespace lcars;
     Profile profile;
-    Ui ui({{.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name},
-           {.id = "profile.alias", .kind = Kind::text, .value = profile.alias, .max_length = 12},
-           {.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error},
-           {.id = "profile.save", .kind = Kind::button, .label = u"Save alias"},
-           {.id = "profile.summary", .kind = Kind::label}});
-    ui.bind_text("profile.summary", [&] { return u"Saved " + profile.alias; });
-    ui.bind("profile.save", [&] {
-        auto alias = ui.text("profile.alias");
-        if (alias.size() < 3) {
-            ui.set_error("profile.alias", u"At least three characters");
-            return Result{Status::invalid_value, u"At least three characters"};
+    std::function<void()> changed;
+    Ui ui({});
+    ui.add_label({.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name});
+    auto alias = ui.add_text({.id = "profile.alias", .kind = Kind::text, .max_length = 12});
+    ui.add_label({.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error});
+    auto save = ui.add_button({.id = "profile.save", .kind = Kind::button, .label = u"Save alias"});
+    auto summary = ui.add_label({.id = "profile.summary", .kind = Kind::label});
+    alias.connect_source({[&] { return profile.alias; }, [&](std::function<void()> callback) {
+        changed = std::move(callback);
+        return [&] { changed = {}; };
+    }});
+    summary.connect_source([&] { return u"Saved " + profile.alias; });
+    ui.connect_confirmation(save, {alias}, [&](const std::vector<TextChange>& changes) {
+        if (changes[0].value.size() < 3) {
+            return ConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{0, u"At least three characters"}}};
         }
-        ui.set_error("profile.alias", u"");
-        profile.alias = alias;
+        profile.alias = changes[0].value;
         ++profile.saves;
-        return Result{};
+        if (changed) changed();
+        return ConfirmationResult{};
     });
 
-    ui.focus("profile.alias");
+    alias.focus();
     ui.key_down({.ctrl = true, .letter = u'A'});
     ui.text_input(u"ab");
-    expect(ui.invoke("profile.save").status == Status::invalid_value && profile.saves == 0, "consumer validation rejects a short alias");
-    expect(ui.describe("profile.alias")->error == u"At least three characters", "consumer error is attached to its own field");
+    expect(save.invoke().status == Status::invalid_value && profile.saves == 0, "consumer validation rejects a short alias");
+    expect(alias.describe()->error == u"At least three characters", "consumer error is attached to its own field");
     ui.text_input(u"cdef");
-    ui.focus("profile.save");
+    save.focus();
     ui.key_down({.key = Key::enter});
     expect(profile.alias == u"abcdef" && profile.saves == 1, "consumer callback writes its existing data model once");
-    expect(ui.focused() == "profile.save" && ui.text_input(u"x").status == Status::invalid_value && ui.text("profile.alias") == u"abcdef",
+    expect(ui.focused() == "profile.save" && ui.text_input(u"x").status == Status::invalid_value && alias.describe()->value == u"abcdef",
            "a focused button refuses typed text and the field is untouched");
-    ui.focus("profile.alias");
-    expect(ui.paste("profile.alias", u"0123456789").status == Status::invalid_value, "consumer-chosen length limit is enforced");
+    alias.focus();
+    expect(alias.paste(u"0123456789").status == Status::invalid_value, "consumer-chosen length limit is enforced");
 
     Monospace measure;
     ScrollState scroll;
@@ -68,8 +72,8 @@ int main() {
     auto frame = arrange(page, ui, material_appearance(), measure, 480, 320, 1.f, scroll);
     const auto* field = frame.find("profile.alias");
     expect(field && field->label_lines.size() == 1 && field->label_lines[0].text == u"Alias", "framework layout carries the consumer's label");
-    const auto* save = frame.find("profile.save");
-    const auto* hit = save ? frame.hit(save->bounds.x + 1, save->bounds.y + 1) : nullptr;
+    const auto* placement = frame.find("profile.save");
+    const auto* hit = placement ? frame.hit(placement->bounds.x + 1, placement->bounds.y + 1) : nullptr;
     expect(hit && hit->id == "profile.save", "consumer IDs are hit-testable");
     std::printf("%s\n", failures ? "consumer FAILED" : "consumer OK");
     return failures ? 1 : 0;
