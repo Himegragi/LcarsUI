@@ -12,7 +12,7 @@
 
 The desktop example starts with three fixed tabs. Left and Right move the tab candidate; Enter or Space activates it, and a pointer click activates the clicked enabled tab. The selected tab and keyboard candidate are independently indicated. Disabled pages cannot be activated. An exclamation mark on a tab indicates that a member has a validation error. The framework switches to and reveals the first invalid field in a rejected cross-page confirmation group; errors on other pages remain marked on their tabs.
 
-V01 retains its existing form. V02 uses the same list page and application model as the standalone example: choose a sample, filter by name, reverse the order, disable T008, or delete the selected item. V03 has the progress display described below; its dialog and tooltip are later slices. Each page has its own reset; switching retains drafts, history, list selection and the valid page and list scroll offsets. Resetting V02 or V03 leaves V01 untouched.
+V01 retains its existing form. V02 uses the same list page and application model as the standalone example: choose a sample, filter by name, reverse the order, disable T008, or delete the selected item. V03 has the progress display and dialog described below; its tooltip is a later slice. Each page has its own reset; switching retains drafts, history, list selection and the valid page and list scroll offsets. Resetting V02 or V03 leaves V01 untouched.
 
 Applications create tabs with `Ui::add_tabs` and typed `ComponentHandle` members, and use `TabsHandle` for activation and queries. Page membership determines operation admission and rendering. `layout::pinned` keeps the tabs visible above the page's scroll region. Page identity uses `OptionValue`; the application saves per-page scroll state through the page-change callback. A hidden component returns `Status::hidden` for normal operations. A current page cannot be disabled; a page change attempted recursively from its callback is rejected as busy.
 
@@ -29,6 +29,12 @@ flowchart LR
 V03 starts at 50%. Its 0, 50, 100, -10 and 110 buttons change the application-owned source immediately. The progress bar and percentage clamp the displayed value to 0–100, while the source label keeps the original number visible. Reaching 100% does not imply that a background task succeeded. Reset page restores 50% and its scroll position; other pages are retained.
 
 Applications create a non-focusable `ProgressHandle` with `Ui::add_progress` and connect a read-only `NumericSource`. The source must outlive the connection and deliver change notifications on the UI thread. The handle's semantic value and numeric value report the clamped percentage; the application can read its own source separately. There is no progress write connection, and destroying the UI disconnects the subscription.
+
+## S4: modal dialog (#23)
+
+V03's **Reset progress...** opens a window-modal confirmation. Initial focus is Cancel; Tab and Shift+Tab stay inside the dialog, Escape cancels, and the mask blocks background input without closing it. Confirm sets the application-owned progress to 0% and increases the confirmation count once; cancel preserves progress. The displayed result and count are reset with V03. The temporary opener and the dialog's test button remove that opener while the dialog is open: closing then returns focus to the permanent Reset page entry. V01 also has an opener so composition-to-dialog behavior can be exercised without switching pages first.
+
+Applications assemble dialog content from typed handles, register its initial and fallback focus targets with `Ui::add_dialog`, and open or settle it through `DialogHandle`. `layout::modal` places the content above the window and its mask; it uses the same selected appearance as the opener in this example. `ButtonHandle::remove` is owner configuration and invalidates its non-owning handles. This slice provides one dialog at a time; it does not implement nested dialogs or runtime appearance overrides.
 
 ## S2c: region and popup layer
 

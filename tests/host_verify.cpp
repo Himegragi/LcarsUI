@@ -163,6 +163,21 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
     f.tap(VK_RETURN); f.settle();
     auto frame = f.host.render(960, 720, 1.f, folder / (report.appearance + "-dialog.bmp"));
     bool initial = frame.modal && frame.find(h.dialog_cancel) && frame.find(h.dialog_confirm) && h.dialog_cancel.describe()->focused;
+    bool geometry = true;
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) {
+        for (float scale : {1.f, 1.5f}) {
+            int width = static_cast<int>(size.first * scale), height = static_cast<int>(size.second * scale);
+            auto sample = f.host.render(width, height, scale, folder / (report.appearance + "-dialog-" + std::to_string(size.first) + "-" + std::to_string(static_cast<int>(scale * 100)) + ".bmp"));
+            for (auto button : {h.dialog_cancel, h.dialog_confirm, h.dialog_remove_temporary}) {
+                auto p = sample.find(button);
+                if (!p) { geometry = false; continue; }
+                auto b = p->bounds;
+                geometry = geometry && intersect(b, p->clip) == b && b.x >= 0 && b.y >= 0 && b.x + b.w <= width && b.y + b.h <= height &&
+                    sample.hit(b.x + b.w / 2, b.y + b.h / 2) == p;
+            }
+            geometry = geometry && !sample.hit(1, 1);
+        }
+    }
     POINT mask{1, 1};
     f.mouse(WM_LBUTTONDOWN, mask, MK_LBUTTON); f.mouse(WM_LBUTTONUP, mask); f.settle();
     bool shield = *h.dialog.is_open() && h.dialog_cancel.describe()->focused && f.form.progress() == 50;
@@ -172,6 +187,7 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
     bool once = f.form.progress() == 0 && f.form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused && !*h.dialog.is_open();
     report.check("P02-P03-dialog", initial && shield && tab && once,
         "Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus");
+    report.check("P03-dialog-layout", geometry, "Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%");
     h.reset_v03.invoke(); h.dialog_open.invoke(); f.tap(VK_ESCAPE); f.settle();
     report.check("P01-dialog-escape", f.form.progress() == 50 && f.form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused && !*h.dialog.is_open(),
         "Escape cancels and returns focus without changing progress");
