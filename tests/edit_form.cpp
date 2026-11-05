@@ -15,6 +15,7 @@ edit_form::Ids alternate_ids() {
     edit_form::Ids i;
     i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
+    i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
     i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c"; i.latest = "latest";
     return i;
 }
@@ -136,8 +137,8 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
     std::vector<Id> seen;
-    for (int i = 0; i < 9; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
-    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.apply, ids.normal};
+    for (int i = 0; i < 12; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
+    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.offline_disabled, ids.apply, ids.normal};
     check(seen == expected, "Tab reaches fixtures, name and apply, then wraps");
     detail::access(ui).key_down(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
@@ -160,6 +161,28 @@ void source_updates_offer_the_latest_value() {
           "An external change retains the draft and displays a conflict");
     check(bool(form.handles.latest.invoke()) && form.handles.name.describe()->value == u"remote value",
           "The user can discard the draft in favor of the latest source value");
+}
+
+void checkbox_and_radio_are_applied_together() {
+    edit_form::Form form(ids);
+    check(form.handles.notices.describe()->name == u"\u555f\u7528\u63d0\u793a" &&
+          form.handles.mode.describe()->options[0].label == u"\u4e00\u822c", "New controls retain their Traditional Chinese labels");
+    check(*form.handles.notices.draft() && *form.handles.mode.draft() == OptionValue{"normal"},
+          "Notices and normal mode are initially selected");
+    form.handles.notices.focus();
+    detail::access(form.ui).key_down({.key = Key::space});
+    detail::access(form.ui).key_up(Key::space);
+    form.handles.mode.focus();
+    detail::access(form.ui).key_down({.key = Key::right});
+    check(!*form.handles.notices.draft() && *form.handles.mode.draft() == OptionValue{"focus"} && form.notices_applied(),
+          "Keyboard changes drafts while the applied result stays unchanged");
+    check(bool(form.handles.apply.invoke()) && !form.notices_applied() && form.mode_applied() == OptionValue{"focus"},
+          "Apply commits the boolean and radio drafts together");
+    form.handles.offline_disabled.invoke();
+    check(form.handles.mode.select({"offline"}).status == Status::disabled, "Offline can be disabled");
+    form.handles.reset.invoke();
+    check(form.notices_applied() && form.mode_applied() == OptionValue{"normal"} && *form.handles.notices.draft(),
+          "Reset restores the initial checkbox and radio values");
 }
 
 void both_appearances_give_same_results() {
@@ -218,6 +241,7 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},
         {"G11 source updates offer the latest value", source_updates_offer_the_latest_value},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},

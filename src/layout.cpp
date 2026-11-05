@@ -80,6 +80,17 @@ const Placement* Frame::find(const ButtonHandle& handle) const {
 const Placement* Frame::find(const LabelHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
+const Placement* Frame::find(const CheckboxHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const RadioGroupHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
+std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y) const {
+    if (!item.clip.contains(x, y)) return std::nullopt;
+    for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return i;
+    return std::nullopt;
+}
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
@@ -108,6 +119,7 @@ using layout::Node;
 void translate(Placement& p, int dx, int dy) {
     auto move = [&](Rect& r) { r.x += dx; r.y += dy; };
     move(p.bounds);
+    for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
         for (auto& line : *lines) move(line.bounds);
 }

@@ -22,6 +22,8 @@ Key map_key(WPARAM vk) {
     case VK_ESCAPE: return Key::escape;
     case VK_LEFT: return Key::left;
     case VK_RIGHT: return Key::right;
+    case VK_UP: return Key::up;
+    case VK_DOWN: return Key::down;
     case VK_HOME: return Key::home;
     case VK_END: return Key::end;
     case VK_BACK: return Key::backspace;
@@ -388,7 +390,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
         finish_composition();
-        if (detail::access(ui_).pointer_down(id)) {
+        if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
             if (detail::component_type(hit->kind).selects_text()) {
                 auto offset = detail::placement_text_offset(frame_, id, x);
                 auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
@@ -418,7 +420,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
             // Settle the press before releasing capture; capture loss would cancel it.
-            detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{});
+            detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
         }
         drag_ = Drag::none;
         if (GetCapture() == window_) ReleaseCapture();

@@ -65,6 +65,8 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
 detail::UiState::~UiState() {
     lifetime_.reset();
     for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : bools_) if (field.disconnect) field.disconnect();
+    for (auto& [id, field] : radios_) if (field.disconnect) field.disconnect();
 }
 TextHandle detail::UiState::add_text(Control control) {
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
@@ -90,6 +92,234 @@ LabelHandle detail::UiState::add_label(Control control) {
     Id id = control.id;
     controls_.push_back(std::move(control));
     return LabelHandle(this, lifetime_, std::move(id));
+}
+CheckboxHandle detail::UiState::add_checkbox(Control control) {
+    if (control.kind != Kind::checkbox || control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid checkbox component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    bools_.emplace(id, BoolField{});
+    bind(id, [this, id] { return toggle_checkbox(id); });
+    return CheckboxHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::checkbox_layout_handle(const Control& c) { return CheckboxHandle(this, lifetime_, c.id); }
+Result CheckboxHandle::toggle() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->toggle_checkbox(id_);
+}
+Result CheckboxHandle::use_latest() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->bools_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+}
+Result CheckboxHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result CheckboxHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    ui_->enable(id_, enabled); return {};
+}
+Result CheckboxHandle::connect_source(BoolSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
+    auto& field = ui_->bools_.at(id_);
+    if (field.disconnect) field.disconnect();
+    field.source = std::move(source); field.connected = false;
+    auto weak = lifetime_; auto state = ui_; auto id = id_;
+    field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); });
+    ui_->bool_source_changed(id_); return {};
+}
+void detail::UiState::bool_source_changed(const Id& id) {
+    auto& field = bools_.at(id);
+    bool value = field.source.read();
+    bool clean = !field.connected || field.value == field.source_value;
+    field.source_value = value; field.connected = true;
+    if (clean && !field.submitting) field.value = field.origin = value;
+    if (invalidate_) invalidate_();
+}
+Result CheckboxHandle::connect_immediate(std::function<Result(const BoolChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& field = ui_->bools_.at(id_);
+    if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    field.immediate = std::move(write); return {};
+}
+Result CheckboxHandle::connect_confirmed(std::function<Result(const BoolChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->bools_.at(id_);
+    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.confirmed = std::move(write); return {};
+}
+Result CheckboxHandle::confirm() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->bools_.at(id_);
+    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+    BoolChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+    Result result;
+    try { result = f.confirmed(change); }
+    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false; ui_->invoking_ = false;
+    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+    auto notification = ui_->notify(); return notification ? result : notification;
+}
+Result detail::UiState::toggle_checkbox(const Id& id) {
+    if (auto r = available(id); !r) return r;
+    auto& field = bools_.at(id);
+    if (!field.connected || (!field.immediate && !field.confirmed && !field.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (dispatching_) return {Status::busy, u"Operation is already executing"};
+    if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
+    field.value = !field.value;
+    BoolChange change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
+    if (!field.immediate || field.submitting) return notify();
+    field.submitting = true;
+    Result result;
+    try { result = field.immediate(change); } catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    field.submitting = false;
+    if (result) { field.origin = change.value; set_error(id, u""); }
+    else set_error(id, result.message);
+    auto notification = notify(); return notification ? result : notification;
+}
+Query<Semantics> CheckboxHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<bool> CheckboxHandle::draft() const {
+    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+    return {Status::ok, {}, ui_->bools_.at(id_).value};
+}
+RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<RadioOption> options) {
+    if (control.kind != Kind::radio_group || control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid radio group");
+    std::set<std::string> ids;
+    for (const auto& option : options)
+        if (option.value.id.empty() || !ids.insert(option.value.id).second) throw std::invalid_argument("Invalid radio option");
+    auto id = control.id;
+    controls_.push_back(std::move(control));
+    RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
+    return RadioGroupHandle(this, lifetime_, std::move(id));
+}
+ComponentHandle detail::UiState::radio_layout_handle(const Control& c) { return RadioGroupHandle(this, lifetime_, c.id); }
+Result RadioGroupHandle::use_latest() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->radios_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+}
+Result RadioGroupHandle::focus() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->focus(id_);
+}
+Result RadioGroupHandle::enable(bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    ui_->enable(id_, enabled); return {};
+}
+Result RadioGroupHandle::enable_option(OptionValue value, bool enabled) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& options = ui_->radios_.at(id_).options;
+    auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value == value; });
+    if (it == options.end()) return {Status::invalid_value, u"Unknown option"};
+    it->enabled = enabled; if (ui_->invalidate_) ui_->invalidate_(); return {};
+}
+Result RadioGroupHandle::connect_source(OptionSource source) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+    auto& field = ui_->radios_.at(id_);
+    if (field.disconnect) field.disconnect();
+    field.source = std::move(source); field.connected = false;
+    auto weak = lifetime_; auto state = ui_; auto id = id_;
+    field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->option_source_changed(id); });
+    ui_->option_source_changed(id_); return {};
+}
+void detail::UiState::option_source_changed(const Id& id) {
+    auto& field = radios_.at(id); auto value = field.source.read();
+    bool clean = !field.connected || field.value == field.source_value;
+    field.source_value = value; field.connected = true;
+    if (clean && !field.submitting) field.value = field.origin = value;
+    if (invalidate_) invalidate_();
+}
+Result RadioGroupHandle::connect_immediate(std::function<Result(const OptionChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& field = ui_->radios_.at(id_);
+    if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    field.immediate = std::move(write); return {};
+}
+Result RadioGroupHandle::connect_confirmed(std::function<Result(const OptionChange&)> write) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->configuration_access(id_); !r) return r;
+    auto& f = ui_->radios_.at(id_);
+    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    f.confirmed = std::move(write); return {};
+}
+Result RadioGroupHandle::confirm() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto r = ui_->available(id_); !r) return r;
+    auto& f = ui_->radios_.at(id_);
+    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+    OptionChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+    Result result;
+    try { result = f.confirmed(change); }
+    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false; ui_->invoking_ = false;
+    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+    auto notification = ui_->notify(); return notification ? result : notification;
+}
+Result RadioGroupHandle::select(OptionValue value) const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_option(id_, std::move(value));
+}
+Result detail::UiState::select_option(const Id& id, OptionValue value) {
+    if (auto r = available(id); !r) return r;
+    auto& field = radios_.at(id);
+    auto it = std::find_if(field.options.begin(), field.options.end(), [&](const auto& o) { return o.value == value; });
+    if (it == field.options.end()) return {Status::invalid_value, u"Unknown option"};
+    if (!it->enabled) return {Status::disabled, u"Option is disabled"};
+    if (!field.connected || (!field.immediate && !field.confirmed && !field.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (dispatching_) return {Status::busy, u"Operation is already executing"};
+    if (field.value == value) return {};
+    if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
+    field.value = std::move(value);
+    OptionChange change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
+    if (!field.immediate || field.submitting) return notify();
+    field.submitting = true; Result result;
+    try { result = field.immediate(change); } catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    field.submitting = false;
+    if (result) { field.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
+    auto notification = notify(); return notification ? result : notification;
+}
+Result detail::UiState::radio_key_down(KeyPress key) {
+    if (key.repeat) return {};
+    int direction = key.key == Key::right || key.key == Key::down ? 1 : key.key == Key::left || key.key == Key::up ? -1 : 0;
+    if (!direction) return {};
+    auto& field = radios_.at(focus_);
+    int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
+    for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
+    for (int i = index + direction; i >= 0 && i < n; i += direction)
+        if (field.options[i].enabled) return select_option(focus_, field.options[i].value);
+    return {};
+}
+Query<Semantics> RadioGroupHandle::describe() const {
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->describe(id_)};
+}
+Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
+    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+    return {Status::ok, {}, ui_->radios_.at(id_).value};
 }
 ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     auto control = find(id);
@@ -263,6 +493,76 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
     });
     return {};
 }
+Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
+    if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
+        return {Status::invalid_value, u"Invalid confirmation group"};
+    if (auto r = configuration_access(button.id_); !r) return r;
+    if (actions_.contains(button.id_)) return {Status::invalid_value, u"Confirmation button already has an action"};
+    std::set<Id> members;
+    for (const auto& member : fields) {
+        bool valid = std::visit([&](const auto& h) {
+            if (h.ui_ != this || h.lifetime_.expired() || !members.insert(h.id_).second) return false;
+            using T = std::decay_t<decltype(h)>;
+            if constexpr (std::is_same_v<T, TextHandle>) {
+                auto it = edits_.find(h.id_); return it != edits_.end() && it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
+            } else if constexpr (std::is_same_v<T, CheckboxHandle>) {
+                auto it = bools_.find(h.id_); return it != bools_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
+            } else {
+                auto it = radios_.find(h.id_); return it != radios_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
+            }
+        }, member);
+        if (!valid) return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
+    }
+    for (const auto& member : fields) std::visit([&](const auto& h) {
+        using T = std::decay_t<decltype(h)>;
+        if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).confirmation_member = true;
+        else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).confirmation_member = true;
+        else radios_.at(h.id_).confirmation_member = true;
+    }, member);
+    confirmation_buttons_.insert(button.id_);
+    bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
+        std::vector<FieldChange> changes;
+        for (const auto& member : fields) std::visit([&](const auto& h) {
+            using T = std::decay_t<decltype(h)>;
+            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
+            else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
+            else { auto& f = radios_.at(h.id_); changes.emplace_back(OptionChange{h, f.value, f.origin}); f.submitting = true; }
+        }, member);
+        MixedConfirmationResult outcome;
+        try { outcome = submit(changes); }
+        catch (...) {
+            for (const auto& member : fields) std::visit([&](const auto& h) {
+                using T = std::decay_t<decltype(h)>;
+                if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).submitting = false;
+                else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).submitting = false;
+                else radios_.at(h.id_).submitting = false;
+            }, member);
+            throw;
+        }
+        for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
+            using T = std::decay_t<decltype(h)>;
+            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
+            else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
+            else { auto& f = radios_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<OptionChange>(changes[i]).value; }
+            if (outcome.result) set_error(h.id_, u"");
+        }, fields[i]);
+        if (!outcome.result) {
+            std::optional<std::size_t> first;
+            for (const auto& error : outcome.errors) {
+                auto id = std::visit([&](const auto& h) { return layout_id(ComponentHandle{h}); }, error.field);
+                if (!id) continue;
+                for (std::size_t i = 0; i < fields.size(); ++i) {
+                    auto field_id = std::visit([&](const auto& h) { return h.id_; }, fields[i]);
+                    if (field_id == *id) { set_error(*id, error.message); if (!error.message.empty() && (!first || i < *first)) first = i; break; }
+                }
+            }
+            if (first) std::visit([&](const auto& h) { focus(h.id_); }, fields[*first]);
+        }
+        auto notification = notify(); return notification ? outcome.result : notification;
+    });
+    return {};
+}
 Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->connect_write(id_, std::move(write), true);
@@ -386,6 +686,18 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
+    if (auto it = bools_.find(id); it != bools_.end()) {
+        s.checked = it->second.value;
+        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
+    }
+    if (auto it = radios_.find(id); it != radios_.end()) {
+        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
+        for (const auto& option : it->second.options) {
+            bool selected = it->second.value && *it->second.value == option.value;
+            s.options.push_back({option.value, option.label, option.enabled, selected});
+            if (selected) s.value = option.label;
+        }
+    }
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -400,7 +712,18 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     }
     if (!s.focusable) return s;
     s.operations.push_back(Operation::focus);
-    if (component_type(control->kind).has_activate_operation() && !s.executing) s.operations.push_back(Operation::activate);
+    bool admits_activation = component_type(control->kind).has_activate_operation() && !s.executing;
+    if (auto it = bools_.find(id); it != bools_.end()) {
+        const auto& f = it->second;
+        admits_activation = admits_activation && f.connected && (f.confirmation_member || f.immediate || f.confirmed);
+    }
+    if (admits_activation) s.operations.push_back(Operation::activate);
+    if (auto it = radios_.find(id); it != radios_.end()) {
+        const auto& f = it->second;
+        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed) &&
+            std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
+            s.operations.push_back(Operation::select);
+    }
     if (auto it = edits_.find(id); it != edits_.end()) {
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
@@ -420,6 +743,7 @@ std::u16string detail::UiState::text(std::string_view id) const {
         return it == errors_.end() ? std::u16string{} : it->second;
     }
     if (auto it = edits_.find(id); it != edits_.end()) return it->second.session.text;
+    if (auto it = bools_.find(id); it != bools_.end()) return it->second.value ? u"true" : u"false";
     if (auto it = providers_.find(id); it != providers_.end()) return it->second();
     return control->value;
 }
@@ -754,20 +1078,26 @@ Result detail::UiState::key_up(Key key) {
     auto target = std::exchange(key_armed_, {});
     return invoke(target);
 }
-Result detail::UiState::pointer_down(std::string_view id) {
+Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     if (auto result = move_focus(control->id); !result) return result;
-    component_type(control->kind).pointer_down(*this);
+    if (control->kind == Kind::radio_group) { pointer_armed_ = control->id; pointer_option_ = option; }
+    else component_type(control->kind).pointer_down(*this);
     return {};
 }
-Result detail::UiState::pointer_up(std::string_view id) {
+Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     auto armed = std::exchange(pointer_armed_, {});
+    auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     if (armed.empty() || armed != id) return {};
+    if (auto it = radios_.find(armed); it != radios_.end()) {
+        if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
+        return select_option(armed, it->second.options[*option].value);
+    }
     return invoke(armed);
 }
-void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); }
+void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
@@ -804,9 +1134,15 @@ Ui::~Ui() = default;
 TextHandle Ui::add_text(Control control) { return state_->add_text(std::move(control)); }
 ButtonHandle Ui::add_button(Control control) { return state_->add_button(std::move(control)); }
 LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(control)); }
+CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
+RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
+}
+Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
+    return state_->connect_mixed_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }

@@ -24,6 +24,7 @@ Ids default_ids() {
     i.normal = "fixture.normal"; i.read_only = "fixture.read_only"; i.disabled = "fixture.disabled";
     i.error = "fixture.error"; i.long_text = "fixture.long"; i.reset = "form.reset";
     i.name_label = "form.name.label"; i.name = "form.name"; i.name_help = "form.name.help"; i.name_error = "form.name.error";
+    i.notices = "form.notices"; i.mode = "form.mode"; i.offline_disabled = "fixture.offline_disabled";
     i.apply = "form.apply"; i.state = "result.state"; i.draft = "result.draft"; i.result = "result.applied"; i.count = "result.count"; i.latest = "form.latest";
     return i;
 }
@@ -42,6 +43,10 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
     handles.name = ui.add_text({.id = i.name, .kind = Kind::text, .value = initial_name});
     handles.name_help = ui.add_label({.id = i.name_help, .kind = Kind::label, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .role = TextRole::description});
     handles.name_error = ui.add_label({.id = i.name_error, .kind = Kind::label, .target = i.name, .role = TextRole::error});
+    handles.notices = ui.add_checkbox({.id = i.notices, .kind = Kind::checkbox, .label = u"\u555f\u7528\u63d0\u793a"});
+    handles.mode = ui.add_radio_group({.id = i.mode, .kind = Kind::radio_group, .label = u"\u6a21\u5f0f"},
+        {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}});
+    handles.offline_disabled = ui.add_button({.id = i.offline_disabled, .kind = Kind::button, .label = u"\u505c\u7528\u96e2\u7dda"});
     handles.apply = ui.add_button({.id = i.apply, .kind = Kind::button, .label = u"套用"});
     handles.state = ui.add_label({.id = i.state, .kind = Kind::label});
     handles.draft = ui.add_label({.id = i.draft, .kind = Kind::label});
@@ -53,6 +58,12 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
         source_changed_ = std::move(changed);
         return [this] { source_changed_ = {}; };
     }});
+    handles.notices.connect_source({[this] { return notices_applied_; }, [this](std::function<void()> changed) {
+        notices_changed_ = std::move(changed); return [this] { notices_changed_ = {}; };
+    }});
+    handles.mode.connect_source({[this] { return mode_applied_; }, [this](std::function<void()> changed) {
+        mode_changed_ = std::move(changed); return [this] { mode_changed_ = {}; };
+    }});
     handles.intro.connect_source([this] { return long_intro_ ? long_intro : short_intro; });
     handles.state.connect_source([this] {
         std::u16string state = mode_ == Mode::read_only ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
@@ -60,15 +71,28 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
         if (handles.name.source_conflict().value.value_or(false)) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
         return u"\u72c0\u614b\uff1a" + state;
     });
-    handles.draft.connect_source([this] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft(); });
-    handles.result.connect_source([this] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_; });
+    auto mode_name = [](const std::optional<OptionValue>& value) -> std::u16string {
+        if (!value) return u"\u672a\u9078\u53d6";
+        if (value->id == "normal") return u"\u4e00\u822c";
+        if (value->id == "focus") return u"\u5c08\u6ce8";
+        if (value->id == "offline") return u"\u96e2\u7dda";
+        return u"\u672a\u77e5";
+    };
+    handles.draft.connect_source([this, mode_name] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
+        u" / \u63d0\u793a\uff1a" + (*handles.notices.draft() ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(*handles.mode.draft()); });
+    handles.result.connect_source([this, mode_name] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
+        u" / \u63d0\u793a\uff1a" + (notices_applied_ ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(mode_applied_); });
     handles.count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
     handles.name.on_blur([this] { validate(); });
     ui.on_change([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
-    ui.connect_confirmation(handles.apply, {handles.name}, [this](const auto& changes) { return apply(changes); });
+    ui.connect_mixed_confirmation(handles.apply, {handles.name, handles.notices, handles.mode}, [this](const auto& changes) { return apply(changes); });
     handles.normal.bind([this] { set_mode(Mode::normal); return Result{}; });
     handles.read_only.bind([this] { set_mode(Mode::read_only); return Result{}; });
     handles.disabled.bind([this] { set_mode(Mode::disabled); return Result{}; });
+    handles.offline_disabled.bind([this] {
+        offline_disabled_ = !offline_disabled_;
+        return handles.mode.enable_option({"offline"}, !offline_disabled_);
+    });
     handles.long_text.bind([this] { long_intro_ = !long_intro_; return Result{}; });
     handles.reset.bind([this] { return reset(); });
     handles.latest.bind([this] { auto result = handles.name.use_latest(); refresh_conflict(); return result; });
@@ -86,14 +110,18 @@ bool Form::validate() {
     handles.name.set_error(valid ? u"" : required_name);
     return valid;
 }
-ConfirmationResult Form::apply(const std::vector<TextChange>& changes) {
-    if (blank(changes[0].value)) {
-        auto message = required_name;
-        return {{Status::invalid_value, message}, {{changes[0].field, message}}};
-    }
-    applied_ = changes[0].value;
+MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
+    const auto& name = std::get<TextChange>(changes[0]);
+    const auto& notices = std::get<BoolChange>(changes[1]);
+    const auto& mode = std::get<OptionChange>(changes[2]);
+    if (blank(name.value)) return {{Status::invalid_value, required_name}, {{name.field, required_name}}};
+    applied_ = name.value;
+    notices_applied_ = notices.value;
+    mode_applied_ = mode.value;
     ++applies_;
     if (source_changed_) source_changed_();
+    if (notices_changed_) notices_changed_();
+    if (mode_changed_) mode_changed_();
     return {};
 }
 void Form::update_source(std::u16string value) {
@@ -109,12 +137,19 @@ void Form::set_mode(Mode mode) {
     handles.name.read_only(mode == Mode::read_only);
     handles.name.enable(mode != Mode::disabled);
     handles.apply.enable(mode != Mode::disabled);
+    handles.notices.enable(mode != Mode::disabled);
+    handles.mode.enable(mode != Mode::disabled);
     refresh_conflict();
 }
 Result Form::reset() {
     set_mode(Mode::normal);
     long_intro_ = false;
     update_source(initial_name);
+    notices_applied_ = true; mode_applied_ = OptionValue{"normal"};
+    if (notices_changed_) notices_changed_();
+    if (mode_changed_) mode_changed_();
+    handles.notices.use_latest(); handles.mode.use_latest();
+    offline_disabled_ = false; handles.mode.enable_option({"offline"}, true);
     handles.name.reset_to_source();
     refresh_conflict();
     applies_ = 0;
@@ -128,8 +163,8 @@ layout::Node Form::page() const {
     return layout::scroll(column({
         control(handles.title, 24),
         control(handles.intro),
-        grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.reset)}, 120, 8),
-        grid({column({control(handles.name), row({control(handles.apply), control(handles.latest), control(handles.state)}, 16)}, 12),
+        grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.offline_disabled), control(handles.reset)}, 120, 8),
+        grid({column({control(handles.name), control(handles.notices), control(handles.mode), row({control(handles.apply), control(handles.latest), control(handles.state)}, 16)}, 12),
               column({control(handles.draft), control(handles.result), control(handles.count)}, 8)},
              360, 32),
     }, 16, 24));

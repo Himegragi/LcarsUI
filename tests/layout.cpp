@@ -232,8 +232,33 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
 }
 }
 
+void radio_options_share_geometry_with_pointer_input() {
+    for (auto* look : {&web_appearance(), &material_appearance()}) {
+        std::optional<OptionValue> model;
+        Ui ui({});
+        auto group = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group, .label = u"Mode"},
+            {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}, {{"offline"}, u"Offline", false}});
+        group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+        group.connect_immediate([&](const OptionChange& c) { model = c.value; return Result{}; });
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(layout::control(group), ui, *look, measure, 320, 240, 1.f, scroll);
+        auto item = frame.find(group);
+        check(item && item->options.size() == 3, "All options have independently placed hit targets");
+        auto rect = item->options[1];
+        auto& host = detail::access(ui);
+        host.pointer_down(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        host.pointer_up(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        check(model == OptionValue{"focus"}, "Clicking the second painted option selects it");
+        rect = item->options[2];
+        host.pointer_down(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        host.pointer_up(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        check(model == OptionValue{"focus"}, "Clicking a disabled option leaves the selection unchanged");
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"C05 radio pointer geometry", radio_options_share_geometry_with_pointer_input},
         {"Registered component reaches layout, hit and input", registered_component_reaches_layout_hit_and_input},
         {"Layout rejects foreign and expired handles", layout_rejects_foreign_or_expired_handles},
         {"AC05 long label wraps and pushes following controls down", long_label_wraps_and_pushes_following_controls_down},

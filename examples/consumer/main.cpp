@@ -3,7 +3,11 @@
 #include "lcars/layout.hpp"
 #include <cstdio>
 #include <string>
+#include <type_traits>
 
+static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::OptionSource>);
+static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
+static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
 // An application sees only typed handles; string IDs cannot operate or look up components.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);

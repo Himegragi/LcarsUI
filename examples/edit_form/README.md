@@ -7,6 +7,15 @@
 
 這不是穩定公開 API。型別與回呼形式仍可能隨 S2–S5 調整。
 
+
+## S2a: checkbox and radio group
+
+The form now includes **Notices** (initially checked) and **Mode** (initially Normal, with Focus and Offline options). Space or a click toggles Notices. Click an option or use the arrow keys to select a mode; navigation skips disabled choices and stops at the ends. The Offline fixture toggles whether Offline can be selected. Reset restores both initial values and re-enables Offline. The current draft and last applied result include all three fields. Apply passes the text, boolean, and option drafts together to one application callback.
+
+Application code creates these fields through `CheckboxHandle` and `RadioGroupHandle`, connects typed sources, and explicitly chooses immediate, confirmed, or group-confirmed writing. Option identities use `OptionValue`; a source of another type requires an explicit adapter. The fields expose draft and semantic state through their handles. The confirmation callback receives typed changes and can return errors associated with individual handles. Source notifications must be delivered on the UI thread and the source must outlive the connection, as for text fields.
+
+The S1-specific descriptions below are historical where they list only the original text field and focus order. The S2a verification and remaining limits are recorded in [rework verification](evidence/rework-verification.md).
+
 ## 建置與啟動
 
 需要 Visual Studio C++ Build Tools／Windows SDK、clang-cl、CMake 與 Ninja；沿用 repo 內附的 HarfBuzz／FreeType 原始碼，不下載、不使用套件管理器。在 repo 根目錄的 PowerShell 執行：

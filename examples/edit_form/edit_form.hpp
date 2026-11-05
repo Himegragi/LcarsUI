@@ -10,6 +10,7 @@ struct Ids {
     std::string title, intro;
     std::string normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
     std::string name_label, name, name_help, name_error, apply;
+    std::string notices, mode, offline_disabled;
     std::string state, draft, result, count, latest;                        // displayed results
 };
 Ids default_ids();
@@ -20,16 +21,21 @@ private:
     Ids ids_;
     std::u16string applied_;
     int applies_ = 0;
+    bool notices_applied_ = true;
+    std::optional<lcars::OptionValue> mode_applied_ = lcars::OptionValue{"normal"};
+    bool offline_disabled_ = false;
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
-    std::function<void()> source_changed_;
+    std::function<void()> source_changed_, notices_changed_, mode_changed_;
 public:
     explicit Form(Ids ids = default_ids());
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
         lcars::TextHandle name;
-        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest;
+        lcars::CheckboxHandle notices;
+        lcars::RadioGroupHandle mode;
+        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, offline_disabled;
         lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
     } handles;
     lcars::Ui ui;
@@ -38,11 +44,13 @@ public:
     const Ids& ids() const { return ids_; }
     const std::u16string& applied() const { return applied_; }
     int applies() const { return applies_; }
+    bool notices_applied() const { return notices_applied_; }
+    std::optional<lcars::OptionValue> mode_applied() const { return mode_applied_; }
     // An external application change to the same model (also useful to exercise conflicts).
     void update_source(std::u16string value);
 private:
     bool validate();
-    lcars::ConfirmationResult apply(const std::vector<lcars::TextChange>& changes);
+    lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);
     void refresh_conflict();
     void set_mode(Mode mode);
     lcars::Result reset();

@@ -19,6 +19,11 @@ public:
     TextHandle add_text(Control control);
     ButtonHandle add_button(Control control);
     LabelHandle add_label(Control control);
+    CheckboxHandle add_checkbox(Control control);
+    RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
+    ComponentHandle radio_layout_handle(const Control& control);
+    Result radio_key_down(KeyPress key);
+    ComponentHandle checkbox_layout_handle(const Control& control);
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
@@ -34,6 +39,8 @@ public:
     void command_pointer_down();
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
+    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
     const std::vector<Control>& controls() const { return controls_; }
@@ -63,8 +70,8 @@ public:
     Result key_down(KeyPress key);
     Result key_up(Key key);
     // The host hit-tests and passes the control under the pointer (empty when none).
-    Result pointer_down(std::string_view id);
-    Result pointer_up(std::string_view id);
+    Result pointer_down(std::string_view id, std::optional<std::size_t> option = std::nullopt);
+    Result pointer_up(std::string_view id, std::optional<std::size_t> option = std::nullopt);
     // Native capture loss or window deactivation: drop every pending press.
     void cancel_input();
     // C03 text field operations. Keyboard, pointer and these semantic calls share admission rules.
@@ -101,6 +108,8 @@ private:
     friend class ::lcars::TextHandle;
     friend class ::lcars::ButtonHandle;
     friend class ::lcars::LabelHandle;
+    friend class ::lcars::CheckboxHandle;
+    friend class ::lcars::RadioGroupHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -122,10 +131,31 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
+    struct BoolField {
+        BoolSource source;
+        bool value = false, source_value = false, origin = false, connected = false, submitting = false, confirmation_member = false;
+        std::function<Result(const BoolChange&)> immediate, confirmed;
+        std::function<void()> disconnect;
+    };
+    std::map<Id, BoolField, std::less<>> bools_;
+    struct RadioField {
+        OptionSource source;
+        std::vector<RadioOption> options;
+        std::optional<OptionValue> value, source_value, origin;
+        bool connected = false, submitting = false, confirmation_member = false;
+        std::function<Result(const OptionChange&)> immediate, confirmed;
+        std::function<void()> disconnect;
+    };
+    std::map<Id, RadioField, std::less<>> radios_;
+    Result select_option(const Id& id, OptionValue value);
+    void option_source_changed(const Id& id);
+    Result toggle_checkbox(const Id& id);
+    void bool_source_changed(const Id& id);
     std::map<Id, Action, std::less<>> actions_;
     std::set<Id, std::less<>> confirmation_buttons_;
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
+    std::optional<std::size_t> pointer_option_;
     Clipboard* clipboard_ = nullptr;
     Result focusable(const Control& control) const;
     Result move_focus(Id next);

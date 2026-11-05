@@ -11,7 +11,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label };
+enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history };
@@ -47,19 +47,24 @@ struct Control {
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo };
+struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
+struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
+struct OptionSemantics { OptionValue value; std::u16string label; bool enabled = true, selected = false; };
 // Semantic snapshot from a handle or a host-side adapter.
 struct Semantics {
     std::string id;
     Kind kind = Kind::label;
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
+    std::vector<OptionSemantics> options;
+    std::optional<bool> checked;  // present for a checkbox
     std::string target;
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
     std::vector<Operation> operations;
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
-enum class Key { other, tab, enter, space, escape, left, right, home, end, backspace, del };
+enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del };
 struct KeyPress {
     Key key = Key::other;
     bool shift = false, ctrl = false, repeat = false;
@@ -99,6 +104,14 @@ bool valid_single_line(std::u16string_view text, std::size_t max_length = defaul
 // connection. Its subscription returns a disconnection function.
 struct TextSource {
     std::function<std::u16string()> read;
+    std::function<std::function<void()>(std::function<void()>)> subscribe;
+};
+struct BoolSource {
+    std::function<bool()> read;
+    std::function<std::function<void()>(std::function<void()>)> subscribe;
+};
+struct OptionSource {
+    std::function<std::optional<OptionValue>()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
@@ -175,7 +188,56 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle>;
+struct BoolChange;
+class CheckboxHandle {
+public:
+    CheckboxHandle() = default;
+    Result toggle() const;
+    Result use_latest() const;
+    Result focus() const;
+    Result enable(bool enabled) const;
+    Result connect_source(BoolSource source) const;
+    Result connect_immediate(std::function<Result(const BoolChange&)> write) const;
+    Result connect_confirmed(std::function<Result(const BoolChange&)> write) const;
+    Result confirm() const;
+    Query<bool> draft() const;
+    Query<Semantics> describe() const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    CheckboxHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+struct BoolChange { CheckboxHandle field; bool value, origin; };
+struct OptionChange;
+class RadioGroupHandle {
+public:
+    RadioGroupHandle() = default;
+    Result select(OptionValue value) const;
+    Result use_latest() const;
+    Result focus() const;
+    Result enable(bool enabled) const;
+    Result enable_option(OptionValue value, bool enabled) const;
+    Result connect_source(OptionSource source) const;
+    Result connect_immediate(std::function<Result(const OptionChange&)> write) const;
+    Result connect_confirmed(std::function<Result(const OptionChange&)> write) const;
+    Result confirm() const;
+    Query<std::optional<OptionValue>> draft() const;
+    Query<Semantics> describe() const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    RadioGroupHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+struct OptionChange { RadioGroupHandle field; std::optional<OptionValue> value, origin; };
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle>;
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
@@ -185,6 +247,10 @@ struct ConfirmationResult {
     Result result;
     std::vector<FieldError> errors;
 };
+using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle>;
+using FieldChange = std::variant<TextChange, BoolChange, OptionChange>;
+struct MixedFieldError { ConfirmField field; std::u16string message; };
+struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
@@ -195,8 +261,12 @@ public:
     TextHandle add_text(Control control);
     ButtonHandle add_button(Control control);
     LabelHandle add_label(Control control);
+    CheckboxHandle add_checkbox(Control control);
+    RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
+    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     void on_change(std::function<void()> callback);
 private:
     friend detail::UiState& detail::access(Ui&);

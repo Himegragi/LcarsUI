@@ -144,6 +144,84 @@ public:
     Result key_down(UiState& ui, KeyPress key) const override { return ui.command_key_down(key); }
     void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
 };
+class Checkbox final : public Command {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.checkbox_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        Command::arrange(c);
+        int extra = scaled(c.scale, 24);
+        c.placement.bounds.w = std::min(c.width, c.placement.bounds.w + extra);
+        for (auto& line : c.placement.lines) line.bounds.x += extra;
+        auto semantics = *c.ui.describe(c.control.id);
+        if (semantics.invalid) {
+            auto& p = c.placement;
+            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
+            for (auto& line : p.error_lines) line.bounds.y += p.bounds.h;
+            p.bounds.h += height_of(p.error_lines);
+        }
+    }
+    void paint(ComponentPaint& c) const override {
+        Command::paint(c);
+        paint_lines(c, c.placement.error_lines, c.placement.text_size, c.appearance.palette().error);
+        auto p = c.appearance.palette();
+        int size = scaled(c.scale, 14), x = c.placement.bounds.x + scaled(c.scale, 8);
+        int y = c.placement.bounds.y + (c.placement.bounds.h - size) / 2;
+        c.fill({x, y, size, size}, c.semantics.enabled ? p.border : p.muted);
+        int inset = scaled(c.scale, 2);
+        c.fill({x + inset, y + inset, size - inset * 2, size - inset * 2}, p.surface);
+        if (c.semantics.checked.value_or(false))
+            c.fill({x + 2 * inset, y + 2 * inset, size - 4 * inset, size - 4 * inset}, p.accent);
+    }
+    bool has_activate_operation() const override { return true; }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        return key.key == Key::space ? ui.command_key_down(key) : Result{};
+    }
+    void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
+};
+class RadioGroup final : public Command {
+public:
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.radio_layout_handle(c); }
+    void arrange(ComponentLayout& c) const override {
+        auto& p = c.placement;
+        auto semantics = *c.ui.describe(c.control.id);
+        int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, 8);
+        p.lines.push_back({{0, 0, c.width, line}, semantics.name});
+        int y = line + scaled(c.scale, 4);
+        for (const auto& option : semantics.options) {
+            p.options.push_back({0, y, c.width, row});
+            p.lines.push_back({{scaled(c.scale, 26), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, 26)), line}, option.label + (option.enabled ? u"" : u"\uff08\u505c\u7528\uff09")});
+            y += row;
+        }
+        if (semantics.invalid) {
+            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
+            for (auto& l : p.error_lines) l.bounds.y += y;
+            y += height_of(p.error_lines);
+        }
+        p.bounds = {0, 0, c.width, y};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto p = c.appearance.palette();
+        const auto& item = c.placement;
+        if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, p.text);
+        if (c.semantics.focused) c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, 2), item.bounds.h}, p.accent);
+        for (std::size_t i = 0; i < item.options.size(); ++i) {
+            const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
+            int size = scaled(c.scale, 14), inset = scaled(c.scale, 3);
+            int x = r.x + scaled(c.scale, 4), y = r.y + (r.h - size) / 2;
+            auto color = option.enabled && c.semantics.enabled ? p.border : p.muted;
+            c.rounded({x, y, size, size}, size / 2, color);
+            c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
+            const auto& label = item.lines[i + 1];
+            c.text(label.text, item.text_size, label.bounds.x, label.bounds.y, option.enabled && c.semantics.enabled ? p.text : p.muted);
+            if (c.semantics.focused && option.selected) c.fill({r.x, r.y + r.h - scaled(c.scale, 2), r.w, scaled(c.scale, 2)}, p.accent);
+        }
+        paint_lines(c, item.error_lines, item.text_size, p.error);
+    }
+    int natural_width(const ComponentLayout&) const override { return -1; }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.radio_key_down(key); }
+};
+RadioGroup radio_group;
+Checkbox checkbox;
 Label label;
 Text text;
 Button button;
@@ -151,7 +229,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}};
+        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable

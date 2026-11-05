@@ -716,8 +716,162 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
     check(bool(field.confirm()) && model == u"draft" && origin == u"before", "Confirm submits the draft and its origin");
 }
 
+void checkbox_toggles_a_connected_boolean() {
+    bool model = true;
+    Ui ui({});
+    auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"});
+    box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    box.connect_immediate([&](const BoolChange& change) { model = change.value; return Result{}; });
+    check(bool(box.toggle()) && !model && !*box.draft() && box.describe()->value == u"false",
+          "Toggling changes the connected boolean and its semantic value exactly once");
+}
+
+void checkbox_input_and_disabled_state_agree() {
+    bool model = false;
+    Ui ui({});
+    auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"});
+    box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    box.connect_immediate([&](const BoolChange& change) { model = change.value; return Result{}; });
+    auto& host = detail::access(ui);
+    box.focus(); host.key_down({.key = Key::space}); host.key_down({.key = Key::space, .repeat = true}); host.key_up(Key::space);
+    check(model && box.describe()->checked == true, "Space changes the value and check mark once");
+    box.enable(false);
+    check(box.toggle().status == Status::disabled && model && box.describe()->checked == true,
+          "A disabled checkbox keeps its value and check mark");
+}
+
+void radio_can_start_empty_and_skip_disabled_options() {
+    std::optional<OptionValue> model;
+    Ui ui({});
+    auto group = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group, .label = u"Mode"},
+        {{{"normal"}, u"Normal", false}, {{"focus"}, u"Focus", true}, {{"offline"}, u"Offline", false}});
+    group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    group.connect_immediate([&](const OptionChange& change) { model = change.value; return Result{}; });
+    check(!group.draft()->has_value(), "A radio group can initially have no selection");
+    check(group.select({"normal"}).status == Status::disabled && !model, "Disabled options cannot be selected");
+    group.focus();
+    detail::access(ui).key_down({.key = Key::right});
+    check(model == OptionValue{"focus"} && *group.draft() == model, "Direction selects the first enabled option");
+    detail::access(ui).key_down({.key = Key::right});
+    check(model == OptionValue{"focus"}, "At the end navigation does not wrap");
+}
+
+void mixed_confirmation_submits_one_batch() {
+    std::u16string name = u"before";
+    bool enabled = true;
+    std::optional<OptionValue> mode = OptionValue{"normal"};
+    Ui ui({});
+    auto text = ui.add_text({.id = "name", .kind = Kind::text});
+    auto box = ui.add_checkbox({.id = "enabled", .kind = Kind::checkbox});
+    auto radio = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group}, {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}});
+    auto apply = ui.add_button({.id = "apply", .kind = Kind::button});
+    text.connect_source({[&] { return name; }, [](std::function<void()>) { return [] {}; }});
+    box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
+    int calls = 0;
+    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
+        ++calls;
+        name = std::get<TextChange>(changes[0]).value;
+        enabled = std::get<BoolChange>(changes[1]).value;
+        mode = std::get<OptionChange>(changes[2]).value;
+        return MixedConfirmationResult{};
+    });
+    text.set_value(u"after"); box.toggle(); radio.select({"focus"});
+    check(name == u"before" && enabled && mode == OptionValue{"normal"}, "All three edits stay drafts before apply");
+    check(bool(apply.invoke()) && calls == 1 && name == u"after" && !enabled && mode == OptionValue{"focus"},
+          "Apply submits one batch containing all three value types");
+}
+
+void mixed_rejection_marks_each_field_and_focuses_first() {
+    Ui ui({});
+    auto text = ui.add_text({.id = "text", .kind = Kind::text});
+    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}});
+    auto apply = ui.add_button({.id = "apply", .kind = Kind::button});
+    text.connect_source({[] { return std::u16string(u"old"); }, [](std::function<void()>) { return [] {}; }});
+    box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const auto&) {
+        return MixedConfirmationResult{{Status::invalid_value, u"Rejected"}, {{radio, u"Radio error"}, {box, u"Box error"}, {text, u"Text error"}}};
+    });
+    text.set_value(u"draft"); box.toggle(); radio.select({"a"});
+    check(apply.invoke().status == Status::invalid_value && text.describe()->focused,
+          "Rejection focuses the first field in the group, regardless of error ordering");
+    check(text.describe()->error == u"Text error" && box.describe()->error == u"Box error" && radio.describe()->error == u"Radio error",
+          "Each field exposes its own rejection reason");
+    check(*text.draft() == u"draft" && *box.draft() && *radio.draft() == OptionValue{"a"}, "Rejected drafts are retained");
+}
+
+void radio_all_disabled_remains_empty_and_tab_can_leave() {
+    Ui ui({});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group},
+        {{{"a"}, u"A", false}, {{"b"}, u"B", false}});
+    auto next = ui.add_button({.id = "next", .kind = Kind::button});
+    radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_immediate([](const OptionChange&) { return Result{}; });
+    radio.focus();
+    detail::access(ui).key_down({.key = Key::right});
+    detail::access(ui).key_down({.key = Key::left});
+    check(!radio.draft()->has_value(), "No direction selects a disabled option");
+    detail::access(ui).key_down({.key = Key::tab});
+    check(next.describe()->focused, "Tab leaves an all-disabled group");
+}
+
+void radio_source_conflict_can_be_resolved() {
+    std::optional<OptionValue> model = OptionValue{"a"};
+    std::function<void()> changed;
+    Ui ui({});
+    auto group = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}});
+    auto apply = ui.add_button({.id = "apply", .kind = Kind::button});
+    group.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
+    ui.connect_mixed_confirmation(apply, {group}, [](const auto&) { return MixedConfirmationResult{}; });
+    group.select({"b"}); model = OptionValue{"c"}; changed();
+    check(*group.draft() == OptionValue{"b"} && group.describe()->source_conflict, "A new source does not overwrite the draft and is reported");
+    check(bool(group.use_latest()) && *group.draft() == OptionValue{"c"} && !group.describe()->source_conflict,
+          "The latest source can replace the draft explicitly");
+}
+
+void standalone_boolean_and_option_confirmation() {
+    bool enabled = false;
+    std::optional<OptionValue> mode = OptionValue{"a"};
+    Ui ui({});
+    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}, {{"b"}, u"B"}});
+    box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
+    box.connect_confirmed([&](const BoolChange& c) { enabled = c.value; return Result{}; });
+    radio.connect_confirmed([&](const OptionChange& c) { mode = c.value; return Result{}; });
+    box.toggle(); radio.select({"b"});
+    check(!enabled && mode == OptionValue{"a"}, "Standalone confirmed connections keep drafts until confirmed");
+    check(bool(box.confirm()) && bool(radio.confirm()) && enabled && mode == OptionValue{"b"}, "Each explicit confirm writes its typed draft");
+}
+
+void unconnected_selection_controls_do_not_advertise_writes() {
+    Ui ui({});
+    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}});
+    auto has = [](const Semantics& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
+    check(!has(*box.describe(), Operation::activate) && !has(*radio.describe(), Operation::select),
+          "Unconnected controls do not advertise unavailable modifications");
+    box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    box.connect_immediate([](const BoolChange&) { return Result{}; });
+    radio.connect_immediate([](const OptionChange&) { return Result{}; });
+    check(has(*box.describe(), Operation::activate) && has(*radio.describe(), Operation::select),
+          "Connected editable controls advertise their available modifications");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G04 selection operations reflect write admission", unconnected_selection_controls_do_not_advertise_writes},
+        {"G10 standalone typed confirmations", standalone_boolean_and_option_confirmation},
+        {"G11 radio conflict and latest", radio_source_conflict_can_be_resolved},
+        {"G11 mixed rejection", mixed_rejection_marks_each_field_and_focuses_first},
+        {"N03 all disabled options", radio_all_disabled_remains_empty_and_tab_can_leave},
+        {"G11 mixed confirmation batch", mixed_confirmation_submits_one_batch},
+        {"C05 empty selection and disabled options", radio_can_start_empty_and_skip_disabled_options},
+        {"C04 keyboard and disabled semantics", checkbox_input_and_disabled_state_agree},
+        {"C04 connected checkbox toggles", checkbox_toggles_a_connected_boolean},
         {"Standalone confirmation shares command guard", confirmed_field_respects_shared_command_guard},
         {"Public text operations obey restrictions", public_text_operations_obey_restrictions},
         {"Handle queries report expiry", handle_queries_report_expiry},

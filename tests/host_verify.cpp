@@ -283,10 +283,50 @@ void clipboard_contention(const Appearance& appearance, Report& report) {
                      ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (restored ? "ok or unavailable" : "failed"));
 }
 
+void checkbox_and_radio_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    f.form.handles.notices.focus(); f.host.pump();
+    f.tap(VK_SPACE);
+    bool toggled = !*f.form.handles.notices.draft();
+    f.host.paint();
+    auto box = f.host.frame().find(f.form.handles.notices);
+    bool clicked_box = false;
+    if (box) {
+        auto r = box->bounds; POINT p{r.x + r.w / 2, r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
+        clicked_box = *f.form.handles.notices.draft();
+        f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
+        clicked_box = clicked_box && !*f.form.handles.notices.draft();
+    }
+    f.form.handles.mode.focus(); f.host.pump();
+    f.tap(VK_RIGHT);
+    bool arrow = *f.form.handles.mode.draft() == OptionValue{"focus"};
+    f.form.handles.offline_disabled.invoke();
+    f.host.paint();
+    auto item = f.host.frame().find(f.form.handles.mode);
+    bool had_option = item && item->options.size() == 3;
+    if (had_option) {
+        auto r = item->options[2]; POINT p{r.x + r.w / 2, r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
+    }
+    bool disabled = *f.form.handles.mode.draft() == OptionValue{"focus"};
+    f.form.handles.mode.enable_option({"offline"}, true);
+    f.host.paint(); item = f.host.frame().find(f.form.handles.mode);
+    if (item && item->options.size() == 3) {
+        auto r = item->options[2]; POINT p{r.x + r.w / 2, r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
+    }
+    bool clicked = *f.form.handles.mode.draft() == OptionValue{"offline"};
+    bool applied = bool(f.form.handles.apply.invoke()) && !f.form.notices_applied() && f.form.mode_applied() == OptionValue{"offline"};
+    report.check("F09-checkbox-radio", toggled && clicked_box && arrow && had_option && disabled && clicked && applied,
+        "Space toggled=" + std::to_string(toggled) + ", checkbox clicks=" + std::to_string(clicked_box) + ", arrow=" + std::to_string(arrow) + ", disabled click ignored=" + std::to_string(disabled) +
+        ", enabled click=" + std::to_string(clicked) + ", apply=" + std::to_string(applied));
+}
+
 void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, const std::filesystem::path& folder, const std::string& tag) {
     Fixture f(appearance);
     std::vector<Id> seen;
-    for (int i = 0; i < 9; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
+    for (int i = 0; i < 12; ++i) { f.tap(VK_TAB); seen.push_back(detail::access(f.form.ui).focused()); }
     BYTE state[256]{};
     GetKeyboardState(state);
     state[VK_SHIFT] = 0x80;
@@ -309,7 +349,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     bool distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
     std::string order;
     for (const auto& id : seen) order += id + " ";
-    bool wraps = seen.size() == 9 && seen[6] == f.ids.name && seen[7] == f.ids.apply && seen[8] == seen[0];
+    bool wraps = seen.size() == 12 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.offline_disabled && seen[10] == f.ids.apply && seen[11] == seen[0];
     report.check("AC11-tab", wraps && back && visible && distinct,
                  "Tab order: " + order + "; Shift+Tab back to apply=" + (back ? "yes" : "no") + "; focused apply ring pixel is accent=" +
                      (visible ? "yes" : "NO") + ", unfocused reset ring is not=" + (distinct ? "yes" : "NO") + " (" + tag + "-focus-apply.bmp)");
@@ -714,6 +754,7 @@ int run(const std::filesystem::path& folder) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
         registered_component_uses_native_host(*appearance, report, folder);
+        checkbox_and_radio_native(*appearance, report);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);
