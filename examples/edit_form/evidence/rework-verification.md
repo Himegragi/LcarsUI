@@ -1,3 +1,23 @@
+# List and scrollbar verification - issue #20 (2026-11-05)
+
+Production and example: commits `83af9df` and `1235824`, based on local integration `067bf41b8af2ec0b16a9acf7d70bf825232b4505`; merging that tip reported already up to date. The last native check below was added after the single IME and clipboard runs; no production code changed afterward. This record follows in a separate commit. V02 is a standalone example pending #21; the two executables share the page, model and list behavior.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 55/55 cases, 233 checks; layout 18/18, 111 checks; V02 page 6/6, 20 checks |
+| Release desktop build and CTest, before final native check | 7/7 suites passed, 0 failed | `build.ps1 -Configuration Release`; [46 native checks](ticket-20-host/host.tsv) passed |
+| Release desktop build and CTest, final native check | 6/7 suites passed, 1 failed | [46/48 native checks passed](ticket-20-host/host-latest.tsv); two forced-contention clipboard checks failed, one in each appearance. All six new list-native checks passed. |
+| Real Microsoft Bopomofo, one run | 36/36 passed, 0 failed or blocked | [IME results](ticket-20-ime/ime.tsv), [events](ticket-20-ime/ime-events.log); foreground SendInput |
+| Clipboard stress, one complete run | 387/400 passed, 13 failed | [results](ticket-20-clipboard/clipboard.tsv); 100 repetitions per appearance. Seven failures were forced-contention checks; six were ordinary copy/paste checks. |
+
+The latest native run's forced-contention failures both reported paste failed after a 60 ms clipboard hold. In the stress run, failures included failed fixture writes or copy, unavailable or unexpected clipboard contents, and failed paste; see the TSV for each repetition. These results do not identify the cause. The previously reported intermittent contention problem remains open, and this run also observed failures in the ordinary scenario. No clipboard changes were made. The earlier fully passing desktop run is preserved rather than replacing the later failure.
+
+V02 tests cover empty and one-item focus/exit, T003/T004/Home/End, duplicate T005/T006 identities through sorting, filtering and clearing, deletion and reentry, T008 disable/selection recovery, and R11's T009-to-T010 old-order recovery. List layout tests exercise full row reveal and clipped hits for both appearances; native Win32 messages exercise End at 640x480, wheel, actual thumb drag to T100, clicking T100 after entering from another control, shrinking content, and the disabled T008 pointer/keyboard path in both appearances. The N06 layout case combines rows, columns and grid with long text, a narrow width and two text sizes. The V02 behavior cases use the public handles; host input and frame geometry use the internal host seam.
+
+Windows 11 Pro N build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Project C++ translation units in the Release compile databases specify C++20: 12/12 core-only and 20/20 desktop. The retained [Web](ticket-20-host/web-960x720-100-initial.bmp) and [Material](ticket-20-host/material-960x720-100-initial.bmp) images are V01 host images, not V02 screenshots. V02 has geometry and native interaction evidence but no retained representative screenshot. Forced 100%/150% rendering is not a real cross-monitor DPI migration. User trial, UIA, MCP and cross-page behavior were not run. The existing layout supports one scroll region per frame; nested inner/outer scroll coordination in the parent specification remains unimplemented and unverified.
+
+---
+
 # Dropdown and overlay verification - issue #19 (2026-11-05)
 
 Production and tests: commit `d1e32d89d440128703799da78e3f336281f840d2`, based on local integration tip `e43966dc300b6733a326f07bd276ea199cb3d3db`. Merging that tip reported already up to date. The following evidence-only commit records these runs. The form uses typed handles and an application-owned region source in the same confirmation group as name, notices, mode and volume. Both appearances run the same application and cases; native input uses the host interface.
