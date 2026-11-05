@@ -12,7 +12,7 @@ class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
     bool write(std::u16string_view text) override;
-    std::optional<std::u16string> read() override;
+    Query<std::u16string> read() override;
 private:
     HWND window_;
 };

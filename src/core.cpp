@@ -1845,8 +1845,9 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (key.letter == u'C') return copy(focus_);
         if (key.letter == u'X') return cut(focus_);
         if (key.letter == u'V') {
-            auto content = clipboard_ ? clipboard_->read() : std::nullopt;
-            return content ? paste(focus_, *content) : Result{Status::not_supported, u"剪貼簿沒有文字"};
+            if (!clipboard_) return {Status::not_supported, u"\u526a\u8cbc\u7c3f\u4e0d\u53ef\u7528"};
+            auto content = clipboard_->read();
+            return content ? paste(focus_, *content) : Result{content.status, content.message};
         }
         return {};
     }

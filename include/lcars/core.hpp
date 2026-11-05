@@ -82,7 +82,8 @@ class Clipboard {
 public:
     virtual ~Clipboard() = default;
     virtual bool write(std::u16string_view text) = 0;
-    virtual std::optional<std::u16string> read() = 0;
+    // not_supported means no text; failed means the clipboard could not be read.
+    virtual Query<std::u16string> read() = 0;
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);

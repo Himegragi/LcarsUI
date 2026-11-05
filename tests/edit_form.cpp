@@ -658,10 +658,10 @@ void dialog_cancel_preserves_progress() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
     h.tabs.activate({"v03"});
-    check(h.progress_half.describe()->description == u"?????????????????", "V03 tooltip uses the specified text");
+    check(h.progress_half.describe()->description == u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002", "V03 tooltip uses the specified text");
     check(bool(h.dialog_open.invoke()), "Open dialog");
-    check(h.dialog_title.describe()->value == u"??????" && h.dialog_body.describe()->value == u"????? 0%???????????" &&
-          h.dialog_cancel.describe()->name == u"??" && h.dialog_confirm.describe()->name == u"????",
+    check(h.dialog_title.describe()->value == u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6" && h.dialog_body.describe()->value == u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002" &&
+          h.dialog_cancel.describe()->name == u"\u53d6\u6d88" && h.dialog_confirm.describe()->name == u"\u91cd\u8a2d\u9032\u5ea6",
           "Dialog uses the specified title and button text");
     check(h.dialog_cancel.describe()->focused, "Dialog starts on cancel");
     check(bool(h.dialog_cancel.invoke()), "Cancel dialog");

@@ -450,6 +450,10 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto dragged = detail::access(ui).edit(f.ids.name)->selection;
     detail::WindowsClipboard clipboard(f.host.window());
     auto saved = clipboard.read();
+    if (saved.status != Status::ok && saved.status != Status::not_supported) {
+        report.check("AC08-pointer-clipboard", false, "Could not save clipboard text; test did not overwrite it");
+        return;
+    }
     f.chord('C');
     auto copied = clipboard.read();
     bool supplied = clipboard.write(u"X\r\nY");
@@ -458,16 +462,16 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto pasted = detail::access(ui).text(f.ids.name);
     f.chord('Z');
     auto undone = detail::access(ui).text(f.ids.name);
-    bool restored = !saved || clipboard.write(*saved);
+    bool restored = saved.status == Status::not_supported || (saved && clipboard.write(*saved));
     report.check("AC08-pointer-clipboard",
                  placed.anchor == 5 && placed.caret == 5 && extended.anchor == 5 && extended.caret == 8 && dragged.anchor == 0 &&
-                     dragged.caret == 5 && copied == u"Alpha" && supplied && pasted == u"X Y" && undone == u"Alpha \u4e2d\u6587" && restored,
+                     dragged.caret == 5 && (copied && *copied == u"Alpha") && supplied && pasted == u"X Y" && undone == u"Alpha \u4e2d\u6587" && restored,
                  "click caret=" + std::to_string(placed.caret) + ", shift-click=" + std::to_string(extended.anchor) + ".." +
                      std::to_string(extended.caret) + ", drag=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) +
-                     ", Ctrl+C=" + (copied == u"Alpha" ? "ok" : copied ? "unexpected" : "unavailable") +
+                     ", Ctrl+C=" + ((copied && *copied == u"Alpha") ? "ok" : copied ? "unexpected" : "unavailable") +
                      ", fixture write=" + (supplied ? "ok" : "failed") + ", Ctrl+V=" + (pasted == u"X Y" ? "ok" : "unexpected") +
                      ", Ctrl+Z=" + (undone == u"Alpha \u4e2d\u6587" ? "ok" : "unexpected") +
-                     "; user clipboard text restored=" + (!saved ? "no text saved" : restored ? "yes" : "FAILED"));
+                     "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
@@ -476,6 +480,10 @@ void clipboard_contention(const Appearance& appearance, Report& report) {
     auto& ui = detail::access(f.form.ui);
     detail::WindowsClipboard clipboard(f.host.window());
     auto saved = clipboard.read();
+    if (saved.status != Status::ok && saved.status != Status::not_supported) {
+        report.check("AC08-clipboard-contention", false, "Could not save clipboard text; test did not overwrite it");
+        return;
+    }
     ui.set_value(f.ids.name, u"Alpha");
     ui.focus(f.ids.name);
     ui.select(f.ids.name, 0, 5);
@@ -504,10 +512,10 @@ void clipboard_contention(const Appearance& appearance, Report& report) {
     f.chord('A');
     bool held_paste = held_during([&] { f.chord('V'); });
     auto pasted = ui.text(f.ids.name);
-    bool restored = !saved || clipboard.write(*saved);
-    report.check("AC08-clipboard-contention", held_copy && copied == u"Alpha" && supplied && held_paste && pasted == u"X Y" && restored,
-                 std::string("60ms clipboard hold: copy=") + (copied == u"Alpha" ? "ok" : "failed") + ", paste=" + (pasted == u"X Y" ? "ok" : "failed") +
-                     ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (restored ? "ok or unavailable" : "failed"));
+    bool restored = saved.status == Status::not_supported || (saved && clipboard.write(*saved));
+    report.check("AC08-clipboard-contention", held_copy && (copied && *copied == u"Alpha") && supplied && held_paste && pasted == u"X Y" && restored,
+                 std::string("60ms clipboard hold: copy=") + ((copied && *copied == u"Alpha") ? "ok" : "failed") + ", paste=" + (pasted == u"X Y" ? "ok" : "failed") +
+                     ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "ok" : "failed"));
 }
 
 void checkbox_and_radio_native(const Appearance& appearance, Report& report) {

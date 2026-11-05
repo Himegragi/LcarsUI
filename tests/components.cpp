@@ -183,9 +183,25 @@ void caret_moves_by_code_point_and_extends_with_shift() {
 
 struct MemoryClipboard final : Clipboard {
     std::optional<std::u16string> content;
+    bool fail_read = false;
     bool write(std::u16string_view text) override { content = std::u16string(text); return true; }
-    std::optional<std::u16string> read() override { return content; }
+    Query<std::u16string> read() override {
+        if (fail_read) return {Status::failed, u"Clipboard unavailable", std::nullopt};
+        if (!content) return {Status::not_supported, u"Clipboard has no text", std::nullopt};
+        return {Status::ok, {}, content};
+    }
 };
+
+void clipboard_reports_unavailable_separately_from_empty() {
+    Ui ui({}); populate(ui, name_form());
+    MemoryClipboard clipboard;
+    auto& host = detail::access(ui);
+    host.set_clipboard(&clipboard); host.focus("name");
+    check(host.key_down(ctrl(u'V')).status == Status::not_supported, "An open clipboard with no text is reported as empty");
+    clipboard.fail_read = true;
+    check(host.key_down(ctrl(u'V')).status == Status::failed && host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005",
+          "A clipboard that cannot be opened reports failure without editing the draft");
+}
 
 void paste_turns_each_line_break_into_one_space() {
     Ui ui({}); populate(ui, name_form());
@@ -1236,6 +1252,7 @@ int main() {
         {"AC06 button activates once per press", button_activates_once_per_press},
         {"AC09 typing records one history entry per input", typing_records_one_history_entry_per_input},
         {"AC08 caret moves by code point and extends with Shift", caret_moves_by_code_point_and_extends_with_shift},
+        {"Clipboard unavailable differs from no text", clipboard_reports_unavailable_separately_from_empty},
         {"AC09 paste turns each line break into one space", paste_turns_each_line_break_into_one_space},
         {"AC10 read-only allows viewing and copying only", read_only_allows_viewing_and_copying_only},
         {"AC10 disabled field refuses every entry and keeps data", disabled_field_refuses_every_entry_and_keeps_data},

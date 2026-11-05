@@ -65,11 +65,14 @@ namespace {
 // Clipboard managers can hold the global clipboard briefly after a change. Bound the wait
 // on the UI thread; report failure rather than waiting indefinitely if another owner stalls.
 bool open_clipboard(HWND window) {
-    constexpr int attempts = 40;
-    for (int attempt = 0; attempt < attempts; ++attempt) {
+    constexpr ULONGLONG timeout_ms = 250;
+    const auto deadline = GetTickCount64() + timeout_ms;
+    do {
         if (OpenClipboard(window)) return true;
-        if (attempt + 1 < attempts) Sleep(5);
-    }
+        auto now = GetTickCount64();
+        if (now >= deadline) break;
+        Sleep(static_cast<DWORD>(std::min<ULONGLONG>(5, deadline - now)));
+    } while (GetTickCount64() < deadline);
     return false;
 }
 }
@@ -90,16 +93,19 @@ bool WindowsClipboard::write(std::u16string_view text) {
     CloseClipboard();
     return ok;
 }
-std::optional<std::u16string> WindowsClipboard::read() {
-    if (!open_clipboard(window_)) return std::nullopt;
-    std::optional<std::u16string> result;
-    if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
-        if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {
-            auto units = GlobalSize(memory) / sizeof(char16_t);
-            std::size_t n = 0;
-            while (n < units && data[n]) ++n;
-            if (n < units) result = std::u16string(data, n);
-            GlobalUnlock(memory);
+Query<std::u16string> WindowsClipboard::read() {
+    if (!open_clipboard(window_)) return {Status::failed, u"\u7121\u6cd5\u958b\u555f\u526a\u8cbc\u7c3f", std::nullopt};
+    Query<std::u16string> result{Status::not_supported, u"\u526a\u8cbc\u7c3f\u6c92\u6709\u6587\u5b57", std::nullopt};
+    if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+        result = {Status::failed, u"\u7121\u6cd5\u8b80\u53d6\u526a\u8cbc\u7c3f\u6587\u5b57", std::nullopt};
+        if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
+            if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {
+                auto units = GlobalSize(memory) / sizeof(char16_t);
+                std::size_t n = 0;
+                while (n < units && data[n]) ++n;
+                if (n < units) result = {Status::ok, {}, std::u16string(data, n)};
+                GlobalUnlock(memory);
+            }
         }
     }
     CloseClipboard();

@@ -139,7 +139,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.progress_source = ui.add_label({.id = prefix + "v03.source", .kind = Kind::label});
         handles.progress_zero = ui.add_button({.id = prefix + "v03.zero", .kind = Kind::button, .label = u"0%"});
         handles.progress_half = ui.add_button({.id = prefix + "v03.half", .kind = Kind::button, .label = u"50%"});
-        handles.progress_tip = ui.add_tooltip(handles.progress_half, u"?????????????????");
+        handles.progress_tip = ui.add_tooltip(handles.progress_half, u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002");
         handles.progress_full = ui.add_button({.id = prefix + "v03.full", .kind = Kind::button, .label = u"100%"});
         handles.progress_below = ui.add_button({.id = prefix + "v03.below", .kind = Kind::button, .label = u"-10"});
         handles.progress_above = ui.add_button({.id = prefix + "v03.above", .kind = Kind::button, .label = u"110"});
@@ -173,10 +173,10 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
             auto count = std::to_string(dialog_confirmations_);
             return u"Result: " + dialog_result_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
         });
-        handles.dialog_title = ui.add_label({.id = prefix + "dialog.title", .kind = Kind::label, .value = u"??????"});
-        handles.dialog_body = ui.add_label({.id = prefix + "dialog.body", .kind = Kind::label, .value = u"????? 0%???????????"});
-        handles.dialog_cancel = ui.add_button({.id = prefix + "dialog.cancel", .kind = Kind::button, .label = u"??"});
-        handles.dialog_confirm = ui.add_button({.id = prefix + "dialog.confirm", .kind = Kind::button, .label = u"????"});
+        handles.dialog_title = ui.add_label({.id = prefix + "dialog.title", .kind = Kind::label, .value = u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6"});
+        handles.dialog_body = ui.add_label({.id = prefix + "dialog.body", .kind = Kind::label, .value = u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002"});
+        handles.dialog_cancel = ui.add_button({.id = prefix + "dialog.cancel", .kind = Kind::button, .label = u"\u53d6\u6d88"});
+        handles.dialog_confirm = ui.add_button({.id = prefix + "dialog.confirm", .kind = Kind::button, .label = u"\u91cd\u8a2d\u9032\u5ea6"});
         handles.dialog = ui.add_dialog({handles.dialog_title, handles.dialog_body, handles.dialog_cancel, handles.dialog_confirm}, handles.dialog_cancel, handles.dialog_open,
             [this](bool confirmed) { dialog_result_ = confirmed ? u"Confirmed" : u"Cancelled"; if (confirmed) { update_progress(0); ++dialog_confirmations_; } });
         handles.dialog_open.bind([this] { return handles.dialog.open(handles.dialog_open); });
