@@ -1,0 +1,7 @@
+appearance	case	status	evidence
+web	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 120; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+web	D01-composition-return	PASS	120 -> 144; WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+web	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside viewport and hit=1
+material	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 120; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+material	D01-composition-return	PASS	120 -> 144; WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+material	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside viewport and hit=1
