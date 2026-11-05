@@ -1,3 +1,20 @@
+# V03 modal dialog - issue #23 (2026-11-05)
+
+Production: `a946f24`, based on integration tip `9179e12`; native matrix and documentation: `f2a67a3`. The integration tip was merged locally and was already an ancestor. V03 owns the progress and result; confirmation sets progress to 0 and increments the count once. Cancel leaves progress unchanged. The temporary opener can be removed from inside the dialog; reset recreates it and keeps the old handle invalid.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Release core-only build and CTest | 6/6 suites passed, 0 failed | `build.ps1 -Configuration Release -CoreOnly`; components 61/61 cases, layout 21/21; edit form 19/19 for each appearance and ID set (568 cumulative checks) |
+| Release desktop build and CTest | 7/7 suites passed, 0 failed; 60/60 native checks | `build.ps1 -Configuration Release`; [host results](ticket-23-host/host.tsv) |
+| P01–P04, both appearances | Passed in public-handle cases and native input checks | P01 cancel and Escape; P02 keyboard confirmation and held Enter; P03 Tab/Shift+Tab, blocked public operations, page changes, mask and pointer; P04 confirm and cancel after temporary opener removal, plus reset and recreation. The host checks dialog buttons and mask at 960×720 and 640×480 DIP at forced 100% and 150%. [Web dialog](ticket-23-host/web-dialog-640-150.bmp), [Material dialog](ticket-23-host/material-dialog-640-150.bmp). |
+| Clipboard stress, both appearances | 400/400 passed, 0 failed | [results](ticket-23-clipboard/clipboard.tsv), 100 repetitions per appearance, including 60 ms forced contention |
+| Real Microsoft Bopomofo, one run | 40/40 passed, 0 failed or blocked | [results](ticket-23-ime/ime.tsv), [events](ticket-23-ime/ime-events.log). A real pointer click on the V01 dialog opener during composition committed `我` once as one undo entry, moved focus to Cancel, and cancellation restored the opener in each appearance; progress and confirmation count did not change. |
+
+The P01 test first failed to compile because the dialog was absent; P02/P03 then failed for the absent overlay. The reset-after-removal case later failed until the temporary entry could be recreated. An earlier clipboard stress run was intentionally stopped after the reset gap was discovered; its [partial record](ticket-23-clipboard-interrupted.tsv) contains 135 passing rows and is not counted as a complete run. The IME run was not interrupted or repeated.
+
+Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Forced scale is layout evidence, not a real cross-monitor DPI migration. Real cross-monitor DPI migration, UIA/MCP, user trial, and the remaining E01 matrix remain open. The removed button's identity is retained as a tombstone until UI destruction so stale handles cannot revive; repeated remove/reset cycles therefore retain those small identity records. Host and IME event-log trailing whitespace was normalized without changing outcomes.
+
+---
 # V03 progress - issue #22 (2026-11-05)
 
 Production: `91b654d`, based on local integration `c1d1e6c`; merging the local integration tip reported already up to date. The subsequent evidence commit adds only the extra page-isolation assertions and this record. V03 owns the source in the application, initially 50, and connects it to a read-only typed progress handle. The displayed percentage is clamped to 0–100, while the source label and application model retain the original value. The display does not infer a business result from 100%. The dialog and tooltip remain for #23 and #24.
@@ -12,7 +29,7 @@ Production: `91b654d`, based on local integration `c1d1e6c`; merging the local i
 
 The initial P07 test failed to compile before the component existed. A later source-lifecycle test failed because the first implementation did not identify progress as read-only; the implementation was corrected before the passing runs. The tests also check expiry and subscription disconnection, V03 reset to 50%, progress retention across page switches, and preservation of V01 draft and V02 search/selection after reset. The final two isolation checks were added after the desktop, clipboard and IME runs; they changed no production or native-host code, and core-only CTest was rerun afterwards.
 
-Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Host layout checks include 960×720 and 640×480 DIP at forced 100% and 150%; the retained V03 images are 960×720 at forced 100%. Forced scaling does not establish real cross-monitor DPI behavior. Real cross-monitor DPI migration, UIA/MCP, user trial, the remaining E01 matrix, and the later V03 dialog and tooltip scenarios remain open. Host and IME event-log trailing whitespace was normalized without changing the outcomes.
+Environment: Windows build 26300.9711 (26H2), clang-cl 19.1.5, NVIDIA RTX 3060 / OpenGL 3.3, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 and ChtIME.exe 6.2.26100.9278. Host layout checks include 960×720 and 640×480 DIP at forced 100% and 150%; the retained V03 images are 960×720 at forced 100%. Forced scaling does not establish real cross-monitor DPI behavior. Real cross-monitor DPI migration, UIA/MCP, user trial, the remaining E01 matrix, and the later V03 dialog and tooltip scenarios remain open. Host and Host and IME event-log trailing whitespace was normalized without changing the outcomes.
 
 ---
 

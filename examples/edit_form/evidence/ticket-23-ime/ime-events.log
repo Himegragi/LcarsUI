@@ -1,0 +1,252 @@
+=== web ===
+AC07-real	wm:killfocus		focus= |
+  trace	WM_KEYDOWN	32	first	focus=fixture.error
+  trace	WM_CHAR	32	first	focus=fixture.error
+  trace	WM_KEYDOWN	32	repeat	focus=fixture.error
+  trace	WM_CHAR	32	repeat	focus=fixture.error
+  trace	WM_KEYUP	32	repeat	focus=fixture.error
+AC07-real-typing
+  trace	WM_KEYDOWN	32	first	focus=form.name
+  trace	WM_CHAR	32	first	focus=form.name
+  trace	WM_KEYUP	32	repeat	focus=form.name
+F02-compose	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+F02-confirm	wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+F02-enter-after
+  trace	WM_KEYDOWN	13	first	focus=form.name
+  trace	WM_CHAR	13	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+AC09-undo-commit
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	90	first	focus=form.name
+  trace	WM_CHAR	26	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-cancel	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	27	repeat	focus=form.name
+E01-page-switch	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.title.pages.tabs
+E01-dialog-open	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.title.pages.v01.open
+E01-replace-selection	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=我	composing=0	preedit= | wm:ime-end		focus=form.name	text=我	composing=0	preedit= |
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	65	first	focus=form.name
+  trace	WM_CHAR	1	first	focus=form.name
+  trace	WM_KEYUP	65	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	90	first	focus=form.name
+  trace	WM_CHAR	26	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-shortcut-while-composing	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-tab	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	9	repeat	focus=form.name
+E01-tab-then-escape	wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	27	repeat	focus=form.name
+E01-pointer	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=fixture.long
+E01-window-deactivate	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:killfocus		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+E01-window-return
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+E01-pointer-same-field	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.name
+=== material ===
+AC07-real	wm:killfocus		focus= |
+  trace	WM_KEYDOWN	32	first	focus=fixture.error
+  trace	WM_CHAR	32	first	focus=fixture.error
+  trace	WM_KEYDOWN	32	repeat	focus=fixture.error
+  trace	WM_CHAR	32	repeat	focus=fixture.error
+  trace	WM_KEYUP	32	repeat	focus=fixture.error
+AC07-real-typing
+  trace	WM_KEYDOWN	32	first	focus=form.name
+  trace	WM_CHAR	32	first	focus=form.name
+  trace	WM_KEYUP	32	repeat	focus=form.name
+F02-compose	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+F02-confirm	wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+F02-enter-after
+  trace	WM_KEYDOWN	13	first	focus=form.name
+  trace	WM_CHAR	13	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+AC09-undo-commit
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	90	first	focus=form.name
+  trace	WM_CHAR	26	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-cancel	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	27	repeat	focus=form.name
+E01-page-switch	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.title.pages.tabs
+E01-dialog-open	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.title.pages.v01.open
+E01-replace-selection	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=我	composing=0	preedit= | wm:ime-end		focus=form.name	text=我	composing=0	preedit= |
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	65	first	focus=form.name
+  trace	WM_CHAR	1	first	focus=form.name
+  trace	WM_KEYUP	65	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	13	repeat	focus=form.name
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	90	first	focus=form.name
+  trace	WM_CHAR	26	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-shortcut-while-composing	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	17	first	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	90	repeat	focus=form.name
+  trace	WM_KEYUP	17	repeat	focus=form.name
+E01-tab	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	9	repeat	focus=form.name
+E01-tab-then-escape	wm:ime-compose		focus=form.name	text=測試使用者	composing=1	preedit= | wm:ime-end		focus=form.name	text=測試使用者	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	27	repeat	focus=form.name
+E01-pointer	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=fixture.long
+E01-window-deactivate	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:killfocus		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+E01-window-return
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+E01-pointer-same-field	wm:ime-start		focus=form.name	text=測試使用者	composing=0	preedit= | wm:ime-compose	ㄨ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨ | wm:ime-compose	ㄨㄛ	focus=form.name	text=測試使用者	composing=1	preedit=ㄨㄛ | wm:ime-compose	我	focus=form.name	text=測試使用者	composing=1	preedit=我 | host:complete-request		focus=form.name	text=測試使用者	composing=1	preedit=我 | wm:ime-result	我	focus=form.name	text=測試使用者我	composing=0	preedit= | wm:ime-end		focus=form.name	text=測試使用者我	composing=0	preedit= |
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	74	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	73	repeat	focus=form.name
+  trace	WM_KEYDOWN	229	first	focus=form.name
+  trace	WM_KEYUP	51	repeat	focus=form.name
+  trace	WM_LBUTTONDOWN	1	first	focus=form.name
+  trace	WM_LBUTTONUP	0	first	focus=form.name
