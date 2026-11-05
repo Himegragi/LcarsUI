@@ -11,7 +11,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, tabs };
+enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, list, tabs };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
@@ -322,7 +322,26 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, TabsHandle>;
+class ListHandle {
+public:
+    ListHandle() = default;
+    Result select(OptionValue value) const;
+    Result set_items(std::vector<RadioOption> items) const;
+    Result focus() const;
+    Result enable(bool enabled) const;
+    Result connect_source(OptionSource source) const;
+    Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
+    Query<Semantics> describe() const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    ListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle>;
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 struct TextChange {
@@ -354,6 +373,7 @@ public:
     SliderHandle add_slider(Control control, SliderRange range);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
+    ListHandle add_list(Control control, std::vector<RadioOption> items);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,

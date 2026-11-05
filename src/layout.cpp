@@ -97,6 +97,9 @@ const Placement* Frame::find(const DropdownHandle& handle) const {
 const Placement* Frame::find(const TabsHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
+const Placement* Frame::find(const ListHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
 std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y) const {
     if (!item.clip.contains(x, y)) return std::nullopt;
     for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return i;
@@ -269,8 +272,16 @@ struct Arranger {
         if (!reveal.empty()) {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == reveal; });
             if (it != placed.end()) {
-                int top = it->bounds.y - r.y, bottom = top + it->bounds.h;
-                if (top < offset || it->bounds.h > r.h) offset = top;
+                auto target = it->bounds;
+                if (it->kind == Kind::list) {
+                    auto s = ui.describe(it->id);
+                    if (s && s->candidate) {
+                        for (std::size_t i = 0; i < s->options.size() && i < it->options.size(); ++i)
+                            if (s->options[i].value == *s->candidate) { target = it->options[i]; break; }
+                    }
+                }
+                int top = target.y - r.y, bottom = top + target.h;
+                if (top < offset || target.h > r.h) offset = top;
                 else if (bottom > offset + r.h) offset = bottom - r.h;
                 offset = std::clamp(offset, 0, frame.maximum);
             }

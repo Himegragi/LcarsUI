@@ -1026,6 +1026,21 @@ void dropdown_programmatic_edits_request_a_frame() {
     check(frames > 0, "Restoring the source requests repaint");
 }
 
+void list_members_obey_page_scope() {
+    Ui ui({});
+    std::optional<OptionValue> selected;
+    auto list = ui.add_list({.id = "list-scope", .kind = Kind::list}, {{{"T006"}, u"Shared"}});
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    auto tabs = ui.add_tabs({.id = "scope-tabs", .kind = Kind::tabs}, {
+        {{"v01"}, u"One", true, {}}, {{"v02"}, u"Two", true, {list}}});
+    check(list.select({"T006"}).status == Status::hidden && !selected, "A hidden list refuses selection");
+    tabs.activate({"v02"});
+    check(bool(list.select({"T006"})) && selected == OptionValue{"T006"}, "The visible list accepts selection");
+    tabs.activate({"v01"});
+    check(list.focus().status == Status::hidden && selected == OptionValue{"T006"}, "Leaving the list retains its selection and blocks focus");
+}
+
 void tabs_require_explicit_activation_and_guard_hidden_pages() {
     Ui ui({});
     auto first = ui.add_button({.id = "first", .kind = Kind::button});
@@ -1091,12 +1106,69 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
           "Errors on the other page remain discoverable from its tab");
 }
 
+void list_selection_uses_stable_identity() {
+    std::optional<OptionValue> selected;
+    Ui ui({});
+    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+        {{{"T005"}, u"Shared"}, {{"T006"}, u"Shared"}});
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) { selected = std::move(value); return Result{}; });
+    check(bool(list.select({"T006"})) && selected == OptionValue{"T006"}, "Select the second item with a shared name");
+    list.set_items({{{"T006"}, u"Shared"}, {{"T005"}, u"Shared"}});
+    check(list.describe()->options[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
+}
+
+void list_focus_and_keyboard_use_enabled_items() {
+    std::optional<OptionValue> selected;
+    Ui ui({});
+    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+        {{{"T007"}, u"Seven"}, {{"T008"}, u"Eight", false}, {{"T009"}, u"Nine"}});
+    auto next = ui.add_button({.id = "next", .kind = Kind::button});
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    list.focus();
+    check(list.describe()->candidate == OptionValue{"T007"} && !selected, "Entry focuses the first enabled item without selecting");
+    detail::access(ui).key_down({.key = Key::down, .shift = true, .ctrl = true});
+    check(selected == OptionValue{"T009"} && list.describe()->candidate == selected, "Down skips disabled rows and modifiers do not add selections");
+    check(list.select({"T008"}).status == Status::invalid_value && selected == OptionValue{"T009"}, "Disabled rows reject public selection");
+    detail::access(ui).key_down({.key = Key::tab});
+    check(next.describe()->focused, "Tab exits the list");
+}
+
+void list_recovers_cursor_when_data_changes() {
+    std::optional<OptionValue> selected;
+    Ui ui({});
+    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+        {{{"T008"}, u"Eight"}, {{"T009"}, u"Nine"}, {{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}});
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    list.focus(); list.select({"T009"});
+    list.set_items({{{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}});
+    check(!selected && list.describe()->candidate == OptionValue{"T010"}, "Filtering clears selection and chooses the surviving next neighbor from the old order");
+}
+void list_write_cannot_reenter_itself() {
+    std::optional<OptionValue> selected; Status nested = Status::ok;
+    Ui ui({});
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}});
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) {
+        if (!selected) { selected = value; nested = list.select({"b"}).status; }
+        return Result{};
+    });
+    check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"C08 C09 list page admission", list_members_obey_page_scope},
         {"G07 page changes do not recurse", tab_change_notifications_do_not_recurse},
         {"C09 disabled and modal admission", tabs_respect_modal_and_disabled_pointer_targets},
         {"G11 cross-page rejection", cross_page_confirmation_reveals_first_error_and_marks_other_pages},
         {"C09 manual tabs and hidden admission", tabs_require_explicit_activation_and_guard_hidden_pages},
+        {"L03 list selection survives reorder", list_selection_uses_stable_identity},
+        {"C08 list focus and keyboard", list_focus_and_keyboard_use_enabled_items},
+        {"R11 list neighbor follows old identity order", list_recovers_cursor_when_data_changes},
+        {"G07 list write cannot reenter", list_write_cannot_reenter_itself},
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
         {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
         {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},
