@@ -16,6 +16,7 @@ edit_form::Ids alternate_ids() {
     i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
     i.volume_latest = "volume.latest"; i.volume = "volume"; i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
+    i.region = "region.alt"; i.region_empty = "region.empty.alt";
     i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c"; i.latest = "latest";
     return i;
 }
@@ -30,6 +31,24 @@ void settle(edit_form::Form& form) {
         check(field && field->label_lines.size() == 1 && field->error_lines.empty() != invalid,
               "Under this appearance the name carries its label, and an error exactly when invalid");
     }
+}
+
+void region_is_in_the_form_confirmation_group() {
+    edit_form::Form form(ids);
+    check(*form.handles.region.draft() == OptionValue{"north"} && form.region_applied() == OptionValue{"north"}, "Region begins at North");
+    check(bool(form.handles.region.select({"south"})) && form.region_applied() == OptionValue{"north"}, "Selecting South changes only the draft");
+    check(bool(form.handles.apply.invoke()) && form.region_applied() == OptionValue{"south"} && form.applies() == 1, "Apply commits region with the form");
+    form.handles.region_empty.invoke();
+    check(!*form.handles.region.draft(), "Clearing options clears the draft");
+    check(form.handles.apply.invoke().status == Status::invalid_value && form.handles.region.describe()->focused &&
+          form.handles.region.describe()->invalid && !form.handles.name.describe()->invalid && form.applies() == 1, "Missing region is rejected and focuses its own error");
+    form.handles.region_empty.invoke();
+    check(!*form.handles.region.draft(), "Restoring options does not resurrect the old selection");
+    form.handles.name.set_value(u"");
+    form.handles.apply.invoke();
+    check(form.handles.name.describe()->focused && form.handles.region.describe()->invalid, "Name error takes focus before region");
+    form.handles.name.set_value(u"Valid"); form.handles.region.select({"central"});
+    check(bool(form.handles.apply.invoke()) && form.region_applied() == OptionValue{"central"} && form.applies() == 2, "Corrected region is explicitly selected and applied");
 }
 
 void volume_is_a_confirmed_form_field() {
@@ -159,8 +178,8 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
     std::vector<Id> seen;
-    for (int i = 0; i < 13; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
-    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.volume, ids.offline_disabled, ids.apply, ids.normal};
+    for (int i = 0; i < 15; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
+    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.region, ids.volume, ids.offline_disabled, ids.region_empty, ids.apply, ids.normal};
     check(seen == expected, "Tab reaches fixtures, name and apply, then wraps");
     detail::access(ui).key_down(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
@@ -263,6 +282,7 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"G11 volume conflict", volume_conflict_offers_latest},
         {"F09 volume confirmation", volume_is_a_confirmed_form_field},
         {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},

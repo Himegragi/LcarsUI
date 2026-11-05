@@ -10,7 +10,7 @@ struct Ids {
     std::string title, intro;
     std::string normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
     std::string name_label, name, name_help, name_error, apply;
-    std::string notices, mode, volume, volume_latest, offline_disabled;
+    std::string notices, mode, volume, volume_latest, offline_disabled, region, region_empty;
     std::string state, draft, result, count, latest;                        // displayed results
 };
 Ids default_ids();
@@ -24,10 +24,12 @@ private:
     int volume_applied_ = 40;
     bool notices_applied_ = true;
     std::optional<lcars::OptionValue> mode_applied_ = lcars::OptionValue{"normal"};
+    std::optional<lcars::OptionValue> region_applied_ = lcars::OptionValue{"north"};
+    bool region_empty_ = false;
     bool offline_disabled_ = false;
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_;
+    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_;
 public:
     explicit Form(Ids ids = default_ids());
     Form(const Form&) = delete;
@@ -37,7 +39,8 @@ public:
         lcars::CheckboxHandle notices;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
-        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, offline_disabled;
+        lcars::DropdownHandle region;
+        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, offline_disabled, region_empty;
         lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
     } handles;
     lcars::Ui ui;
@@ -49,6 +52,7 @@ public:
     int volume_applied() const { return volume_applied_; }
     bool notices_applied() const { return notices_applied_; }
     std::optional<lcars::OptionValue> mode_applied() const { return mode_applied_; }
+    std::optional<lcars::OptionValue> region_applied() const { return region_applied_; }
     // An external application change to the same model (also useful to exercise conflicts).
     void update_source(std::u16string value);
     void update_volume_source(int value);

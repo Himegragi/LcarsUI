@@ -16,6 +16,10 @@ const std::u16string long_intro = short_intro +
 bool blank(std::u16string_view text) {
     return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t' || c == u'　'; });
 }
+std::vector<RadioOption> regions() {
+    return {{{"north"}, u"\u5317\u5340"}, {{"central"}, u"\u4e2d\u5340"}, {{"south"}, u"\u5357\u5340"}};
+}
+constexpr auto required_region = u"\u8acb\u9078\u64c7\u5730\u5340";
 }
 
 Ids default_ids() {
@@ -25,6 +29,7 @@ Ids default_ids() {
     i.error = "fixture.error"; i.long_text = "fixture.long"; i.reset = "form.reset";
     i.name_label = "form.name.label"; i.name = "form.name"; i.name_help = "form.name.help"; i.name_error = "form.name.error";
     i.volume = "form.volume"; i.volume_latest = "form.volume.latest"; i.notices = "form.notices"; i.mode = "form.mode"; i.offline_disabled = "fixture.offline_disabled";
+    i.region = "form.region"; i.region_empty = "fixture.region_empty";
     i.apply = "form.apply"; i.state = "result.state"; i.draft = "result.draft"; i.result = "result.applied"; i.count = "result.count"; i.latest = "form.latest";
     return i;
 }
@@ -46,9 +51,11 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
     handles.notices = ui.add_checkbox({.id = i.notices, .kind = Kind::checkbox, .label = u"\u555f\u7528\u63d0\u793a"});
     handles.mode = ui.add_radio_group({.id = i.mode, .kind = Kind::radio_group, .label = u"\u6a21\u5f0f"},
         {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}});
+    handles.region = ui.add_dropdown({.id = i.region, .kind = Kind::dropdown, .label = u"\u5730\u5340"}, regions());
     handles.volume = ui.add_slider({.id = i.volume, .kind = Kind::slider, .label = u"\u97f3\u91cf"}, {0, 100, 5});
     handles.volume_latest = ui.add_button({.id = i.volume_latest, .kind = Kind::button, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false});
     handles.offline_disabled = ui.add_button({.id = i.offline_disabled, .kind = Kind::button, .label = u"\u505c\u7528\u96e2\u7dda"});
+    handles.region_empty = ui.add_button({.id = i.region_empty, .kind = Kind::button, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"});
     handles.apply = ui.add_button({.id = i.apply, .kind = Kind::button, .label = u"套用"});
     handles.state = ui.add_label({.id = i.state, .kind = Kind::label});
     handles.draft = ui.add_label({.id = i.draft, .kind = Kind::label});
@@ -65,6 +72,9 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
     }});
     handles.mode.connect_source({[this] { return mode_applied_; }, [this](std::function<void()> changed) {
         mode_changed_ = std::move(changed); return [this] { mode_changed_ = {}; };
+    }});
+    handles.region.connect_source({[this] { return region_applied_; }, [this](std::function<void()> changed) {
+        region_changed_ = std::move(changed); return [this] { region_changed_ = {}; };
     }});
     handles.volume.connect_source({[this] { return volume_applied_; }, [this](std::function<void()> changed) {
         volume_changed_ = std::move(changed); return [this] { volume_changed_ = {}; };
@@ -84,20 +94,31 @@ Form::Form(Ids ids) : ids_(std::move(ids)), applied_(initial_name), ui({}) {
         return u"\u672a\u77e5";
     };
     auto number = [](int value) { auto n = std::to_string(value); return std::u16string(n.begin(), n.end()); };
-    handles.draft.connect_source([this, mode_name, number] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
-        u" / \u63d0\u793a\uff1a" + (*handles.notices.draft() ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(*handles.mode.draft()) + u" / \u97f3\u91cf\uff1a" + number(*handles.volume.draft()); });
-    handles.result.connect_source([this, mode_name, number] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
-        u" / \u63d0\u793a\uff1a" + (notices_applied_ ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(mode_applied_) + u" / \u97f3\u91cf\uff1a" + number(volume_applied_); });
+    auto region_name = [](const std::optional<OptionValue>& value) -> std::u16string {
+        if (!value) return u"\u672a\u9078\u53d6";
+        if (value->id == "north") return u"\u5317\u5340";
+        if (value->id == "central") return u"\u4e2d\u5340";
+        if (value->id == "south") return u"\u5357\u5340";
+        return u"\u672a\u77e5";
+    };
+    handles.draft.connect_source([this, mode_name, region_name, number] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
+        u" / \u63d0\u793a\uff1a" + (*handles.notices.draft() ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(*handles.mode.draft()) + u" / \u5730\u5340\uff1a" + region_name(*handles.region.draft()) + u" / \u97f3\u91cf\uff1a" + number(*handles.volume.draft()); });
+    handles.result.connect_source([this, mode_name, region_name, number] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
+        u" / \u63d0\u793a\uff1a" + (notices_applied_ ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(mode_applied_) + u" / \u5730\u5340\uff1a" + region_name(region_applied_) + u" / \u97f3\u91cf\uff1a" + number(volume_applied_); });
     handles.count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
     handles.name.on_blur([this] { validate(); });
     ui.on_change([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
-    ui.connect_mixed_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.volume}, [this](const auto& changes) { return apply(changes); });
+    ui.connect_mixed_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
     handles.normal.bind([this] { set_mode(Mode::normal); return Result{}; });
     handles.read_only.bind([this] { set_mode(Mode::read_only); return Result{}; });
     handles.disabled.bind([this] { set_mode(Mode::disabled); return Result{}; });
     handles.offline_disabled.bind([this] {
         offline_disabled_ = !offline_disabled_;
         return handles.mode.enable_option({"offline"}, !offline_disabled_);
+    });
+    handles.region_empty.bind([this] {
+        region_empty_ = !region_empty_;
+        return handles.region.set_options(region_empty_ ? std::vector<RadioOption>{} : regions());
     });
     handles.long_text.bind([this] { long_intro_ = !long_intro_; return Result{}; });
     handles.reset.bind([this] { return reset(); });
@@ -121,16 +142,22 @@ MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
     const auto& name = std::get<TextChange>(changes[0]);
     const auto& notices = std::get<BoolChange>(changes[1]);
     const auto& mode = std::get<OptionChange>(changes[2]);
-    const auto& volume = std::get<NumericChange>(changes[3]);
-    if (blank(name.value)) return {{Status::invalid_value, required_name}, {{name.field, required_name}}};
+    const auto& region = std::get<DropdownChange>(changes[3]);
+    const auto& volume = std::get<NumericChange>(changes[4]);
+    std::vector<MixedFieldError> errors;
+    if (blank(name.value)) errors.push_back({name.field, required_name});
+    if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
+    if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
     applied_ = name.value;
     notices_applied_ = notices.value;
     mode_applied_ = mode.value;
+    region_applied_ = region.value;
     volume_applied_ = volume.value;
     ++applies_;
     if (source_changed_) source_changed_();
     if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_();
+    if (region_changed_) region_changed_();
     if (volume_changed_) volume_changed_();
     return {};
 }
@@ -155,6 +182,7 @@ void Form::set_mode(Mode mode) {
     handles.apply.enable(mode != Mode::disabled);
     handles.notices.enable(mode != Mode::disabled);
     handles.mode.enable(mode != Mode::disabled);
+    handles.region.enable(mode != Mode::disabled);
     handles.volume.enable(mode != Mode::disabled);
     refresh_conflict();
 }
@@ -162,11 +190,13 @@ Result Form::reset() {
     set_mode(Mode::normal);
     long_intro_ = false;
     update_source(initial_name);
-    notices_applied_ = true; mode_applied_ = OptionValue{"normal"}; volume_applied_ = 40;
+    notices_applied_ = true; mode_applied_ = OptionValue{"normal"}; region_applied_ = OptionValue{"north"}; volume_applied_ = 40;
+    region_empty_ = false; handles.region.set_options(regions());
     if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_();
+    if (region_changed_) region_changed_();
     if (volume_changed_) volume_changed_();
-    handles.notices.use_latest(); handles.mode.use_latest(); handles.volume.use_latest();
+    handles.notices.use_latest(); handles.mode.use_latest(); handles.region.use_latest(); handles.volume.use_latest();
     offline_disabled_ = false; handles.mode.enable_option({"offline"}, true);
     handles.name.reset_to_source();
     refresh_conflict();
@@ -181,8 +211,8 @@ layout::Node Form::page() const {
     return layout::scroll(column({
         control(handles.title, 24),
         control(handles.intro),
-        grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.offline_disabled), control(handles.reset)}, 120, 8),
-        grid({column({control(handles.name), control(handles.notices), control(handles.mode), control(handles.volume), control(handles.volume_latest), row({control(handles.apply), control(handles.latest), control(handles.state)}, 16)}, 12),
+        grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.offline_disabled), control(handles.region_empty), control(handles.reset)}, 120, 8),
+        grid({column({control(handles.name), control(handles.notices), control(handles.mode), control(handles.region), control(handles.volume), control(handles.volume_latest), row({control(handles.apply), control(handles.latest), control(handles.state)}, 16)}, 12),
               column({control(handles.draft), control(handles.result), control(handles.count)}, 8)},
              360, 32),
     }, 16, 24));
