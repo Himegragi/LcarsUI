@@ -3,6 +3,7 @@
 // Applications use lcars/core.hpp and typed handles instead.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
+#include <array>
 #include <map>
 #include <set>
 #include <thread>
@@ -14,6 +15,16 @@ namespace detail {
 class UiState {
 public:
     using Action = std::function<Result()>;
+    // Nest public operations and callbacks; structural changes commit after the outermost returns.
+    class OperationScope {
+    public:
+        explicit OperationScope(UiState* state);
+        ~OperationScope();
+        OperationScope(const OperationScope&) = delete;
+        OperationScope& operator=(const OperationScope&) = delete;
+    private:
+        UiState* state_;
+    };
     explicit UiState(std::vector<Control> controls);
     ~UiState();
     TextHandle add_text(Control control);
@@ -29,7 +40,7 @@ public:
     ComponentHandle tabs_layout_handle(const Control& control);
     Result tabs_key_down(KeyPress key);
     Result activate_tab(const Id& id, OptionValue page);
-    Result add_page_button(const Id& id, OptionValue page, ButtonHandle button);
+    Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
@@ -61,6 +72,7 @@ public:
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
+    bool retired_button(const ComponentHandle& handle) const;
     // Internal adapters used by registered component types.
     ComponentHandle text_layout_handle(const Control& control);
     ComponentHandle label_layout_handle(const Control& control);
@@ -75,6 +87,15 @@ public:
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
     const std::vector<Control>& controls() const { return controls_; }
+    // Internal inspection seam for reclamation regressions.
+    std::array<std::size_t, 10> storage_counts() const {
+        std::size_t members = 0;
+        for (const auto& [id, tabs] : tabs_)
+            for (const auto& page : tabs.pages) members += page.members.size();
+        return {controls_.size(), page_members_.size(), members, actions_.size(), errors_.size(),
+                tooltips_.size(), button_lifetimes_.size(), confirmation_buttons_.size(),
+                confirmation_members_.size(), pending_removals_.size()};
+    }
     const Control* find(std::string_view id) const;
     std::optional<Semantics> describe(std::string_view id) const;
     // Current display text: field content, or label text (bound provider wins over static value).
@@ -83,7 +104,7 @@ public:
     Result set_value(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
     Result available(std::string_view id) const;
-    bool removed(std::string_view id) const { return removed_.contains(id); }
+
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
     // Host requests a new frame when a source notification changes the view.
@@ -254,7 +275,14 @@ private:
     void bool_source_changed(const Id& id);
     std::map<Id, Action, std::less<>> actions_;
     std::set<Id, std::less<>> confirmation_buttons_;
-    std::set<Id, std::less<>> removed_;
+    std::map<Id, std::shared_ptr<void>, std::less<>> button_lifetimes_;
+    std::map<Id, std::vector<Id>, std::less<>> confirmation_members_;
+    std::vector<Id> pending_removals_;
+    Id retiring_;
+    bool removal_pending(std::string_view id) const;
+    unsigned operation_depth_ = 0;
+    bool committing_removals_ = false;
+    void commit_removals();
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     std::optional<std::size_t> pointer_option_;

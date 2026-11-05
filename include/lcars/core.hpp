@@ -325,13 +325,16 @@ private:
     std::string id_;
 };
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
+class ListHandle;
+class TabsHandle;
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
 class TabsHandle {
 public:
     TabsHandle() = default;
     Result activate(OptionValue page) const;
     Result enable_page(OptionValue page, bool enabled) const;
-    // Owner configuration: attach a newly created button to an existing page.
-    Result add_button(OptionValue page, ButtonHandle button) const;
+    // Owner configuration: attach an existing component to a page.
+    Result add_member(OptionValue page, ComponentHandle member) const;
     Result focus() const;
     Query<OptionValue> active() const;
     Query<Semantics> describe() const;
@@ -364,7 +367,6 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
 // A single window-modal dialog, assembled from ordinary typed components. The opener and
 // fallback are non-owning handles; the result callback runs once for each successful opening.
 class DialogHandle {

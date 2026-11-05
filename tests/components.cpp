@@ -1197,8 +1197,84 @@ void list_write_cannot_reenter_itself() {
     check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
 }
 
+void removing_confirmation_button_releases_its_fields() {
+    Ui ui({});
+    auto field = ui.add_text({.id = "field", .kind = Kind::text});
+    field.connect_source({[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }});
+    auto owner = ui.add_button({.id = "owner", .kind = Kind::button});
+    auto capture = std::make_shared<int>(42);
+    std::weak_ptr<int> released = capture;
+    check(bool(ui.connect_confirmation(owner, {field}, [capture](const auto&) { return ConfirmationResult{}; })), "Connect first group");
+    capture.reset();
+    check(bool(owner.remove()) && released.expired(), "Removing owner releases confirmation callback");
+    auto next = ui.add_button({.id = "next", .kind = Kind::button});
+    check(bool(ui.connect_confirmation(next, {field}, [](const auto&) { return ConfirmationResult{}; })),
+          "Removed group releases the field for another connection");
+}
+
+void repeated_removal_reclaims_component_storage() {
+    Ui ui({});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"page"}, u"Page", true, {}}});
+    auto& host = detail::access(ui);
+    const auto baseline = host.storage_counts();
+    ButtonHandle stale;
+    TooltipHandle old_tip;
+    for (int i = 0; i < 1000; ++i) {
+        auto button = ui.add_button({.id = "temporary", .kind = Kind::button});
+        check(bool(tabs.add_member({"page"}, button)), "Attach replacement");
+        auto tip = ui.add_tooltip(button, u"Tip");
+        auto capture = std::make_shared<int>(42);
+        std::weak_ptr<int> released = capture;
+        button.bind([capture] { return Result{}; });
+        capture.reset();
+        host.set_error("temporary", u"error");
+        if (i == 0) { stale = button; old_tip = tip; }
+        check(bool(button.remove()), "Remove replacement");
+        check(host.storage_counts() == baseline && released.expired(), "All structural entries and action captures are reclaimed");
+        check(stale.describe().status == Status::not_found && old_tip.visible().status == Status::not_found,
+              "Old button and tooltip remain invalid after ID reuse");
+    }
+}
+
+void page_accepts_new_members_of_different_types() {
+    Ui ui({}), other({});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}});
+    auto label = ui.add_label({.id = "label", .kind = Kind::label, .value = u"Label"});
+    auto button = ui.add_button({.id = "button", .kind = Kind::button});
+    auto foreign = other.add_button({.id = "foreign", .kind = Kind::button});
+    check(bool(tabs.add_member({"two"}, label)) && bool(tabs.add_member({"two"}, button)), "A page accepts a label and a button");
+    check(detail::access(ui).available("button").status == Status::hidden, "New members obey page visibility");
+    check(tabs.add_member({"one"}, button).status == Status::invalid_value &&
+          tabs.add_member({"one"}, foreign).status == Status::invalid_value, "Duplicate and foreign members are rejected");
+    check(bool(tabs.activate({"two"})) && bool(detail::access(ui).available("button")), "New members follow activation");
+}
+
+void removal_waits_for_action_and_stale_handle_stays_invalid() {
+    Ui ui({});
+    auto button = ui.add_button({.id = "temporary", .kind = Kind::button});
+    auto& host = detail::access(ui);
+    bool alive_in_callback = false, denied_in_callback = false;
+    Status requested = Status::failed;
+    button.bind([&] {
+        requested = button.remove().status;
+        alive_in_callback = host.find("temporary") != nullptr;
+        denied_in_callback = button.invoke().status == Status::not_found;
+        return Result{};
+    });
+    check(bool(button.invoke()), "The action finishes normally");
+    check(requested == Status::ok && alive_in_callback && denied_in_callback, "Removal is accepted, dispatch is denied, and storage survives the callback");
+    check(!host.find("temporary") && button.invoke().status == Status::not_found, "Removal commits after dispatch");
+    auto replacement = ui.add_button({.id = "temporary", .kind = Kind::button});
+    check(bool(replacement.describe()) && button.describe().status == Status::not_found,
+          "A stale handle cannot address a replacement with the same ID");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"G07 removal releases confirmation connection", removing_confirmation_button_releases_its_fields},
+        {"G07 bounded removal storage", repeated_removal_reclaims_component_storage},
+        {"General page membership", page_accepts_new_members_of_different_types},
+        {"G07 deferred removal and stale identity", removal_waits_for_action_and_stale_handle_stays_invalid},
         {"C08 C09 list page admission", list_members_obey_page_scope},
         {"G07 page changes do not recurse", tab_change_notifications_do_not_recurse},
         {"C09 disabled and modal admission", tabs_respect_modal_and_disabled_pointer_targets},

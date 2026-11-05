@@ -260,6 +260,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 }
 
 void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_focused) {
+    UiState::OperationScope operation(&access(ui_));
     const auto p = appearance_.palette();
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {

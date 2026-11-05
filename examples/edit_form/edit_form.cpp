@@ -164,9 +164,9 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
         handles.reset_v03.bind([this] {
             if (!handles.dialog_temporary.describe()) {
-                auto id = ids_.title + ".pages.v03.temporary." + std::to_string(++temporary_generation_);
+                auto id = ids_.title + ".pages.v03.temporary";
                 auto replacement = ui.add_button({.id = std::move(id), .kind = Kind::button, .label = u"Temporary opener..."});
-                if (auto result = handles.tabs.add_button({"v03"}, replacement); !result) return result;
+                if (auto result = handles.tabs.add_member({"v03"}, replacement); !result) return result;
                 handles.dialog_temporary = replacement;
                 handles.dialog_temporary.bind([this] { return handles.dialog.open(handles.dialog_temporary); });
             }

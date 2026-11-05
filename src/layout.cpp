@@ -199,7 +199,7 @@ struct Arranger {
         switch (node.type) {
         case Node::Type::control: {
             auto id = ui.layout_id(node.component);
-            if (id && ui.removed(*id)) return 0;
+            if (!id && ui.retired_button(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             bool previous = measuring; measuring = true;
             int result = build(node, width).bounds.h;
@@ -220,7 +220,7 @@ struct Arranger {
         switch (node.type) {
         case Node::Type::control: {
             auto id = ui.layout_id(node.component);
-            if (id && ui.removed(*id)) return 0;
+            if (!id && ui.retired_button(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
@@ -368,6 +368,7 @@ struct Arranger {
 
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal) {
+    detail::UiState::OperationScope operation(&detail::access(ui));
     Arranger a{detail::access(ui), appearance, measure, scale, scroll, reveal, {}};
     Rect window{0, 0, width, height};
     a.frame.viewport = window;
