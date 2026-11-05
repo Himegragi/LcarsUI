@@ -239,6 +239,17 @@ public:
     void paint(ComponentPaint& c) const override {
         auto palette = c.appearance.palette();
         auto bounds = c.placement.bounds;
+        if (c.placement.popup) {
+            c.fill(bounds, palette.surface);
+            for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
+                const auto& o = c.semantics.options[i];
+                const auto& r = c.placement.options[i];
+                if (c.semantics.candidate && *c.semantics.candidate == o.value) c.fill(r, palette.selection);
+                const auto& line = c.placement.lines[i];
+                c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
+            }
+            return;
+        }
         c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : palette.border);
         int inset = scaled(c.scale, 2);
         c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);

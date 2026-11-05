@@ -65,6 +65,7 @@ Node grid(std::vector<Node> children, int min_column, int gap) {
     Node n; n.type = Node::Type::grid; n.children = std::move(children); n.min_column = min_column; n.gap = gap; return n;
 }
 Node scroll(Node child) { Node n; n.type = Node::Type::scroll; n.children.push_back(std::move(child)); return n; }
+Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
 }
 
 const Placement* detail::find_placement(const Frame& frame, std::string_view id) {
@@ -89,12 +90,17 @@ const Placement* Frame::find(const RadioGroupHandle& handle) const {
 const Placement* Frame::find(const SliderHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
+const Placement* Frame::find(const DropdownHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
 std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y) const {
     if (!item.clip.contains(x, y)) return std::nullopt;
     for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return i;
     return std::nullopt;
 }
 const Placement* Frame::hit(int x, int y) const {
+    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
+        if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
@@ -226,6 +232,11 @@ struct Arranger {
             return y - r.y;
         }
         case Node::Type::scroll: return place_scroll(node.children.front(), r, out);
+        case Node::Type::stack: {
+            int tallest = 0;
+            for (const auto& child : node.children) tallest = std::max(tallest, place(child, r, out));
+            return tallest;
+        }
         }
         return 0;
     }
@@ -277,6 +288,32 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         p.clip = p.clip.w ? intersect(p.clip, window) : window;
     }
     a.frame.items = std::move(items);
+    // Overlay placement is relative to its visible source, but clipped to the window, not its scroll region.
+    for (const auto& source : a.frame.items) {
+        if (source.kind != Kind::dropdown) continue;
+        auto s = detail::access(ui).describe(source.id);
+        if (!s || !s->expanded) continue;
+        if (intersect(source.bounds, source.clip).h <= 0 || intersect(source.bounds, source.clip).w <= 0) {
+            detail::access(ui).close_popup();
+            continue;
+        }
+        Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true;
+        popup.text_size = source.text_size; popup.clip = window;
+        int row = std::max(1, measure.line_height(popup.text_size) + static_cast<int>(std::lround(8 * scale)));
+        int h = std::min(height, row * static_cast<int>(s->options.size()));
+        int w = std::min(width, source.bounds.w);
+        int x = std::clamp(source.bounds.x, 0, std::max(0, width - w));
+        int below = source.bounds.y + source.bounds.h;
+        int y = below + h <= height ? below : source.bounds.y - h;
+        y = std::clamp(y, 0, std::max(0, height - h));
+        popup.bounds = {x, y, w, h};
+        for (std::size_t i = 0; i < s->options.size(); ++i) {
+            Rect r{x, y + static_cast<int>(i) * row, w, row};
+            popup.options.push_back(r);
+            popup.lines.push_back({{r.x + static_cast<int>(std::lround(8 * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(16 * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
+        }
+        a.frame.overlays.push_back(std::move(popup));
+    }
     return std::move(a.frame);
 }
 }

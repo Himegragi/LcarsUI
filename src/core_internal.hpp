@@ -191,6 +191,7 @@ private:
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     std::optional<std::size_t> pointer_option_;
+    std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;
     Result focusable(const Control& control) const;
     Result move_focus(Id next);

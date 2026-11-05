@@ -1421,18 +1421,33 @@ Result detail::UiState::key_up(Key key) {
     return invoke(target);
 }
 Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
+    if (!popup_source_.empty() && popup_source_ != id) close_popup();
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
     if (auto result = move_focus(control->id); !result) return result;
-    if (control->kind == Kind::radio_group || control->kind == Kind::slider) { pointer_armed_ = control->id; pointer_option_ = option; }
+    if (control->kind == Kind::dropdown) {
+        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
+        auto& f = dropdowns_.at(control->id);
+        if (popup_source_ == id && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
+    }
+    else if (control->kind == Kind::radio_group || control->kind == Kind::slider) { pointer_armed_ = control->id; pointer_option_ = option; }
     else component_type(control->kind).pointer_down(*this);
     return {};
 }
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     auto armed = std::exchange(pointer_armed_, {});
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
+    auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
+    if (auto it = dropdowns_.find(armed); it != dropdowns_.end()) {
+        if (pressed_value) {
+            if (popup_source_ != armed || !option || *option >= it->second.options.size() || it->second.options[*option].value != *pressed_value) return {};
+            close_popup(); return select_dropdown(armed, *pressed_value);
+        }
+        if (pressed_option || option) return {};
+        return DropdownHandle(this, lifetime_, armed).open();
+    }
     if (numerics_.contains(armed)) return {};
     if (auto it = radios_.find(armed); it != radios_.end()) {
         if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
@@ -1440,7 +1455,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     }
     return invoke(armed);
 }
-void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); }
+void detail::UiState::cancel_input() { key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};

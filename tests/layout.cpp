@@ -274,8 +274,30 @@ void slider_track_and_drag_share_geometry() {
     }
 }
 
+void dropdown_popup_overlaps_and_uses_topmost_hit() {
+    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+        Ui ui({});
+        auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown, .label = u"Region"},
+            {{{"north"}, u"North"}, {{"south"}, u"South"}});
+        auto behind = ui.add_button({.id = "behind", .kind = Kind::button, .label = u"Behind"});
+        field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+        field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+        field.open();
+        FakeMeasure measure; ScrollState scroll;
+        auto page = layout::column({layout::control(field), layout::control(behind)}, 0);
+        auto frame = arrange(page, ui, *look, measure, 240, 160, 1.f, scroll);
+        check(frame.overlays.size() == 1 && frame.overlays[0].options.size() == 2, "Popup has two shared overlay targets");
+        auto row = frame.overlays[0].options[0];
+        auto hit = frame.hit(row.x + 2, row.y + 2);
+        check(hit && hit->popup && hit->id == "region" && frame.option_at(*hit, row.x + 2, row.y + 2) == 0,
+              "Popup is hit above the underlying control");
+        check(row.x >= 0 && row.y >= 0 && row.x + row.w <= 240 && row.y + row.h <= 160, "Popup fits the window");
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"B04 popup topmost hit and placement", dropdown_popup_overlaps_and_uses_topmost_hit},
         {"C07 slider track and drag", slider_track_and_drag_share_geometry},
         {"C05 radio pointer geometry", radio_options_share_geometry_with_pointer_input},
         {"Registered component reaches layout, hit and input", registered_component_reaches_layout_hit_and_input},

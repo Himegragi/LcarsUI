@@ -250,6 +250,14 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
         canvas.rounded(frame.track, frame.track.w / 2, p.panel);
         canvas.rounded(frame.thumb, frame.thumb.w / 2, p.border);
     }
+    for (const auto& item : frame.overlays) {
+        canvas.clip = intersect(item.clip, whole);
+        auto semantics = detail::access(ui_).describe(item.id);
+        if (!semantics || !semantics->expanded) continue;
+        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
+        detail::component_type(item.kind).paint(adapter);
+    }
+    canvas.clip = whole;
 }
 
 void DesktopHost::log_ime(const wchar_t* event, std::u16string_view detail) {
@@ -376,7 +384,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
-        if (frame_.thumb.h && frame_.track.contains(x, y)) {
+        const auto* hit = frame_.hit(x, y);
+        if (!hit || !hit->popup) detail::access(ui_).close_popup();
+        if ((!hit || !hit->popup) && frame_.thumb.h && frame_.track.contains(x, y)) {
             // Track click centers the thumb on the pointer; dragging then moves the thumb top.
             drag_offset_ = frame_.thumb.contains(x, y) ? frame_.thumb.y : y - frame_.thumb.h / 2;
             scroll_.offset = frame_.offset_for_thumb(drag_offset_);
@@ -386,7 +396,6 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         }
-        const auto* hit = frame_.hit(x, y);
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
         finish_composition();

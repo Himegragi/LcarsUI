@@ -29,7 +29,7 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 
 namespace layout {
 struct Node {
-    enum class Type { control, column, row, grid, scroll } type = Type::column;
+    enum class Type { control, column, row, grid, scroll, stack } type = Type::column;
     ComponentHandle component;   // control: non-owning typed reference
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
@@ -42,6 +42,7 @@ Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
 Node scroll(Node child);  // S1 supports one scroll region per frame
+Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 }
 
 struct Line { Rect bounds; std::u16string text; };
@@ -49,6 +50,7 @@ struct Placement {
     std::string id;
     Kind kind = Kind::label;
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
+    bool popup = false;           // an overlay belongs to its source, outside normal layout flow
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
     std::vector<Line> lines;      // labels and command titles
@@ -63,6 +65,7 @@ struct Placement {
 struct ScrollState { int offset = 0; };  // physical pixels, clamped by every arrange
 struct Frame {
     std::vector<Placement> items;
+    std::vector<Placement> overlays; // painted and hit above normal content and scrollbars
     Rect viewport, track, thumb;  // scroll region and its bar; thumb empty when nothing scrolls
     int extent = 0, maximum = 0, offset = 0;
     const Placement* find(const TextHandle& handle) const;
@@ -71,6 +74,7 @@ struct Frame {
     const Placement* find(const CheckboxHandle& handle) const;
     const Placement* find(const RadioGroupHandle& handle) const;
     const Placement* find(const SliderHandle& handle) const;
+    const Placement* find(const DropdownHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
