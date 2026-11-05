@@ -14,6 +14,7 @@ struct ComponentLayout {
     Placement& placement;
     int width;
     float scale;
+    bool settle = true; // measurement probes must not change persistent view state
 };
 class ComponentPaint {
 public:

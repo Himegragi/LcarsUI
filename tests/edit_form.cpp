@@ -247,7 +247,7 @@ void pages_keep_independent_drafts_history_and_scroll() {
     h.name.focus(); h.name.select(66, 66);
     h.long_text.invoke();
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, ids.name);
-    auto offset = detail::access(form.ui).text_offset(ids.name);
+    auto offset = frame.find(h.name)->offset;
     form.scroll.offset = frame.maximum;
     int saved_scroll = form.scroll.offset;
     check(offset > 0 && saved_scroll > 0, "V01 has horizontal and vertical offsets to preserve");
@@ -259,7 +259,8 @@ void pages_keep_independent_drafts_history_and_scroll() {
     check(*h.name.draft() == u"a very long draft that needs horizontal scrolling in a narrow field", "V01 draft survives switch");
     check(form.applied() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V01 applied value survives switch");
     check(form.scroll.offset == saved_scroll, "V01 vertical offset survives switch");
-    check(detail::access(form.ui).text_offset(ids.name) == offset, "V01 horizontal offset survives switch");
+    frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll);
+    check(frame.find(h.name)->offset == offset, "V01 horizontal offset survives switch");
     h.tabs.activate({"v02"});
     check(*list.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
     list.reset.invoke();
@@ -278,7 +279,8 @@ void pages_keep_independent_drafts_history_and_scroll() {
     check(form.scroll.offset == 0 && form.list->list_scroll.offset == 0 && !form.list->selection(),
           "Reset restores both V02 offsets and clears selection");
     h.tabs.activate({"v01"});
-    check(form.scroll.offset == saved_scroll && detail::access(form.ui).text_offset(ids.name) == offset && bool(h.name.undo()) &&
+    frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll);
+    check(form.scroll.offset == saved_scroll && frame.find(h.name)->offset == offset && bool(h.name.undo()) &&
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
 }
 

@@ -75,7 +75,7 @@ public:
             if (caret < offset) offset = caret;
         }
         offset = std::clamp(offset, 0.f, std::max(0.f, p.run.width - room));
-        c.ui.set_text_offset(control.id, offset / c.scale);
+        if (c.settle) c.ui.set_text_offset(control.id, offset / c.scale);
         p.offset = offset;
     }
     void paint(ComponentPaint& c) const override {

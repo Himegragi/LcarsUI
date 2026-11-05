@@ -177,7 +177,7 @@ struct Arranger {
         Placement p;
         p.id = control->id; p.kind = control->kind;
         p.text_size = pixels(node.text_size);
-        detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale};
+        detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
         detail::component_type(control->kind).arrange(context);
         return p;
     }
@@ -187,7 +187,9 @@ struct Arranger {
         case Node::Type::control: {
             auto id = ui.layout_id(node.component);
             if (id && ui.available(*id).status == Status::hidden) return 0;
-            return build(node, width).bounds.h;
+            bool previous = measuring; measuring = true;
+            int result = build(node, width).bounds.h;
+            measuring = previous; return result;
         }
         case Node::Type::scroll: return node.scroll_height ? d(node.scroll_height) : 0;
         default: {
