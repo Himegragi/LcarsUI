@@ -21,6 +21,171 @@ edit_form::Ids alternate_ids() {
     return i;
 }
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
+
+void long_field_label_and_error_keep_their_association() {
+    Ui ui({});
+    const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
+    auto label = ui.add_label({.id = "label", .kind = Kind::label, .value = title, .target = "field", .role = TextRole::name});
+    auto field = ui.add_text({.id = "field", .kind = Kind::text, .value = u"value"});
+    auto error = ui.add_label({.id = "error", .kind = Kind::label, .target = "field", .role = TextRole::error});
+    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"});
+    auto root = layout::column({layout::control(field), layout::control(next)}, 12);
+    test::FakeMeasure measure; ScrollState scroll;
+    auto before = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
+    field.set_error(u"這是一段很長的錯誤訊息，需要換行而且不能覆蓋後面的按鈕");
+    auto after = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
+    auto* p = after.find(field); auto* b = after.find(next);
+    check(p && b && p->label_lines.size() > 1 && p->error_lines.size() > 1, "Long field label and error both wrap");
+    bool inside = true;
+    for (const auto& line : p->label_lines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
+    for (const auto& line : p->error_lines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
+    check(inside && b->bounds.y >= p->bounds.y + p->bounds.h && b->bounds.y > before.find(next)->bounds.y,
+          "Remeasured field keeps all lines inside and pushes the next control down");
+    check(field.describe()->name == title && field.describe()->invalid && label.describe()->target == "field" &&
+          error.describe()->target == "field" && error.describe()->value == field.describe()->error,
+          "Public field and labels retain their semantic association");
+}
+
+void radio_boundaries_under_the_appearance() {
+    Ui ui({});
+    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Mode"},
+        {{{"first"}, u"First", false}, {{"middle"}, u"Middle", true}, {{"last"}, u"Last", false}});
+    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"});
+    std::optional<OptionValue> selected;
+    radio.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    radio.connect_immediate([&](const OptionChange& change) { selected = change.value; return Result{}; });
+    test::FakeMeasure measure; ScrollState scroll;
+    auto root = layout::column({layout::control(radio), layout::control(next)}, 8);
+    auto frame = arrange(root, ui, *appearance, measure, 240, 300, 1.f, scroll);
+    check(frame.find(radio) && !radio.draft()->has_value() && radio.select({"first"}).status == Status::disabled &&
+          radio.select({"last"}).status == Status::disabled, "Empty radio rejects disabled first and last options");
+    radio.focus(); detail::access(ui).key_down({Key::right}); detail::access(ui).key_down({Key::right});
+    check(selected == OptionValue{"middle"}, "Navigation chooses only the enabled option");
+    detail::access(ui).key_down({Key::tab});
+    check(next.describe()->focused, "Tab exits the group");
+    Ui all_ui({});
+    auto all = all_ui.add_radio_group({.id = "all", .kind = Kind::radio_group}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}});
+    auto after = all_ui.add_button({.id = "after", .kind = Kind::button});
+    all.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    all.connect_immediate([](const OptionChange&) { return Result{}; });
+    auto all_frame = arrange(layout::column({layout::control(all), layout::control(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
+    all.focus(); detail::access(all_ui).key_down({Key::right}); detail::access(all_ui).key_down({Key::tab});
+    check(all_frame.find(all) && !all.draft()->has_value() && after.describe()->focused, "All-disabled radio remains empty and can be exited");
+}
+
+void slider_non_divisible_under_the_appearance() {
+    Ui ui({});
+    auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider}, {-3, 8, 4});
+    slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
+    slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+    test::FakeMeasure measure; ScrollState scroll;
+    auto root = layout::control(slider);
+    auto frame = arrange(root, ui, *appearance, measure, 240, 120, 1.f, scroll);
+    slider.set_value(3);
+    check(frame.find(slider) && *slider.draft() == 5, "Non-divisible slider renders and midpoint rounds upward");
+    slider.focus(); detail::access(ui).key_down({Key::home});
+    check(*slider.draft() == -3, "Home reaches minimum");
+    detail::access(ui).key_down({Key::end}); detail::access(ui).key_down({Key::left});
+    check(*slider.draft() == 5, "Left from maximum reaches last regular step");
+    detail::access(ui).key_down({Key::end});
+    check(*slider.draft() == 8, "End reaches non-divisible maximum");
+    int rejected = 0;
+    for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}})
+        try { ui.add_slider({.id = "invalid", .kind = Kind::slider}, range); } catch (const std::invalid_argument&) { ++rejected; }
+    check(rejected == 4, "Invalid ranges and steps are rejected");
+}
+
+void disabled_tabs_under_the_appearance() {
+    Ui ui({});
+    auto first = ui.add_button({.id = "first", .kind = Kind::button});
+    auto hidden = ui.add_button({.id = "hidden", .kind = Kind::button});
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+        {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}}, {{"two"}, u"Two", true, {hidden}}});
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(layout::column({layout::control(tabs), layout::control(first), layout::control(hidden)}), ui, *appearance, measure, 400, 300, 1.f, scroll);
+    check(frame.find(tabs) && !frame.find(hidden) && hidden.invoke().status == Status::hidden &&
+          tabs.activate({"blocked"}).status == Status::disabled, "Hidden page is not rendered or actionable and disabled tab rejects activation");
+    tabs.focus(); detail::access(ui).key_down({Key::right});
+    check(*tabs.active() == OptionValue{"one"} && tabs.describe()->candidate == OptionValue{"two"}, "Keyboard skips disabled tab without activating it");
+    detail::access(ui).key_down({Key::enter});
+    check(*tabs.active() == OptionValue{"two"} && first.invoke().status == Status::hidden, "Keyboard activates the enabled page and hides the previous page");
+}
+
+void keyboard_completes_the_three_page_journey() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    auto& host = detail::access(form.ui);
+    test::FakeMeasure measure;
+    auto tap = [&](Key k) {
+        host.key_down({k}); host.key_up(k);
+        arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, host.focused());
+    };
+    auto walk = [&](const std::string& target) {
+        for (int i = 0; i < 100 && host.focused() != target; ++i) tap(Key::tab);
+        return host.focused() == target;
+    };
+    check(walk(h.apply.describe()->id), "Keyboard reaches V01 Apply");
+    tap(Key::enter);
+    check(form.applies() == 1, "Keyboard applies the normal form once");
+    check(walk(h.disabled.describe()->id), "Keyboard reaches disabled fixture");
+    tap(Key::enter);
+    check(!h.name.describe()->enabled && walk(h.normal.describe()->id), "Data is disabled and keyboard reaches recovery");
+    tap(Key::enter);
+    check(walk(h.tabs.describe()->id), "Keyboard reaches page tabs");
+    tap(Key::right); tap(Key::enter);
+    check(*h.tabs.active() == OptionValue{"v02"}, "Keyboard opens V02");
+    auto& list = form.list->handles;
+    check(walk(list.zero.describe()->id), "Keyboard reaches empty-list fixture");
+    tap(Key::enter);
+    check(walk(list.list.describe()->id), "Keyboard reaches empty list");
+    tap(Key::down); tap(Key::space);
+    check(!form.list->selection() && !list.list.describe()->candidate, "Empty list remains unselected");
+    tap(Key::tab);
+    check(!list.list.describe()->focused, "Keyboard leaves empty list");
+    check(walk(list.twenty.describe()->id), "Keyboard reaches 20-item fixture");
+    tap(Key::enter);
+    check(walk(list.list.describe()->id), "Keyboard reenters populated list");
+    tap(Key::end);
+    check(form.list->selection() == OptionValue{"T020"}, "Keyboard selects the last item");
+    check(walk(h.tabs.describe()->id), "Keyboard returns to tabs from V02");
+    tap(Key::right); tap(Key::enter);
+    check(*h.tabs.active() == OptionValue{"v03"} && walk(h.dialog_open.describe()->id), "Keyboard opens V03 and reaches dialog opener");
+    tap(Key::enter);
+    check(h.dialog_cancel.describe()->focused && *h.dialog.is_open(), "Dialog starts on Cancel");
+    tap(Key::tab); tap(Key::enter);
+    check(!*h.dialog.is_open() && form.progress() == 0 && form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused,
+          "Keyboard confirms once and leaves the modal at its opener");
+    check(walk(h.tabs.describe()->id), "Keyboard can leave V03");
+}
+
+void resets_reproduce_cases_and_preserve_other_pages() {
+    edit_form::Form form(ids, true); auto& h = form.handles;
+    test::FakeMeasure measure;
+    auto frame = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, detail::access(form.ui).focused()); };
+    h.tabs.activate({"v02"}); auto& list = form.list->handles;
+    list.search.set_value(u"共用範本"); list.list.select({"T006"});
+    h.tabs.activate({"v03"}); h.progress_full.invoke();
+    h.tabs.activate({"v01"}); h.name.set_value(u"draft"); h.reset.invoke();
+    check(frame().find(h.name) && *h.name.draft() == u"測試使用者" && form.applies() == 0, "V01 reset restores initial form");
+    h.name.set_value(u"工作站 A"); h.apply.invoke();
+    check(form.applies() == 1 && form.applied() == u"工作站 A", "Representative V01 apply works again after reset");
+    h.tabs.activate({"v02"});
+    check(*list.search.draft() == u"共用範本" && form.list->selection() == OptionValue{"T006"}, "V01 reset retained V02 state");
+    list.reset.invoke();
+    check(frame().find(list.list) && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->options.size() == 20, "V02 reset restores initial list");
+    list.list.select({"T003"}); list.erase.invoke();
+    check(!form.list->selection() && list.list.describe()->candidate == OptionValue{"T004"}, "Representative V02 deletion works again after reset");
+    h.tabs.activate({"v03"});
+    check(form.progress() == 100, "V02 reset retained V03 progress");
+    h.reset_v03.invoke();
+    check(frame().find(h.progress) && form.progress() == 50 && form.dialog_confirmations() == 0, "V03 reset restores initial progress");
+    h.dialog_open.invoke(); h.dialog_confirm.invoke();
+    check(form.progress() == 0 && form.dialog_confirmations() == 1, "Representative V03 confirmation works again after reset");
+    h.tabs.activate({"v01"});
+    check(form.applied() == u"工作站 A" && form.applies() == 1, "Other-page resets retain V01 applied result");
+    h.tabs.activate({"v02"});
+    check(list.list.describe()->options.size() == 19 && !form.list->selection(), "V03 reset retained V02 deletion");
+}
 // Arrange the page with the current appearance and check the role carriers follow the state.
 void settle(edit_form::Form& form) {
     test::FakeMeasure measure;
@@ -316,10 +481,14 @@ void v02_disabled_and_filtered_neighbors() {
     h.list.focus(); h.list.select({"T008"}); h.disable_eight.invoke();
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
     auto options = h.list.describe()->options;
+    bool identities = options.size() == 20;
+    for (int n = 1; n <= 20 && identities; ++n) {
+        auto expected = "T" + std::string(n < 10 ? "00" : "0") + std::to_string(n);
+        identities = options[static_cast<std::size_t>(n - 1)].value == OptionValue{expected};
+    }
     check(frame.find(h.list) && !page.selection() && h.list.describe()->candidate == OptionValue{"T009"} &&
-          h.list.select({"T008"}).status == Status::invalid_value && options.size() == 20 &&
-          options[6].value == OptionValue{"T007"} && options[7].value == OptionValue{"T008"} && options[8].value == OptionValue{"T009"},
-          "Disabling selected T008 clears it, moves to T009 and keeps the neighboring identities");
+          h.list.select({"T008"}).status == Status::invalid_value && identities,
+          "Disabling selected T008 clears it, moves to T009 and keeps every identity");
     h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.set_value(u"範本 1");
     check(!page.selection() && h.list.describe()->candidate == OptionValue{"T010"}, "Filtering recovers the next surviving identity T010");
 }
@@ -623,6 +792,12 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"N01 long field label and error", long_field_label_and_error_keep_their_association},
+        {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
+        {"N04 slider boundaries in each appearance", slider_non_divisible_under_the_appearance},
+        {"N05 disabled tabs in each appearance", disabled_tabs_under_the_appearance},
+        {"X01 keyboard journey", keyboard_completes_the_three_page_journey},
+        {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
         {"P08 reset and page isolation", v03_reset_restores_the_temporary_source_and_keeps_other_pages},
         {"P06 tooltip layout", tooltip_layout_is_readable_and_pointer_transparent},
         {"C11 tooltip lifetime and window focus", tooltip_window_modal_and_source_lifetime},
