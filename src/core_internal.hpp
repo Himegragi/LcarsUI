@@ -32,6 +32,11 @@ public:
     Result add_page_button(const Id& id, OptionValue page, ButtonHandle button);
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
+    TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
+    void tooltip_time(std::uint64_t now);
+    void tooltip_hover(std::string_view id);
+    void window_active(bool active);
+    void refresh_tooltips();
     DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
     Result open_dialog(const ComponentHandle& opener);
     Result settle_dialog(bool confirmed);
@@ -127,7 +132,7 @@ public:
     void check(std::string_view id, bool checked);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
-    void modal(bool active) { modal_ = active; if (active) close_popup(); }
+    void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
 private:
@@ -142,6 +147,7 @@ private:
     friend class ::lcars::DropdownHandle;
     friend class ::lcars::ListHandle;
     friend class ::lcars::DialogHandle;
+    friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id) const;
     Result connect_source(const Id& id, TextSource source);
@@ -205,6 +211,16 @@ private:
         std::function<void()> disconnect;
     };
     std::map<Id, ListField, std::less<>> lists_;
+    struct TooltipState {
+        std::u16string text;
+        unsigned delay_ms = 500;
+        std::uint64_t deadline = 0;
+        bool eligible = false, visible = false, dismissed = false;
+    };
+    std::map<Id, TooltipState, std::less<>> tooltips_;
+    Id tooltip_hover_;
+    std::uint64_t tooltip_now_ = 0;
+    bool window_active_ = false;
     Id popup_source_;
     struct DialogState {
         std::vector<Id> members;

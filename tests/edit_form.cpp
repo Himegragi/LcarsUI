@@ -284,6 +284,68 @@ void pages_keep_independent_drafts_history_and_scroll() {
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
 }
 
+void tooltip_keyboard_delay_and_escape() {
+    Ui ui({});
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
+    auto other = ui.add_button({.id = "other", .kind = Kind::button, .label = u"Other"});
+    auto tip = ui.add_tooltip(source, u"Set progress to 50%", 100);
+    auto& host = detail::access(ui);
+    host.tooltip_time(1000);
+    host.window_active(true);
+    source.focus();
+    host.tooltip_time(1099);
+    check(tip.visible() && !*tip.visible(), "Focus waits for the configured delay");
+    host.tooltip_time(1100);
+    check(tip.visible() && *tip.visible() && source.describe()->focused, "Tooltip appears without taking focus");
+    host.key_down({Key::escape});
+    host.tooltip_time(1300);
+    check(!*tip.visible() && source.describe()->focused, "Escape hides for the current focus visit");
+    other.focus(); source.focus();
+    host.tooltip_time(1400);
+    check(*tip.visible(), "A new focus visit can show the tooltip again");
+}
+
+void tooltip_pointer_visit_can_restart_after_escape() {
+    Ui ui({});
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
+    auto tip = ui.add_tooltip(source, u"Set progress to 50%", 100);
+    auto& host = detail::access(ui);
+    host.tooltip_time(0); host.window_active(true);
+    host.tooltip_hover("source"); host.tooltip_time(100);
+    check(*tip.visible(), "Pointer dwell displays the tooltip");
+    host.key_down({Key::escape}); host.tooltip_time(500);
+    check(!*tip.visible(), "Escape suppresses the same pointer visit");
+    host.tooltip_hover(""); host.tooltip_hover("source"); host.tooltip_time(599);
+    check(!*tip.visible(), "A fresh pointer visit waits again");
+    host.tooltip_time(600);
+    check(*tip.visible(), "A fresh pointer visit may show again");
+    host.tooltip_hover("");
+    check(!*tip.visible(), "Leaving the source closes the tooltip");
+}
+
+void tooltip_window_modal_and_source_lifetime() {
+    Ui ui({});
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"});
+    auto tip = ui.add_tooltip(source, u"Help", 100);
+    auto& host = detail::access(ui);
+    host.tooltip_time(0); host.window_active(true); source.focus(); host.tooltip_time(100);
+    check(*tip.visible(), "Tooltip becomes visible");
+    host.window_active(false); host.tooltip_time(1000);
+    check(!*tip.visible(), "Window deactivation cancels the tooltip");
+    host.window_active(true); host.tooltip_time(1099);
+    check(!*tip.visible(), "Window reactivation starts a fresh delay");
+    host.tooltip_time(1100);
+    check(*tip.visible() && source.describe()->focused, "Tooltip returns without moving focus");
+    host.modal(true);
+    check(!*tip.visible(), "Opening a modal closes the tooltip");
+    host.modal(false); host.tooltip_time(1200);
+    check(*tip.visible(), "Eligibility is recalculated after a modal closes");
+    source.enable(false); host.tooltip_time(1400);
+    check(!*tip.visible(), "Disabling the source cancels pending and visible tooltips");
+    source.enable(true); source.focus(); host.tooltip_time(1450); source.remove(); host.tooltip_time(2000);
+    check(tip.visible().status == Status::not_found, "Removal invalidates the tooltip and its pending timer");
+}
+
 void dialog_cancel_preserves_progress() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
@@ -439,6 +501,9 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"C11 tooltip lifetime and window focus", tooltip_window_modal_and_source_lifetime},
+        {"P05 tooltip pointer visit", tooltip_pointer_visit_can_restart_after_escape},
+        {"P05 tooltip keyboard delay and Escape", tooltip_keyboard_delay_and_escape},
         {"P01 cancel dialog", dialog_cancel_preserves_progress},
         {"P02 P03 modal input and confirm", dialog_confines_input_and_confirms_once},
         {"P04 removed opener and Escape", dialog_escape_and_removed_opener},

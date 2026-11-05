@@ -784,6 +784,56 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
     return TabsHandle(this, lifetime_, std::move(id));
 }
 ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) { return TabsHandle(this, lifetime_, c.id); }
+TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
+    auto id = layout_id(source);
+    if (!id || !find(*id) || removed(*id) || text.empty() || tooltips_.contains(*id))
+        throw std::invalid_argument("Invalid tooltip source or text");
+    tooltips_.emplace(*id, TooltipState{std::move(text), delay_ms});
+    refresh_tooltips();
+    return TooltipHandle(this, lifetime_, *id);
+}
+void detail::UiState::refresh_tooltips() {
+    bool changed = false;
+    for (auto& [id, tip] : tooltips_) {
+        bool eligible = window_active_ && !modal_ && (focus_ == id || tooltip_hover_ == id) && bool(available(id));
+        if (eligible != tip.eligible) {
+            tip.eligible = eligible;
+            tip.visible = false;
+            tip.dismissed = false;
+            if (eligible) tip.deadline = tooltip_now_ + tip.delay_ms;
+            changed = true;
+        }
+        if (eligible && !tip.dismissed && !tip.visible && tooltip_now_ >= tip.deadline) {
+            tip.visible = true; changed = true;
+        }
+    }
+    if (changed && invalidate_) invalidate_();
+}
+void detail::UiState::tooltip_time(std::uint64_t now) {
+    tooltip_now_ = now;
+    refresh_tooltips();
+}
+void detail::UiState::tooltip_hover(std::string_view id) {
+    if (tooltip_hover_ == id) return;
+    tooltip_hover_ = Id(id);
+    if (auto it = tooltips_.find(tooltip_hover_); it != tooltips_.end() && it->second.dismissed) {
+        it->second.eligible = false;
+        it->second.dismissed = false;
+    }
+    refresh_tooltips();
+}
+void detail::UiState::window_active(bool active) {
+    if (window_active_ == active) return;
+    window_active_ = active;
+    refresh_tooltips();
+}
+Query<bool> TooltipHandle::visible() const {
+    if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(source_); !r) return {r.status, r.message, std::nullopt};
+    auto it = ui_->tooltips_.find(source_);
+    if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
+    return {Status::ok, {}, it->second.visible};
+}
 DialogHandle detail::UiState::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
     auto first = layout_id(initial), backup = layout_id(fallback);
     if (dialog_.configured || !first || !backup || !find(*first) || !find(*backup) || removed(*first) || removed(*backup) || !result || members.empty()) throw std::invalid_argument("Invalid dialog");
@@ -823,7 +873,7 @@ Result detail::UiState::settle_dialog(bool confirmed) {
     if (!modal_ || !dialog_.configured) return {Status::invalid_value, u"Dialog is not open"};
     dialog_.transitioning = true;
     struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog_.transitioning};
-    modal_ = false;
+    modal(false);
     auto source = std::exchange(dialog_.opener, {});
     auto target = find(source);
     if (!target || !focusable(*target)) target = find(dialog_.fallback);
@@ -861,6 +911,7 @@ Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     close_popup();
     auto old = t.pages[t.active].value;
     t.active = t.candidate = next;
+    refresh_tooltips();
     if (t.changed) {
         try { t.changed(old, page); }
         catch (...) { stopped_ = true; return {Status::failed, u"Page change notification failed"}; }
@@ -976,6 +1027,7 @@ Result ButtonHandle::remove() const {
     if (std::find(ui_->dialog_.members.begin(), ui_->dialog_.members.end(), id_) != ui_->dialog_.members.end() || id_ == ui_->dialog_.fallback)
         return {Status::invalid_value, u"Dialog focus targets must remain alive"};
     ui_->removed_.insert(id_);
+    ui_->refresh_tooltips();
     if (ui_->focus_ == id_) ui_->move_focus({});
     ui_->actions_.erase(id_);
     if (ui_->invalidate_) ui_->invalidate_();
@@ -1644,6 +1696,7 @@ Result detail::UiState::move_focus(Id next) {
         composition_commit(preedit);
     }
     auto previous = std::exchange(focus_, std::move(next));
+    refresh_tooltips();
     if (auto it = lists_.find(focus_); it != lists_.end()) {
         auto& f = it->second; auto selected = f.source.read ? f.source.read() : std::optional<OptionValue>{};
         auto valid = [&](const auto& item) { return item.enabled && selected && item.value == *selected; };
@@ -1703,6 +1756,15 @@ Result detail::UiState::focus(std::string_view id) {
     return move_focus(control->id);
 }
 Result detail::UiState::key_down(KeyPress key) {
+    if (key.key == Key::escape && !key.repeat) {
+        for (auto& [id, tip] : tooltips_) {
+            if (tip.visible) {
+                tip.visible = false; tip.dismissed = true;
+                if (invalidate_) invalidate_();
+                return {};
+            }
+        }
+    }
     if (modal_ && dialog_.configured && key.key == Key::escape) {
         if (key.repeat) return {};
         return settle_dialog(false);
@@ -1850,6 +1912,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     control->enabled = enabled;
     if (!enabled && popup_source_ == id) close_popup();
     if (!enabled && focus_ == control->id) move_focus({});
+    refresh_tooltips();
 }
 void detail::UiState::set_read_only(std::string_view id, bool read_only) {
     if (auto* control = const_cast<Control*>(find(id))) control->read_only = read_only;
@@ -1880,6 +1943,9 @@ ProgressHandle Ui::add_progress(Control control) { return state_->add_progress(s
 TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
 DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
 ListHandle Ui::add_list(Control control, std::vector<RadioOption> items) { return state_->add_list(std::move(control), std::move(items)); }
+TooltipHandle Ui::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
+    return state_->add_tooltip(std::move(source), std::move(text), delay_ms);
+}
 DialogHandle Ui::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
     return state_->add_dialog(std::move(members), initial, fallback, std::move(result));
 }

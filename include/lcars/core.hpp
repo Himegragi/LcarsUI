@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -376,6 +377,19 @@ private:
     detail::UiState* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
 };
+// Non-owning reference to explanatory content attached to a source component.
+class TooltipHandle {
+public:
+    TooltipHandle() = default;
+    Query<bool> visible() const;
+private:
+    friend class detail::UiState;
+    TooltipHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string source)
+        : ui_(ui), lifetime_(std::move(lifetime)), source_(std::move(source)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string source_;
+};
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 struct TextChange {
@@ -409,6 +423,8 @@ public:
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
+    // Delay is in milliseconds; the source remains the focus and lifetime owner.
+    TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
     DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
