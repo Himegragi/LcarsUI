@@ -635,9 +635,17 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     };
     auto accent = appearance.palette().accent, ring = color_at(r.x + 1, r.y + r.h / 2);
     bool visible = ring.r == accent.r && ring.g == accent.g && ring.b == accent.b;
-    auto other = detail::find_placement(frame, f.ids.reset)->bounds;
-    auto plain = color_at(other.x + 1, other.y + other.h / 2);
-    bool distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
+    const Placement* other = nullptr;
+    for (const auto& item : frame.items) {
+        auto visible = intersect(item.bounds, item.clip);
+        if (item.kind == Kind::button && item.id != f.ids.apply && visible.w > 2 && visible.h == item.bounds.h &&
+            item.bounds.x >= 0 && item.bounds.y >= 0 && item.bounds.y + item.bounds.h <= pixels.height) { other = &item; break; }
+    }
+    bool distinct = false;
+    if (other) {
+        auto plain = color_at(other->bounds.x + 1, other->bounds.y + other->bounds.h / 2);
+        distinct = !(plain.r == accent.r && plain.g == accent.g && plain.b == accent.b);
+    }
     std::string order;
     for (const auto& id : seen) order += id + " ";
     bool wraps = seen.size() == 15 && seen[6] == f.ids.name && seen[7] == f.ids.notices && seen[8] == f.ids.mode && seen[9] == f.ids.region && seen[10] == f.ids.volume && seen[11] == f.ids.offline_disabled && seen[12] == f.ids.region_empty && seen[13] == f.ids.apply && seen[14] == seen[0];
@@ -1182,6 +1190,22 @@ bool dpi_session(const Appearance& appearance, Report& report) {
                      std::to_string(state) + "; field hit=" + std::to_string(hit) + "; physical click caret=" + std::to_string(pointer));
 
         detail::access(ui).select(ids.name, 1, 3);
+        before = dpi_messages;
+        UINT selection_return = move(monitors[0]);
+        field = live.host.frame().find(live.form.handles.name);
+        bool selection_back = field && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005" &&
+                              session->selection.anchor == 1 && session->selection.caret == 3 &&
+                              detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
+        hit_x = field ? field->bounds.x + field->field.editor.x + field->field.editor.w / 2 : 0;
+        hit_y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+        hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
+        hit = hit_item && hit_item->id == ids.name;
+        expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
+        if (hit) live.click_point({hit_x, hit_y});
+        pointer = hit && session->selection.anchor == expected_caret && session->selection.caret == expected_caret;
+        report.check("D01-selection-return", selection_return == first && dpi_messages > before && selection_back && hit && pointer,
+                     "Return: selection/focus=" + std::to_string(selection_back) + "; physical click caret=" + std::to_string(pointer));
+        detail::access(ui).select(ids.name, 1, 3);
 
         Profiles profiles;
         if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated for this process");
@@ -1193,31 +1217,32 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         }
         live.type("JI3");
         bool composing_before = session->composing && !session->preedit.empty();
-        before = dpi_messages;
-        UINT returned = move(monitors[0]);
-        field = live.host.frame().find(live.form.handles.name);
-        IMECHARPOSITION position{};
-        position.dwSize = sizeof(position);
-        bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION,
-                                  reinterpret_cast<LPARAM>(&position)) != 0;
-        POINT caret{field ? field->caret_x(session->begin()) : 0,
-                    field ? field->bounds.y + field->field.editor.y : 0};
-        ClientToScreen(live.host.window(), &caret);
-        CANDIDATEFORM candidate{};
-        bool candidate_ok = false;
-        if (auto imc = ImmGetContext(live.host.window())) {
-            candidate.dwIndex = 0;
-            candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field &&
-                           candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) &&
-                           candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
-            ImmReleaseContext(live.host.window(), imc);
-        }
-        bool caret_ok = query && position.pt.x == caret.x && position.pt.y == caret.y;
-        bool composition = composing_before && session->composing && detail::access(ui).focused() == ids.name;
-        report.check("D01-composition-return", returned == first && dpi_messages > before && composition && caret_ok && candidate_ok,
-                     std::to_string(second) + " -> " + std::to_string(returned) + "; WM_DPICHANGED=" +
-                     std::to_string(dpi_messages - before) + "; composition=" + std::to_string(composition) +
-                     "; IMR caret=" + std::to_string(caret_ok) + "; candidate placement request=" + std::to_string(candidate_ok));
+        auto check_composition_move = [&](const MONITORINFOEXW& monitor, UINT expected_dpi, const char* case_name) {
+            int prior = dpi_messages;
+            UINT actual = move(monitor);
+            field = live.host.frame().find(live.form.handles.name);
+            IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+            bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION,
+                                      reinterpret_cast<LPARAM>(&position)) != 0;
+            POINT caret{field ? field->caret_x(session->begin()) : 0,
+                        field ? field->bounds.y + field->field.editor.y : 0};
+            ClientToScreen(live.host.window(), &caret);
+            CANDIDATEFORM candidate{}; bool candidate_ok = false;
+            if (auto imc = ImmGetContext(live.host.window())) {
+                candidate.dwIndex = 0;
+                candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field &&
+                               candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) &&
+                               candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+                ImmReleaseContext(live.host.window(), imc);
+            }
+            bool caret_ok = query && position.pt.x == caret.x && position.pt.y == caret.y;
+            bool composition = composing_before && session->composing && detail::access(ui).focused() == ids.name;
+            report.check(case_name, actual == expected_dpi && dpi_messages > prior && composition && caret_ok && candidate_ok,
+                         "WM_DPICHANGED=" + std::to_string(dpi_messages - prior) + "; composition=" + std::to_string(composition) +
+                         "; IMR caret=" + std::to_string(caret_ok) + "; candidate placement request=" + std::to_string(candidate_ok));
+        };
+        check_composition_move(monitors[1], second, "D01-composition-forward");
+        check_composition_move(monitors[0], first, "D01-composition-return");
         live.clear_composition();
         profiles.us();
         live.form.handles.region.focus();
@@ -1237,6 +1262,18 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         report.check("D01-popup-forward", popup_dpi == second && dpi_messages > before && popup,
                      "Open dropdown across monitor move: WM_DPICHANGED=" + std::to_string(dpi_messages - before) +
                      "; popup inside viewport and hit=" + std::to_string(popup));
+        before = dpi_messages;
+        UINT popup_return = move(monitors[0]);
+        const auto& returned_frame = live.host.frame();
+        bool popup_back = !returned_frame.overlays.empty();
+        if (popup_back) {
+            auto r = returned_frame.overlays.front().bounds;
+            auto* target = returned_frame.hit(r.x + r.w / 2, r.y + r.h / 2);
+            popup_back = r.x >= 0 && r.y >= 0 && r.x + r.w <= returned_frame.viewport.w &&
+                         r.y + r.h <= returned_frame.viewport.h && target && target->popup;
+        }
+        report.check("D01-popup-return", popup_return == first && dpi_messages > before && popup_back,
+                     "Return: popup inside viewport and hit=" + std::to_string(popup_back));
         return true;
     } catch (const Blocked& blocked) {
         report.check("BLOCKED", false, blocked.what());
