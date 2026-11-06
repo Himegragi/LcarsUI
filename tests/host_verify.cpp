@@ -12,6 +12,7 @@
 #include <msctf.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -72,17 +73,58 @@ LPARAM key_lparam(WPARAM vk, bool repeat, bool up) {
     if (up) l |= 1LL << 31;
     return l;
 }
+// X04 samples must have their requested physical client size even when the test
+// desktop's default maximum tracking size is smaller. Keep the host's normal input
+// procedure and alter only this fixture window's size limits.
+std::map<HWND, WNDPROC> x04_original_procs;
+LRESULT CALLBACK x04_window_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
+    auto found = x04_original_procs.find(window);
+    if (found == x04_original_procs.end()) return DefWindowProcW(window, message, w, l);
+    auto result = CallWindowProcW(found->second, window, message, w, l);
+    if (message == WM_GETMINMAXINFO) {
+        auto* limits = reinterpret_cast<MINMAXINFO*>(l);
+        limits->ptMaxSize = {32767, 32767};
+        limits->ptMaxTrackSize = {32767, 32767};
+    }
+    return result;
+}
 // One fresh form plus host per scenario, so cases never depend on each other's state.
 struct Fixture {
     edit_form::Form form;
     DesktopHost host;
     const edit_form::Ids& ids;
+    WNDPROC x04_original_proc = nullptr;
     explicit Fixture(const Appearance& appearance, bool pages = false, bool alternate = false)
         : form(alternate ? alternate_ids() : edit_form::default_ids(), pages), host(form.ui, appearance, [this] { return form.page(); }, form.scroll, options(), true, true), ids(form.ids()) {
         ShowWindow(host.window(), SW_SHOWNOACTIVATE);
         host.force_scale(1.f);
         host.client_size(900, 700);
         settle();
+    }
+    ~Fixture() {
+        if (x04_original_proc) {
+            SetWindowLongPtrW(host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(x04_original_proc));
+            x04_original_procs.erase(host.window());
+        }
+    }
+    void x04_size(int width_dip, int height_dip, float scale) {
+        if (!x04_original_proc) {
+            auto previous = GetWindowLongPtrW(host.window(), GWLP_WNDPROC);
+            if (!previous) throw std::runtime_error("Cannot read X04 window procedure");
+            x04_original_proc = reinterpret_cast<WNDPROC>(previous);
+            x04_original_procs.emplace(host.window(), x04_original_proc);
+            if (!SetWindowLongPtrW(host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&x04_window_proc))) {
+                x04_original_procs.erase(host.window()); x04_original_proc = nullptr;
+                throw std::runtime_error("Cannot install X04 sizing fixture");
+            }
+        }
+        host.force_scale(scale); host.client_size(width_dip, height_dip);
+        RECT actual{}; GetClientRect(host.window(), &actual);
+        int expected_width = int(std::lround(width_dip * scale));
+        int expected_height = int(std::lround(height_dip * scale));
+        if (actual.right != expected_width || actual.bottom != expected_height)
+            throw std::runtime_error("X04 client size mismatch: expected " + std::to_string(expected_width) + "x" +
+                std::to_string(expected_height) + ", got " + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
     }
     static DesktopOptions options() { DesktopOptions o; o.title = u"LcarsUI host verification"; return o; }
     void settle() { host.pump(); host.paint(); }
@@ -1210,6 +1252,22 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
         }
 }
 
+void x04_client_size_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) {
+        Fixture f(appearance, true, alternate);
+        for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+            f.x04_size(size.first, size.second, scale);
+            RECT actual{}; GetClientRect(f.host.window(), &actual);
+            int width = int(std::lround(size.first * scale)), height = int(std::lround(size.second * scale));
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "%";
+            report.check("X04-client-size", actual.right == width && actual.bottom == height,
+                sample + ": expected=" + std::to_string(width) + "x" + std::to_string(height) +
+                ", actual=" + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
+        }
+    }
+}
+
 // Inventory is made from the same typed handles as the application. Each row reports what
 // the actual host paint observed; an unswept applicable state remains explicitly open.
 void semantic_observation_sweep(const Appearance& appearance, const std::filesystem::path& folder, const std::string& tag) {
@@ -1221,7 +1279,7 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
         auto entries = x04::inventory(f.form);
         f.host.observe_paint(true);
         for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.x04_size(size.first, size.second, scale);
             for (const char* page : {"v01", "v02", "v03"}) {
                 h.tabs.activate({page}); f.settle();
                 for (const auto& entry : entries) {
@@ -1271,7 +1329,7 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             auto entries = x04::inventory(f.form);
             struct Outcome { int pages = 0; bool passed = true; };
@@ -1306,7 +1364,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
@@ -1343,7 +1401,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
 void x04_executing_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
-            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 auto* button = std::get_if<ButtonHandle>(&entry.handle);
@@ -1383,7 +1441,7 @@ void x04_clipped_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto inventory = x04::inventory(f.form);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             for (const auto& entry : inventory) {
                 if (entry.page == "shared" || entry.page == "modal") continue;
                 auto baseline = x04::snapshot(f.form);
@@ -1438,7 +1496,7 @@ void x04_clipped_matrix(const Appearance& appearance, Report& report) {
 void x04_error_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
-            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
@@ -1458,7 +1516,8 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
                 }
                 bool cue = semantic->kind == Kind::tabs ? ink.find(appearance.component_presentation().invalid_tab_marker) != std::u16string::npos :
                     ink.find(x04::error_message) != std::u16string::npos && color;
-                bool compared = item && semantic->visible && x04::error_semantics(f.form, *semantic) && cue;
+                bool semantic_state = x04::error_semantics(f.form, *semantic);
+                bool compared = item && semantic->visible && semantic_state && cue;
                 bool restored = x04::restore_error(f.form, entry) && !x04::error_semantics(f.form, *x04::describe(entry.handle));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                     std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -1472,7 +1531,7 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
 void x04_candidate_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
-            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
@@ -1510,7 +1569,7 @@ void x04_search_read_only_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& search = f.form.list->handles.search;
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             bool driven = x04::drive_search_read_only(f.form) && bool(search.focus());
             f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, search.describe()->id);
             f.host.paint(); auto semantic = search.describe(); std::u16string ink;
@@ -1533,7 +1592,7 @@ void x04_search_read_only_matrix(const Appearance& appearance, Report& report) {
 void x04_modal_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
-            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true); bool opened = x04::open_modal(f.form); f.host.paint();
             bool blocked = f.host.frame().modal && f.form.handles.progress_zero.invoke().status == Status::blocked_by_modal;
             struct Row { std::string id; bool passed; }; std::vector<Row> rows;
@@ -1561,7 +1620,7 @@ void x04_tooltip_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui); std::uint64_t now = 100;
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             state.tooltip_clock([&] { return now; }); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
             bool driven = x04::prepare_tip(f.form); auto semantic = f.form.handles.progress_half.describe();
             f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
@@ -1589,7 +1648,7 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
                 bool modal = entry.page == "modal";
@@ -1646,7 +1705,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             auto reveal = [&](const std::string& id) {
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, id); f.host.paint();
             };
@@ -1754,7 +1813,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate);
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true);
             auto reveal = [&](const std::string& id) {
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, id);
@@ -1799,7 +1858,7 @@ void x04_name_read_only_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& name = f.form.handles.name;
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.x04_size(size.first, size.second, scale);
             bool driven = bool(x04::name_read_only.drive(f.form)) && bool(name.focus());
             f.host.observe_paint(true); f.settle();
             auto semantic = name.describe(); auto suffix = appearance.component_presentation().read_only_suffix;
@@ -1829,7 +1888,7 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
     for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& h = f.form.handles;
-            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.settle();
+            f.x04_size(size.first, size.second, scale); f.settle();
             bool driven = bool(x04::name_conflict.drive(f.form)) && bool(h.name.focus());
             f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, h.name.describe()->id);
             f.host.observe_paint(true); f.host.paint();
@@ -2555,6 +2614,7 @@ int run(const std::filesystem::path& folder) {
         page_size_scale_matrix(*appearance, report);
         popup_dismissal_matrix(*appearance, report);
         semantic_raster_samples(*appearance, report, folder);
+        x04_client_size_matrix(*appearance, report);
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);
@@ -2592,6 +2652,7 @@ int run_x04(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         semantic_raster_samples(*appearance, report, folder);
+        x04_client_size_matrix(*appearance, report);
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);
