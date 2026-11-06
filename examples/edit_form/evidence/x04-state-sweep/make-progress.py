@@ -9,13 +9,16 @@ from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parent
-core_log = root / "generic-core.log"
-core_ok = core_log.exists() and "100% tests passed" in core_log.read_text(encoding="utf-8") and "edit_form" in core_log.read_text(encoding="utf-8")
-generic_file = root / "generic-debug.tsv"
+core_log = root / "final-core.log"
+core_text = core_log.read_text(encoding="utf-8") if core_log.exists() else ""
+core_cases = re.findall(r"(?m)^\d+/6 Testing: ([^\r\n]+)", core_text)
+core_ok = (set(core_cases) == {"core_regressions", "components", "layout", "edit_form", "list_page", "consumer_example"} and
+           len(re.findall(r"(?m)^Test Passed\.\s*$", core_text)) == 6 and "Test Failed." not in core_text)
+generic_file = root / "final-debug.tsv"
 native_file = generic_file if generic_file.exists() else root / "debug-final.tsv"
 with native_file.open(encoding="utf-8", newline="") as f:
     native = list(csv.DictReader(f, delimiter="\t"))
-release_file = root / "generic-release.tsv"
+release_file = root / "final-release.tsv"
 with release_file.open(encoding="utf-8", newline="") as f:
     release = list(csv.DictReader(f, delimiter="\t"))
 
@@ -81,6 +84,17 @@ def collect_samples(rows, build):
         if row["status"] == "OPEN":
             open_samples[key].append(f"{build} {size} {scale}%: {row['evidence'].split(': ', 1)[-1]}")
     return samples, restores
+def fixed_placements(rows):
+    fixed = defaultdict(dict)
+    for row in rows:
+        if row["case"] != "X04-fixed-placement":
+            continue
+        match = re.match(r"^(shipped|alternate) (960x720|640x480) (100|150)% ([^: ]+):", row["evidence"])
+        if match:
+            ids, size, scale, component = match.groups()
+            fixed[(row["appearance"], ids, component)].setdefault((size, scale), []).append(row["status"])
+    return fixed
+fixed_debug, fixed_release = fixed_placements(native), fixed_placements(release)
 samples, restore_samples = collect_samples(native, "Debug")
 release_samples, release_restores = collect_samples(release, "Release")
 for key in sorted(samples.keys() | release_samples.keys()):
@@ -106,14 +120,22 @@ full = ["| Appearance / IDs | Component | Normal | Hidden | Clipped | Disabled |
 counts = defaultdict(int)
 state_counts = defaultdict(lambda: defaultdict(int))
 for appearance in ("web", "material"):
-    latest_inventory = root / f"generic-{appearance}-x04-sweep.tsv"
+    latest_inventory = root / f"final-{appearance}-x04-sweep.tsv"
     inventory_file = latest_inventory if latest_inventory.exists() else root / f"{appearance}-x04-sweep.tsv"
     with inventory_file.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f, delimiter="\t"))
-    groups = defaultdict(list)
+    release_inventory = root / f"final-release-{appearance}-x04-sweep.tsv"
+    with release_inventory.open(encoding="utf-8", newline="") as f:
+        release_rows = list(csv.DictReader(f, delimiter="\t"))
+    groups, release_groups = defaultdict(list), defaultdict(list)
     for row in rows:
         groups[(row["ids"], row["component"])].append(row)
-    for (ids, component), observations in groups.items():
+    for row in release_rows:
+        release_groups[(row["ids"], row["component"])].append(row)
+    if groups.keys() != release_groups.keys():
+        raise ValueError(f"{appearance}: Debug and Release inventories differ")
+    for (ids, component), debug_observations in groups.items():
+        observations = debug_observations + release_groups[(ids, component)]
         normal_key = (appearance, ids, component, "normal")
         normal = "P" if normal_key in completed else "F" if normal_key in failed else "O"
         if normal != "P":
@@ -123,12 +145,24 @@ for appearance in ("web", "material"):
         state_counts["normal"][normal] += 1
         for state in ("hidden", "clipped", "disabled", "read_only", "selected", "candidate", "error", "conflict", "executing", "modal", "tip"):
             if all(row[state] == "N/A" for row in observations):
-                status = "N/A"
+                if state == "clipped":
+                    key = (appearance, ids, component)
+                    fixed_statuses = [v for group in (fixed_debug[key], fixed_release[key]) for values in group.values() for v in values]
+                    if "FAIL" in fixed_statuses:
+                        status = "F"
+                        pending.append((appearance, ids, component, state, "no enclosing scroll, but a client-bounds assertion failed"))
+                    elif core_ok and sizes_verified(appearance, ids) and complete_pass(fixed_debug[key]) and complete_pass(fixed_release[key]):
+                        status = "N/A"
+                    else:
+                        status = "O"
+                        pending.append((appearance, ids, component, state, "no enclosing scroll; client-bounds verification incomplete"))
+                else:
+                    status = "N/A"
             elif (appearance, ids, component, state) in completed:
                 status = "P"
             elif (appearance, ids, component, state) in failed:
                 status = "F"
-                pending.append((appearance, ids, component, state, "native state check failed; inspect generic-debug.tsv and generic-release.tsv"))
+                pending.append((appearance, ids, component, state, "native state check failed; inspect final-debug.tsv and final-release.tsv"))
             else:
                 status = "O"
                 reasons = {
@@ -148,24 +182,6 @@ for appearance in ("web", "material"):
                 key = (appearance, ids, component, state)
                 if key in open_samples:
                     reason = "native sample remained open: " + "; ".join(open_samples[key])
-                if state == "hidden" and ".dialog." in component:
-                    reason = "dialog-only member has no inactive tab-page membership; closed dialog admission is disabled, not hidden; outcome requires clarification"
-                elif state == "clipped" and component.endswith(".tabs"):
-                    reason = "fixed tab header has no scroll region; how to drive it fully clipped in the assembled page needs clarification"
-                elif state == "clipped" and ".dialog." in component:
-                    reason = "modal member is in a fixed overlay without its own scroll region; a clipped fixture has not been established"
-                elif state == "clipped" and ".v03." in component and key not in open_samples:
-                    reason = "V03's large viewport has no baseline overflow; the expanded model fixture lacks a complete passing sample set"
-                elif state == "error" and component in ("form.name.error", "n.e"):
-                    reason = "associated error label has not been driven through its field error and compared at both seams"
-                elif state == "error" and observations[0]["kind"] == "4":
-                    reason = "label type declares error, but only associated error-role labels carry field errors and LabelHandle has no error setter; applicability or API requires clarification"
-                elif state == "error" and observations[0]["kind"] == "10":
-                    reason = "invalid tab marker and member error association are not driven at both seams"
-                elif state == "executing" and component in ("form.apply", "go"):
-                    reason = "confirmation button rejects ButtonHandle.bind; callback-time observation and action restoration need a supported route"
-                elif state == "conflict" and component.endswith(".search"):
-                    reason = "search source has no application update hook; conflict transition and latest-action policy remain unverified"
                 pending.append((appearance, ids, component, state, reason))
             cells.append(status)
             counts[status] += 1

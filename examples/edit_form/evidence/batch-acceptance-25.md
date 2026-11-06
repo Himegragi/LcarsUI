@@ -1,31 +1,35 @@
 # First component batch acceptance — issue #25
 
-## X04 generic state sweep (2026-11-06)
+## X04 final state sweep (2026-11-06)
 
-**X04: OPEN.** Tested implementation commit `307ccb1`. The [generated table](x04-state-sweep/x04-table.md) has **1036 P / 0 F / 1596 N/A / 104 open** aggregate cells; the [open list](x04-state-sweep/x04-open.tsv) identifies every remaining cell and reason. A pass requires the core sweep, four exact-size samples in each native build, and successful client-size checks. N/A comes from the type declaration or fixed membership.
+**X04: PASS.** Tested implementation commit `2f20010`. The [generated table](x04-state-sweep/x04-table.md) contains **1,052 P / 0 F / 1,684 N/A / 0 open** aggregate cells. The [open list](x04-state-sweep/x04-open.tsv) has no data rows. A pass requires the shared core sweep and four distinct size/scale samples in both native builds, with exact client-size checks. N/A is derived from the registered type, assembled layout or application connection; fixed placements also require successful client-bounds checks in both builds. [Driven samples](x04-state-sweep/x04-driven.md), [generator](x04-state-sweep/make-progress.py), Debug inventories ([Web](x04-state-sweep/final-web-x04-sweep.tsv), [Material](x04-state-sweep/final-material-x04-sweep.tsv)) and Release inventories ([Web](x04-state-sweep/final-release-web-x04-sweep.tsv), [Material](x04-state-sweep/final-release-material-x04-sweep.tsv)) record the inputs.
 
 | State | P | F | N/A | Open |
 | --- | ---: | ---: | ---: | ---: |
 | normal | 228 | 0 | 0 | 0 |
-| hidden | 208 | 0 | 4 | 16 |
-| clipped | 208 | 0 | 0 | 20 |
+| hidden | 224 | 0 | 4 | 0 |
+| clipped | 208 | 0 | 20 | 0 |
 | disabled | 160 | 0 | 68 | 0 |
 | read_only | 8 | 0 | 220 | 0 |
 | selected | 16 | 0 | 212 | 0 |
 | candidate | 12 | 0 | 216 | 0 |
-| error | 32 | 0 | 136 | 60 |
-| conflict | 20 | 0 | 204 | 4 |
-| executing | 124 | 0 | 100 | 4 |
+| error | 28 | 0 | 200 | 0 |
+| conflict | 20 | 0 | 208 | 0 |
+| executing | 128 | 0 | 100 | 0 |
 | modal | 16 | 0 | 212 | 0 |
 | tip | 4 | 0 | 224 | 0 |
 
-The shared inventory drives normal, inactive-page, full and partial clipping, disabled and option/page recovery, read-only, selected, candidate, field error, conflict, ordinary-button executing, modal and tooltip states. The remaining questions concern closed modal admission, clipping a fixed tab or modal overlay, non-error-role labels declared as error-capable, the immediate search conflict, and observing the protected confirmation action. X04 remains open.
+The coordinator made these five decisions:
 
-The production presentation now gives disabled buttons, radio groups and lists a text cue; narrow button captions wrap inside their bounds. Example-only fixture methods provide model padding, field rejection and action restoration; no framework handle API or production host input file changed. The native fixture permits the requested client size beyond the desktop tracking limit and asserts its dimensions. Paint evidence records client-clipped text runs and surviving ink; it is not OCR of every glyph.
+1. **Labels have no error state.** Error belongs to the field; the field-error driver still verifies the error-role label's target, value and association. The type declaration now excludes label error, including the 15 previously open label pairs and the previously driven error-role label. No label error setter was added.
+2. **The fixed tab header and dialog members cannot be scroll-clipped.** The sweep traverses the assembled layout to identify placements without an enclosing scroll region. Each build verifies all 80 appearance, ID, size, scale and placement samples lie inside both the client and their actual clip.
+3. **Closed dialog content is hidden.** Shared admission returns `Status::hidden` for closed members, including disabled members; semantics, paint, placement, pointer and typed-operation checks cover closing the dialog. A regression also exposed passive labels returning `not_supported` before admission; hidden state now takes precedence on that pointer path. Keyboard cannot focus a closed member and does not activate it.
+4. **The V02 immediate search connection has no conflict state in this page.** The source is encapsulated in the immediate-only connection, and sample resets now clear it through the field's modification entry instead of writing the source directly. The sweep derives N/A from the actual attached connection. A list-page regression verifies reset, filtering and edit-history behavior.
+5. **Apply executing is observed inside the application's modification entry.** An example-only one-shot observer captures the semantic state and native paint while the existing confirmation action runs; the test also checks that rebinding the protected confirmation button is rejected.
 
-- Debug desktop (`./build.ps1`): **7/7 CTest**, **4524 native passes / 0 failures / 168 N/A / 0 open samples** ([log](x04-state-sweep/generic-debug.log), [rows](x04-state-sweep/generic-debug.tsv)).
-- Release desktop (`./build.ps1 -Configuration Release`): **7/7 CTest**, **4524 native passes / 0 failures / 168 N/A / 0 open samples** ([log](x04-state-sweep/generic-release.log), [rows](x04-state-sweep/generic-release.tsv)). Release core-only (`./build.ps1 -Configuration Release -CoreOnly`): **6/6 CTest** ([log](x04-state-sweep/generic-core.log)).
-- An earlier cue implementation produced [64 narrow-button failures](x04-state-sweep/generic-before-wrap-failures.tsv), then wrapping fixed them. A subsequent [two-row probe](x04-state-sweep/generic-wrap-probe-failures.tsv) exposed an assertion that assumed a single text run; it now handles wrapped runs. A later [six-row failure](x04-state-sweep/generic-material-cue-failures.tsv) came from a 1440x1050 test client for a requested 1440x1080 sample; the focused repro and final runs passed after the fixture correction. AC08 passed in the final runs. `--clipboard-only`, `--ime` and `--dpi` were not run.
+- Debug desktop: **7/7 CTest**, **4,668 native P / 0 F / 168 N/A / 0 open** ([CTest log](x04-state-sweep/final-debug.log), [native rows](x04-state-sweep/final-debug.tsv)).
+- Release desktop: **7/7 CTest**, **4,668 native P / 0 F / 168 N/A / 0 open** ([CTest log](x04-state-sweep/final-release.log), [native rows](x04-state-sweep/final-release.tsv)). Release core-only: **6/6 CTest** ([log](x04-state-sweep/final-core.log)). All AC08 clipboard rows passed in both desktop runs; no native retry was needed. Trailing spaces in the saved native logs and rows were removed without changing results.
+- The production host-input path changed in `src/core.cpp` (shared admission and focusability); `src/desktop_host.cpp` and other Win32 host-input files were not changed. Native paint evidence records clipped text runs and surviving ink, not OCR. `--clipboard-only`, `--ime` and `--dpi` were not run.
 
 ## X02 / partial X04 state-driving follow-up (2026-11-06)
 
