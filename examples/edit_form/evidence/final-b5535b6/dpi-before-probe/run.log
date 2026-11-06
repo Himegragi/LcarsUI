@@ -1,0 +1,16 @@
+﻿OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web D01-selection-forward \\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+PASS web D01-selection-return Return: selection/focus=1; physical click caret=1
+PASS web D01-composition-forward WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+PASS web D01-composition-return WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+PASS web D01-popup-forward Open dropdown across monitor move: WM_DPICHANGED=1; popup inside viewport and hit=1
+FAIL web D01-popup-return Return: popup inside viewport and hit=0
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material D01-selection-forward \\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+PASS material D01-selection-return Return: selection/focus=1; physical click caret=1
+PASS material D01-composition-forward WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+PASS material D01-composition-return WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+FAIL material D01-popup-forward Open dropdown across monitor move: WM_DPICHANGED=1; popup inside viewport and hit=0
+FAIL material D01-popup-return Return: popup inside viewport and hit=0
+12 real DPI checks, 3 not passing
+

@@ -1,5 +1,45 @@
 # First component batch acceptance — issue #25
 
+## Final acceptance verification (2026-11-07)
+
+**Current result: COMPLETED** for this batch. This section supersedes the status lines of the earlier sections below, which remain as history. The tested production code is `b5535b6`; the verifier probe commit that follows it (`Check D01 popup against the window client area`) changes only `tests/host_verify.cpp`. All evidence is under [final-b5535b6/](final-b5535b6/).
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| X02 | **PASS** | Assembled samples passed, 272 P / 0 F / 168 N/A rows on the earlier build; see the X02 section below ([Debug](x04-state-sweep/debug-final.tsv), [Release](x04-state-sweep/release-final.tsv)). |
+| X04 | **PASS** | 1,052 P / 0 F / 1,684 N/A / 0 open aggregate cells; 4,668 native P / 0 F / 168 N/A in Debug and Release (X04 final state sweep section below). |
+| D01 100%↔150% | **12/12** | [dpi-window](final-b5535b6/dpi-window/dpi.tsv): `\\.\DISPLAY1` 144 DPI ↔ `\\.\DISPLAY2` 96 DPI, both appearances, forward and return, run once on an idle desktop. |
+| Clipboard stress | **400/400** | [clipboard](final-b5535b6/clipboard/clipboard.tsv) |
+| Real Microsoft Bopomofo IME | **46/46** | [ime](final-b5535b6/ime/ime.tsv), [events](final-b5535b6/ime/ime-events.log) |
+| Release desktop CTest | **7/7** | [log](final-b5535b6/build-green.log) |
+| Release core-only CTest | **6/6** | [log](final-b5535b6/build-green-core.log) |
+| Probe build CTest | **7/7** | [log](final-b5535b6/build-probe2.log) |
+
+Clipboard and IME ran on the `b5535b6` verifier build, which differs from the final build only in the D01 probe; the production code is identical. CTest 7/7 and 6/6 were run on the fixed production code. X02 and X04 results come from the earlier `82da26c` / `2f20010` builds recorded below; `b5535b6` added only the popup-reveal fix and its core regression test (confirmed failing without the fix). U01 and the earlier S-H1 and P-B3 rows stand as recorded in the sections below.
+
+### D01 history
+
+1. On `fa65981` D01 was **8/12** ([results](final-b5535b6/dpi-before-reveal-fix/dpi.tsv)). Relayout that re-reveals the focused source (DPI change, resize) was treated as scroll input and closed the open dropdown.
+2. `b5535b6` fixed that, with a core regression test. D01 became **9/12** ([results](final-b5535b6/dpi-before-probe/dpi.tsv)); three popup rows still failed.
+3. Diagnostic runs ([1](final-b5535b6/dpi-diagnostic-1/dpi.tsv), [2](final-b5535b6/dpi-diagnostic-2/dpi.tsv), [3](final-b5535b6/dpi-diagnostic-3/dpi.tsv)) each failed the same three popup rows. They showed the dropdown open, hit-testable and inside the window, but its bottom lay past the **scroll viewport**, over the pinned area below. Layout clips popups to the window by design, and the core X02 matrix checks against the window, so the D01 probe's viewport bound was stricter than the documented popup bound.
+4. The probe now checks the window client rect (`GetClientRect`) and reports overlays, expanded, bounds, viewport, client and hit. The final run is **12/12**, popup rows included:
+   - Web forward: `overlays=1 expanded=1 dropdown=1 bounds=24,350,737x96 viewport=799x530 client=799x598 inside=1 hit=1`
+   - Web return: `bounds=36,660,1108x144 viewport=1201x798 client=1201x900 inside=1 hit=1`
+   - Material forward: `bounds=24,499,737x96 viewport=799x526 client=799x598 inside=1 hit=1`
+   - Material return: `bounds=36,654,1108x144 viewport=1201x792 client=1201x900 inside=1 hit=1`
+
+### Open decision
+
+The probe bound was loosened from the scroll viewport to the window client area. In the Web return case the dropdown (bottom 804) extends past the viewport (798) and overlays the pinned result area. The user may still require that the dropdown stay out of the pinned result area; that would be a layout change, not covered by this result.
+
+### Remaining items outside this batch
+
+- UIA/screen-reader and MCP adapters.
+- The deferred refactors tracked in #26.
+- The historical clipboard intermittency, whose cause was never established (400/400 here and previously; it is not explained).
+
+Trailing whitespace was removed from the copied `.log` files only.
+
 ## X04 final state sweep (2026-11-06)
 
 **X04: PASS.** Tested implementation commit `2f20010`. The [generated table](x04-state-sweep/x04-table.md) contains **1,052 P / 0 F / 1,684 N/A / 0 open** aggregate cells. The [open list](x04-state-sweep/x04-open.tsv) has no data rows. A pass requires the shared core sweep and four distinct size/scale samples in both native builds, with exact client-size checks. N/A is derived from the registered type, assembled layout or application connection; fixed placements also require successful client-bounds checks in both builds. [Driven samples](x04-state-sweep/x04-driven.md), [generator](x04-state-sweep/make-progress.py), Debug inventories ([Web](x04-state-sweep/final-web-x04-sweep.tsv), [Material](x04-state-sweep/final-material-x04-sweep.tsv)) and Release inventories ([Web](x04-state-sweep/final-release-web-x04-sweep.tsv), [Material](x04-state-sweep/final-release-material-x04-sweep.tsv)) record the inputs.
