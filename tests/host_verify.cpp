@@ -6,6 +6,7 @@
 #include "desktop_host.hpp"
 #include "test_component.hpp"
 #include "edit_form.hpp"
+#include "x04_drivers.hpp"
 #include "list_page.hpp"
 #include <imm.h>
 #include <msctf.h>
@@ -861,6 +862,22 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
             }
             report.check("X02-v01-popup-wheel", prepared && popup_wheel,
                 sample + ": wheel over panel does not scroll background or cancel=" + std::to_string(popup_wheel));
+            popup = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(),
+                                 [](const Placement& p) { return p.popup && !p.tooltip; });
+            // The assembled dropdown has three fixed rows. Record whether the panel can
+            // overflow at this actual size instead of treating a missing list driver as a pass.
+            if (popup != f.host.frame().overlays.end()) {
+                auto option_count = popup->options.size();
+                int rows_height = option_count ? popup->options.back().y + popup->options.back().h - popup->bounds.y : 0;
+                if (rows_height <= popup->bounds.h)
+                    report.na("X02-v01-panel-list-scroll", sample + ": " + std::to_string(option_count) +
+                        " options; rows=" + std::to_string(rows_height) + "px, panel=" + std::to_string(popup->bounds.h) + "px; no overflow");
+                else
+                    report.check("X02-v01-panel-list-scroll", false, sample + ": panel overflows; independent list scroll must be tested");
+            } else report.check("X02-v01-panel-list-scroll", false, sample + ": open panel missing");
+            // WM_KEYDOWN dispatches to the focused component; only list navigation schedules
+            // reveal. A dropdown owns the keyboard while open and is not a scrollable region.
+            report.na("X02-popup-keyboard-region-scroll", sample + ": host offers no keyboard scrolling of a region while a popup is open");
             region.cancel();
             prepared = prepare_dropdown();
             scroll_region = f.host.frame().regions.front();
@@ -920,7 +937,9 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 }
                 const char* case_id = input == 0 ? "X02-v01-edge-wheel" : input == 1 ? "X02-v01-edge-track" : "X02-v01-edge-thumb";
                 auto detail = sample + (partial ? " partial" : " clipped");
-                if (target < 0) { report.na(case_id, detail + ": endpoint not reachable with this page and input"); continue; }
+                if (target < 0) { report.na(case_id, detail + ": no visible starting offset and reachable endpoint; anchor top=" +
+                    std::to_string(original_top) + ", height=" + std::to_string(anchor->bounds.h) + ", clip=" + str(anchor->clip) +
+                    ", maximum=" + std::to_string(bar.maximum) + ", track=" + str(bar.track) + ", thumb height=" + std::to_string(bar.thumb.h)); continue; }
                 geometry.scroll_to(f.form.ui, f.form.scroll, before); f.host.paint();
                 region.focus(); region.open(); f.tap(VK_DOWN); f.tap(VK_DOWN); f.settle();
                 bool candidate = region.describe()->expanded && region.describe()->candidate == OptionValue{"south"};
@@ -1059,6 +1078,104 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 report.check(case_id, hid && waiting && resumed,
                     sample + ": moved and hid=" + std::to_string(hid) + ", fresh dwell=" + std::to_string(waiting && resumed) + ", anchor=" + anchor_visibility(h.progress_half));
             }
+            // Search the actual V03 geometry for every edge/input pair. Preparation
+            // sets an offset, while the scroll under test enters through Win32 messages.
+            for (int input = 0; input < 3; ++input) for (bool partial : {true, false}) {
+                h.progress_half.focus(); f.settle();
+                auto geometry = f.host.frame();
+                auto* anchor = geometry.find(h.progress_half);
+                auto bar = geometry.regions.front();
+                const char* case_id = input == 0 ? "X02-v03-edge-wheel" : input == 1 ? "X02-v03-edge-track" : "X02-v03-edge-thumb";
+                std::string detail = sample + (partial ? " partial" : " clipped");
+                if (!anchor) { report.check(case_id, false, detail + ": tooltip source missing"); continue; }
+                int original_top = anchor->bounds.y + f.form.scroll.offset;
+                auto height_at = [&](int offset) {
+                    int top = original_top - offset;
+                    return std::max(0, std::min(top + anchor->bounds.h, anchor->clip.y + anchor->clip.h) - std::max(top, anchor->clip.y));
+                };
+                auto desired = [&](int offset) { int visible = height_at(offset); return partial ? visible > 0 && visible < anchor->bounds.h : visible == 0; };
+                int target = -1, before = -1, pointer_y = 0;
+                if (input == 0) {
+                    for (int n = 0; n <= bar.maximum && target < 0; ++n) if (desired(n))
+                        for (int pre : {n - 1, n + 1}) if (pre >= 0 && pre <= bar.maximum && height_at(pre) > 0) {
+                            target = n; before = pre; break;
+                        }
+                } else {
+                    for (int y = bar.track.y; y < bar.track.y + bar.track.h && target < 0; ++y) {
+                        int n = bar.offset_for_thumb(y - bar.thumb.h / 2);
+                        if (!desired(n)) continue;
+                        for (int start = 0; start <= bar.maximum; ++start) {
+                            if (n == start || height_at(start) <= 0) continue;
+                            int thumb_top = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
+                            if (input == 1 && y >= thumb_top && y < thumb_top + bar.thumb.h) continue;
+                            target = n; before = start; pointer_y = y; break;
+                        }
+                    }
+                }
+                if (target < 0) {
+                    report.na(case_id, detail + ": no visible start and reachable endpoint; anchor top=" + std::to_string(original_top) +
+                        ", height=" + std::to_string(anchor->bounds.h) + ", clip=" + str(anchor->clip) +
+                        ", maximum=" + std::to_string(bar.maximum) + ", track=" + str(bar.track) + ", thumb height=" + std::to_string(bar.thumb.h));
+                    continue;
+                }
+                geometry.scroll_to(f.form.ui, f.form.scroll, before); f.host.paint();
+                now += 600; state.tooltip_time(now); f.host.paint();
+                bool opened = *h.progress_tip.visible();
+                if (input == 0) {
+                    POINT p{bar.clip.x + 2, bar.clip.y + 2}; ClientToScreen(f.host.window(), &p);
+                    int unit = int(std::ceil(120.0 / (48 * scale)));
+                    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(target > before ? -unit : unit)), MAKELPARAM(p.x, p.y));
+                } else if (input == 1) {
+                    POINT p{bar.track.x + bar.track.w / 2, pointer_y};
+                    f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
+                } else {
+                    auto thumb = f.host.frame().regions.front().thumb;
+                    POINT start{thumb.x + thumb.w / 2, thumb.y + thumb.h / 2}; POINT end{start.x, pointer_y};
+                    f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, end, MK_LBUTTON); f.mouse(WM_LBUTTONUP, end);
+                }
+                f.settle();
+                auto actual = anchor_visibility(h.progress_half);
+                bool pass = opened && f.form.scroll.offset != before && actual == (partial ? "partial" : "clipped") &&
+                    !*h.progress_tip.visible() && h.progress_half.describe()->focused;
+                report.check(case_id, pass, detail + ": before=" + std::to_string(before) + ", target=" + std::to_string(target) +
+                    ", actual offset=" + std::to_string(f.form.scroll.offset) + ", anchor=" + actual + ", opened=" + std::to_string(opened));
+            }
+            // Pointer-only eligibility: a scroll at 400 ms cancels the old deadline;
+            // a new complete 500 ms dwell may show the tip if the anchor remains under it.
+            h.progress_half.focus(); f.settle();
+            auto hover_bar = f.host.frame().regions.front();
+            if (!hover_bar.maximum) report.na("X02-v03-pointer-scroll-dwell", sample + ": no background overflow");
+            else {
+                h.tabs.focus(); f.settle();
+                auto source = f.host.frame().find(h.progress_half);
+                auto visible = intersect(source->bounds, source->clip);
+                POINT p{visible.x + visible.w / 2, visible.y + visible.h / 2};
+                SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
+                SendMessageW(f.host.window(), WM_MOUSEMOVE, 0, MAKELPARAM(p.x, p.y));
+                now += 400; state.tooltip_time(now); f.host.paint();
+                bool pending = !*h.progress_tip.visible();
+                int old = f.form.scroll.offset;
+                POINT wheel{hover_bar.clip.x + 2, hover_bar.clip.y + 2}; ClientToScreen(f.host.window(), &wheel);
+                int unit = int(std::ceil(120.0 / (48 * scale)));
+                // Do not pump unrelated TrackMouseEvent leaves caused by the physical
+                // desktop cursor: this scenario explicitly owns a synthetic pointer visit.
+                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(old < hover_bar.maximum ? -unit : unit)), MAKELPARAM(wheel.x, wheel.y));
+                f.host.paint();
+                now += 100; state.tooltip_time(now); f.host.paint(); bool stale = !*h.progress_tip.visible();
+                now += 399; state.tooltip_time(now); f.host.paint(); bool waits = !*h.progress_tip.visible();
+                ++now; state.tooltip_time(now); f.host.paint(); bool fresh = *h.progress_tip.visible();
+                int first_offset = f.form.scroll.offset;
+                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(first_offset < hover_bar.maximum ? -unit : unit)), MAKELPARAM(wheel.x, wheel.y));
+                f.host.paint(); bool closed = !*h.progress_tip.visible() && first_offset != f.form.scroll.offset;
+                now += 499; state.tooltip_time(now); f.host.paint(); bool second_wait = !*h.progress_tip.visible();
+                ++now; state.tooltip_time(now); f.host.paint(); bool reopened = *h.progress_tip.visible();
+                report.check("X02-v03-pointer-scroll-dwell", pending && old != first_offset && stale && waits && fresh && closed && second_wait && reopened,
+                    sample + ": pending=" + std::to_string(pending) + ", stale=" + std::to_string(stale) +
+                    ", waits=" + std::to_string(waits) + ", fresh=" + std::to_string(fresh) + ", closed=" + std::to_string(closed) +
+                    ", reopened after fresh dwell=" + std::to_string(second_wait && reopened));
+                SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
+            }
+            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.host.paint();
             bool transparent = false;
             auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& item) { return item.tooltip; });
             if (tip != f.host.frame().overlays.end()) {
@@ -1147,26 +1264,93 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
                     };
                     auto applicable = [](bool yes) { return yes ? "O" : "N/A"; };
                     auto k = s->kind;
-                    bool restricted = k == Kind::text || k == Kind::button || k == Kind::checkbox || k == Kind::radio_group ||
-                                      k == Kind::dropdown || k == Kind::slider || k == Kind::list || k == Kind::tabs;
-                    bool selected = k == Kind::checkbox || k == Kind::radio_group || k == Kind::list || k == Kind::tabs;
-                    bool candidate = k == Kind::dropdown || k == Kind::list || k == Kind::tabs;
-                    bool error = k == Kind::text || k == Kind::checkbox || k == Kind::radio_group || k == Kind::dropdown || k == Kind::slider || k == Kind::tabs;
-                    bool conflict = k == Kind::text || k == Kind::checkbox || k == Kind::radio_group || k == Kind::dropdown || k == Kind::slider;
+                    const auto& type = detail::component_type(k);
+                    using S = detail::ComponentState;
+                    bool restricted = type.supports_state(S::disabled);
+                    bool selected = type.supports_state(S::selected);
+                    bool candidate = type.supports_state(S::candidate);
+                    bool error = type.supports_state(S::error);
+                    bool conflict = type.supports_state(S::conflict);
                     bool associated = !s->target.empty();
                     out << (alternate ? "alternate" : "shipped") << '\t' << size.first << 'x' << size.second << '\t' << int(scale * 100)
                         << '\t' << page << '\t' << s->id << '\t' << static_cast<int>(k) << '\t' << (s->visible ? "yes" : "no")
                         << '\t' << text_status(s->name) << '\t' << text_status(s->value) << '\t' << applicable(restricted) << '\t'
                         << (!active && std::string_view(entry.page) != "modal" && !s->visible && !any && !placement && !associated ? "P" : active ? "N/A" : "O") << '\t'
                         << (active && placement && !s->visible && !any && !associated ? "P" : "O") << '\t'
-                        << applicable(restricted) << '\t' << applicable(k == Kind::text) << '\t' << applicable(selected) << '\t'
+                        << applicable(restricted) << '\t' << applicable(type.supports_state(S::read_only)) << '\t' << applicable(selected) << '\t'
                         << applicable(candidate) << '\t' << applicable(error) << '\t' << applicable(conflict) << '\t'
-                        << applicable(k == Kind::button) << '\t' << applicable(std::string_view(entry.page) == "modal") << '\t'
+                        << applicable(type.supports_state(S::executing)) << '\t' << applicable(std::string_view(entry.page) == "modal") << '\t'
                         << applicable(s->id == h.progress_half.describe()->id) << '\n';
                 }
             }
         }
     }
+}
+
+// State driver shared with the core seam, sampled through real clipped host paint.
+void x04_name_read_only_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto& name = f.form.handles.name;
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            bool driven = bool(x04::name_read_only.drive(f.form)) && bool(name.focus());
+            f.host.observe_paint(true); f.settle();
+            auto semantic = name.describe(); auto suffix = appearance.component_presentation().read_only_suffix;
+            std::u16string ink;
+            for (const auto& event : f.host.paint_observations())
+                if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
+            bool restricted = name.set_value(u"rejected").status == Status::read_only &&
+                std::find(semantic->operations.begin(), semantic->operations.end(), Operation::edit) == semantic->operations.end();
+            auto& h = f.form.handles;
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error &&
+                semantic->labels.size() == 3 && !semantic->invalid && !semantic->source_conflict;
+            bool painted = associations && !suffix.empty() && ink.find(semantic->name) != std::u16string::npos &&
+                ink.find(semantic->value) != std::u16string::npos && ink.find(semantic->description) != std::u16string::npos &&
+                ink.find(suffix) != std::u16string::npos;
+            bool restored = bool(x04::name_read_only.restore(f.form)) && !name.describe()->read_only;
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "%";
+            report.check("X04-name-read-only", driven && semantic->visible && semantic->enabled && semantic->read_only && restricted && painted && restored,
+                sample + ": semantic=" + std::to_string(semantic->read_only) + ", restricted=" + std::to_string(restricted) +
+                ", name and read-only cue painted=" + std::to_string(painted) + ", restored=" + std::to_string(restored));
+        }
+}
+
+void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto& h = f.form.handles;
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.settle();
+            bool driven = bool(x04::name_conflict.drive(f.form)) && bool(h.name.focus());
+            f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, h.name.describe()->id);
+            f.host.observe_paint(true); f.host.paint();
+            auto semantic = h.name.describe();
+            std::u16string ink;
+            for (const auto& event : f.host.paint_observations())
+                if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
+            const auto& cue = appearance.component_presentation().conflict_suffix;
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error &&
+                semantic->labels.size() == 3 && !semantic->invalid;
+            bool field_painted = semantic->visible && semantic->enabled && !semantic->read_only && semantic->source_conflict && !cue.empty() && associations &&
+                ink.find(semantic->name) != std::u16string::npos && ink.find(semantic->value) != std::u16string::npos &&
+                ink.find(semantic->description) != std::u16string::npos && ink.find(cue) != std::u16string::npos;
+            bool latest_enabled = h.latest.describe()->enabled && bool(h.latest.focus()); f.settle();
+            auto latest = h.latest.describe();
+            bool action_painted = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
+                return event.owner == latest->id && event.visible && event.type == detail::PaintObservation::Type::text &&
+                       event.text.find(latest->name) != std::u16string::npos;
+            });
+            bool restored = bool(x04::name_conflict.restore(f.form)) && !h.name.describe()->source_conflict && *h.name.draft() == u"Latest";
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "%";
+            report.check("X04-name-conflict", driven && field_painted && latest_enabled && action_painted && restored,
+                sample + ": field name, value and cue painted=" + std::to_string(field_painted) + ", latest enabled=" +
+                std::to_string(latest_enabled) + ", action painted=" + std::to_string(action_painted) + ", restored=" + std::to_string(restored));
+        }
 }
 
 // Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
@@ -1862,6 +2046,8 @@ int run(const std::filesystem::path& folder) {
         page_size_scale_matrix(*appearance, report);
         popup_dismissal_matrix(*appearance, report);
         semantic_raster_samples(*appearance, report, folder);
+        x04_name_read_only_matrix(*appearance, report);
+        x04_name_conflict_matrix(*appearance, report);
         semantic_observation_sweep(*appearance, folder, tag);
     }
     std::cout << report.checks << " native checks, " << report.failures << " failures\n";
@@ -1885,6 +2071,8 @@ int run_x04(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         semantic_raster_samples(*appearance, report, folder);
+        x04_name_read_only_matrix(*appearance, report);
+        x04_name_conflict_matrix(*appearance, report);
         semantic_observation_sweep(*appearance, folder, report.appearance);
     }
     std::cout << report.checks << " X04 raster checks, " << report.failures << " failures\n";

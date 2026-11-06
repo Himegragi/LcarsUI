@@ -34,9 +34,13 @@ public:
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
 };
+// Type-level applicability, independent of any instance's current semantic state.
+// Modal and tooltip content are declared by page membership, not by component kind.
+enum class ComponentState { normal, disabled, read_only, selected, candidate, error, conflict, executing };
 class ComponentType {
 public:
     virtual ~ComponentType() = default;
+    virtual bool supports_state(ComponentState state) const { return state == ComponentState::normal; }
     virtual ComponentHandle handle(UiState&, const Control&) const = 0;
     virtual void arrange(ComponentLayout&) const = 0;
     virtual void paint(ComponentPaint&) const = 0;

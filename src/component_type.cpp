@@ -7,6 +7,10 @@
 
 namespace lcars::detail {
 namespace {
+bool supports(ComponentState state, std::initializer_list<ComponentState> states) {
+    return std::find(states.begin(), states.end(), state) != states.end();
+}
+using S = ComponentState;
 std::vector<Line> block(TextMeasure& measure, std::u16string_view text, int size, int width) {
     std::vector<Line> lines;
     if (text.empty()) return lines;
@@ -44,6 +48,7 @@ void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, 
 }
 class Label final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::error}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -59,6 +64,7 @@ public:
 };
 class Text final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.text_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -71,7 +77,12 @@ public:
         int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
         auto probe = c.appearance.arrange_field(c.width, {line, line, line, line}, c.scale);
         auto label = block(c.measure, name, caption, probe.label.w);
-        auto description = block(c.measure, semantics.description, caption, probe.description.w);
+        auto description_text = semantics.description;
+        if (semantics.source_conflict) {
+            if (!description_text.empty()) description_text += u"\n";
+            description_text += c.appearance.component_presentation().conflict_suffix;
+        }
+        auto description = block(c.measure, description_text, caption, probe.description.w);
         auto error = block(c.measure, semantics.error, caption, probe.error.w);
         p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), line}, c.scale);
         auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
@@ -129,6 +140,7 @@ public:
 // Legacy toggle/navigation use the button presentation, but have no button activation behavior.
 class Command : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.button_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -154,12 +166,14 @@ public:
 };
 class Button final : public Command {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
     bool has_activate_operation() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.command_key_down(key); }
     void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
 };
 class Checkbox final : public Command {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.checkbox_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         Command::arrange(c);
@@ -196,6 +210,7 @@ public:
 };
 class RadioGroup final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.radio_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -239,6 +254,7 @@ public:
 };
 class List final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
@@ -276,6 +292,7 @@ public:
 };
 class Dropdown final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
@@ -326,6 +343,7 @@ public:
 };
 class Slider final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::error, S::conflict}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.slider_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -365,6 +383,7 @@ public:
 };
 class Progress final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.progress_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -388,6 +407,7 @@ public:
 };
 class Tabs final : public ComponentType {
 public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate, S::error}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto semantics = *c.ui.describe(c.control.id);

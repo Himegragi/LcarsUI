@@ -1,3 +1,4 @@
+#include "x04_drivers.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 // Assembled showcase acceptance through public operations and the host input seam.
@@ -1230,6 +1231,63 @@ void progress_displays_clamped_values_without_changing_the_model() {
     check(*h.name.draft() == u"kept draft", "Resetting V03 preserves the V01 draft");
 }
 
+// The same assembled state driver is exercised by the real-host observation.
+// A changed source must be identifiable at the field as well as recoverable.
+void x04_name_conflict_is_drawn_at_field() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); auto& h = form.handles;
+        check(bool(x04::name_conflict.drive(form)) && h.name.describe()->source_conflict && h.latest.describe()->enabled,
+              "An external source change retains a conflicting name draft and offers latest");
+        test::FakeMeasure measure;
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale), int(size.second * scale), scale, form.scroll, h.name.describe()->id);
+        auto* field = frame.find(h.name);
+        std::u16string description, caption;
+        if (field) {
+            for (const auto& line : field->description_lines) description += line.text;
+            for (const auto& line : field->label_lines) caption += line.text;
+        }
+        auto semantic = h.name.describe();
+        auto cue = appearance->component_presentation().conflict_suffix;
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error && semantic->labels.size() == 3;
+        check(field && semantic->visible && semantic->enabled && !semantic->read_only && !semantic->invalid && associated &&
+              semantic->value == u"Draft" && caption.find(semantic->name) != std::u16string::npos &&
+              description.find(semantic->description) != std::u16string::npos && !cue.empty() && description.find(cue) != std::u16string::npos,
+              "The conflicting name field retains its value and associations and lays out the source-change cue");
+        check(bool(x04::name_conflict.restore(form)) && !h.name.describe()->source_conflict && *h.name.draft() == u"Latest",
+              "The latest action restores the field to the current source");
+    }
+}
+
+void x04_name_read_only_size_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); auto& name = form.handles.name;
+        check(bool(x04::name_read_only.drive(form)), "X04 drive name read-only through application fixture");
+        check(bool(name.focus()), "Read-only name remains focusable");
+        test::FakeMeasure measure;
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale), int(size.second * scale), scale, form.scroll, name.describe()->id);
+        auto* field = frame.find(name); auto semantic = name.describe();
+        std::u16string caption, description;
+        if (field) {
+            for (const auto& line : field->label_lines) caption += line.text;
+            for (const auto& line : field->description_lines) description += line.text;
+        }
+        auto suffix = appearance->component_presentation().read_only_suffix;
+        auto& h = form.handles;
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error && semantic->labels.size() == 3;
+        check(field && semantic->visible && semantic->enabled && semantic->read_only && !semantic->invalid && !semantic->source_conflict && associated &&
+              semantic->value == *name.draft() && !suffix.empty() && description.find(semantic->description) != std::u16string::npos &&
+              caption.find(semantic->name) != std::u16string::npos && caption.find(suffix) != std::u16string::npos &&
+              name.set_value(u"rejected").status == Status::read_only,
+              "X04 read-only semantic restriction and label cue agree at each core size and scale");
+        check(bool(x04::name_read_only.restore(form)) && !name.describe()->read_only,
+              "X04 restore name after read-only state");
+    }
+}
+
 void both_appearances_give_same_results() {
     std::vector<std::vector<Semantics>> runs;
     std::vector<std::vector<int>> outcomes;
@@ -1292,6 +1350,8 @@ int main() {
         {"N05 disabled tabs in each appearance", disabled_tabs_under_the_appearance},
         {"X01 keyboard journey", keyboard_completes_the_three_page_journey},
         {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
+        {"X04 name conflict has a field cue", x04_name_conflict_is_drawn_at_field},
+        {"X04 name read-only at each size and scale", x04_name_read_only_size_scale},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
         {"X04 painted state and modal text", painted_states_agree_with_semantics},
         {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},

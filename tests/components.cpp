@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "component_type.hpp"
 // C01-C03 behavior through the public core interface only; no window, GPU or font backend.
 #include "check.hpp"
 #include "lcars/core.hpp"
@@ -1278,8 +1279,34 @@ void removal_waits_for_action_and_stale_handle_stays_invalid() {
           "A stale handle cannot address a replacement with the same ID");
 }
 
+// Applicability belongs to the registered type, independently of a snapshot's current state.
+void component_type_reports_state_applicability() {
+    using S = detail::ComponentState;
+    struct Row { Kind kind; std::vector<S> states; };
+    const Row rows[] = {
+        {Kind::label, {S::normal, S::error}},
+        {Kind::button, {S::normal, S::disabled, S::executing}},
+        {Kind::text, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
+        {Kind::checkbox, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
+        {Kind::radio_group, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
+        {Kind::dropdown, {S::normal, S::disabled, S::candidate, S::error, S::conflict}},
+        {Kind::slider, {S::normal, S::disabled, S::error, S::conflict}},
+        {Kind::list, {S::normal, S::disabled, S::selected, S::candidate}},
+        {Kind::tabs, {S::normal, S::disabled, S::selected, S::candidate, S::error}},
+        {Kind::progress, {S::normal}},
+        {Kind::toggle, {S::normal, S::disabled}}, {Kind::navigation, {S::normal, S::disabled}}
+    };
+    constexpr S all[] = {S::normal, S::disabled, S::read_only, S::selected, S::candidate, S::error, S::conflict, S::executing};
+    for (const auto& row : rows) for (auto state : all) {
+        bool expected = std::find(row.states.begin(), row.states.end(), state) != row.states.end();
+        check(detail::component_type(row.kind).supports_state(state) == expected,
+              "The registered component type reports its applicable states");
+    }
+}
+
 int main() {
     const test::Case cases[] = {
+        {"X04 registered component state applicability", component_type_reports_state_applicability},
         {"G07 revalidate after focus callback", pointer_dispatch_rechecks_a_removed_focus_target},
         {"G07 removal releases confirmation connection", removing_confirmation_button_releases_its_fields},
         {"G07 bounded removal storage", repeated_removal_reclaims_component_storage},
