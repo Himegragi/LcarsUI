@@ -889,6 +889,8 @@ void x04_executing_inventory_at_each_size_and_scale() {
             auto button = std::get_if<ButtonHandle>(&entry.handle);
             if (!button || !detail::component_type(button->describe()->kind).supports_state(detail::ComponentState::executing) ||
                 !x04::execution_supported(form, *button)) continue;
+            check(x04::baseline_context(form), "X04 executing baseline");
+            auto baseline = x04::snapshot(form);
             auto before = button->describe(); auto message = std::string("X04 executing ") + before->id;
             check(x04::prepare_execution(form, entry), (message + " prepare").c_str());
             bool observed = false;
@@ -906,7 +908,8 @@ void x04_executing_inventory_at_each_size_and_scale() {
                 return Result{};
             })), (message + " bind").c_str());
             check(bool(button->invoke()) && observed && !*button->executing(), (message + " callback").c_str());
-            check(x04::restore_execution(form, entry, before->enabled), (message + " restore").c_str());
+            check(x04::restore_execution(form, entry, before->enabled) && x04::same_model(baseline, x04::snapshot(form)),
+                  (message + " restore").c_str());
         }
         check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.progress_zero.invoke()) && form.progress() == 0,
               "X04 restored action still invokes the application model");
@@ -1114,6 +1117,7 @@ void x04_disabled_inventory_at_each_size_and_scale() {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
+            auto baseline = x04::snapshot(form);
             auto initial = x04::describe(entry.handle);
             if (!detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
             if (initial->kind == Kind::tabs) {
@@ -1136,6 +1140,7 @@ void x04_disabled_inventory_at_each_size_and_scale() {
                       "X04 keyboard skips disabled tab");
                 check(bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})),
                       "X04 disabled tab recovers");
+                check(x04::baseline_context(form) && x04::same_model(baseline, x04::snapshot(form)), "X04 disabled tab restores model");
                 continue;
             }
             if (entry.page == "modal") {
@@ -1178,10 +1183,16 @@ void x04_disabled_inventory_at_each_size_and_scale() {
                 check(state.pointer_up(option_semantic->id, 2).status == Status::disabled, "X04 disabled radio option rejects pointer");
                 state.key_down({Key::right});
                 check(*radio.draft() == OptionValue{"focus"}, "X04 keyboard skips disabled radio option");
-                check(bool(radio.enable_option({"offline"}, true)) && bool(radio.select(*previous)), "X04 radio option recovers");
+                check(bool(radio.enable_option({"offline"}, true)) && bool(radio.select({"offline"})) && bool(radio.select(*previous)),
+                      "X04 radio option recovers");
             }
-            if (entry.page == "modal") check(bool(form.handles.dialog.settle(false)), "X04 close modal");
-            check(x04::baseline_context(form), (message + " baseline focus").c_str());
+            if (entry.page == "modal")
+                check(bool(form.handles.dialog.settle(false)) && bool(form.handles.reset_v03.invoke()), "X04 close and reset modal");
+            if (semantic->kind == Kind::list)
+                check(x04::baseline_context(form) && bool(form.handles.tabs.activate({"v02"})) &&
+                      bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke()),
+                      "X04 restore initial list candidate");
+            check(x04::baseline_context(form) && x04::same_model(baseline, x04::snapshot(form)), (message + " baseline model").c_str());
         }
     }
 }

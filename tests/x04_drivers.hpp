@@ -135,7 +135,9 @@ inline bool selected_semantics(const lcars::Semantics& semantic) {
 inline bool same_selection(const lcars::Semantics& a, const lcars::Semantics& b) {
     if (a.checked != b.checked || a.options.size() != b.options.size()) return false;
     for (std::size_t i = 0; i < a.options.size(); ++i)
-        if (a.options[i].value != b.options[i].value || a.options[i].selected != b.options[i].selected) return false;
+        if (a.options[i].value != b.options[i].value || a.options[i].label != b.options[i].label ||
+            a.options[i].enabled != b.options[i].enabled || a.options[i].selected != b.options[i].selected ||
+            a.options[i].invalid != b.options[i].invalid) return false;
     return true;
 }
 inline std::vector<lcars::Semantics> snapshot(edit_form::Form& form) {
@@ -213,7 +215,8 @@ inline bool restore_execution(edit_form::Form& form, const Entry& entry, bool en
     auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
     if (!button) return false;
     bool restored = bool(form.restore_fixture_action(*button)) && bool(button->enable(enabled));
-    if (entry.page == "modal") restored = bool(form.handles.dialog.settle(false)) && restored;
+    if (entry.page == "modal")
+        restored = bool(form.handles.dialog.settle(false)) && bool(form.handles.reset_v03.invoke()) && restored;
     return baseline_context(form) && restored;
 }
 // Give the active page enough content to exercise both edges at every viewport size.

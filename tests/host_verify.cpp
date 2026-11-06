@@ -1407,6 +1407,7 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                 auto* button = std::get_if<ButtonHandle>(&entry.handle);
                 if (!button || !detail::component_type(button->describe()->kind).supports_state(detail::ComponentState::executing) ||
                     !x04::execution_supported(f.form, *button)) continue;
+                bool baseline_ok = x04::baseline_context(f.form); auto baseline = x04::snapshot(f.form);
                 auto before = button->describe(); bool prepared = x04::prepare_execution(f.form, entry), observed = false;
                 bool bound = bool(button->bind([&] {
                     f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id);
@@ -1423,10 +1424,10 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                     return Result{};
                 }));
                 bool invoked = bound && bool(button->invoke()) && observed && !*button->executing();
-                bool restored = x04::restore_execution(f.form, entry, before->enabled);
+                bool restored = x04::restore_execution(f.form, entry, before->enabled) && x04::same_model(baseline, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                     std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + before->id;
-                report.check("X04-executing-member", prepared && bound && invoked && restored,
+                report.check("X04-executing-member", baseline_ok && prepared && bound && invoked && restored,
                     sample + ": prepared=" + std::to_string(prepared) + ", callback semantics, busy retry and paint=" +
                     std::to_string(invoked) + ", original action restored=" + std::to_string(restored));
             }
@@ -1711,6 +1712,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
             };
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
+                auto baseline_model = x04::snapshot(f.form);
                 auto initial = x04::describe(entry.handle);
                 if (!initial || !detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
@@ -1737,7 +1739,8 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
                     SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
                     bool keyboard = tabs.describe()->candidate == OptionValue{"v03"} && *tabs.active() == OptionValue{"v01"};
-                    bool recovered = bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"}));
+                    bool recovered = bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})) &&
+                        x04::baseline_context(f.form) && x04::same_model(baseline_model, x04::snapshot(f.form));
                     report.check("X04-disabled-member", driven && cue && rejected && pointer && keyboard && recovered,
                         sample + ": tab cue=" + std::to_string(cue) + ", rejected=" + std::to_string(rejected) +
                         ", pointer=" + std::to_string(pointer) + ", keyboard=" + std::to_string(keyboard) + ", recovered=" + std::to_string(recovered));
@@ -1794,12 +1797,15 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
                     SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
                     bool keyboard_option = *radio.draft() == OptionValue{"focus"};
-                    bool option_restored = bool(radio.enable_option({"offline"}, true)) && previous && bool(radio.select(*previous));
+                    bool option_restored = bool(radio.enable_option({"offline"}, true)) && previous &&
+                        bool(radio.select({"offline"})) && bool(radio.select(*previous));
                     option_checks = option && public_reject && cue_option && pointer_option && keyboard_option && option_restored;
                     recovered = recovered && option_checks;
                 }
-                if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && recovered;
-                recovered = x04::baseline_context(f.form) && recovered;
+                if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && bool(f.form.handles.reset_v03.invoke()) && recovered;
+                if (sem->kind == Kind::list) recovered = x04::baseline_context(f.form) && bool(f.form.handles.tabs.activate({"v02"})) &&
+                    bool(f.form.list->handles.zero.invoke()) && bool(f.form.list->handles.twenty.invoke()) && recovered;
+                recovered = x04::baseline_context(f.form) && x04::same_model(baseline_model, x04::snapshot(f.form)) && recovered;
                 report.check("X04-disabled-member", driven && cue && rejected && pointer && unchanged && recovered,
                     sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
                     ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
