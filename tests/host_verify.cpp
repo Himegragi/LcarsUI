@@ -23,6 +23,15 @@ using lcars::detail::DesktopHost;
 using lcars::detail::Canvas;
 
 namespace {
+edit_form::Ids alternate_ids() {
+    edit_form::Ids i;
+    i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
+    i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
+    i.volume_latest = "volume.latest"; i.volume = "volume"; i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
+    i.region = "region.alt"; i.region_empty = "region.empty.alt";
+    i.apply = "go"; i.state = "s"; i.draft = "d"; i.result = "r"; i.count = "c"; i.latest = "latest";
+    return i;
+}
 struct Report {
     std::ofstream out;
     int failures = 0, checks = 0;
@@ -59,8 +68,8 @@ struct Fixture {
     edit_form::Form form;
     DesktopHost host;
     const edit_form::Ids& ids;
-    explicit Fixture(const Appearance& appearance, bool pages = false)
-        : form(edit_form::default_ids(), pages), host(form.ui, appearance, [this] { return form.page(); }, form.scroll, options(), true, true), ids(form.ids()) {
+    explicit Fixture(const Appearance& appearance, bool pages = false, bool alternate = false)
+        : form(alternate ? alternate_ids() : edit_form::default_ids(), pages), host(form.ui, appearance, [this] { return form.page(); }, form.scroll, options(), true, true), ids(form.ids()) {
         ShowWindow(host.window(), SW_SHOWNOACTIVATE);
         host.force_scale(1.f);
         host.client_size(900, 700);
@@ -772,6 +781,202 @@ void page_size_scale_matrix(const Appearance& appearance, Report& report) {
         }
 }
 
+// Each sample uses the actual window paint/measurement and posted Win32 input path.
+// Popup-on-scroll policy for the dropdown and tooltip is deliberately not inferred here.
+void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate);
+            auto& h = f.form.handles;
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.settle();
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(static_cast<int>(scale * 100)) + "%";
+            auto& region = h.region;
+            auto prepare_dropdown = [&] {
+                region.focus(); f.settle(); f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN); f.settle();
+                return region.describe()->expanded && region.describe()->candidate == OptionValue{"south"} &&
+                    *region.draft() == OptionValue{"north"};
+            };
+            bool prepared = prepare_dropdown();
+            f.tap(VK_ESCAPE); f.settle();
+            bool escaped = !region.describe()->expanded && region.describe()->focused && *region.draft() == OptionValue{"north"} &&
+                f.host.frame().overlays.empty();
+            prepared = prepare_dropdown() && prepared;
+            f.tap(VK_TAB); f.settle();
+            bool tab = !region.describe()->expanded && h.volume.describe()->focused && *region.draft() == OptionValue{"north"} &&
+                f.host.frame().overlays.empty();
+            prepared = prepare_dropdown() && prepared;
+            auto* tabs = f.host.frame().find(h.tabs);
+            bool outside = false;
+            if (tabs && !tabs->options.empty()) {
+                auto rect = tabs->options.front(); POINT p{rect.x + rect.w / 2, rect.y + rect.h / 2};
+                auto* hit = f.host.frame().hit(p.x, p.y);
+                bool targets_tabs = hit && hit->id == h.tabs.describe()->id && !hit->popup;
+                f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p); f.settle();
+                hit = f.host.frame().hit(p.x, p.y);
+                outside = targets_tabs && hit && hit->id == h.tabs.describe()->id && !hit->popup &&
+                    !region.describe()->expanded && h.tabs.describe()->focused && *region.draft() == OptionValue{"north"} &&
+                    *h.tabs.active() == OptionValue{"v01"};
+            }
+            report.check("X02-v01-dismiss", prepared && escaped && tab && outside,
+                sample + ": candidate=" + std::to_string(prepared) + ", Esc=" + std::to_string(escaped) +
+                ", Tab=" + std::to_string(tab) + ", outside=" + std::to_string(outside));
+
+            h.tabs.activate({"v02"});
+            auto& list_page = *f.form.list;
+            list_page.handles.hundred.invoke(); list_page.handles.list.focus();
+            f.tap(VK_END); f.settle();
+            auto* list = f.host.frame().find(list_page.handles.list);
+            bool end = list && list->options.size() == 100 && intersect(list->options.back(), list->clip) == list->options.back() &&
+                list_page.selection() == OptionValue{"T100"} && list_page.list_scroll.offset > 0;
+            bool wheel = false, hit = false;
+            if (list) {
+                auto visible = intersect(list->bounds, list->clip);
+                POINT p{visible.x + visible.w / 2, visible.y + visible.h / 2};
+                auto* target = f.host.frame().hit(p.x, p.y);
+                hit = target && target->id == list_page.handles.list.describe()->id;
+                int old_offset = list_page.list_scroll.offset;
+                ClientToScreen(f.host.window(), &p);
+                f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(120)), MAKELPARAM(p.x, p.y)); f.settle();
+                wheel = list_page.list_scroll.offset < old_offset && list_page.selection() == OptionValue{"T100"};
+            }
+            f.tap(VK_END); f.settle();
+            list = f.host.frame().find(list_page.handles.list);
+            bool restored = list && intersect(list->options.back(), list->clip) == list->options.back() &&
+                list_page.selection() == OptionValue{"T100"};
+            report.check("X02-v02-list", end && hit && wheel && restored,
+                sample + ": End=" + std::to_string(end) + ", hit=" + std::to_string(hit) +
+                ", wheel=" + std::to_string(wheel) + ", End again=" + std::to_string(restored));
+
+            h.tabs.activate({"v03"}); f.settle();
+            auto open_dialog = [&] { h.dialog_open.focus(); h.dialog_open.invoke(); f.settle(); return *h.dialog.is_open(); };
+            bool opened = open_dialog();
+            auto frame = f.host.frame();
+            int before = f.form.scroll.offset;
+            bool has_viewport = !frame.regions.empty();
+            int maximum = has_viewport ? frame.regions.front().maximum : 0;
+            bool first_wheel_unchanged = false;
+            if (has_viewport) {
+                auto viewport = frame.regions.front().clip;
+                POINT p{viewport.x + 2, viewport.y + 2}; ClientToScreen(f.host.window(), &p);
+                f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(120)), MAKELPARAM(p.x, p.y));
+                f.settle(); first_wheel_unchanged = f.form.scroll.offset == before;
+                f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), MAKELPARAM(p.x, p.y));
+                f.settle();
+            }
+            bool blocked = has_viewport && first_wheel_unchanged && f.form.scroll.offset == before && *h.dialog.is_open() && h.dialog_cancel.describe()->focused;
+            f.tap(VK_ESCAPE); f.settle();
+            bool dialog_escape = !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
+                f.form.dialog_confirmations() == 0 && !f.host.frame().modal;
+            opened = open_dialog() && opened;
+            auto click_button = [&](const ButtonHandle& button) {
+                auto* item = f.host.frame().find(button);
+                if (!item) return false;
+                auto r = intersect(item->bounds, item->clip);
+                if (r.w <= 0 || r.h <= 0) return false;
+                POINT p{r.x + r.w / 2, r.y + r.h / 2};
+                auto* hit = f.host.frame().hit(p.x, p.y);
+                bool correct = hit && hit->id == button.describe()->id;
+                f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p); f.settle();
+                return correct;
+            };
+            bool cancel_hit = click_button(h.dialog_cancel);
+            bool cancel = cancel_hit && !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
+                f.form.dialog_confirmations() == 0 && !f.host.frame().modal;
+            opened = open_dialog() && opened;
+            bool confirm_hit = click_button(h.dialog_confirm);
+            bool confirm = confirm_hit && !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 0 &&
+                f.form.dialog_confirmations() == 1 && !f.host.frame().modal;
+            report.check("X02-v03-dialog", opened && blocked && dialog_escape && cancel && confirm,
+                sample + ": wheel unchanged=" + std::to_string(blocked) + ", scroll maximum=" + std::to_string(maximum) + ", Esc=" + std::to_string(dialog_escape) +
+                ", Cancel=" + std::to_string(cancel) + ", Confirm=" + std::to_string(confirm));
+
+            std::uint64_t now = GetTickCount64();
+            auto& state = detail::access(f.form.ui);
+            state.tooltip_clock([&] { return now; });
+            SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+            f.post(WM_MOUSELEAVE, 0, 0); f.host.pump();
+            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.settle();
+            bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused;
+            bool transparent = false;
+            auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& item) { return item.tooltip; });
+            if (tip != f.host.frame().overlays.end()) {
+                auto* target = f.host.frame().hit(tip->bounds.x + 1, tip->bounds.y + 1);
+                transparent = !target || !target->tooltip;
+            }
+            f.tap(VK_ESCAPE); f.settle();
+            bool tip_escape = !*h.progress_tip.visible() && h.progress_half.describe()->focused && f.form.progress() == 0;
+            f.tap(VK_TAB); h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.settle();
+            bool reshown = *h.progress_tip.visible();
+            f.tap(VK_TAB); f.settle();
+            bool focus_leave = !*h.progress_tip.visible() && !h.progress_half.describe()->focused && f.form.progress() == 0;
+            h.progress_half.focus(); f.settle();
+            auto p = f.center(h.progress_half.describe()->id);
+            f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p); f.settle();
+            // Deliver the synthetic pointer visit synchronously: TrackMouseEvent may also queue
+            // a leave for the actual desktop pointer, which is unrelated to this posted click.
+            SendMessageW(f.host.window(), WM_MOUSEMOVE, 0, MAKELPARAM(p.x, p.y));
+            now += 600; state.tooltip_time(now); f.host.paint();
+            bool pointer_shown = *h.progress_tip.visible() && f.form.progress() == 50;
+            SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0); f.host.paint();
+            bool pointer_leave = !*h.progress_tip.visible() && h.progress_half.describe()->focused && f.form.progress() == 50;
+            report.check("X02-v03-tooltip", shown && transparent && tip_escape && reshown && focus_leave && pointer_shown && pointer_leave,
+                sample + ": shown=" + std::to_string(shown) + ", transparent=" + std::to_string(transparent) +
+                ", Esc=" + std::to_string(tip_escape) + ", focus leave=" + std::to_string(focus_leave && reshown) +
+                ", pointer shown=" + std::to_string(pointer_shown) + ", pointer leave=" + std::to_string(pointer_leave) + " (controlled dwell clock)");
+            state.tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        }
+}
+
+// Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
+// Colored pixels demonstrate a cue was drawn; they are not OCR of the semantic string.
+void semantic_raster_samples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    auto contains_color = [](const Canvas& canvas, Rect bounds, Color color) {
+        auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
+        for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
+            auto i = (static_cast<std::size_t>(canvas.height - 1 - y) * canvas.width + x) * 4;
+            if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
+        }
+        return false;
+    };
+    auto sample = [&](std::string_view name, Canvas& pixels) {
+        return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
+    };
+    h.error.invoke();
+    f.host.layout(960, 720, 1.f, f.form.scroll, h.name.describe()->id);
+    Canvas pixels(1, 1, {0, 0, 0});
+    auto frame = sample("v01-error", pixels);
+    auto* field = frame.find(h.name);
+    bool error = field && h.name.describe()->invalid && !h.name.describe()->error.empty() && !field->error_lines.empty() &&
+        contains_color(pixels, intersect(field->error_lines.front().bounds, field->clip), appearance.palette().error);
+    report.check("X04-v01-raster", error, "Name semantics report an error and the real host raster contains error-colored pixels in the error line");
+
+    h.tabs.activate({"v02"});
+    auto& list = f.form.list->handles.list;
+    list.select({"T003"}); list.focus();
+    f.host.layout(960, 720, 1.f, f.form.scroll, list.describe()->id);
+    frame = sample("v02-selection", pixels);
+    auto* item = frame.find(list);
+    auto semantic = list.describe();
+    bool selected = item && semantic->options.size() > 2 && semantic->options[2].selected && item->options.size() > 2 &&
+        contains_color(pixels, intersect(item->options[2], item->clip), appearance.palette().selection);
+    report.check("X04-v02-raster", selected, "T003 is semantically selected and its visible real-host row contains the selection color");
+
+    h.tabs.activate({"v03"}); h.dialog_open.invoke();
+    frame = sample("v03-dialog", pixels);
+    auto* title = frame.find(h.dialog_title); auto* body = frame.find(h.dialog_body);
+    auto* cancel = frame.find(h.dialog_cancel); auto* confirm = frame.find(h.dialog_confirm);
+    auto ink = [&](const Placement* p) {
+        return p && !p->lines.empty() && contains_color(pixels, intersect(p->lines.front().bounds, p->clip), appearance.palette().text);
+    };
+    bool modal = frame.modal && !h.dialog_title.describe()->value.empty() && !h.dialog_body.describe()->value.empty() &&
+        !h.dialog_cancel.describe()->name.empty() && !h.dialog_confirm.describe()->name.empty() &&
+        ink(title) && ink(body) && ink(cancel) && ink(confirm);
+    report.check("X04-v03-raster", modal, "Open dialog semantic title, body and button names have real-host text pixels in their line regions");
+}
+
 }
 
 // ---- Real input session: SendInput through the OS input stack and the Microsoft Bopomofo IME ----
@@ -1360,8 +1565,32 @@ int run(const std::filesystem::path& folder) {
         resize_first_frame_matches_next(*appearance, report, 1.5f);
         layout_matrix(*appearance, report, folder, tag);
         page_size_scale_matrix(*appearance, report);
+        popup_dismissal_matrix(*appearance, report);
+        semantic_raster_samples(*appearance, report, folder);
     }
     std::cout << report.checks << " native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
+int run_x02(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x02.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        popup_dismissal_matrix(*appearance, report);
+    }
+    std::cout << report.checks << " X02 native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
+int run_x04(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x04.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        semantic_raster_samples(*appearance, report, folder);
+    }
+    std::cout << report.checks << " X04 raster checks, " << report.failures << " failures\n";
     return report.failures ? 1 : 0;
 }
 
@@ -1392,7 +1621,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false, dpi = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
@@ -1400,12 +1629,14 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
+            else if (arg == L"--x02-only") x02_only = true;
+            else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;
