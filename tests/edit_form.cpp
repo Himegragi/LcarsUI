@@ -1161,6 +1161,25 @@ void x04_disabled_inventory_at_each_size_and_scale() {
             check(after->value == semantic->value && x04::same_model(snapshot, x04::snapshot(form)), (message + " keyboard").c_str());
             check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
                   x04::set_enabled(entry.handle, initial->enabled), (message + " restore").c_str());
+            if (semantic->kind == Kind::radio_group && initial->enabled) {
+                auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
+                check(previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus()),
+                      "X04 prepare disabled radio option");
+                auto option_frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                            int(size.second * scale), scale, form.scroll, initial->id);
+                auto option_semantic = radio.describe(); auto* option_item = option_frame.find(radio);
+                check(option_item && !option_semantic->options[2].enabled && radio.select({"offline"}).status == Status::disabled,
+                      "X04 disabled radio option rejects public selection");
+                PaintTextProbe option_paint(state, *option_item, *option_semantic, *appearance, scale, true);
+                detail::component_type(option_item->kind).paint(option_paint);
+                check(option_paint.drawn.find(option_semantic->options[2].label + appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+                      "X04 disabled radio option has a text cue");
+                state.pointer_down(option_semantic->id, 2);
+                check(state.pointer_up(option_semantic->id, 2).status == Status::disabled, "X04 disabled radio option rejects pointer");
+                state.key_down({Key::right});
+                check(*radio.draft() == OptionValue{"focus"}, "X04 keyboard skips disabled radio option");
+                check(bool(radio.enable_option({"offline"}, true)) && bool(radio.select(*previous)), "X04 radio option recovers");
+            }
             if (entry.page == "modal") check(bool(form.handles.dialog.settle(false)), "X04 close modal");
             check(x04::baseline_context(form), (message + " baseline focus").c_str());
         }

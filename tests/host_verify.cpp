@@ -1713,12 +1713,39 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 bool unchanged = after && !after->focused && x04::same_model(snapshot, x04::snapshot(f.form));
                 bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
                     x04::set_enabled(entry.handle, initial->enabled);
+                bool option_checks = true;
+                if (sem->kind == Kind::radio_group && initial->enabled) {
+                    auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
+                    bool option = previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus());
+                    reveal(sem->id); auto option_semantic = radio.describe(); auto* option_item = f.host.frame().find(radio);
+                    bool public_reject = !option_semantic->options[2].enabled && radio.select({"offline"}).status == Status::disabled;
+                    bool cue_option = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
+                        return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
+                            draw.text.find(option_semantic->options[2].label + appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+                    });
+                    bool pointer_option = false;
+                    if (option_item && option_item->options.size() > 2) {
+                        auto r = intersect(option_item->options[2], option_item->clip); POINT pt{r.x + r.w / 2, r.y + r.h / 2};
+                        auto* hit = f.host.frame().hit(pt.x, pt.y);
+                        bool target = hit && hit->id == sem->id && f.host.frame().option_at(*option_item, pt.x, pt.y) == 2;
+                        SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(pt.x, pt.y));
+                        SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(pt.x, pt.y));
+                        pointer_option = r.w > 0 && r.h > 0 && target && *radio.draft() == OptionValue{"focus"};
+                    }
+                    SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
+                    SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
+                    bool keyboard_option = *radio.draft() == OptionValue{"focus"};
+                    bool option_restored = bool(radio.enable_option({"offline"}, true)) && previous && bool(radio.select(*previous));
+                    option_checks = option && public_reject && cue_option && pointer_option && keyboard_option && option_restored;
+                    recovered = recovered && option_checks;
+                }
                 if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && recovered;
                 recovered = x04::baseline_context(f.form) && recovered;
                 report.check("X04-disabled-member", driven && cue && rejected && pointer && unchanged && recovered,
                     sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
                     ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
-                    ", unchanged=" + std::to_string(unchanged) + ", recovered=" + std::to_string(recovered));
+                    ", unchanged=" + std::to_string(unchanged) + ", recovered=" + std::to_string(recovered) +
+                    (sem->kind == Kind::radio_group ? ", option checks=" + std::to_string(option_checks) : ""));
             }
         }
 }
@@ -2585,6 +2612,17 @@ int run_x04(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
+int run_x04_disabled(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x04-disabled.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        x04_disabled_matrix(*appearance, report);
+    }
+    std::cout << report.checks << " X04 disabled checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
 int run_x04_executing(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-executing.tsv");
@@ -2634,7 +2672,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
@@ -2646,12 +2684,13 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--x04-executing-only") x04_executing_only = true;
+            else if (arg == L"--x04-disabled-only") x04_disabled_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;
