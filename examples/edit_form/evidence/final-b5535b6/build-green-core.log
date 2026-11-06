@@ -1,0 +1,29 @@
+﻿-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/LcarsUI/.scratch/worktrees/integration/build/Release-core
+[1/7] Building CXX object CMakeFiles\lcars_core.dir\src\layout.cpp.obj
+[2/7] Linking CXX static library lcars_core.lib
+[3/7] Linking CXX executable lcars_tests.exe
+[4/7] Linking CXX executable lcars_edit_form_tests.exe
+[5/7] Linking CXX executable lcars_layout_tests.exe
+[6/7] Linking CXX executable lcars_components_tests.exe
+[7/7] Linking CXX executable lcars_list_page_tests.exe
+Internal ctest changing into directory: E:/LcarsUI/.scratch/worktrees/integration/build/Release-core
+Test project E:/LcarsUI/.scratch/worktrees/integration/build/Release-core
+    Start 1: core_regressions
+1/6 Test #1: core_regressions .................   Passed    0.03 sec
+    Start 2: components
+2/6 Test #2: components .......................   Passed    0.04 sec
+    Start 3: layout
+3/6 Test #3: layout ...........................   Passed    0.04 sec
+    Start 4: edit_form
+4/6 Test #4: edit_form ........................   Passed    2.01 sec
+    Start 5: list_page
+5/6 Test #5: list_page ........................   Passed    0.07 sec
+    Start 6: consumer_example
+6/6 Test #6: consumer_example .................   Passed    6.11 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Total Test time (real) =   8.31 sec
+

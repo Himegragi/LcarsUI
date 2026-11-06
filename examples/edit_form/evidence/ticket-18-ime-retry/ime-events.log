@@ -1,0 +1,14 @@
+=== web ===
+AC07-real	wm:killfocus		focus= | wm:killfocus		focus= |
+  trace	WM_KEYDOWN	32	first	focus=fixture.error
+  trace	WM_CHAR	32	first	focus=fixture.error
+  trace	WM_KEYDOWN	32	repeat	focus=fixture.error
+  trace	WM_CHAR	32	repeat	focus=fixture.error
+  trace	WM_KEYUP	32	repeat	focus=fixture.error
+AC07-real-typing
+  trace	WM_KEYDOWN	32	first	focus=form.name
+  trace	WM_CHAR	32	first	focus=form.name
+  trace	WM_KEYUP	32	repeat	focus=form.name
+BLOCKED	foreground moved away from the test window; input stopped
+=== material ===
+BLOCKED	foreground moved away from the test window; input stopped

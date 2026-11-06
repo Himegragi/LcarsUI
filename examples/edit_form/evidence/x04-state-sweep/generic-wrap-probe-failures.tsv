@@ -1,0 +1,3 @@
+appearance	case	status	evidence
+web	X04-button-executing	FAIL	Real paint during the callback identifies executing and semantics refuse reactivation
+material	X04-button-executing	FAIL	Real paint during the callback identifies executing and semantics refuse reactivation

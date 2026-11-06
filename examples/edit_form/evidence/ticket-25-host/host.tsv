@@ -1,0 +1,63 @@
+appearance	case	status	evidence
+web	C09-native	PASS	Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive
+web	P07-progress	PASS	Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints
+web	P02-P03-dialog	PASS	Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus
+web	P03-dialog-layout	PASS	Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%
+web	P01-dialog-escape	PASS	Escape cancels and returns focus without changing progress
+web	P05-P06-R08-tooltip-messages	PASS	initial=1, focus=1, escape=1, refocus-delay=1, returned=1, geometry=1, space=1
+web	R02-native-end	PASS	End selects T100 and reveals its entire row at 640x480
+web	L06-N07-native-scroll	PASS	wheel=1, thumb drag=1, click T100=1, shrink clamped=1
+web	R09-native-disabled-row	PASS	disabled T008 click ignored=1, Down from T007 skips to T009=1
+web	B03-native-nested	PASS	End reveals T100 through both viewports=1, wheel at inner limit moves outer=1
+web	registered-component	PASS	custom color and hit region render; inside click and Enter each activate once
+web	F09-checkbox-radio	PASS	Space toggled=1, checkbox clicks=1, arrow=1, disabled click ignored=1, enabled click=1, apply=1
+web	F09-slider	PASS	arrow=1, Home=1, End=1, native drag=1, apply=1, disabled=1
+web	F07-dropdown-native	PASS	candidate=1, Escape=1, Tab=1, outside action=1, popup click=1
+web	AC07-R01	PASS	translated WM_CHAR spaces=3 delivered while the button held focus; name length after activation=0; history entries after activation=1 (the error fixture's blanking only); typing space afterwards=inserted once; trace: WM_KEYDOWN	32	first	focus=fixture.error | WM_CHAR	32	first	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYUP	32	repeat	focus=fixture.error |
+web	AC06-enter	PASS	Enter press + auto-repeat on apply -> applies=1; Enter in the name field adds nothing
+web	AC06-F10-N02	PASS	press+move out+release=0, click=1, press+WM_CANCELMODE+release=1, Space+WM_KILLFOCUS+release=1, disabled click total=1
+web	AC10-native-disabled	PASS	click on the disabled name then typing: focus=, text unchanged=yes
+web	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web	AC11-tab	PASS	Tab order: fixture.normal fixture.read_only fixture.disabled fixture.error fixture.long form.reset form.name form.notices form.mode form.region form.volume fixture.offline_disabled fixture.region_empty form.apply fixture.normal ; Shift+Tab back to apply=yes; focused apply ring pixel is accent=yes, unfocused reset ring is not=yes (web-focus-apply.bmp)
+web	R06-native-100	PASS	640x480 wheel to offset 576/576; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 516 max 516, identical to the next frame=yes, apply at 24,356 64x40 hit=form.apply
+web	R06-native-150	PASS	640x480 wheel to offset 865/865; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 775 max 775, identical to the next frame=yes, apply at 36,534 96x60 hit=form.apply
+web	AC13-layout	PASS	web-960x720-100-initial: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=48, name 24,220 433x98, draft 489,220 433x48
+web	AC13-layout	PASS	web-960x720-100-long-error: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=147, name 24,292 433x125, draft 489,292 433x48
+web	AC13-layout	PASS	web-960x720-150-initial: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=73, name 36,330 649x148, draft 733,330 649x72
+web	AC13-layout	PASS	web-960x720-150-long-error: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=222, name 36,438 649x189, draft 733,438 649x72
+web	AC13-layout	PASS	web-640x480-100-initial: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=432, name 24,244 578x98, draft 24,800 578x24
+web	AC13-layout	PASS	web-640x480-100-long-error: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=603, name 24,388 578x125, draft 24,971 578x24
+web	AC13-layout	PASS	web-640x480-150-initial: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=649, name 36,366 867x148, draft 36,1201 867x36
+web	AC13-layout	PASS	web-640x480-150-long-error: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=906, name 36,582 867x189, draft 36,1458 867x36
+material	C09-native	PASS	Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive
+material	P07-progress	PASS	Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints
+material	P02-P03-dialog	PASS	Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus
+material	P03-dialog-layout	PASS	Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%
+material	P01-dialog-escape	PASS	Escape cancels and returns focus without changing progress
+material	P05-P06-R08-tooltip-messages	PASS	initial=1, focus=1, escape=1, refocus-delay=1, returned=1, geometry=1, space=1
+material	R02-native-end	PASS	End selects T100 and reveals its entire row at 640x480
+material	L06-N07-native-scroll	PASS	wheel=1, thumb drag=1, click T100=1, shrink clamped=1
+material	R09-native-disabled-row	PASS	disabled T008 click ignored=1, Down from T007 skips to T009=1
+material	B03-native-nested	PASS	End reveals T100 through both viewports=1, wheel at inner limit moves outer=1
+material	registered-component	PASS	custom color and hit region render; inside click and Enter each activate once
+material	F09-checkbox-radio	PASS	Space toggled=1, checkbox clicks=1, arrow=1, disabled click ignored=1, enabled click=1, apply=1
+material	F09-slider	PASS	arrow=1, Home=1, End=1, native drag=1, apply=1, disabled=1
+material	F07-dropdown-native	PASS	candidate=1, Escape=1, Tab=1, outside action=1, popup click=1
+material	AC07-R01	PASS	translated WM_CHAR spaces=3 delivered while the button held focus; name length after activation=0; history entries after activation=1 (the error fixture's blanking only); typing space afterwards=inserted once; trace: WM_KEYDOWN	32	first	focus=fixture.error | WM_CHAR	32	first	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYUP	32	repeat	focus=fixture.error |
+material	AC06-enter	PASS	Enter press + auto-repeat on apply -> applies=1; Enter in the name field adds nothing
+material	AC06-F10-N02	PASS	press+move out+release=0, click=1, press+WM_CANCELMODE+release=1, Space+WM_KILLFOCUS+release=1, disabled click total=1
+material	AC10-native-disabled	PASS	click on the disabled name then typing: focus=, text unchanged=yes
+material	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material	AC11-tab	PASS	Tab order: fixture.normal fixture.read_only fixture.disabled fixture.error fixture.long form.reset form.name form.notices form.mode form.region form.volume fixture.offline_disabled fixture.region_empty form.apply fixture.normal ; Shift+Tab back to apply=yes; focused apply ring pixel is accent=yes, unfocused reset ring is not=yes (material-focus-apply.bmp)
+material	R06-native-100	PASS	640x480 wheel to offset 594/594; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 534 max 534, identical to the next frame=yes, apply at 24,352 80x44 hit=form.apply
+material	R06-native-150	PASS	640x480 wheel to offset 892/892; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 802 max 802, identical to the next frame=yes, apply at 36,528 120x66 hit=form.apply
+material	AC13-layout	PASS	material-960x720-100-initial: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=66, name 24,228 433x92, draft 489,228 433x48
+material	AC13-layout	PASS	material-960x720-100-long-error: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=163, name 24,300 433x117, draft 489,300 433x48
+material	AC13-layout	PASS	material-960x720-150-initial: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=100, name 36,342 649x139, draft 733,342 649x72
+material	AC13-layout	PASS	material-960x720-150-long-error: 22 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=246, name 36,450 649x177, draft 733,450 649x72
+material	AC13-layout	PASS	material-640x480-100-initial: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=450, name 24,252 578x92, draft 24,818 578x24
+material	AC13-layout	PASS	material-640x480-100-long-error: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=619, name 24,396 578x117, draft 24,987 578x24
+material	AC13-layout	PASS	material-640x480-150-initial: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=676, name 36,378 867x139, draft 36,1228 867x36
+material	AC13-layout	PASS	material-640x480-150-long-error: 22 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=930, name 36,594 867x177, draft 36,1482 867x36

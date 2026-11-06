@@ -1,0 +1,50 @@
+﻿OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web ENV Windows build 26300.9711 (26H2); IMTCTIP.DLL 6.2.26100.9711; ChtIME.exe 6.2.26100.9278; DPI scale 1.500000
+PASS web AC07-real Space press, repeat and release on the error fixture: focus to name, no space leaked, one history entry => draft='' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web AC07-real-typing A real Space typed afterwards inserts one space => draft=' ' composing=0 preedit='' focus=form.name history=2 applies=0
+PASS web IME-profile langid=0x0404 Microsoft Bopomofo TIP
+PASS web IME-mode conversion=0x1 (native Chinese mode)
+PASS web F02-compose ㄨㄛˇ updates the preedit only; committed text unchanged => draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0
+PASS web F02-confirm Enter confirms one character once, one history entry, no apply => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web F02-enter-after A second Enter does not apply => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web AC09-undo-commit Ctrl+Z removes the whole confirmation in one step => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS web E01-cancel Escape cancels the composition; committed text and the redo position survive => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS web E01-page-switch Real tab click during composition commits once, focuses tabs and switches page; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.title.pages.tabs history=1 applies=0
+PASS web E01-dialog-open Host seam opens the dialog and completes composition once, focuses cancel, and cancellation restores the field; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web E01-replace-selection Confirmation replaces the selection as one undo entry => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS web E01-shortcut-while-composing Ctrl+Z during composition goes to the IME and leaves committed history alone => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS web E01-tab Tab during composition is consumed by the IME: preedit kept, focus stays, nothing committed or applied => draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0
+PASS web E01-tab-then-escape Escape then discards that preedit cleanly => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS web E01-pointer Clicking another control commits the preedit once, then focus moves; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=fixture.long history=1 applies=0
+PASS web E01-window-deactivate The IME commits on native deactivation, once; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web E01-window-return Back in the window: focus kept on the name, nothing composing, the commit kept => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web E01-pointer-same-field Clicking inside the composing field commits once, then places the caret; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS web P05-real-pointer Physical pointer dwell displays the tooltip without taking focus; leaving closes it
+PASS web R08-real-window-focus Real foreground switch closes and restarts the delay; tooltip returns without taking source focus
+PASS web E01-close WM_CLOSE exits the real host loop and destroys its window; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => after destruction: draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material ENV Windows build 26300.9711 (26H2); IMTCTIP.DLL 6.2.26100.9711; ChtIME.exe 6.2.26100.9278; DPI scale 1.500000
+PASS material AC07-real Space press, repeat and release on the error fixture: focus to name, no space leaked, one history entry => draft='' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material AC07-real-typing A real Space typed afterwards inserts one space => draft=' ' composing=0 preedit='' focus=form.name history=2 applies=0
+PASS material IME-profile langid=0x0404 Microsoft Bopomofo TIP
+PASS material IME-mode conversion=0x1 (native Chinese mode)
+PASS material F02-compose ㄨㄛˇ updates the preedit only; committed text unchanged => draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0
+PASS material F02-confirm Enter confirms one character once, one history entry, no apply => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material F02-enter-after A second Enter does not apply => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material AC09-undo-commit Ctrl+Z removes the whole confirmation in one step => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS material E01-cancel Escape cancels the composition; committed text and the redo position survive => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS material E01-page-switch Real tab click during composition commits once, focuses tabs and switches page; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.title.pages.tabs history=1 applies=0
+PASS material E01-dialog-open Host seam opens the dialog and completes composition once, focuses cancel, and cancellation restores the field; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material E01-replace-selection Confirmation replaces the selection as one undo entry => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS material E01-shortcut-while-composing Ctrl+Z during composition goes to the IME and leaves committed history alone => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS material E01-tab Tab during composition is consumed by the IME: preedit kept, focus stays, nothing committed or applied => draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0
+PASS material E01-tab-then-escape Escape then discards that preedit cleanly => draft='測試使用者' composing=0 preedit='' focus=form.name history=0 applies=0
+PASS material E01-pointer Clicking another control commits the preedit once, then focus moves; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=fixture.long history=1 applies=0
+PASS material E01-window-deactivate The IME commits on native deactivation, once; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material E01-window-return Back in the window: focus kept on the name, nothing composing, the commit kept => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material E01-pointer-same-field Clicking inside the composing field commits once, then places the caret; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+PASS material P05-real-pointer Physical pointer dwell displays the tooltip without taking focus; leaving closes it
+PASS material R08-real-window-focus Real foreground switch closes and restarts the delay; tooltip returns without taking source focus
+PASS material E01-close WM_CLOSE exits the real host loop and destroys its window; before: draft='測試使用者' composing=1 preedit='我' focus=form.name history=0 applies=0 => after destruction: draft='測試使用者我' composing=0 preedit='' focus=form.name history=1 applies=0
+46 real-input checks, 0 not passing
+

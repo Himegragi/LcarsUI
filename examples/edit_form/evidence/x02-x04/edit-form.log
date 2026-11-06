@@ -1,0 +1,168 @@
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, shipped IDs): 41/41 cases, 3651 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, alternate IDs): 41/41 cases, 7302 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, shipped IDs): 41/41 cases, 10953 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, alternate IDs): 41/41 cases, 14604 checks

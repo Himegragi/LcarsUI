@@ -1,0 +1,401 @@
+appearance	case	status	evidence
+web-1	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-1	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-1	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-1	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-2	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-2	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-2	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-2	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-3	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-3	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-3	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-3	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-4	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-4	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-4	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-4	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-5	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-5	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-5	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-5	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-6	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-6	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-6	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-6	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-7	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-7	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-7	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-7	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-8	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-8	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-8	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-8	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-9	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-9	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-9	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-9	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-10	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-10	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-10	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-10	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-11	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-11	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-11	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-11	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-12	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-12	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-12	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-12	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-13	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-13	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-13	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-13	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-14	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-14	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-14	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-14	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-15	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-15	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-15	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-15	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-16	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-16	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-16	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-16	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-17	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-17	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-17	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-17	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-18	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-18	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-18	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-18	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-19	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-19	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-19	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-19	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-20	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-20	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-20	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-20	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-21	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-21	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-21	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-21	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-22	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-22	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-22	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-22	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-23	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-23	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-23	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-23	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-24	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-24	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-24	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-24	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-25	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-25	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-25	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-25	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-26	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-26	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-26	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-26	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-27	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-27	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-27	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-27	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-28	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-28	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-28	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-28	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-29	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-29	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-29	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-29	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-30	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-30	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-30	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-30	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-31	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-31	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-31	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-31	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-32	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-32	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-32	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-32	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-33	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-33	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-33	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-33	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-34	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-34	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-34	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-34	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-35	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-35	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-35	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-35	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-36	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-36	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-36	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-36	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-37	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-37	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-37	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-37	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-38	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-38	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-38	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-38	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-39	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-39	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-39	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-39	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-40	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-40	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-40	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-40	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-41	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-41	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-41	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-41	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-42	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-42	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-42	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-42	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-43	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-43	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-43	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-43	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-44	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-44	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-44	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-44	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-45	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-45	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-45	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-45	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-46	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-46	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-46	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-46	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-47	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-47	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-47	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-47	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-48	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-48	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-48	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-48	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-49	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-49	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-49	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-49	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-50	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-50	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-50	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-50	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-51	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-51	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-51	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-51	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-52	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-52	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-52	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-52	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-53	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-53	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-53	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-53	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-54	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-54	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-54	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-54	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-55	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-55	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-55	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-55	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-56	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-56	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-56	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-56	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-57	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-57	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-57	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-57	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-58	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-58	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-58	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-58	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-59	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-59	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-59	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-59	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-60	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-60	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-60	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-60	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-61	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-61	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-61	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-61	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-62	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-62	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-62	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-62	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-63	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-63	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-63	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-63	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-64	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-64	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-64	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-64	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-65	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-65	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-65	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-65	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-66	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-66	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-66	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-66	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-67	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-67	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-67	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-67	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-68	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-68	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-68	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-68	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-69	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-69	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-69	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-69	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-70	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-70	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-70	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-70	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-71	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-71	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-71	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-71	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-72	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-72	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-72	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-72	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-73	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-73	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-73	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-73	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-74	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-74	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-74	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=unexpected, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-74	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-75	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-75	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-75	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-75	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-76	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-76	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-76	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-76	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-77	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-77	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-77	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-77	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-78	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-78	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=failed, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-78	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-78	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-79	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-79	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-79	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-79	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-80	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-80	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-80	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-80	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-81	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-81	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-81	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-81	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-82	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-82	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-82	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-82	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-83	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-83	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-83	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-83	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-84	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-84	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-84	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-84	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-85	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-85	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-85	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-85	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-86	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-86	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-86	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-86	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-87	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-87	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-87	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-87	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-88	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-88	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-88	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-88	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-89	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-89	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-89	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-89	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-90	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-90	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-90	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-90	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-91	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-91	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-91	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-91	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-92	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-92	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-92	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-92	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-93	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-93	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-93	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-93	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-94	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-94	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-94	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-94	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=ok, paste=failed, fixture write=ok, clipboard text restore=ok or unavailable
+web-95	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-95	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=failed, paste=ok, fixture write=failed, clipboard text restore=ok or unavailable
+material-95	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=unexpected, Ctrl+Z=ok; user clipboard text restored=yes
+material-95	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=failed, paste=ok, fixture write=failed, clipboard text restore=ok or unavailable
+web-96	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-96	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-96	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-96	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=failed, paste=ok, fixture write=failed, clipboard text restore=ok or unavailable
+web-97	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=unexpected, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-97	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-97	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=unexpected, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-97	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-98	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-98	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=failed, paste=ok, fixture write=failed, clipboard text restore=ok or unavailable
+material-98	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=unavailable, fixture write=failed, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-98	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+web-99	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-99	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-99	AC08-pointer-clipboard	FAIL	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=unexpected, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-99	AC08-clipboard-contention	FAIL	60ms clipboard hold: copy=ok, paste=failed, fixture write=ok, clipboard text restore=ok or unavailable
+web-100	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+web-100	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable
+material-100	AC08-pointer-clipboard	PASS	click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+material-100	AC08-clipboard-contention	PASS	60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok or unavailable

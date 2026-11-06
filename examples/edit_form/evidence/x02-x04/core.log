@@ -1,0 +1,55 @@
+-- The C compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- The CXX compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (1.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: C:/Users/user/.t3/worktrees/LcarsUI/t3-0b7666e2/build/Release-core
+[1/22] Building CXX object CMakeFiles\lcars_list_page.dir\examples\list_page\list_page.cpp.obj
+[2/22] Building CXX object CMakeFiles\lcars_core.dir\src\component_type.cpp.obj
+[3/22] Building CXX object CMakeFiles\lcars_core.dir\src\layout.cpp.obj
+[4/22] Building CXX object CMakeFiles\lcars_appearance_web.dir\src\appearance_web.cpp.obj
+[5/22] Building CXX object CMakeFiles\lcars_appearance_material.dir\src\appearance_material.cpp.obj
+[6/22] Linking CXX static library lcars_appearance_web.lib
+[7/22] Linking CXX static library lcars_appearance_material.lib
+[8/22] Building CXX object CMakeFiles\lcars_tests.dir\tests\tests.cpp.obj
+[9/22] Building CXX object CMakeFiles\lcars_edit_form.dir\examples\edit_form\edit_form.cpp.obj
+[10/22] Building CXX object CMakeFiles\lcars_core.dir\src\core.cpp.obj
+[11/22] Linking CXX static library lcars_core.lib
+[12/22] Linking CXX static library lcars_list_page.lib
+[13/22] Linking CXX static library lcars_edit_form.lib
+[14/22] Building CXX object CMakeFiles\lcars_layout_tests.dir\tests\layout.cpp.obj
+[15/22] Linking CXX executable lcars_tests.exe
+[16/22] Linking CXX executable lcars_layout_tests.exe
+[17/22] Building CXX object CMakeFiles\lcars_components_tests.dir\tests\components.cpp.obj
+[18/22] Building CXX object CMakeFiles\lcars_list_page_tests.dir\tests\list_page.cpp.obj
+[19/22] Linking CXX executable lcars_components_tests.exe
+[20/22] Linking CXX executable lcars_list_page_tests.exe
+[21/22] Building CXX object CMakeFiles\lcars_edit_form_tests.dir\tests\edit_form.cpp.obj
+[22/22] Linking CXX executable lcars_edit_form_tests.exe
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0b7666e2/build/Release-core
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-0b7666e2/build/Release-core
+    Start 1: core_regressions
+1/6 Test #1: core_regressions .................   Passed    0.03 sec
+    Start 2: components
+2/6 Test #2: components .......................   Passed    0.04 sec
+    Start 3: layout
+3/6 Test #3: layout ...........................   Passed    0.03 sec
+    Start 4: edit_form
+4/6 Test #4: edit_form ........................   Passed    0.15 sec
+    Start 5: list_page
+5/6 Test #5: list_page ........................   Passed    0.04 sec
+    Start 6: consumer_example
+6/6 Test #6: consumer_example .................   Passed    6.89 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Total Test time (real) =   7.19 sec
