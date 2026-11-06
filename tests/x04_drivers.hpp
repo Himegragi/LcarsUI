@@ -159,7 +159,7 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
-        else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.reset.invoke());
+        else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
     }, entry.handle);
@@ -357,7 +357,7 @@ inline bool restore_candidate(edit_form::Form& form, const Entry& entry) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, DropdownHandle>) return bool(h.cancel());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
-        else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.reset.invoke());
+        else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else return false;
     }, entry.handle);
     return restored && baseline_context(form);

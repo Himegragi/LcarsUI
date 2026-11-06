@@ -993,6 +993,7 @@ void x04_candidate_inventory_at_each_size_and_scale() {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
+            auto baseline = x04::snapshot(form);
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
             auto message = std::string("X04 candidate ") + before->id;
@@ -1015,7 +1016,7 @@ void x04_candidate_inventory_at_each_size_and_scale() {
                   (message + " paint").c_str());
             if (semantic->kind == Kind::tabs || semantic->kind == Kind::dropdown)
                 check(semantic->value == before->value, (message + " candidate preserves selection").c_str());
-            check(x04::restore_candidate(form, entry) && x04::same_selection(*before, *x04::describe(entry.handle)),
+            check(x04::restore_candidate(form, entry) && x04::same_model(baseline, x04::snapshot(form)),
                   (message + " restore").c_str());
         }
     }
@@ -1241,6 +1242,7 @@ void x04_selected_inventory_at_each_size_and_scale() {
         test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
+            auto baseline = x04::snapshot(form);
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
             if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 select page");
@@ -1260,7 +1262,7 @@ void x04_selected_inventory_at_each_size_and_scale() {
                 return c.r == cue.r && c.g == cue.g && c.b == cue.b;
             }) && paint.drawn.find(semantic->kind == Kind::checkbox ? semantic->name : semantic->value) != std::u16string::npos,
                 message.c_str());
-            check(x04::restore_selected(form, entry) && x04::same_selection(*before, *x04::describe(entry.handle)), message.c_str());
+            check(x04::restore_selected(form, entry) && x04::same_model(baseline, x04::snapshot(form)), message.c_str());
         }
     }
 }

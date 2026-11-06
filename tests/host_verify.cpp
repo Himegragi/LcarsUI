@@ -1368,6 +1368,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
+                auto baseline_model = x04::snapshot(f.form);
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
                 bool page = entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
@@ -1387,7 +1388,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto expected = semantic->kind == Kind::checkbox ? semantic->name : semantic->value;
                 bool compared = semantic->visible && x04::placement(f.host.frame(), entry.handle) &&
                     x04::selected_semantics(*semantic) && !expected.empty() && ink.find(expected) != std::u16string::npos && cue_visible;
-                bool restored = x04::restore_selected(f.form, entry) && x04::same_selection(*before, *x04::describe(entry.handle));
+                bool restored = x04::restore_selected(f.form, entry) && x04::same_model(baseline_model, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -1536,6 +1537,7 @@ void x04_candidate_matrix(const Appearance& appearance, Report& report) {
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
+                auto baseline_model = x04::snapshot(f.form);
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
                 bool prepared = baseline && x04::prepare_candidate(f.form, entry);
@@ -1556,7 +1558,7 @@ void x04_candidate_matrix(const Appearance& appearance, Report& report) {
                 }
                 bool compared = item && semantic->visible && label && ink.find(*label) != std::u16string::npos && cue_visible;
                 if (semantic->kind == Kind::tabs || semantic->kind == Kind::dropdown) compared = compared && semantic->value == before->value;
-                bool restored = x04::restore_candidate(f.form, entry) && x04::same_selection(*before, *x04::describe(entry.handle));
+                bool restored = x04::restore_candidate(f.form, entry) && x04::same_model(baseline_model, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                     std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
                 report.check("X04-candidate-member", prepared && opened && compared && restored,
@@ -2679,6 +2681,18 @@ int run_x04(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
+int run_x04_selection(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x04-selection.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        x04_selected_matrix(*appearance, report);
+        x04_candidate_matrix(*appearance, report);
+    }
+    std::cout << report.checks << " X04 selection checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
 int run_x04_disabled(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-disabled.tsv");
@@ -2739,7 +2753,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
@@ -2752,12 +2766,13 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--x04-executing-only") x04_executing_only = true;
             else if (arg == L"--x04-disabled-only") x04_disabled_only = true;
+            else if (arg == L"--x04-selection-only") x04_selection_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;
