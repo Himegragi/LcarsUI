@@ -44,6 +44,10 @@ struct Report {
         out << appearance << '\t' << id << '\t' << (pass ? "PASS" : "FAIL") << '\t' << evidence << '\n';
         std::cout << (pass ? "PASS " : "FAIL ") << appearance << ' ' << id << ' ' << evidence << '\n';
     }
+    void open(const char* id, const std::string& evidence) {
+        out << appearance << '\t' << id << "\tOPEN\t" << evidence << '\n';
+        std::cout << "OPEN " << appearance << ' ' << id << ' ' << evidence << '\n';
+    }
     void na(const char* id, const std::string& evidence) {
         out << appearance << '\t' << id << "\tN/A\t" << evidence << '\n';
         std::cout << "N/A " << appearance << ' ' << id << ' ' << evidence << '\n';
@@ -1213,43 +1217,17 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
     out << "ids\tsize\tscale\tpage\tcomponent\tkind\tvisible\tname\tvalue\trestriction\thidden\tclipped\tdisabled\tread_only\tselected\tcandidate\terror\tconflict\texecuting\tmodal\ttip\n";
     for (bool alternate : {false, true}) {
         Fixture f(appearance, true, alternate);
-        auto& h = f.form.handles; auto& l = f.form.list->handles;
-        struct Entry { const char* page; ComponentHandle handle; };
-        std::vector<Entry> entries{
-            {"shared", h.tabs},
-            {"v01", h.title}, {"v01", h.intro}, {"v01", h.state}, {"v01", h.draft}, {"v01", h.result}, {"v01", h.count},
-            {"v01", h.name_label}, {"v01", h.name_help}, {"v01", h.name_error}, {"v01", h.name},
-            {"v01", h.normal}, {"v01", h.read_only}, {"v01", h.disabled}, {"v01", h.error}, {"v01", h.long_text},
-            {"v01", h.offline_disabled}, {"v01", h.region_empty}, {"v01", h.reset}, {"v01", h.apply}, {"v01", h.latest},
-            {"v01", h.notices_latest}, {"v01", h.mode_latest}, {"v01", h.region_latest}, {"v01", h.volume_latest},
-            {"v01", h.notices}, {"v01", h.mode}, {"v01", h.region}, {"v01", h.volume},
-            {"v02", l.title}, {"v02", l.detail}, {"v02", l.search}, {"v02", l.list}, {"v02", l.zero}, {"v02", l.one},
-            {"v02", l.twenty}, {"v02", l.hundred}, {"v02", l.sort}, {"v02", l.erase}, {"v02", l.disable_eight}, {"v02", l.reset},
-            {"v03", h.v03_title}, {"v03", h.progress_source}, {"v03", h.dialog_result}, {"v03", h.progress},
-            {"v03", h.progress_zero}, {"v03", h.progress_half}, {"v03", h.progress_full}, {"v03", h.progress_below},
-            {"v03", h.progress_above}, {"v03", h.reset_v03}, {"v03", h.dialog_open}, {"v03", h.dialog_temporary},
-            {"modal", h.dialog_title}, {"modal", h.dialog_body}, {"modal", h.dialog_cancel}, {"modal", h.dialog_confirm}
-        };
-        auto describe = [](const ComponentHandle& value) -> std::optional<Semantics> {
-            return std::visit([](const auto& handle) -> std::optional<Semantics> {
-                using T = std::decay_t<decltype(handle)>;
-                if constexpr (std::is_same_v<T, std::monostate>) return std::nullopt;
-                else return handle.describe().value;
-            }, value);
-        };
+        auto& h = f.form.handles;
+        auto entries = x04::inventory(f.form);
         f.host.observe_paint(true);
         for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
             f.host.force_scale(scale); f.host.client_size(size.first, size.second);
             for (const char* page : {"v01", "v02", "v03"}) {
                 h.tabs.activate({page}); f.settle();
                 for (const auto& entry : entries) {
-                    auto s = describe(entry.handle); if (!s) continue;
+                    auto s = x04::describe(entry.handle); if (!s) continue;
                     bool active = std::string_view(entry.page) == "shared" || std::string_view(entry.page) == page;
-                    const Placement* placement = std::visit([&](const auto& handle) -> const Placement* {
-                        using T = std::decay_t<decltype(handle)>;
-                        if constexpr (std::is_same_v<T, std::monostate>) return nullptr;
-                        else return f.host.frame().find(handle);
-                    }, entry.handle);
+                    const Placement* placement = x04::placement(f.host.frame(), entry.handle);
                     std::u16string ink;
                     bool any = false;
                     for (const auto& draw : f.host.paint_observations()) {
@@ -1285,6 +1263,458 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
             }
         }
     }
+}
+
+// A page switch checks all inactive members at once; results retain each component ID
+// and require both of the other pages, including associated labels painted by a field.
+void x04_hidden_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            auto entries = x04::inventory(f.form);
+            struct Outcome { int pages = 0; bool passed = true; };
+            std::map<std::string, Outcome> results;
+            for (auto page : {"v01", "v02", "v03"}) {
+                bool switched = bool(f.form.handles.tabs.activate({page})); f.settle();
+                for (const auto& entry : entries) {
+                    if (entry.page == "shared" || entry.page == "modal" || entry.page == page) continue;
+                    auto semantic = x04::describe(entry.handle);
+                    if (!semantic) continue;
+                    bool painted = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
+                        [&](const auto& draw) { return draw.visible && (draw.owner == semantic->id ||
+                            (!semantic->target.empty() && draw.owner == semantic->target)); });
+                    auto& result = results[semantic->id]; ++result.pages;
+                    result.passed = result.passed && switched && !semantic->visible && !painted &&
+                        !x04::placement(f.host.frame(), entry.handle) &&
+                        detail::access(f.form.ui).available(semantic->id).status == Status::hidden &&
+                        x04::hidden_retry(entry.handle);
+                }
+            }
+            for (const auto& [id, result] : results) {
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + id;
+                report.check("X04-hidden-member", result.pages == 2 && result.passed,
+                    sample + ": both inactive pages; semantics, paint, placement and admission");
+            }
+        }
+}
+
+void x04_selected_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto before = x04::describe(entry.handle);
+                if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
+                bool page = entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
+                bool driven = page && x04::drive_selected(entry);
+                auto semantic = x04::describe(entry.handle);
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
+                f.host.paint(); semantic = x04::describe(entry.handle);
+                auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
+                    ? appearance.palette().accent : appearance.palette().selection;
+                std::u16string ink; bool cue_visible = false;
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != semantic->id || !draw.visible) continue;
+                    if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+                    if (draw.color.r == cue.r && draw.color.g == cue.g && draw.color.b == cue.b &&
+                        draw.type != detail::PaintObservation::Type::text) cue_visible = true;
+                }
+                auto expected = semantic->kind == Kind::checkbox ? semantic->name : semantic->value;
+                bool compared = semantic->visible && x04::placement(f.host.frame(), entry.handle) &&
+                    x04::selected_semantics(*semantic) && !expected.empty() && ink.find(expected) != std::u16string::npos && cue_visible;
+                bool restored = x04::restore_selected(f.form, entry) && x04::same_selection(*before, *x04::describe(entry.handle));
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-selected-member", driven && compared && restored, sample +
+                    ": driven=" + std::to_string(driven) + ", semantics and visible cue=" + std::to_string(compared) +
+                    ", initial selection restored=" + std::to_string(restored));
+            }
+        }
+}
+
+void x04_clipped_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto inventory = x04::inventory(f.form);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            for (const auto& entry : inventory) {
+                if (entry.page == "shared" || entry.page == "modal") continue;
+                auto baseline = x04::snapshot(f.form);
+                bool prepared = x04::prepare_clipped(f.form, entry);
+                f.form.scroll.offset = 0; f.host.paint();
+                auto semantic = x04::describe(entry.handle); auto initial_rect = x04::clipped_rect(f.host.frame(), *semantic);
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                    std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
+                if (!prepared || !initial_rect || f.host.frame().maximum <= 0) {
+                    bool restored = x04::restore_clipped(f.form, entry) && x04::same_model(baseline, x04::snapshot(f.form));
+                    if (!restored) report.check("X04-clipped-member", false, sample + ": fixture did not restore the model");
+                    else report.open("X04-clipped-member", sample + ": fixture could not produce a scrollable target");
+                    continue;
+                }
+                bool fully = false, partial = false, correct = true;
+                for (int offset : x04::clipped_offsets(f.host.frame(), *initial_rect)) {
+                    f.form.scroll.offset = offset; f.host.paint(); semantic = x04::describe(entry.handle);
+                    auto geometry = x04::clipped_rect(f.host.frame(), *semantic);
+                    auto* owner = x04::clipped_owner(f.host.frame(), *semantic);
+                    if (!geometry || !owner) { correct = false; continue; }
+                    auto area = intersect(*geometry, owner->clip);
+                    const std::vector<Line>* associated = nullptr;
+                    if (!semantic->target.empty()) {
+                        if (semantic->role == TextRole::name) associated = &owner->label_lines;
+                        else if (semantic->role == TextRole::description) associated = &owner->description_lines;
+                        else if (semantic->role == TextRole::error) associated = &owner->error_lines;
+                    }
+                    bool visible_paint = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
+                        if (draw.owner != owner->id || !draw.visible) return false;
+                        if (!associated) return true;
+                        return draw.type == detail::PaintObservation::Type::text && std::any_of(associated->begin(), associated->end(),
+                            [&](const Line& line) { return line.text == draw.text; });
+                    });
+                    if (area.w == 0 || area.h == 0) {
+                        auto* hit = f.host.frame().hit(geometry->x + std::max(0, geometry->w / 2), geometry->y + std::max(0, geometry->h / 2));
+                        correct = correct && !semantic->visible && !visible_paint && (!hit || hit->id != owner->id); fully = true;
+                    } else if (area != *geometry) {
+                        correct = correct && semantic->visible;
+                        if (semantic->visible && visible_paint) partial = true;
+                    }
+                }
+                bool restored = x04::restore_clipped(f.form, entry) && x04::same_model(baseline, x04::snapshot(f.form));
+                correct = correct && restored;
+                if (!correct) report.check("X04-clipped-member", false, sample + ": clipping comparison or model restoration disagreed");
+                else if (!fully || !partial) report.open("X04-clipped-member", sample + ": fixture reached fully=" + std::to_string(fully) +
+                    ", partially clipped visible paint=" + std::to_string(partial));
+                else report.check("X04-clipped-member", true, sample + ": full and partial clipping, semantics, visible paint and hit agree");
+            }
+        }
+}
+
+void x04_error_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto semantic = x04::describe(entry.handle); if (!semantic || !x04::error_supported(*semantic)) continue;
+                bool driven = x04::drive_error(f.form, entry);
+                auto owner = semantic->target.empty() ? semantic->id : semantic->target;
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, owner);
+                f.host.paint(); semantic = x04::describe(entry.handle);
+                auto* item = detail::find_placement(f.host.frame(), owner);
+                std::u16string ink; bool color = false; auto error_color = appearance.palette().error;
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != owner || !draw.visible) continue;
+                    if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+                    if (draw.color.r == error_color.r && draw.color.g == error_color.g && draw.color.b == error_color.b) color = true;
+                }
+                bool cue = semantic->kind == Kind::tabs ? ink.find(appearance.component_presentation().invalid_tab_marker) != std::u16string::npos :
+                    ink.find(x04::error_message) != std::u16string::npos && color;
+                bool compared = item && semantic->visible && x04::error_semantics(f.form, *semantic) && cue;
+                bool restored = x04::restore_error(f.form, entry) && !x04::error_semantics(f.form, *x04::describe(entry.handle));
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                    std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-error-member", driven && compared && restored,
+                    sample + ": driven=" + std::to_string(driven) + ", semantics, association and cue=" + std::to_string(compared) +
+                    ", restored=" + std::to_string(restored));
+            }
+        }
+}
+
+void x04_candidate_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto before = x04::describe(entry.handle);
+                if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
+                bool prepared = x04::prepare_candidate(f.form, entry);
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id); f.host.paint();
+                bool opened = x04::open_candidate(entry);
+                auto vk = before->kind == Kind::tabs ? VK_RIGHT : VK_DOWN;
+                SendMessageW(f.host.window(), WM_KEYDOWN, vk, key_lparam(vk, false, false));
+                SendMessageW(f.host.window(), WM_KEYUP, vk, key_lparam(vk, false, true));
+                f.host.paint(); auto semantic = x04::describe(entry.handle);
+                auto* item = x04::candidate_placement(f.host.frame(), *semantic); auto label = x04::candidate_label(*semantic);
+                auto cue = semantic->kind == Kind::dropdown ? appearance.palette().selection : appearance.palette().accent;
+                std::u16string ink; bool cue_visible = false;
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != semantic->id || !draw.visible || draw.tooltip ||
+                        (semantic->kind == Kind::dropdown) != draw.popup) continue;
+                    if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+                    else if (draw.color.r == cue.r && draw.color.g == cue.g && draw.color.b == cue.b) cue_visible = true;
+                }
+                bool compared = item && semantic->visible && label && ink.find(*label) != std::u16string::npos && cue_visible;
+                if (semantic->kind == Kind::tabs || semantic->kind == Kind::dropdown) compared = compared && semantic->value == before->value;
+                bool restored = x04::restore_candidate(f.form, entry) && x04::same_selection(*before, *x04::describe(entry.handle));
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                    std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-candidate-member", prepared && opened && compared && restored,
+                    sample + ": prepared=" + std::to_string(prepared && opened) + ", semantics and cue=" + std::to_string(compared) +
+                    ", restored=" + std::to_string(restored));
+            }
+        }
+}
+
+void x04_search_read_only_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto& search = f.form.list->handles.search;
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            bool driven = x04::drive_search_read_only(f.form) && bool(search.focus());
+            f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, search.describe()->id);
+            f.host.paint(); auto semantic = search.describe(); std::u16string ink;
+            for (const auto& draw : f.host.paint_observations())
+                if (draw.owner == semantic->id && draw.visible && draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+            bool restricted = search.set_value(u"blocked").status == Status::read_only;
+            SendMessageW(f.host.window(), WM_CHAR, L'x', 0);
+            restricted = restricted && search.describe()->value == semantic->value;
+            bool compared = semantic->visible && semantic->enabled && semantic->read_only &&
+                ink.find(semantic->name) != std::u16string::npos && ink.find(semantic->value) != std::u16string::npos &&
+                ink.find(appearance.component_presentation().read_only_suffix) != std::u16string::npos;
+            bool restored = x04::restore_search_read_only(f.form) && !search.describe()->read_only;
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
+            report.check("X04-search-read-only", driven && restricted && compared && restored,
+                sample + ": restricted=" + std::to_string(restricted) + ", paint=" + std::to_string(compared) + ", restored=" + std::to_string(restored));
+        }
+}
+
+void x04_modal_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true); bool opened = x04::open_modal(f.form); f.host.paint();
+            bool blocked = f.host.frame().modal && f.form.handles.progress_zero.invoke().status == Status::blocked_by_modal;
+            struct Row { std::string id; bool passed; }; std::vector<Row> rows;
+            for (const auto& entry : x04::inventory(f.form)) {
+                if (entry.page != "modal") continue;
+                auto semantic = x04::describe(entry.handle); auto* item = x04::placement(f.host.frame(), entry.handle);
+                std::u16string ink;
+                for (const auto& draw : f.host.paint_observations())
+                    if (draw.owner == semantic->id && draw.visible && draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+                bool compared = opened && blocked && item && semantic->visible && x04::normal_semantics(*semantic);
+                for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
+                rows.push_back({semantic->id, compared});
+            }
+            bool restored = x04::close_modal(f.form) && !*f.form.handles.dialog.is_open();
+            for (const auto& row : rows) {
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                    std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + row.id;
+                report.check("X04-modal-member", row.passed && restored,
+                    sample + ": modal semantics, paint and background rejection=" + std::to_string(row.passed) + ", restored=" + std::to_string(restored));
+            }
+        }
+}
+
+void x04_tooltip_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui); std::uint64_t now = 100;
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            state.tooltip_clock([&] { return now; }); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+            bool driven = x04::prepare_tip(f.form); auto semantic = f.form.handles.progress_half.describe();
+            f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
+            f.host.paint(); now += 600; state.tooltip_time(now); f.host.paint();
+            auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& p) { return p.tooltip; });
+            bool visible = *f.form.handles.progress_tip.visible() && tip != f.host.frame().overlays.end();
+            std::u16string ink;
+            for (const auto& draw : f.host.paint_observations())
+                if (draw.owner == semantic->id && draw.tooltip && draw.visible && draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+            bool transparent = false;
+            if (visible) { auto* hit = f.host.frame().hit(tip->bounds.x + 1, tip->bounds.y + 1); transparent = !hit || !hit->tooltip; }
+            bool text = visible && !semantic->description.empty() && ink.find(semantic->description) != std::u16string::npos;
+            SendMessageW(f.host.window(), WM_KEYDOWN, VK_ESCAPE, key_lparam(VK_ESCAPE, false, false));
+            SendMessageW(f.host.window(), WM_KEYUP, VK_ESCAPE, key_lparam(VK_ESCAPE, false, true));
+            bool restored = !*f.form.handles.progress_tip.visible() && f.form.handles.progress_half.describe()->focused;
+            state.tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+            std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
+            report.check("X04-tip-member", driven && text && transparent && restored,
+                sample + ": text=" + std::to_string(text) + ", transparent=" + std::to_string(transparent) + ", restored=" + std::to_string(restored));
+        }
+}
+
+void x04_normal_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            for (const auto& entry : x04::inventory(f.form)) {
+                bool modal = entry.page == "modal";
+                bool page = modal ? bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke()) :
+                    entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
+                auto semantic = x04::describe(entry.handle);
+                auto owner = semantic->target.empty() ? semantic->id : semantic->target;
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, owner);
+                f.host.paint(); semantic = x04::describe(entry.handle);
+                auto* item = detail::find_placement(f.host.frame(), owner);
+                std::u16string ink; bool visible_owner_ink = false, accent = false, selected = false;
+                auto palette = appearance.palette();
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != owner || !draw.visible) continue;
+                    visible_owner_ink = true;
+                    if (draw.type == detail::PaintObservation::Type::text && item &&
+                        intersect(draw.bounds, intersect(draw.clip, item->bounds)).w == draw.bounds.w) ink += draw.text;
+                    if (draw.type != detail::PaintObservation::Type::text) {
+                        if (draw.color.r == palette.accent.r && draw.color.g == palette.accent.g && draw.color.b == palette.accent.b) accent = true;
+                        if (draw.color.r == palette.selection.r && draw.color.g == palette.selection.g && draw.color.b == palette.selection.b) selected = true;
+                    }
+                }
+                bool compared = page && x04::normal_semantics(*semantic);
+                if (!semantic->target.empty()) {
+                    auto target = state.describe(semantic->target);
+                    compared = compared && target && std::find(target->labels.begin(), target->labels.end(), semantic->id) != target->labels.end();
+                }
+                if (!semantic->visible && semantic->kind == Kind::label && semantic->value.empty()) {
+                    compared = compared && (semantic->target.empty() ? !visible_owner_ink :
+                        semantic->role == TextRole::error && state.describe(semantic->target)->error.empty());
+                } else {
+                    compared = compared && item && semantic->visible;
+                    for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
+                    if (semantic->kind == Kind::checkbox && semantic->checked == true) compared = compared && accent;
+                    if (semantic->kind == Kind::radio_group && !semantic->value.empty()) compared = compared && accent;
+                    if ((semantic->kind == Kind::list || semantic->kind == Kind::tabs) && !semantic->value.empty()) compared = compared && selected;
+                    if (semantic->kind == Kind::progress && item && semantic->numeric_value)
+                        compared = compared && item->progress_fill.w == item->progress_track.w * *semantic->numeric_value / 100 &&
+                            (*semantic->numeric_value == 0 || accent);
+                }
+                bool restored = !modal || bool(f.form.handles.dialog.settle(false));
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-normal-member", compared && restored, sample +
+                    ": visible=" + std::to_string(semantic->visible) + ", semantics/paint=" + std::to_string(compared) +
+                    ", restored=" + std::to_string(restored));
+            }
+        }
+}
+
+void x04_disabled_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
+            auto reveal = [&](const std::string& id) {
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, id); f.host.paint();
+            };
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto initial = x04::describe(entry.handle);
+                if (!initial || !detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + initial->id;
+                if (initial->kind == Kind::tabs) {
+                    auto tabs = std::get<TabsHandle>(entry.handle);
+                    bool driven = bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus());
+                    f.host.paint(); auto sem = tabs.describe(); auto* placed = f.host.frame().find(tabs);
+                    bool cue = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
+                        return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
+                               draw.text.find(appearance.component_presentation().disabled_tab_marker) != std::u16string::npos;
+                    });
+                    bool rejected = tabs.activate({"v02"}).status == Status::disabled && !sem->options[1].enabled;
+                    bool pointer = false;
+                    if (placed && placed->options.size() > 1) {
+                        auto r = intersect(placed->options[1], placed->clip); POINT pt{r.x + r.w / 2, r.y + r.h / 2};
+                        auto* hit = f.host.frame().hit(pt.x, pt.y);
+                        bool hits_tab = hit && hit->id == sem->id;
+                        SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(pt.x, pt.y));
+                        SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(pt.x, pt.y));
+                        pointer = r.w > 0 && r.h > 0 && hits_tab && *tabs.active() == OptionValue{"v01"};
+                    }
+                    SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
+                    SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
+                    bool keyboard = tabs.describe()->candidate == OptionValue{"v03"} && *tabs.active() == OptionValue{"v01"};
+                    bool recovered = bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"}));
+                    report.check("X04-disabled-member", driven && cue && rejected && pointer && keyboard && recovered,
+                        sample + ": tab cue=" + std::to_string(cue) + ", rejected=" + std::to_string(rejected) +
+                        ", pointer=" + std::to_string(pointer) + ", keyboard=" + std::to_string(keyboard) + ", recovered=" + std::to_string(recovered));
+                    continue;
+                }
+                bool page = entry.page == "modal" ? bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke()) :
+                    bool(f.form.handles.tabs.activate({std::string(entry.page)}));
+                bool driven = page && x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) && x04::set_enabled(entry.handle, false);
+                reveal(initial->id); auto sem = x04::describe(entry.handle);
+                auto* placed = x04::placement(f.host.frame(), entry.handle); std::u16string visible_text;
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != sem->id || !draw.visible || draw.type != detail::PaintObservation::Type::text || !placed) continue;
+                    auto visible_width = intersect(draw.bounds, intersect(draw.clip, placed->bounds)).w;
+                    if (draw.bounds.w > 0 && visible_width == draw.bounds.w) visible_text += draw.text;
+                }
+                bool cue = sem->visible && !sem->enabled && !sem->focused &&
+                    visible_text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+                auto snapshot = x04::snapshot(f.form);
+                bool rejected = x04::disabled_retry(entry.handle);
+                bool pointer = false;
+                if (placed) {
+                    auto r = intersect(placed->bounds, placed->clip); POINT pt{r.x + r.w / 2, r.y + r.h / 2};
+                    auto* hit = f.host.frame().hit(pt.x, pt.y);
+                    bool hits_target = hit && hit->id == sem->id;
+                    SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(pt.x, pt.y));
+                    SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(pt.x, pt.y));
+                    pointer = r.w > 0 && r.h > 0 && hits_target;
+                }
+                SendMessageW(f.host.window(), WM_KEYDOWN, VK_SPACE, key_lparam(VK_SPACE, false, false));
+                SendMessageW(f.host.window(), WM_KEYUP, VK_SPACE, key_lparam(VK_SPACE, false, true));
+                auto after = x04::describe(entry.handle);
+                bool unchanged = after && !after->focused && x04::same_model(snapshot, x04::snapshot(f.form));
+                bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
+                    x04::set_enabled(entry.handle, initial->enabled);
+                if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && recovered;
+                report.check("X04-disabled-member", driven && cue && rejected && pointer && unchanged && recovered,
+                    sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
+                    ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
+                    ", unchanged=" + std::to_string(unchanged) + ", recovered=" + std::to_string(recovered));
+            }
+        }
+}
+
+void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate);
+            f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            auto reveal = [&](const std::string& id) {
+                f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, id);
+                f.host.paint();
+            };
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto semantic = x04::describe(entry.handle);
+                if (!semantic || !x04::group_conflict_supported(*semantic)) continue;
+                bool driven = x04::drive_group_conflict(f.form, entry);
+                reveal(semantic->id); semantic = x04::describe(entry.handle);
+                std::u16string ink; bool checked_cue = false;
+                auto accent = appearance.palette().accent;
+                for (const auto& draw : f.host.paint_observations()) {
+                    if (draw.owner != semantic->id || !draw.visible) continue;
+                    if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
+                    else if (draw.color.r == accent.r && draw.color.g == accent.g && draw.color.b == accent.b) checked_cue = true;
+                }
+                bool field = semantic->visible && semantic->source_conflict && ink.find(semantic->name) != std::u16string::npos &&
+                    ink.find(appearance.component_presentation().conflict_suffix) != std::u16string::npos &&
+                    (semantic->kind == Kind::checkbox ? semantic->checked == true && checked_cue :
+                        semantic->value.empty() || ink.find(semantic->value) != std::u16string::npos);
+                auto latest = x04::latest_for(f.form, entry); auto action = latest.describe();
+                bool enabled = action->enabled; reveal(action->id); action = latest.describe();
+                bool action_painted = action->visible && std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
+                    [&](const auto& draw) { return draw.owner == action->id && draw.visible &&
+                        draw.type == detail::PaintObservation::Type::text && draw.text.find(action->name) != std::u16string::npos; });
+                bool restored = bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict && bool(f.form.handles.reset.invoke());
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-conflict-member", driven && field && enabled && action_painted && restored, sample +
+                    ": driven=" + std::to_string(driven) + ", field=" + std::to_string(field) +
+                    ", latest=" + std::to_string(enabled && action_painted) + ", restored=" + std::to_string(restored));
+            }
+        }
 }
 
 // State driver shared with the core seam, sampled through real clipped host paint.
@@ -1412,12 +1842,14 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
     h.normal.bind([&] {
         auto semantic = h.normal.describe();
         f.host.paint();
+        std::u16string executing_ink;
+        for (const auto& event : f.host.paint_observations())
+            if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text)
+                executing_ink += event.text;
         executing_painted = semantic->executing &&
             std::none_of(semantic->operations.begin(), semantic->operations.end(), [](Operation op) { return op == Operation::activate; }) &&
-            std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
-                return event.owner == semantic->id && event.visible && event.text.find(semantic->name) != std::u16string::npos &&
-                       event.text.find(u"\uff08\u57f7\u884c\u4e2d\uff09") != std::u16string::npos;
-            });
+            executing_ink.find(semantic->name) != std::u16string::npos &&
+            executing_ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
         return Result{};
     });
     bool invoked = bool(h.normal.invoke());
@@ -2046,6 +2478,17 @@ int run(const std::filesystem::path& folder) {
         page_size_scale_matrix(*appearance, report);
         popup_dismissal_matrix(*appearance, report);
         semantic_raster_samples(*appearance, report, folder);
+        x04_hidden_matrix(*appearance, report);
+        x04_selected_matrix(*appearance, report);
+        x04_normal_matrix(*appearance, report);
+        x04_clipped_matrix(*appearance, report);
+        x04_error_matrix(*appearance, report);
+        x04_candidate_matrix(*appearance, report);
+        x04_search_read_only_matrix(*appearance, report);
+        x04_modal_matrix(*appearance, report);
+        x04_tooltip_matrix(*appearance, report);
+        x04_disabled_matrix(*appearance, report);
+        x04_group_conflict_matrix(*appearance, report);
         x04_name_read_only_matrix(*appearance, report);
         x04_name_conflict_matrix(*appearance, report);
         semantic_observation_sweep(*appearance, folder, tag);
@@ -2071,11 +2514,33 @@ int run_x04(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         semantic_raster_samples(*appearance, report, folder);
+        x04_hidden_matrix(*appearance, report);
+        x04_selected_matrix(*appearance, report);
+        x04_normal_matrix(*appearance, report);
+        x04_clipped_matrix(*appearance, report);
+        x04_error_matrix(*appearance, report);
+        x04_candidate_matrix(*appearance, report);
+        x04_search_read_only_matrix(*appearance, report);
+        x04_modal_matrix(*appearance, report);
+        x04_tooltip_matrix(*appearance, report);
+        x04_disabled_matrix(*appearance, report);
+        x04_group_conflict_matrix(*appearance, report);
         x04_name_read_only_matrix(*appearance, report);
         x04_name_conflict_matrix(*appearance, report);
         semantic_observation_sweep(*appearance, folder, report.appearance);
     }
     std::cout << report.checks << " X04 raster checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
+int run_x04_clipped(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x04-clipped.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        x04_clipped_matrix(*appearance, report);
+    }
+    std::cout << report.checks << " X04 clipped checks, " << report.failures << " failures\n";
     return report.failures ? 1 : 0;
 }
 
@@ -2106,7 +2571,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
@@ -2116,12 +2581,13 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--x02-only") x02_only = true;
             else if (arg == L"--x04-only") x04_only = true;
+            else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

@@ -9,6 +9,11 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>(std::vector<Control>{})),
       ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
     handles.title = ui.add_label({.id = prefix + "title", .kind = Kind::label, .value = u"範本清單"});
+    auto title_id = handles.title.describe()->id;
+    auto title_text = handles.title.describe()->value;
+    handles.title.connect_source([this, title_id, title_text] {
+        return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
+    });
     handles.zero = ui.add_button({.id = prefix + "zero", .kind = Kind::button, .label = u"0 筆"});
     handles.one = ui.add_button({.id = prefix + "one", .kind = Kind::button, .label = u"1 筆"});
     handles.twenty = ui.add_button({.id = prefix + "twenty", .kind = Kind::button, .label = u"20 筆"});
@@ -33,7 +38,9 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
         selection_ = std::move(value); handles.erase.enable(selection_.has_value());
         if (selection_changed_) selection_changed_(); return Result{};
     });
-    handles.detail.connect_source([this] {
+    auto detail_id = handles.detail.describe()->id;
+    handles.detail.connect_source([this, detail_id] {
+        if (clip_padding_id_ == detail_id) return clip_padding_text_;
         if (!selection_) return std::u16string(u"尚未選取範本");
         auto it = std::find_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == *selection_; });
         return u"選取：" + std::u16string(selection_->id.begin(), selection_->id.end()) + u"  " + (it == items_.end() ? std::u16string{} : it->label);
@@ -51,6 +58,13 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     });
     sample(20);
 }
+Result Page::set_clip_padding(LabelHandle label, std::u16string text) {
+    auto semantic = label.describe();
+    if (!semantic || (semantic->id != handles.title.describe()->id && semantic->id != handles.detail.describe()->id))
+        return {Status::invalid_value, u"Unknown clipping fixture label"};
+    clip_padding_id_ = semantic->id; clip_padding_text_ = std::move(text); return {};
+}
+void Page::clear_clip_padding() { clip_padding_id_.clear(); clip_padding_text_.clear(); }
 Result Page::refresh() {
     std::vector<RadioOption> visible;
     for (auto item : items_) {

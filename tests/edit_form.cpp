@@ -6,6 +6,7 @@
 #include "check.hpp"
 #include "edit_form.hpp"
 #include "fake_measure.hpp"
+#include <cmath>
 using namespace lcars;
 using test::check;
 
@@ -702,6 +703,32 @@ struct PaintTextProbe : detail::ComponentPaint {
     void clip(Rect) override {}
     void text(std::u16string_view value, int, int, int, Color color) override { drawn += value; colors.push_back(color); }
 };
+// Model the core paint adapter's clipping, including associated-label text that is
+// emitted by the field rather than by a separate placement.
+struct ClippedPaintProbe : detail::ComponentPaint {
+    TextMeasure& measure;
+    Rect current;
+    const std::vector<Line>* associated;
+    bool visible = false;
+    ClippedPaintProbe(detail::UiState& state, const Placement& item, const Semantics& owner,
+                      const Appearance& look, float scale, TextMeasure& metrics, const Semantics& target)
+        : ComponentPaint(state, item, owner, look, scale, true), measure(metrics), current(item.clip), associated(nullptr) {
+        if (!target.target.empty()) {
+            if (target.role == TextRole::name) associated = &item.label_lines;
+            else if (target.role == TextRole::description) associated = &item.description_lines;
+            else if (target.role == TextRole::error) associated = &item.error_lines;
+        }
+    }
+    void mark(Rect r) { auto v = intersect(r, current); visible = visible || (v.w > 0 && v.h > 0); }
+    void fill(Rect r, Color) override { if (!associated) mark(r); }
+    void rounded(Rect r, int, Color) override { if (!associated) mark(r); }
+    void clip(Rect r) override { current = intersect(current, r); }
+    void text(std::u16string_view value, int pixels, int x, int y, Color) override {
+        if (value.empty()) return;
+        if (associated && std::none_of(associated->begin(), associated->end(), [&](const Line& line) { return line.text == value; })) return;
+        mark({x, y, static_cast<int>(std::ceil(measure.measure(value, pixels).width)), measure.line_height(pixels)});
+    }
+};
 void painted_states_agree_with_semantics() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
@@ -854,6 +881,340 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
         ++page_index;
     }
 }
+// Every fixed-page member is checked after switching to each other page.
+void x04_clipped_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); auto entries = x04::inventory(form);
+        for (const auto& entry : entries) {
+            if (entry.page == "shared" || entry.page == "modal") continue;
+            auto baseline = x04::snapshot(form);
+            auto semantic = x04::describe(entry.handle); auto message = std::string("X04 clipped ") + semantic->id;
+            check(x04::prepare_clipped(form, entry), (message + " fixture").c_str());
+            test::FakeMeasure measure;
+            auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                int(size.second * scale), scale, form.scroll); };
+            form.scroll.offset = 0; auto first = draw();
+            auto rect = x04::clipped_rect(first, *x04::describe(entry.handle));
+            check(rect && first.maximum > 0, (message + " reachable scroll region").c_str());
+            bool fully = false, partial = false;
+            for (int offset : x04::clipped_offsets(first, *rect)) {
+                form.scroll.offset = offset; auto frame = draw(); semantic = x04::describe(entry.handle);
+                auto geometry = x04::clipped_rect(frame, *semantic); if (!geometry) continue;
+                auto* owner = x04::clipped_owner(frame, *semantic);
+                auto intersection = intersect(*geometry, owner->clip);
+                auto owner_semantic = detail::access(form.ui).describe(owner->id);
+                ClippedPaintProbe paint(detail::access(form.ui), *owner, *owner_semantic, *appearance, scale, measure, *semantic);
+                detail::component_type(owner->kind).paint(paint);
+                if (intersection.w == 0 || intersection.h == 0) {
+                    auto* hit = frame.hit(geometry->x + std::max(0, geometry->w / 2), geometry->y + std::max(0, geometry->h / 2));
+                    check(!semantic->visible && !paint.visible && (!hit || hit->id != (semantic->target.empty() ? semantic->id : semantic->target)),
+                          (message + " fully clipped semantics, paint and hit").c_str());
+                    fully = true;
+                } else if (intersection != *geometry) {
+                    check(semantic->visible && paint.visible, (message + " partial semantics and paint").c_str()); partial = true;
+                }
+            }
+            check(fully && partial, (message + " fully and partially clipped positions").c_str());
+            check(x04::restore_clipped(form, entry) && x04::same_model(baseline, x04::snapshot(form)),
+                  (message + " model restoration").c_str());
+        }
+    }
+}
+
+void x04_error_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form inventory_form(ids, true);
+        auto entries = x04::inventory(inventory_form);
+        for (std::size_t index = 0; index < entries.size(); ++index) {
+            edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
+            auto semantic = x04::describe(entry.handle); if (!x04::error_supported(*semantic)) continue;
+            auto message = std::string("X04 error ") + semantic->id;
+            check(x04::drive_error(form, entry), (message + " drive").c_str());
+            test::FakeMeasure measure;
+            auto owner = semantic->target.empty() ? semantic->id : semantic->target;
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, owner);
+            semantic = x04::describe(entry.handle); auto* item = detail::find_placement(frame, owner);
+            check(item && semantic->visible && x04::error_semantics(form, *semantic), (message + " semantics").c_str());
+            auto owner_semantic = detail::access(form.ui).describe(owner);
+            PaintTextProbe paint(detail::access(form.ui), *item, *owner_semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            if (semantic->kind == Kind::tabs) {
+                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos,
+                      (message + " tab cue").c_str());
+            } else {
+                auto color = appearance->palette().error;
+                check(paint.drawn.find(x04::error_message) != std::u16string::npos &&
+                      std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { return c.r == color.r && c.g == color.g && c.b == color.b; }),
+                      (message + " error text and cue").c_str());
+            }
+            check(x04::restore_error(form, entry) && !x04::error_semantics(form, *x04::describe(entry.handle)), (message + " restore").c_str());
+        }
+    }
+}
+
+void x04_candidate_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        for (const auto& entry : x04::inventory(form)) {
+            auto before = x04::describe(entry.handle);
+            if (!detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
+            auto message = std::string("X04 candidate ") + before->id;
+            check(x04::prepare_candidate(form, entry), (message + " prepare").c_str());
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, before->id);
+            check(x04::open_candidate(entry), (message + " open").c_str());
+            state.key_down({before->kind == Kind::tabs ? Key::right : Key::down});
+            frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                            int(size.second * scale), scale, form.scroll, before->id);
+            auto semantic = x04::describe(entry.handle);
+            auto* item = x04::candidate_placement(frame, *semantic);
+            check(item && semantic->visible && semantic->candidate && x04::candidate_label(*semantic).has_value(),
+                  (message + " semantics").c_str());
+            PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            auto cue = semantic->kind == Kind::dropdown ? appearance->palette().selection : appearance->palette().accent;
+            check(paint.drawn.find(*x04::candidate_label(*semantic)) != std::u16string::npos &&
+                  std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { return c.r == cue.r && c.g == cue.g && c.b == cue.b; }),
+                  (message + " paint").c_str());
+            if (semantic->kind == Kind::tabs || semantic->kind == Kind::dropdown)
+                check(semantic->value == before->value, (message + " candidate preserves selection").c_str());
+            check(x04::restore_candidate(form, entry) && x04::same_selection(*before, *x04::describe(entry.handle)),
+                  (message + " restore").c_str());
+        }
+    }
+}
+
+void x04_search_read_only_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& search = form.list->handles.search;
+        check(x04::drive_search_read_only(form) && bool(search.focus()), "X04 drive search read-only");
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                             int(size.second * scale), scale, form.scroll, search.describe()->id);
+        auto semantic = search.describe(); auto* item = frame.find(search);
+        check(item && semantic->visible && semantic->read_only && semantic->enabled &&
+              search.set_value(u"blocked").status == Status::read_only &&
+              detail::access(form.ui).text_input(u"x").status == Status::read_only, "X04 search read-only restriction");
+        PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
+        detail::component_type(item->kind).paint(paint);
+        check(paint.drawn.find(semantic->name) != std::u16string::npos &&
+              paint.drawn.find(semantic->value) != std::u16string::npos &&
+              paint.drawn.find(appearance->component_presentation().read_only_suffix) != std::u16string::npos,
+              "X04 search read-only paint");
+        check(x04::restore_search_read_only(form) && !search.describe()->read_only, "X04 search read-only recovery");
+    }
+}
+
+void x04_modal_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        check(x04::open_modal(form), "X04 open modal");
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                             int(size.second * scale), scale, form.scroll);
+        check(frame.modal && form.handles.progress_zero.invoke().status == Status::blocked_by_modal, "X04 modal blocks background");
+        for (const auto& entry : x04::inventory(form)) {
+            if (entry.page != "modal") continue;
+            auto semantic = x04::describe(entry.handle); auto* item = x04::placement(frame, entry.handle);
+            auto message = std::string("X04 modal ") + semantic->id;
+            check(item && semantic->visible && x04::normal_semantics(*semantic), (message + " semantics").c_str());
+            PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            for (const auto& expected : x04::normal_text(*semantic))
+                check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
+        }
+        check(x04::close_modal(form) && !*form.handles.dialog.is_open(), "X04 close modal");
+    }
+}
+
+void x04_tooltip_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        std::uint64_t now = 100; state.tooltip_clock([&] { return now; }); state.window_active(true);
+        check(x04::prepare_tip(form), "X04 prepare tooltip");
+        auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+            int(size.second * scale), scale, form.scroll, form.handles.progress_half.describe()->id); };
+        draw(); now += 600; state.tooltip_time(now); auto frame = draw();
+        auto tip = std::find_if(frame.overlays.begin(), frame.overlays.end(), [](const auto& p) { return p.tooltip; });
+        check(*form.handles.progress_tip.visible() && tip != frame.overlays.end(), "X04 tooltip visible");
+        std::u16string text; for (const auto& line : tip->lines) text += line.text;
+        check(text.find(form.handles.progress_half.describe()->description) != std::u16string::npos &&
+              (!frame.hit(tip->bounds.x + 1, tip->bounds.y + 1) || !frame.hit(tip->bounds.x + 1, tip->bounds.y + 1)->tooltip),
+              "X04 tooltip text and pointer transparency");
+        state.key_down({Key::escape});
+        check(!*form.handles.progress_tip.visible() && form.handles.progress_half.describe()->focused, "X04 tooltip Escape");
+        state.tooltip_clock({});
+    }
+}
+
+void x04_normal_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        for (const auto& entry : x04::inventory(form)) {
+            bool modal = entry.page == "modal";
+            if (modal) check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "X04 open normal modal");
+            else if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 normal page");
+            auto semantic = x04::describe(entry.handle); auto message = std::string("X04 normal ") + semantic->id;
+            const auto& owner = semantic->target.empty() ? semantic->id : semantic->target;
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, owner);
+            semantic = x04::describe(entry.handle);
+            auto* item = detail::find_placement(frame, owner);
+            if (!semantic->visible && semantic->kind == Kind::label && semantic->value.empty()) {
+                check(item || semantic->target.empty(), (message + " empty label").c_str());
+            } else {
+                check(item && semantic->visible && x04::normal_semantics(*semantic), (message + " semantics").c_str());
+                auto owner_semantic = state.describe(owner);
+                PaintTextProbe paint(state, *item, *owner_semantic, *appearance, scale, true);
+                detail::component_type(item->kind).paint(paint);
+                for (const auto& expected : x04::normal_text(*semantic))
+                    check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
+            }
+            if (modal) check(bool(form.handles.dialog.settle(false)), "X04 close normal modal");
+        }
+    }
+}
+
+void x04_disabled_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        for (const auto& entry : x04::inventory(form)) {
+            auto initial = x04::describe(entry.handle);
+            if (!detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
+            if (initial->kind == Kind::tabs) {
+                auto tabs = std::get<TabsHandle>(entry.handle);
+                check(bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus()), "X04 disable tab page");
+                auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                     int(size.second * scale), scale, form.scroll);
+                auto semantic = tabs.describe(); auto* item = frame.find(tabs);
+                check(item && !semantic->options[1].enabled && tabs.activate({"v02"}).status == Status::disabled,
+                      "X04 disabled tab restriction");
+                PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
+                detail::component_type(item->kind).paint(paint);
+                check(paint.drawn.find(appearance->component_presentation().disabled_tab_marker) != std::u16string::npos,
+                      "X04 disabled tab cue");
+                state.pointer_down(semantic->id, 1);
+                check(state.pointer_up(semantic->id, 1).status == Status::disabled && *tabs.active() == OptionValue{"v01"},
+                      "X04 disabled tab rejects pointer");
+                state.key_down({Key::right});
+                check(tabs.describe()->candidate == OptionValue{"v03"} && *tabs.active() == OptionValue{"v01"},
+                      "X04 keyboard skips disabled tab");
+                check(bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})),
+                      "X04 disabled tab recovers");
+                continue;
+            }
+            if (entry.page == "modal") {
+                check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "X04 open modal");
+            } else check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 activate page");
+            auto message = std::string("X04 disabled ") + initial->id;
+            check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle), (message + " prepare").c_str());
+            check(x04::set_enabled(entry.handle, false), (message + " drive").c_str());
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, initial->id);
+            auto semantic = x04::describe(entry.handle);
+            auto* item = x04::placement(frame, entry.handle);
+            check(item && semantic->visible && !semantic->enabled && !semantic->focused && x04::disabled_retry(entry.handle),
+                  (message + " restriction").c_str());
+            PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+                  (message + " non-color cue").c_str());
+            auto snapshot = x04::snapshot(form);
+            check(state.pointer_down(semantic->id).status == Status::disabled, (message + " pointer").c_str());
+            state.key_down({Key::space}); state.key_up(Key::space);
+            auto after = x04::describe(entry.handle);
+            check(after->value == semantic->value && x04::same_model(snapshot, x04::snapshot(form)), (message + " keyboard").c_str());
+            check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
+                  x04::set_enabled(entry.handle, initial->enabled), (message + " restore").c_str());
+            if (entry.page == "modal") check(bool(form.handles.dialog.settle(false)), "X04 close modal");
+        }
+    }
+}
+
+void x04_group_conflicts_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure;
+        for (const auto& entry : x04::inventory(form)) {
+            auto semantic = x04::describe(entry.handle);
+            if (!x04::group_conflict_supported(*semantic)) continue;
+            auto message = std::string("X04 conflict ") + semantic->id;
+            check(x04::drive_group_conflict(form, entry), (message + " drive").c_str());
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, semantic->id);
+            auto* item = x04::placement(frame, entry.handle);
+            semantic = x04::describe(entry.handle);
+            check(item && semantic->visible && semantic->source_conflict, (message + " field visibility").c_str());
+            PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            check(paint.drawn.find(appearance->component_presentation().conflict_suffix) != std::u16string::npos &&
+                  paint.drawn.find(semantic->name) != std::u16string::npos &&
+                  (semantic->kind == Kind::checkbox || semantic->value.empty() || paint.drawn.find(semantic->value) != std::u16string::npos) &&
+                  (semantic->kind != Kind::checkbox || (semantic->checked == true &&
+                   std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto a = appearance->palette().accent; return c.r == a.r && c.g == a.g && c.b == a.b; }))),
+                  (message + " field paint").c_str());
+            auto latest = x04::latest_for(form, entry);
+            check(latest.describe()->enabled, (message + " latest enabled").c_str());
+            frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                            int(size.second * scale), scale, form.scroll, latest.describe()->id);
+            auto* action = frame.find(latest); auto action_semantic = latest.describe();
+            check(action && action_semantic->visible, (message + " latest visibility").c_str());
+            PaintTextProbe action_paint(detail::access(form.ui), *action, *action_semantic, *appearance, scale, true);
+            detail::component_type(action->kind).paint(action_paint);
+            check(action_paint.drawn.find(action_semantic->name) != std::u16string::npos, (message + " latest paint").c_str());
+            check(bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict &&
+                  bool(form.handles.reset.invoke()), (message + " restore").c_str());
+        }
+    }
+}
+
+void x04_selected_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true);
+        test::FakeMeasure measure;
+        for (const auto& entry : x04::inventory(form)) {
+            auto before = x04::describe(entry.handle);
+            if (!detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
+            if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 select page");
+            auto message = std::string("X04 selected ") + before->id;
+            check(x04::drive_selected(entry), message.c_str());
+            auto semantic = x04::describe(entry.handle);
+            auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                 int(size.second * scale), scale, form.scroll, semantic->id);
+            const auto* item = x04::placement(frame, entry.handle);
+            semantic = x04::describe(entry.handle);
+            check(item && semantic->visible && x04::selected_semantics(*semantic), message.c_str());
+            PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
+            detail::component_type(item->kind).paint(paint);
+            const auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
+                ? appearance->palette().accent : appearance->palette().selection;
+            check(std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) {
+                return c.r == cue.r && c.g == cue.g && c.b == cue.b;
+            }) && paint.drawn.find(semantic->kind == Kind::checkbox ? semantic->name : semantic->value) != std::u16string::npos,
+                message.c_str());
+            check(x04::restore_selected(form, entry) && x04::same_selection(*before, *x04::describe(entry.handle)), message.c_str());
+        }
+    }
+}
+
+void x04_hidden_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true);
+        test::FakeMeasure measure;
+        for (auto page : {"v01", "v02", "v03"}) {
+            check(bool(form.handles.tabs.activate({page})), "X04 activate page");
+            auto frame = arrange(form.page(), form.ui, *appearance, measure,
+                                 int(size.first * scale), int(size.second * scale), scale, form.scroll);
+            for (const auto& entry : x04::inventory(form)) {
+                if (entry.page == "shared" || entry.page == "modal" || entry.page == page) continue;
+                auto semantic = x04::describe(entry.handle);
+                auto message = std::string("X04 hidden ") + (semantic ? semantic->id : "missing") + " on " + page;
+                check(semantic && !semantic->visible && !x04::placement(frame, entry.handle) &&
+                      detail::access(form.ui).available(semantic->id).status == Status::hidden &&
+                      x04::hidden_retry(entry.handle), message.c_str());
+            }
+        }
+    }
+}
+
 void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
@@ -1352,6 +1713,17 @@ int main() {
         {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
         {"X04 name conflict has a field cue", x04_name_conflict_is_drawn_at_field},
         {"X04 name read-only at each size and scale", x04_name_read_only_size_scale},
+        {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
+        {"X04 error inventory at each size and scale", x04_error_inventory_at_each_size_and_scale},
+        {"X04 candidate inventory at each size and scale", x04_candidate_inventory_at_each_size_and_scale},
+        {"X04 search read-only at each size and scale", x04_search_read_only_at_each_size_and_scale},
+        {"X04 modal inventory at each size and scale", x04_modal_inventory_at_each_size_and_scale},
+        {"X04 tooltip at each size and scale", x04_tooltip_at_each_size_and_scale},
+        {"X04 normal inventory at each size and scale", x04_normal_inventory_at_each_size_and_scale},
+        {"X04 disabled inventory at each size and scale", x04_disabled_inventory_at_each_size_and_scale},
+        {"X04 group conflicts at each size and scale", x04_group_conflicts_at_each_size_and_scale},
+        {"X04 selected inventory at each size and scale", x04_selected_inventory_at_each_size_and_scale},
+        {"X04 hidden inventory at each size and scale", x04_hidden_inventory_at_each_size_and_scale},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
         {"X04 painted state and modal text", painted_states_agree_with_semantics},
         {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},

@@ -35,6 +35,9 @@ private:
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
     bool reject_notices_conflict_ = false;
+    std::optional<lcars::MixedFieldError> next_field_error_;
+    std::string clip_padding_id_;
+    std::u16string clip_padding_text_;
     bool pages_ = false;
     std::array<int, 3> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
@@ -79,8 +82,15 @@ public:
     void update_mode_source(lcars::OptionValue value);
     void update_region_source(lcars::OptionValue value);
     void update_progress(int value);
+    // Fixture: expand one existing label to exercise scroll clipping, then restore its model source.
+    lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
+    void clear_clip_padding();
     // Fixture: reject the next apply after a concurrent boolean-source update and draft edit.
     void reject_next_apply_with_notices_source_change() { reject_notices_conflict_ = true; }
+    // Fixture: reject one otherwise valid apply with an application-supplied field error.
+    void reject_next_apply_for(lcars::ConfirmField field, std::u16string message) {
+        next_field_error_ = lcars::MixedFieldError{std::move(field), std::move(message)};
+    }
 private:
     bool validate();
     lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);

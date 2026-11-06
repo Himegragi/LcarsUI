@@ -82,7 +82,14 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     handles.volume.connect_source({[this] { return volume_applied_; }, [this](std::function<void()> changed) {
         volume_changed_ = std::move(changed); return [this] { volume_changed_ = {}; };
     }});
-    handles.intro.connect_source([this] { return long_intro_ ? long_intro : short_intro; });
+    auto title_id = handles.title.describe()->id;
+    auto title_text = handles.title.describe()->value;
+    handles.title.connect_source([this, title_id, title_text] {
+        return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
+    });
+    handles.intro.connect_source([this] {
+        return clip_padding_id_ == ids_.intro ? clip_padding_text_ : (long_intro_ ? long_intro : short_intro);
+    });
     handles.state.connect_source([this] {
         std::u16string state = mode_ == Mode::read_only ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
         if (handles.name.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
@@ -141,6 +148,11 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         const auto prefix = i.title + ".pages.";
         list = std::make_unique<list_page::Page>(&ui, &scroll, prefix + "v02.");
         handles.v03_title = ui.add_label({.id = prefix + "v03.title", .kind = Kind::label, .value = u"確認與說明"});
+        auto v03_title_id = handles.v03_title.describe()->id;
+        auto v03_title_text = handles.v03_title.describe()->value;
+        handles.v03_title.connect_source([this, v03_title_id, v03_title_text] {
+            return clip_padding_id_ == v03_title_id ? clip_padding_text_ : v03_title_text;
+        });
         handles.progress = ui.add_progress({.id = prefix + "v03.progress", .kind = Kind::progress, .label = u"示範進度"});
         handles.progress_source = ui.add_label({.id = prefix + "v03.source", .kind = Kind::label});
         handles.progress_zero = ui.add_button({.id = prefix + "v03.zero", .kind = Kind::button, .label = u"0%"});
@@ -175,7 +187,9 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.dialog_open = ui.add_button({.id = prefix + "v03.open", .kind = Kind::button, .label = u"Reset progress..."});
         handles.dialog_temporary = ui.add_button({.id = prefix + "v03.temporary", .kind = Kind::button, .label = u"Temporary opener..."});
         handles.dialog_result = ui.add_label({.id = prefix + "v03.result", .kind = Kind::label});
-        handles.dialog_result.connect_source([this] {
+        auto dialog_result_id = handles.dialog_result.describe()->id;
+        handles.dialog_result.connect_source([this, dialog_result_id] {
+            if (clip_padding_id_ == dialog_result_id) return clip_padding_text_;
             auto count = std::to_string(dialog_confirmations_);
             return u"Result: " + dialog_result_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
         });
@@ -209,6 +223,22 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     }
 }
 
+Result Form::set_clip_padding(LabelHandle label, std::u16string text) {
+    auto semantic = label.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    auto id = semantic->id;
+    if (list && (id == list->handles.title.describe()->id || id == list->handles.detail.describe()->id))
+        return list->set_clip_padding(label, std::move(text));
+    if (id != handles.title.describe()->id && id != handles.intro.describe()->id &&
+        (!pages_ || (id != handles.v03_title.describe()->id && id != handles.dialog_result.describe()->id)))
+        return {Status::invalid_value, u"Unknown clipping fixture label"};
+    clip_padding_id_ = std::move(id); clip_padding_text_ = std::move(text); return {};
+}
+void Form::clear_clip_padding() {
+    clip_padding_id_.clear(); clip_padding_text_.clear();
+    if (list) list->clear_clip_padding();
+}
+
 bool Form::validate() {
     bool valid = !blank(*handles.name.draft());
     handles.name.set_error(valid ? u"" : required_name);
@@ -224,6 +254,10 @@ MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
     if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
+    if (next_field_error_) {
+        auto error = std::move(*next_field_error_); next_field_error_.reset();
+        return {{Status::invalid_value, u"Fixture rejected apply"}, {std::move(error)}};
+    }
     if (reject_notices_conflict_) {
         reject_notices_conflict_ = false;
         handles.notices.toggle();

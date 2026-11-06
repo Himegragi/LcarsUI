@@ -10,6 +10,8 @@ class Page {
     std::optional<lcars::OptionValue> selection_;
     std::u16string search_;
     bool descending_ = false, disabled_eight_ = false;
+    std::string clip_padding_id_;
+    std::u16string clip_padding_text_;
     std::function<void()> search_changed_, selection_changed_;
     lcars::Result refresh();
     lcars::Result sample(int count);
@@ -29,6 +31,8 @@ public:
         lcars::LabelHandle title, detail;
     } handles;
     lcars::layout::Node page() const;
+    lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
+    void clear_clip_padding();
     std::optional<lcars::OptionValue> selection() const { return selection_; }
 };
 }
