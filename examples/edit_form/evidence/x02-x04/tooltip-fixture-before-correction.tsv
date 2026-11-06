@@ -1,0 +1,65 @@
+appearance	case	status	evidence
+web	X02-v01-dismiss	PASS	shipped 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	shipped 960x720 100%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	shipped 960x720 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	shipped 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	shipped 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	shipped 960x720 150%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	shipped 960x720 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	shipped 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	shipped 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	shipped 640x480 100%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	shipped 640x480 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	shipped 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	shipped 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	shipped 640x480 150%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	shipped 640x480 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	shipped 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	alternate 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	alternate 960x720 100%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	alternate 960x720 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	alternate 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	alternate 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	alternate 960x720 150%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	alternate 960x720 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	alternate 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	alternate 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	alternate 640x480 100%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	alternate 640x480 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	alternate 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+web	X02-v01-dismiss	PASS	alternate 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+web	X02-v02-list	PASS	alternate 640x480 150%: End=1, hit=1, wheel=1, End again=1
+web	X02-v03-dialog	PASS	alternate 640x480 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+web	X02-v03-tooltip	FAIL	alternate 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	shipped 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	shipped 960x720 100%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	shipped 960x720 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	shipped 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	shipped 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	shipped 960x720 150%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	shipped 960x720 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	shipped 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	shipped 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	shipped 640x480 100%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	shipped 640x480 100%: wheel unchanged=1, scroll maximum=16, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	shipped 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	shipped 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	shipped 640x480 150%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	shipped 640x480 150%: wheel unchanged=1, scroll maximum=24, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	shipped 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	alternate 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	alternate 960x720 100%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	alternate 960x720 100%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	alternate 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	alternate 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	alternate 960x720 150%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	alternate 960x720 150%: wheel unchanged=1, scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	alternate 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	alternate 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	alternate 640x480 100%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	alternate 640x480 100%: wheel unchanged=1, scroll maximum=16, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	alternate 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)
+material	X02-v01-dismiss	PASS	alternate 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+material	X02-v02-list	PASS	alternate 640x480 150%: End=1, hit=1, wheel=1, End again=1
+material	X02-v03-dialog	PASS	alternate 640x480 150%: wheel unchanged=1, scroll maximum=24, Esc=1, Cancel=1, Confirm=1
+material	X02-v03-tooltip	FAIL	alternate 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=0, pointer leave=1 (controlled dwell clock)

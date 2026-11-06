@@ -1,5 +1,77 @@
 # First component batch acceptance — issue #25
 
+## X02 / X04 implementation follow-up (2026-11-06)
+
+**Current result: NOT COMPLETED. X02 and X04 remain open.** This section supersedes only the X02 and X04 rows in the earlier sections. The tested code is `32632d2` on `batch/x02-x04`; the local integration tip `dee2d74` was already an ancestor. No production, host input, IME, or DPI code changed. The existing D01, E01 and user-trial evidence above the removal follow-up remains valid for the earlier build; those idle-desktop tests were deliberately not rerun here.
+
+### X02 per-sample results
+
+Each cell covers **both shipped and alternate ID sets**. `D` means the new checks passed for the interactions named for that page; it is not an X02 acceptance pass. Core tests drive typed handles and the input seam with fake metrics; native checks use a real Win32 window, the host's real fonts and paint, posted keyboard/click/wheel messages, and synchronous `WM_MOUSEMOVE`/`WM_MOUSELEAVE` for a controlled pointer visit. Tooltip dwell uses a controlled test clock. `Q` means the open dropdown/tooltip scroll policy below was not asserted. `M0` means a modal wheel was delivered and offset stayed unchanged, but the assembled background had no overflow; `M+` means the modal wheel was checked against an overflowing background. [Native sample rows](x02-x04/host.tsv); [core cases](x02-x04/edit-form.log).
+
+| Page | DIP size | Scale | Web | Material | Defined behavior exercised |
+| --- | --- | --- | --- | --- | --- |
+| V01 | 960×720 | 100% | D, Q | D, Q | Dropdown Esc, Tab, outside click; value, focus, outside hit and target action |
+| V01 | 960×720 | 150% | D, Q | D, Q | Same |
+| V01 | 640×480 | 100% | D, Q | D, Q | Same |
+| V01 | 640×480 | 150% | D, Q | D, Q | Same |
+| V02 | 960×720 | 100% | D | D | 100-item nested list: End, visible row, hit, wheel and End again; no popup is assembled on this page |
+| V02 | 960×720 | 150% | D | D | Same |
+| V02 | 640×480 | 100% | D | D | Same |
+| V02 | 640×480 | 150% | D | D | Same |
+| V03 | 960×720 | 100% | D, Q, M0 | D, Q, M0 | Tooltip Esc, focus leave, pointer leave, transparency; dialog Esc, Cancel, Confirm and wheel |
+| V03 | 960×720 | 150% | D, Q, M0 | D, Q, M0 | Same |
+| V03 | 640×480 | 100% | D, Q, M0 | D, Q, M+ | Same |
+| V03 | 640×480 | 150% | D, Q, M0 | D, Q, M+ | Same |
+
+**Policy questions:** For V01, when the containing region scrolls with the dropdown open, must it follow the anchor, clip, or close, both while the anchor remains partially visible and when it becomes fully clipped? For V03, what are those outcomes for the tooltip in the same two anchor-visibility situations? B03/B04 and X02 require consistent scroll, clipping, hit and popup behavior but do not choose these outcomes; ADR 0009's “follow” is about the source **appearance**, not a scroll policy. Those cases were stopped rather than made into assertions of current behavior. V03 dialog background scrolling is blocked by the modal contract, but the M0 samples do not demonstrate blocking a movable viewport. V02 has no assembled popup, so an open-popup scroll case there is not applicable.
+
+### X04 component × state evidence
+
+The following rows apply to **both appearances and both ID sets**. `B` is the prior baseline: semantic names/values/option labels were compared with text **sent to** each arranged component's paint adapter with fake metrics, even if clipped; it does not establish visible pixels. `S` is a new paint-command state check, `R` is a representative real-font host raster check, and `O` is still open. A dash means the state is not supplied by this assembled fixture or not applicable to that row. `S` checks the listed cues, not a complete clipped-pixel comparison. [Core cases](x02-x04/edit-form.log); [native checks](x02-x04/host.tsv); [V01 error](x02-x04/web-x04-v01-error.bmp), [V02 selection](x02-x04/web-x04-v02-selection.bmp), [V03 dialog](x02-x04/web-x04-v03-dialog.bmp) and corresponding Material images in the same directory. The real raster checks detect colored/text pixels in expected regions; they do not OCR or compare every semantic string.
+
+| Page / component handles | Normal | Disabled | Read-only / selected | Error / source conflict | Executing |
+| --- | --- | --- | --- | --- | --- |
+| V01 `title`, `intro`, `state`, `draft`, `result`, `count` labels | B; visibility O | — | — | `state`: S conflict wording; other state-dependent values O | — |
+| V01 `name_label`, `name_help`, `name_error` associations | O as separate carriers; field name/error checked | — | — | name error association checked; visible help/error clipping O | — |
+| V01 `name` | B; visibility O | S suffix/muted | S suffix; selection color S, semantic selection comparison O | S error text/color and conflict state/latest action; R error pixels | — |
+| V01 `normal`, `read_only`, `disabled`, `error`, `long_text`, `offline_disabled`, `region_empty`, `reset` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
+| V01 `apply`, `latest`, `notices_latest`, `mode_latest`, `region_latest`, `volume_latest` buttons | B; visibility O | S `apply`; other disabled states O | — | S name/mode/region/volume latest actions; checkbox latest O | O while executing |
+| V01 `notices` checkbox | B | S muted | S checked/unchecked indicator | O checkbox conflict/error and latest action in assembled fixture | — |
+| V01 `mode` radio group | B | S group muted and disabled option wording | S selected accent | S conflict notice and latest action; error O | — |
+| V01 `region` dropdown | B | S suffix/muted | O candidate and selected overlay presentation | S empty error, conflict notice and latest action | — |
+| V01 `volume` slider | B | S suffix/muted | O all value/track positions | S conflict notice and latest action; error O | — |
+| V02 `title`, `detail` labels | B; visibility O | — | — | O state-dependent detail output | — |
+| V02 `search` text | B; visibility O | O if restricted | O | O | — |
+| V02 `zero`, `one`, `twenty`, `hundred`, `sort`, `disable_eight`, `reset` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
+| V02 `erase` button | B | S muted | — | — | O while executing |
+| V02 `list` | B option labels; semantic list name O | S disabled row wording | S selected marker/highlight; R selected-row pixels | O other combinations | — |
+| Shared `tabs` | B option labels; semantic group name O | O disabled tab in assembled page | S active highlight | O invalid tab presentation | — |
+| V03 `v03_title`, `progress_source`, `dialog_result` labels | B; visibility O | — | — | O state-dependent output | — |
+| V03 `progress` | B | — | S earlier source/value/fill checks; O complete visible comparison | — | — (display is not a work manager) |
+| V03 `progress_zero`, `progress_half`, `progress_full`, `progress_below`, `progress_above`, `reset_v03`, `dialog_open`, `dialog_temporary` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
+| V03 dialog `dialog_title`, `dialog_body`, `dialog_cancel`, `dialog_confirm` | S text sent to adapter while open; R text-region pixels | O buttons if restricted | — | — | O buttons while executing |
+| V03 `progress_tip` | O complete semantic-description versus visible text comparison | — | — | — | — |
+
+The hidden-page check inventories every placement produced on each active page and verifies it is absent and reports `hidden` admission on the other pages. One fully clipped V01 button is checked for a zero visible intersection and no hit. This is not an exhaustive visibility report for every component, and the semantic snapshot does not expose a general visible/clipped property. Direct component probes do not honor the host's clipping and may record offscreen commands. The native raster samples cover a state on each page under each appearance, but not every component or state.
+
+The assembled form has no exposed boolean-source update/reentrant rejection fixture for the checkbox conflict; the existing standalone checkbox regression is not substituted for that assembled-page comparison. Button `executing` is transient inside synchronous callbacks, and this follow-up does not capture the real paint path during that state. A native paint observation that records clipped text and its owning component, or an equivalent independent raster/text comparison, is still needed for the exhaustive claim.
+
+During test development, the first [wheel fixture](x02-x04/wheel-fixture-before-correction.tsv) failed samples with no overflow because it required a positive maximum; the corrected result records those samples as M0. The first [pointer fixture](x02-x04/tooltip-fixture-before-correction.tsv) failed to establish the pointer visit with queued synthetic moves while `TrackMouseEvent` could also queue a leave for the actual desktop pointer. The final test delivers the controlled pointer move and leave synchronously through the Win32 window procedure. These were test-fixture corrections, not production fixes; no conclusion about real hardware pointer movement is drawn from the controlled visit alone.
+
+### Verification and remaining work
+
+Debug desktop CTest passed **7/7**, including **156/156** native checks ([log](x02-x04/debug.log)). The first Release desktop run passed 6/7 CTest entries and **154/156** native checks: Material AC08 pointer-copy and 60 ms clipboard-contention copy failed; both reported clipboard restoration successful ([log](x02-x04/release-first.log), [native rows](x02-x04/host-first.tsv)). The new X02/X04 native rows passed in that run. The requested solo clipboard stress completed **386/400**, with **14 failures** across ordinary copy/paste/undo and contention-copy cases ([rows](x02-x04/clipboard/clipboard.tsv), [log](x02-x04/clipboard.log)); each failure reported Unicode clipboard text restored. This is the previously recorded intermittent area, but its cause is not established.
+
+After the solo run, a sequential Release desktop rerun passed **7/7** CTest entries and **156/156** native checks ([log](x02-x04/release.log), [rows](x02-x04/host.tsv)); this does not erase the preceding failures. Release core-only passed **6/6** ([log](x02-x04/core.log)). The assembled showcase suite passed **41/41** cases in each appearance and ID set, 164 case executions and 14,604 cumulative checks ([output](x02-x04/edit-form.log)). The 64 native X02 subchecks and six X04 raster subchecks passed in the final native run. Verification used Windows, clang-cl 19.1.5 and OpenGL 3.3.0 NVIDIA 610.88; the report and evidence are committed after the tested code.
+
+Trailing spaces and trailing blank lines were removed from saved build and host logs without changing outcomes.
+
+Not completed:
+
+1. Resolve the two exact popup-scroll policy questions above, then cross the defined result with every applicable sample through both seams. Obtain a meaningful movable-background modal-wheel check in the M0 samples without changing their requested client dimensions or pretending a zero maximum is a scroll.
+2. Complete X04's actual clipped-visible semantic comparison for every listed component and applicable state, including checkbox conflict/action, dropdown candidate, executing buttons, semantic list/tab names, tooltip content, and every hidden or clipped component. Extend native real-font/paint comparison beyond the three representative cues per appearance.
+3. Investigate the clipboard failures above; their cause is not established and this run does not establish clipboard stress as passing. UIA/screen-reader and MCP adapters and the previously recorded deferred design refactors remain separate work. Real IME and DPI were intentionally not rerun here.
+
 ## Idle-desktop reruns, D01 100%↔150% and user trial (2026-11-06)
 
 **Current result: NOT COMPLETED — X02 and X04 remain open.** This section supersedes the D01, E01 and user-trial rows of the follow-up below; its S-H1, P-B3, X02, X04 and clipboard rows still stand. All runs below rebuilt the stated commit in a clean worktree and were run by the coordinator with no other desktop activity and no concurrent native tests.
