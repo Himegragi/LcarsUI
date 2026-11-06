@@ -1060,7 +1060,17 @@ void popup_and_scroll_matrix() {
         host.tooltip_hover({});
         check(!*h.progress_tip.visible() && h.progress_half.describe()->focused && form.progress() == 50,
               "X02 tooltip pointer leave preserves focus and value");
+        auto before_modal = draw();
         check(bool(h.dialog_open.invoke()), "X02 open modal dialog");
+        if (before_modal.maximum > 0) {
+            int current = form.scroll.offset;
+            int next = current < before_modal.maximum ? current + 1 : current - 1;
+            auto viewport = before_modal.regions.front().clip;
+            int delta = next > current ? -1 : 1;
+            check(!before_modal.scroll_to(form.ui, form.scroll, next) &&
+                  !before_modal.wheel(form.ui, viewport.x + 1, viewport.y + 1, delta) && form.scroll.offset == current,
+                  "X02 a newly opened modal blocks scrolling through the preceding frame");
+        }
         auto dialog = draw();
         auto* cancel = dialog.find(h.dialog_cancel);
         auto* dialog_hit = cancel ? dialog.hit(cancel->bounds.x + cancel->bounds.w / 2, cancel->bounds.y + cancel->bounds.h / 2) : nullptr;

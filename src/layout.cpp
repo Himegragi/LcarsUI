@@ -147,7 +147,7 @@ int ScrollRegion::offset_for_thumb(int thumb_top) const {
 }
 bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     auto& owner = detail::access(ui);
-    if (owner_ != &owner || modal) return false;
+    if (owner_ != &owner || modal || owner.modal()) return false;
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
     if (region == regions.end()) return false;
     int next = std::clamp(offset, 0, region->maximum);
@@ -157,7 +157,8 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     return true;
 }
 bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
-    if (modal || owner_ != &detail::access(ui)) return false;
+    auto& owner = detail::access(ui);
+    if (modal || owner.modal() || owner_ != &owner) return false;
     // A popup owns its own wheel input; it must not scroll the background beneath it.
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
         if (!it->popup || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
