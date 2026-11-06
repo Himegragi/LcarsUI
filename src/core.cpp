@@ -957,7 +957,9 @@ void detail::UiState::refresh_tooltips() {
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
-        bool eligible = window_active_ && !modal_ && ((focus_ == id && !pointer_focus_) || tooltip_hover_ == id) && bool(available(id));
+        auto visible = visibility_.find(id);
+        bool on_screen = !has_frame_visibility_ || (visible != visibility_.end() && visible->second);
+        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && !pointer_focus_) || tooltip_hover_ == id) && bool(available(id));
         if (eligible != tip.eligible) {
             tip.eligible = eligible;
             tip.visible = false;
@@ -968,6 +970,24 @@ void detail::UiState::refresh_tooltips() {
         if (eligible && !tip.dismissed && !tip.visible && tooltip_now_ >= tip.deadline) {
             tip.visible = true; changed = true;
         }
+    }
+    if (changed && invalidate_) invalidate_();
+}
+void detail::UiState::frame_visibility(std::map<Id, bool, std::less<>> visibility) {
+    visibility_ = std::move(visibility);
+    has_frame_visibility_ = true;
+    refresh_tooltips();
+}
+void detail::UiState::scrolled() {
+    OperationScope operation(this);
+    close_popup();
+    if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
+    bool changed = false;
+    for (auto& [id, tip] : tooltips_) {
+        if (!tip.eligible || tip.dismissed) continue;
+        tip.visible = false;
+        tip.deadline = tooltip_now_ + tip.delay_ms;
+        changed = true;
     }
     if (changed && invalidate_) invalidate_();
 }
@@ -1598,6 +1618,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     Semantics s;
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
     s.enabled = control->enabled; s.read_only = control->read_only;
+    if (auto it = visibility_.find(control->id); it != visibility_.end())
+        s.visible = it->second && available(id).status != Status::hidden && (control->page != "dialog" || modal_);
     s.focusable = bool(focusable(*control));
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;

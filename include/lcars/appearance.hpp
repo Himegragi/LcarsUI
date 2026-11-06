@@ -30,6 +30,7 @@ struct FieldLayout {
 struct ComponentPresentation {
     std::u16string read_only_suffix = u"\uff08\u552f\u8b80\uff09";
     std::u16string disabled_suffix = u"\uff08\u505c\u7528\uff09";
+    std::u16string executing_suffix = u"\uff08\u57f7\u884c\u4e2d\uff09";
     std::u16string conflict_suffix = u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09";
     std::u16string no_selection = u"\u672a\u9078\u53d6";
     std::u16string no_items = u"\u6c92\u6709\u9805\u76ee";

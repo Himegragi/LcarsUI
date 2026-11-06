@@ -58,6 +58,7 @@ struct Semantics {
     Kind kind = Kind::label;
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
+    bool visible = false; // intersects the clip in the latest arranged frame
     std::vector<OptionSemantics> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;

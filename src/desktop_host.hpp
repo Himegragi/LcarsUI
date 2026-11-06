@@ -8,6 +8,14 @@
 #include <vector>
 
 namespace lcars::detail {
+struct PaintObservation {
+    enum class Type { text, fill, rounded } type;
+    std::string owner;
+    std::u16string text;
+    Rect bounds, clip;
+    Color color;
+    bool visible = false, popup = false, tooltip = false;
+};
 class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
@@ -39,6 +47,9 @@ public:
     // Arrange only, with the host's real text measurement and an independent scroll state.
     Frame layout(int width, int height, float scale, ScrollState& scroll, std::string_view reveal);
     const Frame& frame() const { return frame_; }
+    // Verification observer: records only the most recently painted actual frame.
+    void observe_paint(bool enabled) { observe_paint_ = enabled; paint_observations_.clear(); }
+    const std::vector<PaintObservation>& paint_observations() const { return paint_observations_; }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }
     std::vector<std::wstring>& ime_log() { return ime_log_; }
@@ -68,6 +79,8 @@ private:
     char16_t pending_high_ = 0;
     std::vector<std::wstring> ime_log_, trace_;
     bool tracing_ = false;
+    bool observe_paint_ = false;
+    std::vector<PaintObservation> paint_observations_;
 
     Frame arrange(int width, int height, float scale);
     void release();

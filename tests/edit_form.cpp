@@ -271,6 +271,22 @@ void checkbox_conflict_is_visible_and_can_use_latest() {
           "Use latest adopts the checkbox source");
 }
 
+void assembled_checkbox_conflict_offers_latest() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    form.reject_next_apply_with_notices_source_change();
+    check(bool(h.notices.toggle()), "X04 prepare checkbox draft");
+    check(h.apply.invoke().status == Status::invalid_value && h.notices.describe()->source_conflict &&
+          *h.notices.draft() && !form.notices_applied() && h.notices_latest.describe()->enabled,
+          "X04 assembled rejected apply exposes the checkbox conflict and latest action");
+    test::FakeMeasure measure;
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll, h.notices.describe()->id);
+    auto* box = frame.find(h.notices);
+    check(box && !box->description_lines.empty(), "X04 assembled checkbox draws conflict wording");
+    check(bool(h.notices_latest.invoke()) && !*h.notices.draft() && !h.notices.describe()->source_conflict,
+          "X04 assembled latest action adopts the external checkbox value");
+}
+
 void option_conflicts_are_visible_and_can_use_latest() {
     edit_form::Form form(ids);
     auto& h = form.handles;
@@ -802,10 +818,14 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
     check(apply != nullptr, "X04 visible page contains the apply button");
     auto area = intersect(apply->bounds, apply->clip);
     check(area.w == 0 || area.h == 0, "X04 apply starts fully clipped in this viewport");
+    check(!h.apply.describe()->visible && !form.list->handles.list.describe()->visible && h.tabs.describe()->visible,
+          "X04 semantics distinguish a clipped component, a hidden page and visible tabs");
     auto* hit = first.hit(std::max(0, apply->bounds.x), std::max(0, apply->bounds.y));
     check(!hit || hit->id != apply->id, "X04 a clipped button is not a hit target");
     h.tabs.activate({"v02"});
     auto second = frame();
+    check(!h.name.describe()->visible && second.find(h.tabs) && h.tabs.describe()->visible,
+          "X04 semantic visibility follows the active page");
     check(!second.find(h.name) && !second.find(h.progress) && h.name.set_value(u"hidden").status == Status::hidden &&
           h.dialog_open.invoke().status == Status::hidden, "X04 V01 and V03 are absent and reject actions on V02");
     h.tabs.activate({"v03"});
@@ -901,6 +921,79 @@ void popup_and_scroll_matrix() {
         check(!h.region.describe()->expanded && h.tabs.describe()->focused && *h.region.draft() == OptionValue{"north"} &&
               *h.tabs.active() == OptionValue{"v01"}, "X02 outside click cancels and still activates its target");
 
+        h.region.focus(); auto scroll_frame = draw(dropdown_id);
+        h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
+        check(h.region.describe()->candidate == OptionValue{"south"}, "X02 scroll starts with an unconfirmed candidate");
+        int before = form.scroll.offset;
+        int destination = before < scroll_frame.maximum ? before + 1 : before - 1;
+        check(!scroll_frame.scroll_to(form.ui, form.scroll, before) && h.region.describe()->expanded,
+              "X02 a stationary viewport does not cancel the popup");
+        check(scroll_frame.scroll_to(form.ui, form.scroll, destination) && !h.region.describe()->expanded &&
+              !h.region.describe()->candidate && h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
+              "X02 a moving viewport cancels the dropdown without changing focus or value");
+
+        // Choose real offsets from the assembled page's own geometry. If the page cannot
+        // expose an edge at this size, don't invent extra overflow to manufacture a sample.
+        h.long_text.invoke();
+        for (bool partial : {true, false}) {
+            auto geometry = draw();
+            const auto* anchor = geometry.find(h.region);
+            int original_top = anchor->bounds.y + form.scroll.offset;
+            int half = std::max(1, anchor->bounds.h / 2);
+            int top_edge = original_top + anchor->bounds.h - anchor->clip.y;
+            int bottom_edge = original_top - (anchor->clip.y + anchor->clip.h);
+            struct Movement { int before, after; };
+            std::optional<Movement> movement;
+            for (auto candidate : {Movement{top_edge - (partial ? half : 0) - 1, top_edge - (partial ? half : 0)},
+                                   Movement{bottom_edge + (partial ? half : 0) + 1, bottom_edge + (partial ? half : 0)}}) {
+                if (candidate.before < 0 || candidate.after < 0 || candidate.before > geometry.maximum || candidate.after > geometry.maximum) continue;
+                int y = original_top - candidate.before;
+                if (y < anchor->clip.y + anchor->clip.h && y + anchor->bounds.h > anchor->clip.y) { movement = candidate; break; }
+            }
+            if (!movement) {
+                std::cout << "X02 dropdown " << (partial ? "partial" : "clipped") << " anchor unreachable at "
+                          << size.w << 'x' << size.h << ' ' << int(scale * 100) << "% with this assembled page\n";
+                continue;
+            }
+            geometry.scroll_to(form.ui, form.scroll, movement->before); geometry = draw();
+            h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
+            check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"},
+                  "X02 edge sample opens with an unconfirmed dropdown candidate");
+            check(geometry.scroll_to(form.ui, form.scroll, movement->after), "X02 edge sample moves the viewport");
+            auto after = draw(); anchor = after.find(h.region);
+            auto visible_area = intersect(anchor->bounds, anchor->clip);
+            bool correct_edge = partial ? visible_area.h > 0 && visible_area.h < anchor->bounds.h : visible_area.h == 0;
+            check(correct_edge && !h.region.describe()->expanded && !h.region.describe()->candidate &&
+                  h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
+                  "X02 edge scroll cancels the dropdown and preserves value and focus");
+        }
+        // A focused source scrolled entirely out cannot show a tooltip while it is clipped.
+        h.region.focus(); auto visible_frame = draw(dropdown_id);
+        std::uint64_t tip_now = 0;
+        host.tooltip_clock([&] { return tip_now; }); host.window_active(true);
+        auto region_tip = form.ui.add_tooltip(h.region, u"Region help", 100);
+        tip_now = 100; host.tooltip_time(tip_now);
+        auto* tip_anchor = visible_frame.find(h.region);
+        int top_cutoff = tip_anchor->bounds.y + form.scroll.offset + tip_anchor->bounds.h - tip_anchor->clip.y;
+        int bottom_cutoff = tip_anchor->bounds.y + form.scroll.offset - tip_anchor->clip.y - tip_anchor->clip.h;
+        int clipped_offset = top_cutoff >= 0 && top_cutoff <= visible_frame.maximum ? top_cutoff :
+                             bottom_cutoff >= 0 && bottom_cutoff <= visible_frame.maximum ? bottom_cutoff : -1;
+        if (clipped_offset >= 0 && clipped_offset != form.scroll.offset) {
+            int previous = form.scroll.offset;
+            check(*region_tip.visible() && visible_frame.scroll_to(form.ui, form.scroll, clipped_offset),
+                  "X02 start with a visible tooltip and scroll its source completely out");
+            auto clipped_frame = draw(); tip_now += 200; host.tooltip_time(tip_now);
+            check(!*region_tip.visible() && h.region.describe()->focused,
+                  "X02 tooltip stays hidden while its focused source is fully clipped");
+            clipped_frame.scroll_to(form.ui, form.scroll, previous); draw();
+            tip_now += 99; host.tooltip_time(tip_now);
+            check(!*region_tip.visible(), "X02 returning a clipped source starts a new dwell");
+            ++tip_now; host.tooltip_time(tip_now);
+            check(*region_tip.visible(), "X02 tooltip returns only after the new dwell");
+        }
+        host.tooltip_clock({});
+        h.long_text.invoke();
+
         check(bool(h.tabs.activate({"v02"})), "X02 open list page");
         auto& list = form.list->handles.list;
         check(bool(list.focus()), "X02 focus list");
@@ -919,6 +1012,16 @@ void popup_and_scroll_matrix() {
         auto tooltip = draw(source_id);
         auto tip = std::find_if(tooltip.overlays.begin(), tooltip.overlays.end(), [](const Placement& p) { return p.tooltip; });
         check(tip != tooltip.overlays.end() && inside(tip->bounds) && *h.progress_tip.visible(), "X02 tooltip appears inside the window after scroll reveal");
+        if (tooltip.maximum > 0) {
+            int current = form.scroll.offset;
+            int next = current < tooltip.maximum ? current + 1 : current - 1;
+            check(tooltip.scroll_to(form.ui, form.scroll, next) && !*h.progress_tip.visible() && h.progress_half.describe()->focused,
+                  "X02 viewport movement hides the tooltip without moving focus");
+            now += 499; host.tooltip_time(now);
+            check(!*h.progress_tip.visible(), "X02 tooltip needs a fresh full dwell after scrolling");
+            now += 1; host.tooltip_time(now);
+            check(*h.progress_tip.visible(), "X02 tooltip may reappear after the fresh dwell");
+        }
         host.key_down({Key::escape});
         check(!*h.progress_tip.visible() && h.progress_half.describe()->focused && form.progress() == 50,
               "X02 tooltip Escape preserves focus and value");
@@ -939,6 +1042,14 @@ void popup_and_scroll_matrix() {
         auto* dialog_hit = cancel ? dialog.hit(cancel->bounds.x + cancel->bounds.w / 2, cancel->bounds.y + cancel->bounds.h / 2) : nullptr;
         check(dialog.modal && inside(dialog.modal_panel) && cancel && dialog_hit && dialog_hit->id == cancel->id && !*h.progress_tip.visible(),
               "X02 dialog bounds and hit are valid and tooltip closes");
+        if (dialog.maximum > 0) {
+            int current = form.scroll.offset;
+            int next = current < dialog.maximum ? current + 1 : current - 1;
+            check(!dialog.scroll_to(form.ui, form.scroll, next) && form.scroll.offset == current,
+                  "X02 a modal blocks a movable background viewport");
+        } else {
+            std::cout << "X02 modal background scroll N/A: no overflow at " << size.w << 'x' << size.h << ' ' << int(scale * 100) << "%\n";
+        }
         host.key_down({Key::escape});
         check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
               "X02 Escape cancels the dialog and restores focus");
@@ -1170,6 +1281,7 @@ int main() {
         {"F08 region confirmation and error order", region_is_in_the_form_confirmation_group},
         {"F01 five fields apply once", all_five_fields_apply_once},
         {"G11 checkbox conflict is visible and recoverable", checkbox_conflict_is_visible_and_can_use_latest},
+        {"X04 assembled checkbox conflict and latest action", assembled_checkbox_conflict_offers_latest},
         {"G11 option conflicts are visible and recoverable", option_conflicts_are_visible_and_can_use_latest},
         {"G11 volume conflict", volume_conflict_offers_latest},
         {"F09 volume confirmation", volume_is_a_confirmed_form_field},

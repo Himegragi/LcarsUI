@@ -51,6 +51,7 @@ public:
     const std::u16string* tooltip_text(std::string_view id) const;
     void window_active(bool active);
     void refresh_tooltips();
+    void scrolled(); // input moved a viewport outside popup content
     DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
     Result open_dialog(const ComponentHandle& opener);
     Result settle_dialog(bool confirmed);
@@ -98,6 +99,7 @@ public:
     }
     const Control* find(std::string_view id) const;
     std::optional<Semantics> describe(std::string_view id) const;
+    void frame_visibility(std::map<Id, bool, std::less<>> visibility);
     // Current display text: field content, or label text (bound provider wins over static value).
     std::u16string text(std::string_view id) const;
     EditSession* edit(std::string_view id);
@@ -247,6 +249,8 @@ private:
     std::function<std::uint64_t()> tooltip_clock_;
     bool window_active_ = false, pointer_focus_ = false;
     Id popup_source_;
+    std::map<Id, bool, std::less<>> visibility_;
+    bool has_frame_visibility_ = false;
     struct DialogState {
         std::vector<Id> members;
         Id initial, fallback, opener;

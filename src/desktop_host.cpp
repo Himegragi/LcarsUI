@@ -228,6 +228,8 @@ void DesktopHost::paint() {
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
     Canvas canvas(r.right, r.bottom, appearance_.palette().background);
+    paint_observations_.clear();
+    canvas.count_ink = observe_paint_;
     draw(canvas, frame_, s, GetFocus() == window_);
     renderer_->draw(canvas);
     ++frames_;
@@ -266,20 +268,32 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     struct PaintAdapter final : ComponentPaint {
         Canvas& canvas;
         Text& renderer;
+        std::vector<PaintObservation>* observations;
         PaintAdapter(UiState& ui, const Placement& item, const Semantics& semantics, const Appearance& appearance,
-                     float scale, bool window_focused, Canvas& target, Text& text)
-            : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text) {}
-        void fill(Rect rect, Color color) override { canvas.fill(rect, color); }
-        void rounded(Rect rect, int radius, Color color) override { canvas.rounded(rect, radius, color); }
+                     float scale, bool window_focused, Canvas& target, Text& text, std::vector<PaintObservation>* events)
+            : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
+        void fill(Rect rect, Color color) override {
+            auto before = canvas.ink; canvas.fill(rect, color);
+            if (observations) observations->push_back({PaintObservation::Type::fill, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+        }
+        void rounded(Rect rect, int radius, Color color) override {
+            auto before = canvas.ink; canvas.rounded(rect, radius, color);
+            if (observations) observations->push_back({PaintObservation::Type::rounded, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+        }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
-            renderer.draw(canvas, renderer.shape(value, pixels), x, y + ShapedMeasure::baseline(pixels), color);
+            auto layout = renderer.shape(value, pixels);
+            auto before = canvas.ink;
+            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
+            if (observations) observations->push_back({PaintObservation::Type::text, placement.id, std::u16string(value),
+                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, canvas.clip, color,
+                canvas.ink != before, placement.popup, placement.tooltip});
         }
     };
     for (const auto& item : frame.items) {
         canvas.clip = intersect(item.clip, whole);
         auto semantics = detail::access(ui_).describe(item.id);
-        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
+        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
         detail::component_type(item.kind).paint(adapter);
     }
     for (const auto& region : frame.regions) {
@@ -298,20 +312,30 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
         if (item.tooltip) {
+            auto before_border = canvas.ink;
             canvas.rounded(item.bounds, static_cast<int>(appearance_.radius() * s), p.border);
+            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
+                item.id, {}, item.bounds, canvas.clip, p.border, canvas.ink != before_border, true, true});
             int inset = std::max(1, static_cast<int>(std::lround(1 * s)));
             Rect inner{item.bounds.x + inset, item.bounds.y + inset,
                        std::max(0, item.bounds.w - 2 * inset), std::max(0, item.bounds.h - 2 * inset)};
+            auto before_surface = canvas.ink;
             canvas.rounded(inner, static_cast<int>(appearance_.radius() * s), p.surface);
+            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
+                item.id, {}, inner, canvas.clip, p.surface, canvas.ink != before_surface, true, true});
             canvas.clip = intersect(canvas.clip, inner);
-            for (const auto& line : item.lines)
+            for (const auto& line : item.lines) {
+                auto before = canvas.ink;
                 text_.draw(canvas, text_.shape(line.text, item.text_size), line.bounds.x,
                            line.bounds.y + ShapedMeasure::baseline(item.text_size), p.text);
+                if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::text,
+                    item.id, line.text, line.bounds, canvas.clip, p.text, canvas.ink != before, true, true});
+            }
             continue;
         }
         auto semantics = detail::access(ui_).describe(item.id);
         if (!semantics || (!frame.modal && !semantics->expanded)) continue;
-        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_};
+        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
         detail::component_type(item.kind).paint(adapter);
     }
     canvas.clip = whole;
@@ -453,12 +477,16 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (frame_.modal) return 0;
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
+        // A wheel over a dropdown panel belongs to the popup, not its background.
+        if (std::any_of(frame_.overlays.begin(), frame_.overlays.end(), [&](const Placement& p) {
+                return p.popup && !p.tooltip && p.bounds.contains(point.x, point.y) && p.clip.contains(point.x, point.y);
+            })) return 0;
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
         // Route to the deepest visible viewport that can move in this direction.
         for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
             if (!it->clip.contains(point.x, point.y)) continue;
             int next = std::clamp(it->offset - delta, 0, it->maximum);
-            if (next != it->offset) { it->state->offset = next; break; }
+            if (frame_.scroll_to(ui_, *it->state, next)) break;
         }
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
@@ -476,7 +504,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 // Track click centers the thumb on the pointer; dragging then moves its top.
                 drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
                 drag_scroll_ = it->state;
-                drag_scroll_->offset = it->offset_for_thumb(drag_offset_);
+                frame_.scroll_to(ui_, *drag_scroll_, it->offset_for_thumb(drag_offset_));
                 drag_ = Drag::thumb; drag_origin_ = y;
                 SetCapture(window_);
                 InvalidateRect(window_, nullptr, FALSE);
@@ -524,7 +552,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
                 [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
-            if (region != frame_.regions.end()) drag_scroll_->offset = region->offset_for_thumb(drag_offset_ + (y - drag_origin_));
+            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + (y - drag_origin_)));
             InvalidateRect(window_, nullptr, FALSE);
         }
         return 0;

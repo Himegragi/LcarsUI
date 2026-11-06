@@ -99,6 +99,8 @@ struct Frame {
     const Placement* find(const ListHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
+    // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
+    bool scroll_to(Ui& ui, ScrollState& state, int offset) const;
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
     const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here

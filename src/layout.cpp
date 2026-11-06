@@ -145,6 +145,17 @@ int ScrollRegion::offset_for_thumb(int thumb_top) const {
     if (maximum <= 0 || travel <= 0) return 0;
     return std::clamp(static_cast<int>(std::lround(double(thumb_top - track.y) * maximum / travel)), 0, maximum);
 }
+bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
+    auto& owner = detail::access(ui);
+    if (owner_ != &owner || modal) return false;
+    auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
+    if (region == regions.end()) return false;
+    int next = std::clamp(offset, 0, region->maximum);
+    if (next == state.offset) return false;
+    state.offset = next;
+    owner.scrolled();
+    return true;
+}
 
 int Frame::offset_for_thumb(int thumb_top) const {
     return ScrollRegion{nullptr, viewport, viewport, track, thumb, extent, maximum, offset}.offset_for_thumb(thumb_top);
@@ -324,6 +335,7 @@ struct Arranger {
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
         int offset = std::clamp(state.offset, 0, region.maximum);
+        int before_reveal = offset;
         if (!reveal.empty()) {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == reveal; });
             if (it != placed.end()) {
@@ -341,6 +353,7 @@ struct Arranger {
                 offset = std::clamp(offset, 0, region.maximum);
             }
         }
+        if (!measuring && offset != before_reveal) ui.scrolled();
         state.offset = region.offset = offset;
         for (auto& p : placed) {
             translate(p, 0, -offset);
@@ -433,6 +446,24 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
                                     std::max(0, w - 2 * pad), line_height}, std::move(lines[i])});
         a.frame.overlays.push_back(std::move(popup));
     }
+    std::map<Id, bool, std::less<>> visibility;
+    auto visible = [](Rect bounds, Rect clip) { auto area = intersect(bounds, clip); return area.w > 0 && area.h > 0; };
+    auto record = [&](const Placement& p) {
+        visibility[p.id] = visibility[p.id] || visible(p.bounds, p.clip);
+        if (p.kind != Kind::text) return;
+        for (const auto& control : a.ui.controls()) {
+            if (control.target != p.id) continue;
+            const std::vector<Line>* lines = nullptr;
+            if (control.role == TextRole::name) lines = &p.label_lines;
+            else if (control.role == TextRole::description) lines = &p.description_lines;
+            else if (control.role == TextRole::error) lines = &p.error_lines;
+            if (lines) for (const auto& line : *lines)
+                visibility[control.id] = visibility[control.id] || visible(line.bounds, p.clip);
+        }
+    };
+    for (const auto& item : a.frame.items) record(item);
+    for (const auto& item : a.frame.overlays) if (!item.tooltip) record(item);
+    a.ui.frame_visibility(std::move(visibility));
     return std::move(a.frame);
 }
 }

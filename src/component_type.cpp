@@ -20,8 +20,14 @@ std::vector<Line> block(TextMeasure& measure, std::u16string_view text, int size
 int height_of(const std::vector<Line>& lines) {
     return lines.empty() ? 0 : lines.back().bounds.y + lines.back().bounds.h - lines.front().bounds.y;
 }
+std::u16string command_title(const ComponentLayout& c) {
+    auto title = c.control.label;
+    auto semantic = c.ui.describe(c.control.id);
+    if (semantic && semantic->executing) title += c.appearance.component_presentation().executing_suffix;
+    return title;
+}
 int command_width(const ComponentLayout& c) {
-    return static_cast<int>(std::ceil(c.measure.measure(c.control.label, c.placement.text_size).width)) +
+    return static_cast<int>(std::ceil(c.measure.measure(command_title(c), c.placement.text_size).width)) +
            2 * c.appearance.button_padding(c.scale);
 }
 int scaled(float scale, int value) { return std::max(1, static_cast<int>(std::lround(value * scale))); }
@@ -129,8 +135,9 @@ public:
         int line = c.measure.line_height(p.text_size);
         int w = std::min(c.width, command_width(c)), h = c.appearance.button_height(line, c.scale);
         p.bounds = {0, 0, w, h};
-        auto title = c.measure.measure(c.control.label, p.text_size);
-        p.lines.push_back({{(w - static_cast<int>(title.width)) / 2, (h - line) / 2, static_cast<int>(std::ceil(title.width)), line}, c.control.label});
+        auto text = command_title(c);
+        auto title = c.measure.measure(text, p.text_size);
+        p.lines.push_back({{(w - static_cast<int>(title.width)) / 2, (h - line) / 2, static_cast<int>(std::ceil(title.width)), line}, std::move(text)});
     }
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement;
@@ -236,10 +243,12 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.appearance.component_presentation().row_padding);
-        int y = 0;
+        p.label_lines = block(c.measure, s.name, p.text_size, c.width);
+        int y = height_of(p.label_lines);
+        if (y) y += scaled(c.scale, c.appearance.component_presentation().gap_small);
         if (s.options.empty()) {
-            p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation().gap), 0, c.width, line}, c.appearance.component_presentation().no_items});
-            y = row;
+            p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation().gap), y, c.width, line}, c.appearance.component_presentation().no_items});
+            y += row;
         }
         for (const auto& item : s.options) {
             p.options.push_back({0, y, c.width, row});
@@ -252,6 +261,7 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         auto palette = c.appearance.palette(); const auto& p = c.placement;
+        paint_lines(c, p.label_lines, p.text_size, c.semantics.enabled ? palette.text : palette.muted);
         if (c.semantics.options.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
         for (std::size_t i = 0; i < p.options.size(); ++i) {
             const auto& item = c.semantics.options[i]; const auto& row = p.options[i];
@@ -382,10 +392,13 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto semantics = *c.ui.describe(c.control.id);
         int height = c.appearance.button_height(c.measure.line_height(c.placement.text_size), c.scale);
+        c.placement.label_lines = block(c.measure, semantics.name, c.placement.text_size, c.width);
+        int top = height_of(c.placement.label_lines);
+        if (top) top += scaled(c.scale, c.appearance.component_presentation().gap_small);
         int count = static_cast<int>(semantics.options.size());
         for (int i = 0; i < count; ++i) {
             int left = c.width * i / count, right = c.width * (i + 1) / count;
-            c.placement.options.push_back({left, 0, right - left, height});
+            c.placement.options.push_back({left, top, right - left, height});
             const auto& option = semantics.options[static_cast<std::size_t>(i)];
             std::u16string prefix = option.invalid ? c.appearance.component_presentation().invalid_tab_marker : u"";
             if (!option.enabled) prefix += c.appearance.component_presentation().disabled_tab_marker;
@@ -396,13 +409,14 @@ public:
                 label.pop_back();
             }
             label = prefix + label;
-            c.placement.lines.push_back({{left + scaled(c.scale, c.appearance.component_presentation().gap_small), (height - c.measure.line_height(c.placement.text_size)) / 2,
+            c.placement.lines.push_back({{left + scaled(c.scale, c.appearance.component_presentation().gap_small), top + (height - c.measure.line_height(c.placement.text_size)) / 2,
                                          std::max(0, right - left - scaled(c.scale, c.appearance.component_presentation().gap)), height}, std::move(label)});
         }
-        c.placement.bounds = {0, 0, c.width, height};
+        c.placement.bounds = {0, 0, c.width, top + height};
     }
     void paint(ComponentPaint& c) const override {
         auto palette = c.appearance.palette();
+        paint_lines(c, c.placement.label_lines, c.placement.text_size, palette.text);
         for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             c.fill(rect, option.selected ? palette.selection : palette.surface);

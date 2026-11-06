@@ -2,6 +2,7 @@
 #include "lcars/appearance.hpp"
 #include "lcars/layout.hpp"
 #include <map>
+#include <cstdint>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -21,6 +22,8 @@ public:
     int width, height;
     std::vector<unsigned char> pixels;
     Rect clip;
+    bool count_ink = false;
+    std::uint64_t ink = 0; // nontransparent samples accepted by the current clip
     Canvas(int width,int height,Color background);
     void fill(Rect rect,Color color);
     void rounded(Rect rect,int radius,Color color);

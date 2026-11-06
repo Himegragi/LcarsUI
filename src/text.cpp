@@ -93,6 +93,7 @@ TextLayout Text::shape(std::u16string_view text,int size){
 Canvas::Canvas(int w,int h,Color color):width(w),height(h),pixels(static_cast<std::size_t>(w)*h*4),clip{0,0,w,h}{fill(clip,color);}
 void Canvas::blend(int x,int y,Color color,unsigned alpha){
     if(!clip.contains(x,y)||x<0||y<0||x>=width||y>=height)return;
+    if(count_ink && alpha) ++ink;
     auto index=(static_cast<std::size_t>(height-1-y)*width+x)*4;
     const unsigned char ink[]={color.r,color.g,color.b};
     for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
