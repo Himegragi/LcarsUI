@@ -7,6 +7,7 @@
 #include "test_component.hpp"
 #include "edit_form.hpp"
 #include "x04_drivers.hpp"
+#include "geometry.hpp"
 #include "list_page.hpp"
 #include <imm.h>
 #include <msctf.h>
@@ -241,9 +242,8 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
         auto tip = std::find_if(frame.overlays.begin(), frame.overlays.end(), [](const auto& p) { return p.tooltip; });
         geometry = geometry && tip != frame.overlays.end();
         if (tip != frame.overlays.end()) {
-            geometry = geometry && tip->bounds.x >= 0 && tip->bounds.y >= 0 && tip->bounds.x + tip->bounds.w <= width &&
-                tip->bounds.y + tip->bounds.h <= height && !tip->lines.empty();
-            for (const auto& line : tip->lines) geometry = geometry && intersect(line.bounds, tip->bounds) == line.bounds;
+            geometry = geometry && test::inside(tip->bounds, {0, 0, width, height}) && !tip->lines.empty();
+            for (const auto& line : tip->lines) geometry = geometry && test::inside(line.bounds, tip->bounds);
         }
     }
     f.form.update_progress(0); f.tap(VK_SPACE);
@@ -1016,7 +1016,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
             list_page.handles.hundred.invoke(); list_page.handles.list.focus();
             f.tap(VK_END); f.settle();
             auto* list = f.host.frame().find(list_page.handles.list);
-            bool end = list && list->options.size() == 100 && intersect(list->options.back(), list->clip) == list->options.back() &&
+            bool end = list && list->options.size() == 100 && test::inside(list->options.back(), list->clip) &&
                 list_page.selection() == OptionValue{"T100"} && list_page.list_scroll.offset > 0;
             bool wheel = false, hit = false;
             if (list) {
@@ -1031,7 +1031,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
             }
             f.tap(VK_END); f.settle();
             list = f.host.frame().find(list_page.handles.list);
-            bool restored = list && intersect(list->options.back(), list->clip) == list->options.back() &&
+            bool restored = list && test::inside(list->options.back(), list->clip) &&
                 list_page.selection() == OptionValue{"T100"};
             report.check("X02-v02-list", end && hit && wheel && restored,
                 sample + ": End=" + std::to_string(end) + ", hit=" + std::to_string(hit) +
@@ -2588,23 +2588,17 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         live.host.paint();
         // Report which part of the popup predicate failed: absent dropdown, geometry or hit.
         auto popup_check = [&](const Frame& f, std::string& detail) {
-            auto it = std::find_if(f.overlays.begin(), f.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
+            RECT client{}; GetClientRect(live.host.window(), &client);
+            auto result = test::popup_in_client(f, {client.left, client.top, client.right - client.left, client.bottom - client.top}, ids.region);
             bool expanded = live.form.handles.region.describe() && live.form.handles.region.describe()->expanded;
             detail = "overlays=" + std::to_string(f.overlays.size()) + " expanded=" + std::to_string(expanded) +
-                     " dropdown=" + std::to_string(it != f.overlays.end());
-            if (it == f.overlays.end()) return false;
-            auto r = it->bounds;
-            // Popups are clipped to the window, not to the scroll viewport (layout overlay placement, B04);
-            // the core X02 matrix uses the same window bound.
-            RECT client{}; GetClientRect(live.host.window(), &client);
-            bool inside = r.x >= 0 && r.y >= 0 && r.x + r.w <= client.right && r.y + r.h <= client.bottom;
-            auto* target = f.hit(r.x + r.w / 2, r.y + r.h / 2);
-            bool hit = target && target->popup && target->id == it->id;
-            detail += " bounds=" + std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.w) + "x" + std::to_string(r.h) +
-                      " viewport=" + std::to_string(f.viewport.w) + "x" + std::to_string(f.viewport.h) +
-                      " client=" + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
-                      " inside=" + std::to_string(inside) + " hit=" + std::to_string(hit);
-            return inside && hit;
+                     " dropdown=" + std::to_string(result.popup != nullptr);
+            if (result.popup) {
+                detail += " bounds=" + str(result.popup->bounds) + " viewport=" + str(f.viewport) +
+                          " client=" + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
+                          " inside=" + std::to_string(result.inside) + " hit=" + std::to_string(result.hit);
+            }
+            return expanded && bool(result);
         };
         before = dpi_messages;
         UINT popup_dpi = move(monitors[1]);
