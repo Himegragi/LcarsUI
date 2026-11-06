@@ -679,11 +679,160 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
 struct PaintTextProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
     std::u16string drawn;
-    void fill(Rect, Color) override {}
-    void rounded(Rect, int, Color) override {}
+    std::vector<Color> colors;
+    void fill(Rect, Color color) override { colors.push_back(color); }
+    void rounded(Rect, int, Color color) override { colors.push_back(color); }
     void clip(Rect) override {}
-    void text(std::u16string_view value, int, int, int, Color) override { drawn += value; }
+    void text(std::u16string_view value, int, int, int, Color color) override { drawn += value; colors.push_back(color); }
 };
+void painted_states_agree_with_semantics() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    auto& host = detail::access(form.ui);
+    test::FakeMeasure measure;
+    struct Observation { std::u16string text; std::vector<Color> colors; };
+    auto observe = [&](const auto& handle) {
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 4000, 1.f, form.scroll);
+        auto* item = frame.find(handle);
+        check(item != nullptr, "X04 state target is arranged");
+        auto semantic = handle.describe();
+        check(bool(semantic), "X04 state target has semantics");
+        PaintTextProbe paint(host, *item, *semantic, *appearance, 1.f, true);
+        detail::component_type(item->kind).paint(paint);
+        return Observation{paint.drawn, paint.colors};
+    };
+    auto has_color = [](const Observation& o, Color expected) {
+        return std::any_of(o.colors.begin(), o.colors.end(), [&](Color c) {
+            return c.r == expected.r && c.g == expected.g && c.b == expected.b;
+        });
+    };
+    auto contains = [](const Observation& o, const std::u16string& text) { return o.text.find(text) != std::u16string::npos; };
+    const auto& wording = appearance->component_presentation();
+    const auto palette = appearance->palette();
+
+    h.name.focus(); h.name.select(0, 2);
+    check(has_color(observe(h.name), palette.selection), "X04 selected text has a selection highlight");
+    h.read_only.invoke();
+    auto read_only = observe(h.name);
+    check(h.name.describe()->read_only && contains(read_only, wording.read_only_suffix) &&
+          contains(read_only, h.name.describe()->value), "X04 read-only field wording and value agree");
+    h.disabled.invoke();
+    auto disabled_name = observe(h.name);
+    check(!h.name.describe()->enabled && contains(disabled_name, wording.disabled_suffix) && has_color(disabled_name, palette.muted),
+          "X04 disabled field is identified and muted");
+    auto disabled_button = observe(h.apply);
+    auto disabled_box = observe(h.notices);
+    auto disabled_radio = observe(h.mode);
+    auto disabled_region = observe(h.region);
+    auto disabled_volume = observe(h.volume);
+    check(!h.apply.describe()->enabled && has_color(disabled_button, palette.muted) &&
+          !h.notices.describe()->enabled && has_color(disabled_box, palette.muted) &&
+          !h.mode.describe()->enabled && has_color(disabled_radio, palette.muted) &&
+          !h.region.describe()->enabled && contains(disabled_region, wording.disabled_suffix) && has_color(disabled_region, palette.muted) &&
+          !h.volume.describe()->enabled && contains(disabled_volume, wording.disabled_suffix) && has_color(disabled_volume, palette.muted),
+          "X04 disabled controls use their restricted presentation");
+
+    h.normal.invoke(); h.error.invoke();
+    auto error = observe(h.name);
+    check(h.name.describe()->invalid && contains(error, h.name.describe()->error) && has_color(error, palette.error),
+          "X04 field error text and error color agree with its semantics");
+    h.name.set_value(u"draft"); form.update_source(u"new source");
+    h.mode.select({"focus"}); form.update_mode_source({"offline"});
+    h.region.select({"central"}); form.update_region_source({"south"});
+    h.volume.set_value(55); form.update_volume_source(70);
+    check(h.name.describe()->source_conflict && contains(observe(h.state), u"來源已更新") &&
+          h.latest.describe()->enabled && contains(observe(h.latest), u"改用最新值"),
+          "X04 field conflict notice and use-latest action are drawn");
+    check(h.mode.describe()->source_conflict && contains(observe(h.mode), wording.conflict_suffix) &&
+          h.mode_latest.describe()->enabled && contains(observe(h.mode_latest), u"改用最新值") &&
+          h.region.describe()->source_conflict && contains(observe(h.region), wording.conflict_suffix) &&
+          h.region_latest.describe()->enabled && contains(observe(h.region_latest), u"改用最新值") &&
+          h.volume.describe()->source_conflict && contains(observe(h.volume), wording.conflict_suffix) &&
+          h.volume_latest.describe()->enabled && contains(observe(h.volume_latest), u"改用最新值"),
+          "X04 option and slider conflicts expose their notices and actions");
+
+    check(h.notices.describe()->checked == true && has_color(observe(h.notices), palette.accent),
+          "X04 checked checkbox has an accent indicator");
+    h.notices.toggle();
+    check(h.notices.describe()->checked == false && !has_color(observe(h.notices), palette.accent),
+          "X04 unchecked checkbox has no checked indicator");
+    auto mode = h.mode.describe();
+    check(std::any_of(mode->options.begin(), mode->options.end(), [](const auto& o) { return o.selected; }) &&
+          has_color(observe(h.mode), palette.accent), "X04 radio selection has an accent indicator");
+    h.offline_disabled.invoke();
+    check(!h.mode.describe()->options[2].enabled && contains(observe(h.mode), wording.disabled_suffix),
+          "X04 disabled radio option is identified in the paint text");
+    h.reset.invoke(); h.region_empty.invoke(); h.apply.invoke();
+    check(h.region.describe()->invalid && !h.region.describe()->error.empty() &&
+          contains(observe(h.region), h.region.describe()->error) && has_color(observe(h.region), palette.error),
+          "X04 empty dropdown error is painted with the semantic error and error color");
+
+    h.tabs.activate({"v02"});
+    auto& list = form.list->handles.list;
+    check(!form.list->handles.erase.describe()->enabled && has_color(observe(form.list->handles.erase), palette.muted),
+          "X04 disabled list delete button is muted");
+    form.list->handles.zero.invoke();
+    check(list.describe()->options.empty() && contains(observe(list), wording.no_items), "X04 empty list has visible empty wording");
+    form.list->handles.twenty.invoke(); form.list->handles.disable_eight.invoke();
+    check(!list.describe()->options[7].enabled && contains(observe(list), wording.disabled_suffix),
+          "X04 disabled list row has disabled wording");
+    list.select({"T003"});
+    check(list.describe()->options[2].selected && has_color(observe(list), palette.selection) &&
+          contains(observe(list), wording.selected_marker + list.describe()->options[2].label),
+          "X04 selected list row has a selection highlight");
+    check(h.tabs.describe()->options[1].selected && has_color(observe(h.tabs), palette.selection),
+          "X04 active tab has a selection highlight");
+    h.tabs.activate({"v03"}); h.dialog_open.invoke();
+    check(contains(observe(h.dialog_title), h.dialog_title.describe()->value) &&
+          contains(observe(h.dialog_body), h.dialog_body.describe()->value) &&
+          contains(observe(h.dialog_cancel), h.dialog_cancel.describe()->name) &&
+          contains(observe(h.dialog_confirm), h.dialog_confirm.describe()->name),
+          "X04 open dialog text and button names are painted");
+}
+void hidden_and_clipped_components_are_not_visible_or_admitted() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles;
+    test::FakeMeasure measure;
+    auto frame = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll); };
+    auto first = frame();
+    check(!first.find(form.list->handles.list) && !first.find(h.progress) &&
+          form.list->handles.list.select({"T001"}).status == Status::hidden && h.dialog_open.invoke().status == Status::hidden,
+          "X04 other pages are absent from paint placements and reject operations");
+    const auto* apply = first.find(h.apply);
+    check(apply != nullptr, "X04 visible page contains the apply button");
+    auto area = intersect(apply->bounds, apply->clip);
+    check(area.w == 0 || area.h == 0, "X04 apply starts fully clipped in this viewport");
+    auto* hit = first.hit(std::max(0, apply->bounds.x), std::max(0, apply->bounds.y));
+    check(!hit || hit->id != apply->id, "X04 a clipped button is not a hit target");
+    h.tabs.activate({"v02"});
+    auto second = frame();
+    check(!second.find(h.name) && !second.find(h.progress) && h.name.set_value(u"hidden").status == Status::hidden &&
+          h.dialog_open.invoke().status == Status::hidden, "X04 V01 and V03 are absent and reject actions on V02");
+    h.tabs.activate({"v03"});
+    auto third = frame();
+    check(!third.find(h.name) && !third.find(form.list->handles.list) &&
+          h.name.set_value(u"hidden").status == Status::hidden && form.list->handles.list.select({"T001"}).status == Status::hidden,
+          "X04 V01 and V02 are absent and reject actions on V03");
+    auto& state = detail::access(form.ui);
+    std::vector<std::vector<Id>> page_items;
+    for (auto page : {"v01", "v02", "v03"}) {
+        h.tabs.activate({page});
+        auto current = frame();
+        std::vector<Id> ids_on_page;
+        for (const auto& item : current.items) if (item.id != h.tabs.describe()->id) ids_on_page.push_back(item.id);
+        page_items.push_back(std::move(ids_on_page));
+    }
+    int page_index = 0;
+    for (auto page : {"v01", "v02", "v03"}) {
+        h.tabs.activate({page});
+        auto current = frame();
+        for (int other = 0; other < 3; ++other) if (other != page_index) for (const auto& id : page_items[other]) {
+            check(!detail::find_placement(current, id) && state.available(id).status == Status::hidden,
+                  "X04 each other-page placement is absent and not admitted");
+        }
+        ++page_index;
+    }
+}
 void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
@@ -727,7 +876,7 @@ void popup_and_scroll_matrix() {
             return arrange(form.page(), form.ui, *appearance, measure, w, height, scale, form.scroll, reveal);
         };
         auto dropdown_id = h.region.describe()->id;
-        draw(dropdown_id);
+        h.region.focus(); draw(dropdown_id);
         check(bool(h.region.open()), "X02 open dropdown after scroll reveal");
         auto dropdown = draw(dropdown_id);
         auto pop = std::find_if(dropdown.overlays.begin(), dropdown.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
@@ -735,7 +884,22 @@ void popup_and_scroll_matrix() {
         auto row = pop->options.front();
         auto hit = dropdown.hit(row.x + row.w / 2, row.y + row.h / 2);
         check(hit && hit->popup && hit->id == dropdown_id, "X02 dropdown receives the topmost hit");
-        check(bool(h.region.cancel()), "X02 dropdown closes after interaction");
+        host.key_down({Key::down}); host.key_down({Key::down}); host.key_down({Key::escape});
+        check(!h.region.describe()->expanded && h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
+              "X02 Escape cancels the candidate and retains focus and value");
+        h.region.open(); host.key_down({Key::down}); host.key_down({Key::down}); host.key_down({Key::tab});
+        check(!h.region.describe()->expanded && h.volume.describe()->focused && *h.region.draft() == OptionValue{"north"},
+              "X02 Tab cancels the candidate and advances focus");
+        h.region.focus(); h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
+        auto outside_frame = draw(dropdown_id);
+        const auto* tabs = outside_frame.find(h.tabs);
+        auto tab = tabs->options.front();
+        auto* outside_hit = outside_frame.hit(tab.x + tab.w / 2, tab.y + tab.h / 2);
+        check(outside_hit && outside_hit->id == h.tabs.describe()->id && !outside_hit->popup, "X02 outside hit reaches the page tab");
+        host.close_popup(); host.pointer_down(outside_hit->id, outside_frame.option_at(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
+        host.pointer_up(outside_hit->id, outside_frame.option_at(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
+        check(!h.region.describe()->expanded && h.tabs.describe()->focused && *h.region.draft() == OptionValue{"north"} &&
+              *h.tabs.active() == OptionValue{"v01"}, "X02 outside click cancels and still activates its target");
 
         check(bool(h.tabs.activate({"v02"})), "X02 open list page");
         auto& list = form.list->handles.list;
@@ -755,13 +919,35 @@ void popup_and_scroll_matrix() {
         auto tooltip = draw(source_id);
         auto tip = std::find_if(tooltip.overlays.begin(), tooltip.overlays.end(), [](const Placement& p) { return p.tooltip; });
         check(tip != tooltip.overlays.end() && inside(tip->bounds) && *h.progress_tip.visible(), "X02 tooltip appears inside the window after scroll reveal");
+        host.key_down({Key::escape});
+        check(!*h.progress_tip.visible() && h.progress_half.describe()->focused && form.progress() == 50,
+              "X02 tooltip Escape preserves focus and value");
+        h.dialog_open.focus(); h.progress_half.focus(); now += 600; host.tooltip_time(now);
+        check(*h.progress_tip.visible(), "X02 tooltip can return on a new focus visit");
+        h.dialog_open.focus();
+        check(!*h.progress_tip.visible() && h.dialog_open.describe()->focused && form.progress() == 50,
+              "X02 tooltip closes on focus leave");
+        host.tooltip_hover(source_id); host.pointer_down(source_id); host.pointer_up(source_id);
+        now += 600; host.tooltip_time(now);
+        check(*h.progress_tip.visible(), "X02 tooltip appears on a pointer visit");
+        host.tooltip_hover({});
+        check(!*h.progress_tip.visible() && h.progress_half.describe()->focused && form.progress() == 50,
+              "X02 tooltip pointer leave preserves focus and value");
         check(bool(h.dialog_open.invoke()), "X02 open modal dialog");
         auto dialog = draw();
         auto* cancel = dialog.find(h.dialog_cancel);
         auto* dialog_hit = cancel ? dialog.hit(cancel->bounds.x + cancel->bounds.w / 2, cancel->bounds.y + cancel->bounds.h / 2) : nullptr;
         check(dialog.modal && inside(dialog.modal_panel) && cancel && dialog_hit && dialog_hit->id == cancel->id && !*h.progress_tip.visible(),
               "X02 dialog bounds and hit are valid and tooltip closes");
-        check(bool(h.dialog_cancel.invoke()), "X02 cancel dialog");
+        host.key_down({Key::escape});
+        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
+              "X02 Escape cancels the dialog and restores focus");
+        h.dialog_open.invoke(); h.dialog_cancel.invoke();
+        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
+              "X02 Cancel restores focus and preserves progress");
+        h.dialog_open.invoke(); h.dialog_confirm.invoke();
+        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 0 && form.dialog_confirmations() == 1,
+              "X02 Confirm restores focus and changes progress once");
     }
 }
 
@@ -962,6 +1148,8 @@ int main() {
         {"X01 keyboard journey", keyboard_completes_the_three_page_journey},
         {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
+        {"X04 painted state and modal text", painted_states_agree_with_semantics},
+        {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},
         {"X02 popup and scroll size/scale matrix", popup_and_scroll_matrix},
         {"P08 repeated removal and reset storage", repeated_v03_remove_reset_keeps_storage_bounded},
         {"P08 reset and page isolation", v03_reset_restores_the_temporary_source_and_keeps_other_pages},
