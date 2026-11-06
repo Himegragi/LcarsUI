@@ -1309,10 +1309,11 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
             f.host.force_scale(scale); f.host.client_size(size.first, size.second);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
                 bool page = entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
-                bool driven = page && x04::drive_selected(entry);
+                bool driven = baseline && page && x04::drive_selected(entry);
                 auto semantic = x04::describe(entry.handle);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
@@ -1336,6 +1337,45 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                     ": driven=" + std::to_string(driven) + ", semantics and visible cue=" + std::to_string(compared) +
                     ", initial selection restored=" + std::to_string(restored));
             }
+        }
+}
+
+void x04_executing_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
+            f.host.observe_paint(true);
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto* button = std::get_if<ButtonHandle>(&entry.handle);
+                if (!button || !detail::component_type(button->describe()->kind).supports_state(detail::ComponentState::executing) ||
+                    !x04::execution_supported(f.form, *button)) continue;
+                auto before = button->describe(); bool prepared = x04::prepare_execution(f.form, entry), observed = false;
+                bool bound = bool(button->bind([&] {
+                    f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id);
+                    f.host.paint(); auto semantic = button->describe(); auto* item = f.host.frame().find(*button);
+                    std::u16string ink;
+                    for (const auto& draw : f.host.paint_observations()) {
+                        if (!item || draw.owner != semantic->id || !draw.visible || draw.type != detail::PaintObservation::Type::text) continue;
+                        if (intersect(draw.bounds, intersect(draw.clip, item->bounds)).w == draw.bounds.w) ink += draw.text;
+                    }
+                    observed = item && semantic->visible && semantic->executing && button->invoke().status == Status::busy &&
+                        std::find(semantic->operations.begin(), semantic->operations.end(), Operation::activate) == semantic->operations.end() &&
+                        ink.find(semantic->name) != std::u16string::npos &&
+                        ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
+                    return Result{};
+                }));
+                bool invoked = bound && bool(button->invoke()) && observed && !*button->executing();
+                bool restored = x04::restore_execution(f.form, entry, before->enabled);
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
+                    std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + before->id;
+                report.check("X04-executing-member", prepared && bound && invoked && restored,
+                    sample + ": prepared=" + std::to_string(prepared) + ", callback semantics, busy retry and paint=" +
+                    std::to_string(invoked) + ", original action restored=" + std::to_string(restored));
+            }
+            bool action = bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.progress_zero.invoke()) && f.form.progress() == 0;
+            report.check("X04-executing-restore", action, std::string(alternate ? "alternate" : "shipped") + " " +
+                std::to_string(size.first) + "x" + std::to_string(size.second) + " " + std::to_string(int(scale * 100)) +
+                "%: restored progress action updates the application model");
         }
 }
 
@@ -1401,8 +1441,9 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
             Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 auto semantic = x04::describe(entry.handle); if (!semantic || !x04::error_supported(*semantic)) continue;
-                bool driven = x04::drive_error(f.form, entry);
+                bool driven = baseline && x04::drive_error(f.form, entry);
                 auto owner = semantic->target.empty() ? semantic->id : semantic->target;
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, owner);
                 f.host.paint(); semantic = x04::describe(entry.handle);
@@ -1432,9 +1473,10 @@ void x04_candidate_matrix(const Appearance& appearance, Report& report) {
             Fixture f(appearance, true, alternate); f.host.force_scale(scale); f.host.client_size(size.first, size.second);
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
-                bool prepared = x04::prepare_candidate(f.form, entry);
+                bool prepared = baseline && x04::prepare_candidate(f.form, entry);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id); f.host.paint();
                 bool opened = x04::open_candidate(entry);
                 auto vk = before->kind == Kind::tabs ? VK_RIGHT : VK_DOWN;
@@ -1547,6 +1589,7 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui);
             f.host.force_scale(scale); f.host.client_size(size.first, size.second); f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 bool modal = entry.page == "modal";
                 bool page = modal ? bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke()) :
                     entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
@@ -1567,7 +1610,7 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                         if (draw.color.r == palette.selection.r && draw.color.g == palette.selection.g && draw.color.b == palette.selection.b) selected = true;
                     }
                 }
-                bool compared = page && x04::normal_semantics(*semantic);
+                bool compared = baseline && page && x04::normal_semantics(*semantic);
                 if (!semantic->target.empty()) {
                     auto target = state.describe(semantic->target);
                     compared = compared && target && std::find(target->labels.begin(), target->labels.end(), semantic->id) != target->labels.end();
@@ -1585,7 +1628,8 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                         compared = compared && item->progress_fill.w == item->progress_track.w * *semantic->numeric_value / 100 &&
                             (*semantic->numeric_value == 0 || accent);
                 }
-                bool restored = !modal || bool(f.form.handles.dialog.settle(false));
+                bool restored = (!modal || (bool(f.form.handles.dialog.settle(false)) && bool(f.form.handles.reset_v03.invoke()))) &&
+                    x04::baseline_context(f.form);
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -1605,6 +1649,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, id); f.host.paint();
             };
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 auto initial = x04::describe(entry.handle);
                 if (!initial || !detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
@@ -1612,7 +1657,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     std::to_string(int(scale * 100)) + "% " + initial->id;
                 if (initial->kind == Kind::tabs) {
                     auto tabs = std::get<TabsHandle>(entry.handle);
-                    bool driven = bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus());
+                    bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus());
                     f.host.paint(); auto sem = tabs.describe(); auto* placed = f.host.frame().find(tabs);
                     bool cue = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
@@ -1639,7 +1684,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 }
                 bool page = entry.page == "modal" ? bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke()) :
                     bool(f.form.handles.tabs.activate({std::string(entry.page)}));
-                bool driven = page && x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) && x04::set_enabled(entry.handle, false);
+                bool driven = baseline && page && x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) && x04::set_enabled(entry.handle, false);
                 reveal(initial->id); auto sem = x04::describe(entry.handle);
                 auto* placed = x04::placement(f.host.frame(), entry.handle); std::u16string visible_text;
                 for (const auto& draw : f.host.paint_observations()) {
@@ -1667,6 +1712,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
                     x04::set_enabled(entry.handle, initial->enabled);
                 if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && recovered;
+                recovered = x04::baseline_context(f.form) && recovered;
                 report.check("X04-disabled-member", driven && cue && rejected && pointer && unchanged && recovered,
                     sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
                     ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
@@ -1686,9 +1732,10 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 f.host.paint();
             };
             for (const auto& entry : x04::inventory(f.form)) {
+                bool baseline = x04::baseline_context(f.form);
                 auto semantic = x04::describe(entry.handle);
                 if (!semantic || !x04::group_conflict_supported(*semantic)) continue;
-                bool driven = x04::drive_group_conflict(f.form, entry);
+                bool driven = baseline && x04::drive_group_conflict(f.form, entry);
                 reveal(semantic->id); semantic = x04::describe(entry.handle);
                 std::u16string ink; bool checked_cue = false;
                 auto accent = appearance.palette().accent;
@@ -1706,7 +1753,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 bool action_painted = action->visible && std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
                     [&](const auto& draw) { return draw.owner == action->id && draw.visible &&
                         draw.type == detail::PaintObservation::Type::text && draw.text.find(action->name) != std::u16string::npos; });
-                bool restored = bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict && bool(f.form.handles.reset.invoke());
+                bool restored = bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict && bool(f.form.handles.reset.invoke()) && x04::baseline_context(f.form);
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -2481,6 +2528,7 @@ int run(const std::filesystem::path& folder) {
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);
+        x04_executing_matrix(*appearance, report);
         x04_clipped_matrix(*appearance, report);
         x04_error_matrix(*appearance, report);
         x04_candidate_matrix(*appearance, report);
@@ -2517,6 +2565,7 @@ int run_x04(const std::filesystem::path& folder) {
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);
+        x04_executing_matrix(*appearance, report);
         x04_clipped_matrix(*appearance, report);
         x04_error_matrix(*appearance, report);
         x04_candidate_matrix(*appearance, report);
@@ -2530,6 +2579,17 @@ int run_x04(const std::filesystem::path& folder) {
         semantic_observation_sweep(*appearance, folder, report.appearance);
     }
     std::cout << report.checks << " X04 raster checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+
+int run_x04_executing(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "x04-executing.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        x04_executing_matrix(*appearance, report);
+    }
+    std::cout << report.checks << " X04 executing checks, " << report.failures << " failures\n";
     return report.failures ? 1 : 0;
 }
 
@@ -2571,7 +2631,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
@@ -2582,12 +2642,13 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x02-only") x02_only = true;
             else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
+            else if (arg == L"--x04-executing-only") x04_executing_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

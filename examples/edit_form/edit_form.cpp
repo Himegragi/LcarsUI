@@ -119,25 +119,25 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     handles.name.on_blur([this] { validate(); });
     ui.on_change([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
     ui.connect_mixed_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
-    handles.normal.bind([this] { set_mode(Mode::normal); return Result{}; });
-    handles.read_only.bind([this] { set_mode(Mode::read_only); return Result{}; });
-    handles.disabled.bind([this] { set_mode(Mode::disabled); return Result{}; });
-    handles.offline_disabled.bind([this] {
+    bind_action(handles.normal, [this] { set_mode(Mode::normal); return Result{}; });
+    bind_action(handles.read_only, [this] { set_mode(Mode::read_only); return Result{}; });
+    bind_action(handles.disabled, [this] { set_mode(Mode::disabled); return Result{}; });
+    bind_action(handles.offline_disabled, [this] {
         offline_disabled_ = !offline_disabled_;
         return handles.mode.enable_option({"offline"}, !offline_disabled_);
     });
-    handles.region_empty.bind([this] {
+    bind_action(handles.region_empty, [this] {
         region_empty_ = !region_empty_;
         return handles.region.set_options(region_empty_ ? std::vector<RadioOption>{} : regions());
     });
-    handles.long_text.bind([this] { long_intro_ = !long_intro_; return Result{}; });
-    handles.reset.bind([this] { return reset(); });
-    handles.notices_latest.bind([this] { auto result = handles.notices.use_latest(); refresh_conflict(); return result; });
-    handles.mode_latest.bind([this] { auto result = handles.mode.use_latest(); refresh_conflict(); return result; });
-    handles.region_latest.bind([this] { auto result = handles.region.use_latest(); refresh_conflict(); return result; });
-    handles.volume_latest.bind([this] { auto result = handles.volume.use_latest(); refresh_conflict(); return result; });
-    handles.latest.bind([this] { auto result = handles.name.use_latest(); refresh_conflict(); return result; });
-    handles.error.bind([this] {
+    bind_action(handles.long_text, [this] { long_intro_ = !long_intro_; return Result{}; });
+    bind_action(handles.reset, [this] { return reset(); });
+    bind_action(handles.notices_latest, [this] { auto result = handles.notices.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.mode_latest, [this] { auto result = handles.mode.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.region_latest, [this] { auto result = handles.region.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.volume_latest, [this] { auto result = handles.volume.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.latest, [this] { auto result = handles.name.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.error, [this] {
         set_mode(Mode::normal);
         handles.name.set_value(u"");
         validate();
@@ -168,19 +168,19 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
             auto number = std::to_string(progress_);
             return u"來源值：" + std::u16string(number.begin(), number.end());
         });
-        handles.progress_zero.bind([this] { update_progress(0); return Result{}; });
-        handles.progress_half.bind([this] { update_progress(50); return Result{}; });
-        handles.progress_full.bind([this] { update_progress(100); return Result{}; });
-        handles.progress_below.bind([this] { update_progress(-10); return Result{}; });
-        handles.progress_above.bind([this] { update_progress(110); return Result{}; });
+        bind_action(handles.progress_zero, [this] { update_progress(0); return Result{}; });
+        bind_action(handles.progress_half, [this] { update_progress(50); return Result{}; });
+        bind_action(handles.progress_full, [this] { update_progress(100); return Result{}; });
+        bind_action(handles.progress_below, [this] { update_progress(-10); return Result{}; });
+        bind_action(handles.progress_above, [this] { update_progress(110); return Result{}; });
         handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .kind = Kind::button, .label = u"Reset page"});
-        handles.reset_v03.bind([this] {
+        bind_action(handles.reset_v03, [this] {
             if (!handles.dialog_temporary.describe()) {
                 auto id = ids_.title + ".pages.v03.temporary";
                 auto replacement = ui.add_button({.id = std::move(id), .kind = Kind::button, .label = u"Temporary opener..."});
                 if (auto result = handles.tabs.add_member({"v03"}, replacement); !result) return result;
                 handles.dialog_temporary = replacement;
-                handles.dialog_temporary.bind([this] { return handles.dialog.open(handles.dialog_temporary); });
+                bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
             }
             update_progress(50); dialog_confirmations_ = 0; dialog_result_ = u"No result"; scroll.offset = 0; return handles.reset_v03.focus();
         });
@@ -199,10 +199,10 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         handles.dialog_confirm = ui.add_button({.id = prefix + "dialog.confirm", .kind = Kind::button, .label = u"\u91cd\u8a2d\u9032\u5ea6"});
         handles.dialog = ui.add_dialog({handles.dialog_title, handles.dialog_body, handles.dialog_cancel, handles.dialog_confirm}, handles.dialog_cancel, handles.dialog_open,
             [this](bool confirmed) { dialog_result_ = confirmed ? u"Confirmed" : u"Cancelled"; if (confirmed) { update_progress(0); ++dialog_confirmations_; } });
-        handles.dialog_open.bind([this] { return handles.dialog.open(handles.dialog_open); });
-        handles.dialog_temporary.bind([this] { return handles.dialog.open(handles.dialog_temporary); });
-        handles.dialog_cancel.bind([this] { return handles.dialog.settle(false); });
-        handles.dialog_confirm.bind([this] { return handles.dialog.settle(true); });
+        bind_action(handles.dialog_open, [this] { return handles.dialog.open(handles.dialog_open); });
+        bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
+        bind_action(handles.dialog_cancel, [this] { return handles.dialog.settle(false); });
+        bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
@@ -223,6 +223,21 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
     }
 }
 
+Result Form::bind_action(ButtonHandle button, std::function<Result()> action) {
+    auto semantic = button.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    auto result = button.bind(action);
+    if (result) fixture_actions_.insert_or_assign(semantic->id, std::move(action));
+    return result;
+}
+Result Form::restore_fixture_action(ButtonHandle button) const {
+    auto semantic = button.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    auto found = fixture_actions_.find(semantic->id);
+    if (found != fixture_actions_.end()) return button.bind(found->second);
+    if (list) return list->restore_fixture_action(button);
+    return {Status::not_found, u"No original fixture action"};
+}
 Result Form::set_clip_padding(LabelHandle label, std::u16string text) {
     auto semantic = label.describe();
     if (!semantic) return {semantic.status, semantic.message};

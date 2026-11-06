@@ -882,6 +882,37 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
     }
 }
 // Every fixed-page member is checked after switching to each other page.
+void x04_executing_inventory_at_each_size_and_scale() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure;
+        for (const auto& entry : x04::inventory(form)) {
+            auto button = std::get_if<ButtonHandle>(&entry.handle);
+            if (!button || !detail::component_type(button->describe()->kind).supports_state(detail::ComponentState::executing) ||
+                !x04::execution_supported(form, *button)) continue;
+            auto before = button->describe(); auto message = std::string("X04 executing ") + before->id;
+            check(x04::prepare_execution(form, entry), (message + " prepare").c_str());
+            bool observed = false;
+            check(bool(button->bind([&] {
+                auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
+                                     int(size.second * scale), scale, form.scroll, before->id);
+                auto semantic = button->describe(); auto* item = frame.find(*button);
+                if (!item) return Result{Status::failed, u"Executing button was not arranged"};
+                PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
+                detail::component_type(item->kind).paint(paint);
+                observed = semantic->visible && semantic->executing &&
+                    std::find(semantic->operations.begin(), semantic->operations.end(), Operation::activate) == semantic->operations.end() &&
+                    button->invoke().status == Status::busy && paint.drawn.find(semantic->name) != std::u16string::npos &&
+                    paint.drawn.find(appearance->component_presentation().executing_suffix) != std::u16string::npos;
+                return Result{};
+            })), (message + " bind").c_str());
+            check(bool(button->invoke()) && observed && !*button->executing(), (message + " callback").c_str());
+            check(x04::restore_execution(form, entry, before->enabled), (message + " restore").c_str());
+        }
+        check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.progress_zero.invoke()) && form.progress() == 0,
+              "X04 restored action still invokes the application model");
+    }
+}
+
 void x04_clipped_inventory_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); auto entries = x04::inventory(form);
@@ -957,6 +988,7 @@ void x04_candidate_inventory_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
+            check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::candidate)) continue;
             auto message = std::string("X04 candidate ") + before->id;
@@ -1050,6 +1082,7 @@ void x04_normal_inventory_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
+            check(x04::baseline_context(form), "X04 restore baseline page and focus");
             bool modal = entry.page == "modal";
             if (modal) check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "X04 open normal modal");
             else if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 normal page");
@@ -1069,7 +1102,8 @@ void x04_normal_inventory_at_each_size_and_scale() {
                 for (const auto& expected : x04::normal_text(*semantic))
                     check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
             }
-            if (modal) check(bool(form.handles.dialog.settle(false)), "X04 close normal modal");
+            if (modal) check(bool(form.handles.dialog.settle(false)) && bool(form.handles.reset_v03.invoke()), "X04 close and reset normal modal");
+            check(x04::baseline_context(form), "X04 restore normal page and focus");
         }
     }
 }
@@ -1078,6 +1112,7 @@ void x04_disabled_inventory_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
+            check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto initial = x04::describe(entry.handle);
             if (!detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
             if (initial->kind == Kind::tabs) {
@@ -1126,6 +1161,7 @@ void x04_disabled_inventory_at_each_size_and_scale() {
             check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
                   x04::set_enabled(entry.handle, initial->enabled), (message + " restore").c_str());
             if (entry.page == "modal") check(bool(form.handles.dialog.settle(false)), "X04 close modal");
+            check(x04::baseline_context(form), (message + " baseline focus").c_str());
         }
     }
 }
@@ -1134,6 +1170,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
+            check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto semantic = x04::describe(entry.handle);
             if (!x04::group_conflict_supported(*semantic)) continue;
             auto message = std::string("X04 conflict ") + semantic->id;
@@ -1161,7 +1198,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
             detail::component_type(action->kind).paint(action_paint);
             check(action_paint.drawn.find(action_semantic->name) != std::u16string::npos, (message + " latest paint").c_str());
             check(bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict &&
-                  bool(form.handles.reset.invoke()), (message + " restore").c_str());
+                  bool(form.handles.reset.invoke()) && x04::baseline_context(form), (message + " restore").c_str());
         }
     }
 }
@@ -1171,6 +1208,7 @@ void x04_selected_inventory_at_each_size_and_scale() {
         edit_form::Form form(ids, true);
         test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
+            check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
             if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 select page");
@@ -1713,6 +1751,7 @@ int main() {
         {"X05 page reset and rerun", resets_reproduce_cases_and_preserve_other_pages},
         {"X04 name conflict has a field cue", x04_name_conflict_is_drawn_at_field},
         {"X04 name read-only at each size and scale", x04_name_read_only_size_scale},
+        {"X04 executing inventory at each size and scale", x04_executing_inventory_at_each_size_and_scale},
         {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
         {"X04 error inventory at each size and scale", x04_error_inventory_at_each_size_and_scale},
         {"X04 candidate inventory at each size and scale", x04_candidate_inventory_at_each_size_and_scale},

@@ -6,6 +6,7 @@
 #include "lcars/layout.hpp"
 #include "list_page.hpp"
 #include <array>
+#include <map>
 
 namespace edit_form {
 struct Ids {
@@ -38,6 +39,7 @@ private:
     std::optional<lcars::MixedFieldError> next_field_error_;
     std::string clip_padding_id_;
     std::u16string clip_padding_text_;
+    std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
     bool pages_ = false;
     std::array<int, 3> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
@@ -82,6 +84,8 @@ public:
     void update_mode_source(lcars::OptionValue value);
     void update_region_source(lcars::OptionValue value);
     void update_progress(int value);
+    // Restore the application's original action after a temporary typed-handle binding.
+    lcars::Result restore_fixture_action(lcars::ButtonHandle button) const;
     // Fixture: expand one existing label to exercise scroll clipping, then restore its model source.
     lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
     void clear_clip_padding();
@@ -92,6 +96,7 @@ public:
         next_field_error_ = lcars::MixedFieldError{std::move(field), std::move(message)};
     }
 private:
+    lcars::Result bind_action(lcars::ButtonHandle button, std::function<lcars::Result()> action);
     bool validate();
     lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);
     void refresh_conflict();

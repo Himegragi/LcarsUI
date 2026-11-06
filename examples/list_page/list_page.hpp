@@ -2,6 +2,7 @@
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include <memory>
+#include <map>
 
 // V02 owns its model and can assemble into a standalone or a shared UI.
 namespace list_page {
@@ -12,6 +13,8 @@ class Page {
     bool descending_ = false, disabled_eight_ = false;
     std::string clip_padding_id_;
     std::u16string clip_padding_text_;
+    std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
+    lcars::Result bind_action(lcars::ButtonHandle button, std::function<lcars::Result()> action);
     std::function<void()> search_changed_, selection_changed_;
     lcars::Result refresh();
     lcars::Result sample(int count);
@@ -31,6 +34,7 @@ public:
         lcars::LabelHandle title, detail;
     } handles;
     lcars::layout::Node page() const;
+    lcars::Result restore_fixture_action(lcars::ButtonHandle button) const;
     lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
     void clear_clip_padding();
     std::optional<lcars::OptionValue> selection() const { return selection_; }

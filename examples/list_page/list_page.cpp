@@ -45,18 +45,32 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
         auto it = std::find_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == *selection_; });
         return u"選取：" + std::u16string(selection_->id.begin(), selection_->id.end()) + u"  " + (it == items_.end() ? std::u16string{} : it->label);
     });
-    handles.zero.bind([this] { return sample(0); }); handles.one.bind([this] { return sample(1); });
-    handles.twenty.bind([this] { return sample(20); }); handles.hundred.bind([this] { return sample(100); });
-    handles.reset.bind([this] { auto result = sample(20); if (result) return handles.reset.focus(); return result; });
-    handles.sort.bind([this] { descending_ = !descending_; return refresh(); });
-    handles.disable_eight.bind([this] { disabled_eight_ = !disabled_eight_; return refresh(); });
-    handles.erase.bind([this] {
+    bind_action(handles.zero, [this] { return sample(0); }); bind_action(handles.one, [this] { return sample(1); });
+    bind_action(handles.twenty, [this] { return sample(20); }); bind_action(handles.hundred, [this] { return sample(100); });
+    bind_action(handles.reset, [this] { auto result = sample(20); if (result) return handles.reset.focus(); return result; });
+    bind_action(handles.sort, [this] { descending_ = !descending_; return refresh(); });
+    bind_action(handles.disable_eight, [this] { disabled_eight_ = !disabled_eight_; return refresh(); });
+    bind_action(handles.erase, [this] {
         if (!selection_) return Result{Status::invalid_value, u"沒有選取項目"};
         auto selected = *selection_;
         items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == selected; }), items_.end());
         return refresh();
     });
     sample(20);
+}
+Result Page::bind_action(ButtonHandle button, std::function<Result()> action) {
+    auto semantic = button.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    auto result = button.bind(action);
+    if (result) fixture_actions_.insert_or_assign(semantic->id, std::move(action));
+    return result;
+}
+Result Page::restore_fixture_action(ButtonHandle button) const {
+    auto semantic = button.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    auto found = fixture_actions_.find(semantic->id);
+    if (found != fixture_actions_.end()) return button.bind(found->second);
+    return {Status::not_found, u"No original fixture action"};
 }
 Result Page::set_clip_padding(LabelHandle label, std::u16string text) {
     auto semantic = label.describe();

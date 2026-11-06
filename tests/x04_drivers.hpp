@@ -81,6 +81,12 @@ inline std::vector<std::u16string> normal_text(const lcars::Semantics& s) {
     }
     return result;
 }
+inline bool baseline_context(edit_form::Form& form) {
+    form.scroll.offset = 0; // save a zero offset for the page being left
+    if (!form.handles.tabs.activate({"v01"})) return false;
+    form.scroll.offset = 0;
+    return bool(form.handles.tabs.focus());
+}
 inline bool set_enabled(const lcars::ComponentHandle& value, bool enabled) {
     return std::visit([&](const auto& h) {
         if constexpr (requires { h.enable(enabled); }) return bool(h.enable(enabled));
@@ -148,13 +154,14 @@ inline bool same_model(const std::vector<lcars::Semantics>& a, const std::vector
 }
 inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
-    return std::visit([&](const auto& h) {
+    bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.reset.invoke());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
     }, entry.handle);
+    return restored && baseline_context(form);
 }
 inline bool group_conflict_supported(const lcars::Semantics& s) {
     using lcars::Kind;
@@ -189,6 +196,25 @@ inline lcars::ButtonHandle latest_for(edit_form::Form& form, const Entry& entry)
         else if constexpr (std::is_same_v<T, SliderHandle>) return form.handles.volume_latest;
         else return {};
     }, entry.handle);
+}
+inline bool execution_supported(edit_form::Form& form, const lcars::ButtonHandle& button) {
+    auto semantic = button.describe();
+    return semantic && semantic->kind == lcars::Kind::button && semantic->id != form.handles.apply.describe()->id;
+}
+inline bool prepare_execution(edit_form::Form& form, const Entry& entry) {
+    auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
+    if (!button || !baseline_context(form)) return false;
+    if (entry.page == "modal") {
+        if (!form.handles.tabs.activate({"v03"}) || !form.handles.dialog_open.invoke()) return false;
+    } else if (!form.handles.tabs.activate({std::string(entry.page)})) return false;
+    return bool(button->enable(true)) && bool(button->focus());
+}
+inline bool restore_execution(edit_form::Form& form, const Entry& entry, bool enabled) {
+    auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
+    if (!button) return false;
+    bool restored = bool(form.restore_fixture_action(*button)) && bool(button->enable(enabled));
+    if (entry.page == "modal") restored = bool(form.handles.dialog.settle(false)) && restored;
+    return baseline_context(form) && restored;
 }
 // Give the active page enough content to exercise both edges at every viewport size.
 // The model fixture temporarily expands an existing label and restores its original
@@ -285,7 +311,7 @@ inline bool error_semantics(edit_form::Form& form, const lcars::Semantics& s) {
 }
 inline bool restore_error(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
-    return std::visit([&](const auto& h) {
+    bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(u""));
         else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(u""));
@@ -293,6 +319,7 @@ inline bool restore_error(edit_form::Form& form, const Entry& entry) {
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(form.handles.reset.invoke());
         else return false;
     }, entry.handle);
+    return restored && baseline_context(form);
 }
 inline bool prepare_candidate(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
@@ -323,13 +350,14 @@ inline std::optional<std::u16string> candidate_label(const lcars::Semantics& s) 
 }
 inline bool restore_candidate(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
-    return std::visit([&](const auto& h) {
+    bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, DropdownHandle>) return bool(h.cancel());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.reset.invoke());
         else return false;
     }, entry.handle);
+    return restored && baseline_context(form);
 }
 inline bool drive_search_read_only(edit_form::Form& form) {
     return bool(form.handles.tabs.activate({"v02"})) && bool(form.list->handles.search.set_value(u"X04")) &&
