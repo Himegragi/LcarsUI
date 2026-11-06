@@ -1,5 +1,282 @@
 # First component batch acceptance — issue #25
 
+## X02 / partial X04 state-driving follow-up (2026-11-06)
+
+**X02: PASS for the assembled samples. X04: OPEN.** The tested code commit is `82da26c`; the local `integration/first-component-batch` tip `163bec9` is an ancestor. This section supersedes the X02/X04 close attempt below while preserving its history. X04 is not complete: its 1,132 open cells are listed individually with reasons in [x04-open.tsv](x04-state-sweep/x04-open.tsv).
+
+### X02 per-sample results
+
+Each cell covers shipped and alternate IDs. `P` means all reachable native cases in the sample passed; `N/A` is a separately identified unreachable input or unsupported interaction, not a pass. [Final Debug rows](x04-state-sweep/debug-final.tsv) include all detailed cases, offsets and rectangle coordinates.
+
+| Page | DIP size | Scale | Web | Material | Sample qualification |
+| --- | --- | --- | --- | --- | --- |
+| V01 | 960?720 | 100% | P; N/A | P; N/A | Track to partial anchor is unreachable from a visible start; wheel and thumb cover partial and clipped anchors. |
+| V01 | 960?720 | 150% | P; N/A | P; N/A | Same. |
+| V01 | 640?480 | 100% | P; N/A | P; N/A | Wheel, track and thumb cover partial and clipped dropdown anchors. |
+| V01 | 640?480 | 150% | P; N/A | P; N/A | Same. |
+| V02 | 960?720 | 100% | P | P | Nested-list navigation, reveal and wheel. |
+| V02 | 960?720 | 150% | P | P | Same. |
+| V02 | 640?480 | 100% | P | P | Same. |
+| V02 | 640?480 | 150% | P | P | Same. |
+| V03 | 960?720 | 100% | P; N/A | P; N/A | No background overflow; modal-wheel blocking and scroll-driven tooltip edges/dwell are N/A. |
+| V03 | 960?720 | 150% | P; N/A | P; N/A | Same. |
+| V03 | 640?480 | 100% | P; N/A | P; N/A | Tooltip scroll and pointer dwell pass; partial/clipped tooltip anchors are unreachable over the actual scroll range. |
+| V03 | 640?480 | 150% | P; N/A | P; N/A | Same. |
+
+The V03 640?480 Web anchor is top 392/height 40, clip y=68..480, maximum offset 24 at 100%; at 150% these are 588/60, y=102..720, maximum 36. Material is 404/44, y=72..480, maximum 44 at 100%; at 150%, 606/66, y=108..720, maximum 66. All offsets retain the full anchor within its clip. The actual scrollbar position/offset search is exhaustive; the TSV records those dimensions for each input, appearance and ID set. At 960?720 V01, a track click centers the long thumb on the pointer, and no pointer position outside a visible-start thumb yields a partially clipped endpoint; the TSV records the actual track, thumb and offset bounds.
+
+Keyboard region scrolling while a popup is open is N/A: `WM_KEYDOWN` dispatches to the focused component, and the host only schedules list reveal for a focused list, not a region-scroll command in these popup states. Independently scrolling the assembled dropdown list is N/A: it has three options, with total row height equal to panel height (96 px at 100%, 144 px at 150%) in both appearances. Wheel over that panel is separately checked not to scroll the background. Pointer-only tests verify an old deadline cannot reopen the tooltip after a scroll and a new full dwell can reopen it, including after a shown tooltip is closed.
+
+### Verification and evidence
+
+- Debug desktop: **7/7 CTest**, **380/380 native checks**, **168 N/A** rows ([log](x04-state-sweep/debug-final.log), [rows](x04-state-sweep/debug-final.tsv)). X02 rows specifically: **272 P / 0 F / 168 N/A**. X04 native sample checks: **46 P / 0 F**; these are sample checks, not a complete X04 matrix.
+- Release desktop: **7/7 CTest**, **380/380 native checks**, **168 N/A** rows ([log](x04-state-sweep/release-final.log), [rows](x04-state-sweep/release-final.tsv)). Release core-only: **6/6 CTest** ([log](x04-state-sweep/core-final.log)).
+- First Debug attempt: **6/7 CTest, 348 native checks with 8 failures**, all eight the new V03 pointer-dwell fixture ([log](x04-state-sweep/debug-first.log), [rows](x04-state-sweep/debug-first.tsv)). The synthetic hover visit was interrupted by unrelated queued physical-pointer leave messages; the fixture was changed to dispatch its synthetic wheel synchronously without pumping those unrelated messages. The subsequent pre-fix-code Debug run passed **7/7**, **364/364 native checks** and **168 N/A** ([log](x04-state-sweep/debug-pointer.log), [rows](x04-state-sweep/debug-pointer.tsv)). AC08 clipboard rows passed in each of these runs. This observation does not explain the earlier historical clipboard failure in the section below.
+- The production fix adds the source-change cue to a conflicting text field's painted description while preserving its associated help and latest-value action. The regression failed before the fix in both appearances and both ID sets, then passed through the core seam; the final native samples cover both sizes and scales.
+- Host input production files were not changed. The Win32-message verification driver changed in `tests/host_verify.cpp`. `--clipboard-only`, `--ime` and `--dpi` were not run. Trailing spaces were removed from saved logs and TSVs without changing results.
+
+### Not completed
+
+1. X04 remains open. Only the name field's read-only and source-conflict/latest states have the new shared drivers and complete checks recorded here. The remaining **1,132 component/state aggregate cells** need state drivers, restoration and/or full semantic-versus-clipped-paint comparisons at the native and core size/scale seams. For example, `web / shipped / form.title.pages.v03.progress / clipped` remains open; the normal 960?720 V03 fixture has no overflow, so the driver must create an appropriate model state rather than treating an omitted test as a pass. The observer records a text run and whether any raster ink survives the clip; it is not OCR or proof that every glyph is visible.
+2. The earlier intermittent AC08 failure remains unexplained. UIA/screen-reader, MCP adapters and prior deferred design work remain separate. No new undefined behavior policy was identified in the completed samples.
+
+### Generated X04 component ? state table (partial)
+
+Generated by [make-progress.py](x04-state-sweep/make-progress.py) from the final Debug native report and the [Web](x04-state-sweep/web-x04-sweep.tsv) / [Material](x04-state-sweep/material-x04-sweep.tsv) inventories. **P=8, F=0, N/A=1,596, O=1,132 aggregate cells.** `P` requires all four size/scale native samples and the shared core state driver. `N/A` is from the registered type's capabilities or fixed page/overlay membership. `O` explicitly means the required driver or full comparison has not been implemented; it is not an acceptance result. The [driven sample summary](x04-state-sweep/x04-driven.md) names those eight cells, and [the open list](x04-state-sweep/x04-open.tsv) gives each remaining cell and its reason. The table intentionally retains `O` because this is a partial implementation and must not convert missing tests into P or F.
+
+| Appearance / IDs | Component | Normal | Hidden | Clipped | Disabled | Read-only | Selected | Candidate | Error | Conflict / latest | Executing | Modal | Tooltip |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| web / shipped | `form.title.pages.tabs` | O | N/A | O | O | N/A | O | O | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.intro` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.state` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.draft` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.applied` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.count` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.label` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.help` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.error` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name` | O | O | O | O | P | N/A | N/A | O | P | N/A | N/A | N/A |
+| web / shipped | `fixture.normal` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.read_only` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.disabled` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.error` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.long` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.offline_disabled` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `fixture.region_empty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.apply` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.notices.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.mode.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.region.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.volume.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.notices` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| web / shipped | `form.mode` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| web / shipped | `form.region` | O | O | O | O | N/A | N/A | O | O | O | N/A | N/A | N/A |
+| web / shipped | `form.volume` | O | O | O | O | N/A | N/A | N/A | O | O | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.detail` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.search` | O | O | O | O | O | N/A | N/A | O | O | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.list` | O | O | O | O | N/A | O | O | N/A | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.one` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.twenty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.hundred` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.sort` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.erase` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.disable` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v02.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.source` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.result` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.progress` | O | O | O | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.half` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | O |
+| web / shipped | `form.title.pages.v03.full` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.below` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.above` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.open` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.v03.temporary` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / shipped | `form.title.pages.dialog.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| web / shipped | `form.title.pages.dialog.body` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| web / shipped | `form.title.pages.dialog.cancel` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| web / shipped | `form.title.pages.dialog.confirm` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| web / alternate | `t.pages.tabs` | O | N/A | O | O | N/A | O | O | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `i` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `s` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `d` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `r` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `c` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.l` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.h` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.e` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n` | O | O | O | O | P | N/A | N/A | O | P | N/A | N/A | N/A |
+| web / alternate | `f1` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `f2` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `f3` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `f4` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `f5` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `offline` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `region.empty.alt` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `f6` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `go` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `notices.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `mode.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `region.alt.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `volume.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `notices` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| web / alternate | `mode` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| web / alternate | `region.alt` | O | O | O | O | N/A | N/A | O | O | O | N/A | N/A | N/A |
+| web / alternate | `volume` | O | O | O | O | N/A | N/A | N/A | O | O | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.detail` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.search` | O | O | O | O | O | N/A | N/A | O | O | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.list` | O | O | O | O | N/A | O | O | N/A | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.one` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.twenty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.hundred` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.sort` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.erase` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.disable` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v02.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.source` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.result` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.progress` | O | O | O | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.half` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | O |
+| web / alternate | `t.pages.v03.full` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.below` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.above` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.open` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.v03.temporary` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| web / alternate | `t.pages.dialog.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| web / alternate | `t.pages.dialog.body` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| web / alternate | `t.pages.dialog.cancel` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| web / alternate | `t.pages.dialog.confirm` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| material / shipped | `form.title.pages.tabs` | O | N/A | O | O | N/A | O | O | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.intro` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.state` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.draft` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.applied` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.count` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.label` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.help` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.error` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name` | O | O | O | O | P | N/A | N/A | O | P | N/A | N/A | N/A |
+| material / shipped | `fixture.normal` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.read_only` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.disabled` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.error` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.long` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.offline_disabled` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `fixture.region_empty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.apply` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.notices.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.mode.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.region.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.volume.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.notices` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| material / shipped | `form.mode` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| material / shipped | `form.region` | O | O | O | O | N/A | N/A | O | O | O | N/A | N/A | N/A |
+| material / shipped | `form.volume` | O | O | O | O | N/A | N/A | N/A | O | O | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.detail` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.search` | O | O | O | O | O | N/A | N/A | O | O | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.list` | O | O | O | O | N/A | O | O | N/A | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.one` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.twenty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.hundred` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.sort` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.erase` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.disable` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v02.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.source` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.result` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.progress` | O | O | O | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.half` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | O |
+| material / shipped | `form.title.pages.v03.full` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.below` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.above` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.open` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.v03.temporary` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / shipped | `form.title.pages.dialog.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| material / shipped | `form.title.pages.dialog.body` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| material / shipped | `form.title.pages.dialog.cancel` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| material / shipped | `form.title.pages.dialog.confirm` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| material / alternate | `t.pages.tabs` | O | N/A | O | O | N/A | O | O | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `i` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `s` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `d` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `r` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `c` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.l` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.h` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.e` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n` | O | O | O | O | P | N/A | N/A | O | P | N/A | N/A | N/A |
+| material / alternate | `f1` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `f2` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `f3` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `f4` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `f5` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `offline` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `region.empty.alt` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `f6` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `go` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `notices.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `mode.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `region.alt.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `volume.latest` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `notices` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| material / alternate | `mode` | O | O | O | O | N/A | O | N/A | O | O | N/A | N/A | N/A |
+| material / alternate | `region.alt` | O | O | O | O | N/A | N/A | O | O | O | N/A | N/A | N/A |
+| material / alternate | `volume` | O | O | O | O | N/A | N/A | N/A | O | O | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.detail` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.search` | O | O | O | O | O | N/A | N/A | O | O | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.list` | O | O | O | O | N/A | O | O | N/A | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.one` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.twenty` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.hundred` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.sort` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.erase` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.disable` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v02.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.source` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.result` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.progress` | O | O | O | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.zero` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.half` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | O |
+| material / alternate | `t.pages.v03.full` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.below` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.above` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.reset` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.open` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.v03.temporary` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | N/A | N/A |
+| material / alternate | `t.pages.dialog.title` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| material / alternate | `t.pages.dialog.body` | O | O | O | N/A | N/A | N/A | N/A | O | N/A | N/A | O | N/A |
+| material / alternate | `t.pages.dialog.cancel` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+| material / alternate | `t.pages.dialog.confirm` | O | O | O | O | N/A | N/A | N/A | N/A | N/A | O | O | N/A |
+
+
+
 ## X02 / X04 close attempt (2026-11-06)
 
 **X02: OPEN. X04: OPEN.** The tested source is `2273cea`; the local integration tip `fe6fe13` was already an ancestor. This section supersedes the earlier X02/X04 follow-up, which is retained as history. The resulting code and evidence commits are on `batch/x02-x04-close`.

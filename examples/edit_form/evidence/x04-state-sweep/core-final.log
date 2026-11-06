@@ -1,0 +1,412 @@
+Start testing: Nov 06 18:09 Taipei Standard Time
+----------------------------------------------------------
+1/6 Testing: core_regressions
+1/6 Test: core_regressions
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/lcars_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"core_regressions" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS 54 checks: core admission and appearance geometry
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"core_regressions" end time: Nov 06 18:09 Taipei Standard Time
+"core_regressions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/6 Testing: components
+2/6 Test: components
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/lcars_components_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"components" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS X04 registered component state applicability
+PASS G07 revalidate after focus callback
+PASS G07 removal releases confirmation connection
+PASS G07 bounded removal storage
+PASS General page membership
+PASS G07 deferred removal and stale identity
+PASS C08 C09 list page admission
+PASS G07 page changes do not recurse
+PASS C09 disabled and modal admission
+PASS G11 cross-page rejection
+PASS C09 manual tabs and hidden admission
+PASS L03 list selection survives reorder
+PASS C08 list focus and keyboard
+PASS R11 list neighbor follows old identity order
+PASS G07 list write cannot reenter
+PASS C06 candidate and draft are separate
+PASS F07 dropdown exit and option identity
+PASS G07 dropdown changes do not recurse
+PASS G07 dropdown programmatic edits repaint
+PASS G11 edits during numeric submission
+PASS C12 progress source lifecycle
+PASS G10 numeric source and conflict lifecycle
+PASS N04 non-divisible steps and keys
+PASS N04 invalid slider ranges
+PASS C07 numeric draft and confirmation
+PASS G04 selection operations reflect write admission
+PASS G10 standalone typed confirmations
+PASS G11 radio conflict and latest
+PASS G11 mixed rejection
+PASS N03 all disabled options
+PASS G11 mixed confirmation batch
+PASS C05 empty selection and disabled options
+PASS C04 keyboard and disabled semantics
+PASS C04 connected checkbox toggles
+PASS Standalone confirmation shares command guard
+PASS Public text operations obey restrictions
+PASS Handle queries report expiry
+PASS Configuration requires UI thread
+PASS G11 confirmation action cannot be replaced
+PASS G10 unconnected text rejects edits
+PASS G10 standalone confirmed connection
+PASS G10 source notifications request a repaint
+PASS G10 cancel clears rejection without writing
+PASS G10 explicit immediate write retains rejected draft
+PASS G11 a fresh draft starts at the current source
+PASS G11 source updates preserve composition
+PASS G10 connected text requires explicit write timing
+PASS G11 confirmation blocks reentry but preserves new edits
+PASS G11 rejected group retains drafts and focuses first error
+PASS G11 confirmation submits draft and origin and keeps history
+PASS G11 source conflicts preserve drafts until cancel
+PASS G10 source updates follow component lifetime
+PASS G10 typed handles expire with their component tree
+PASS C01 labels associate by target id
+PASS C01 field error has one source
+PASS AC11 tab order skips labels and disabled
+PASS AC06 button activates once per press
+PASS AC09 typing records one history entry per input
+PASS AC08 caret moves by code point and extends with Shift
+PASS Clipboard unavailable differs from no text
+PASS AC09 paste turns each line break into one space
+PASS AC10 read-only allows viewing and copying only
+PASS AC10 disabled field refuses every entry and keeps data
+PASS AC14 composition commits once and never applies
+PASS G07 focus notifications queue instead of recursing
+PASS AC10 keyboard editing obeys the same admission
+PASS AC08 over-limit edit is rejected whole
+PASS AC11 owner hears focus moves and semantics list actions
+components: 68/68 cases, 4369 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"components" end time: Nov 06 18:09 Taipei Standard Time
+"components" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/6 Testing: layout
+3/6 Test: layout
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/lcars_layout_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"layout" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS Appearance controls component words and geometry
+PASS G11 reveal cross-page error
+PASS C09 only active page is drawn
+PASS B03 nested reveal
+PASS R02 list keyboard row reveal and clipped hit
+PASS N06 assembled layout with long text and type size
+PASS B04 popup topmost hit and placement
+PASS R05 dropdown states are readable
+PASS B04 stack and popup edge placement
+PASS C07 slider track and drag
+PASS C05 radio pointer geometry
+PASS Registered component reaches layout, hit and input
+PASS Layout rejects foreign and expired handles
+PASS AC05 long label wraps and pushes following controls down
+PASS AC05 Latin words wrap at spaces
+PASS B01 command kinds are placed like buttons
+PASS AC12 field roles stay with their field in both appearances
+PASS AC13 narrow window moves results below
+PASS AC13 scrolling reveals focus and clips hits
+PASS R06 resize after deep scroll settles in the first frame
+PASS AC08 pointer hits map to the painted caret positions
+PASS AC04 long text keeps caret visible and reset clears offset
+layout: 22/22 cases, 124 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"layout" end time: Nov 06 18:09 Taipei Standard Time
+"layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/6 Testing: edit_form
+4/6 Test: edit_form
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/lcars_edit_form_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"edit_form" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 name conflict has a field cue
+PASS X04 name read-only at each size and scale
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, shipped IDs): 44/44 cases, 3763 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 name conflict has a field cue
+PASS X04 name read-only at each size and scale
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, alternate IDs): 44/44 cases, 7526 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 name conflict has a field cue
+PASS X04 name read-only at each size and scale
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, shipped IDs): 44/44 cases, 11289 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 name conflict has a field cue
+PASS X04 name read-only at each size and scale
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, alternate IDs): 44/44 cases, 15052 checks
+<end of output>
+Test time =   0.25 sec
+----------------------------------------------------------
+Test Passed.
+"edit_form" end time: Nov 06 18:09 Taipei Standard Time
+"edit_form" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/6 Testing: list_page
+5/6 Test: list_page
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/lcars_list_page_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"list_page" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS L03 duplicate names and sorting
+PASS L05 R03 R10 deletion and reentry
+PASS L04 filtering clears selection
+PASS R09 N08 disabling selected row
+PASS L01 L02 empty single and keyboard endpoints
+PASS R11 filtering uses old order
+list_page: 6/6 cases, 20 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"list_page" end time: Nov 06 18:09 Taipei Standard Time
+"list_page" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/6 Testing: consumer_example
+6/6 Test: consumer_example
+Command: "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--build-and-test" "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/examples/consumer" "C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/consumer" "--build-generator" "Ninja" "--build-options" "-DLCARS_SOURCE_DIR=C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2" "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_CXX_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe" "-DCMAKE_C_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe" "-DCMAKE_MAKE_PROGRAM=C:/PROGRA~1/LLVM/bin/ninja.exe" "--test-command" "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--output-on-failure"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core
+"consumer_example" start time: Nov 06 18:09 Taipei Standard Time
+Output:
+----------------------------------------------------------
+Internal cmake changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/consumer
+======== CMake output     ======
+Configuring done (0.1s)
+Generating done (0.1s)
+Build files have been written to: C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/consumer
+======== End CMake output ======
+Change Dir: 'C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/consumer'
+
+Run Clean Command: C:/PROGRA~1/LLVM/bin/ninja.exe clean
+[1/1] Cleaning all built files...
+Cleaning... 8 files.
+
+Run Build Command(s): C:/PROGRA~1/LLVM/bin/ninja.exe
+[1/8] Building CXX object lcars\CMakeFiles\lcars_appearance_material.dir\src\appearance_material.cpp.obj
+[2/8] Linking CXX static library lcars\lcars_appearance_material.lib
+[3/8] Building CXX object CMakeFiles\profile_alias.dir\main.cpp.obj
+[4/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\component_type.cpp.obj
+[5/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\layout.cpp.obj
+[6/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\core.cpp.obj
+[7/8] Linking CXX static library lcars\lcars_core.lib
+[8/8] Linking CXX executable profile_alias.exe
+
+Running test command: "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--output-on-failure"
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-0802ebe2/build/Release-core/consumer
+    Start 1: profile_alias
+1/1 Test #1: profile_alias ....................   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.03 sec
+
+<end of output>
+Test time =   5.58 sec
+----------------------------------------------------------
+Test Passed.
+"consumer_example" end time: Nov 06 18:09 Taipei Standard Time
+"consumer_example" time elapsed: 00:00:05
+----------------------------------------------------------
+
+End testing: Nov 06 18:09 Taipei Standard Time
