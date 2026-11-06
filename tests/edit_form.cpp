@@ -904,6 +904,10 @@ void popup_and_scroll_matrix() {
         auto row = pop->options.front();
         auto hit = dropdown.hit(row.x + row.w / 2, row.y + row.h / 2);
         check(hit && hit->popup && hit->id == dropdown_id, "X02 dropdown receives the topmost hit");
+        int wheel_before = form.scroll.offset;
+        check(!dropdown.wheel(form.ui, row.x + row.w / 2, row.y + row.h / 2, -48) &&
+              form.scroll.offset == wheel_before && h.region.describe()->expanded,
+              "X02 wheel input inside the dropdown does not move the background or dismiss it");
         host.key_down({Key::down}); host.key_down({Key::down}); host.key_down({Key::escape});
         check(!h.region.describe()->expanded && h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
               "X02 Escape cancels the candidate and retains focus and value");
@@ -931,6 +935,17 @@ void popup_and_scroll_matrix() {
         check(scroll_frame.scroll_to(form.ui, form.scroll, destination) && !h.region.describe()->expanded &&
               !h.region.describe()->candidate && h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
               "X02 a moving viewport cancels the dropdown without changing focus or value");
+        h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
+        auto wheel_frame = draw();
+        auto viewport = wheel_frame.regions.front().clip;
+        int wheel_step = form.scroll.offset + 2 <= wheel_frame.maximum ? -1 : 1;
+        check(wheel_frame.wheel(form.ui, viewport.x + 1, viewport.y + 1, wheel_step) &&
+              !h.region.describe()->expanded && !h.region.describe()->candidate && h.region.describe()->focused &&
+              *h.region.draft() == OptionValue{"north"}, "X02 wheel outside the popup cancels through the shared frame path");
+        int after_first_wheel = form.scroll.offset;
+        check(wheel_frame.wheel(form.ui, viewport.x + 1, viewport.y + 1, wheel_step) &&
+              form.scroll.offset == after_first_wheel - wheel_step,
+              "X02 consecutive wheel messages accumulate before the next frame");
 
         // Choose real offsets from the assembled page's own geometry. If the page cannot
         // expose an edge at this size, don't invent extra overflow to manufacture a sample.

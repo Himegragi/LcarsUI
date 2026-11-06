@@ -156,6 +156,17 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     owner.scrolled();
     return true;
 }
+bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
+    if (modal || owner_ != &detail::access(ui)) return false;
+    // A popup owns its own wheel input; it must not scroll the background beneath it.
+    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
+        if (it->popup && !it->tooltip && it->bounds.contains(x, y) && it->clip.contains(x, y)) return false;
+    for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
+        if (!it->clip.contains(x, y)) continue;
+        if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
+    }
+    return false;
+}
 
 int Frame::offset_for_thumb(int thumb_top) const {
     return ScrollRegion{nullptr, viewport, viewport, track, thumb, extent, maximum, offset}.offset_for_thumb(thumb_top);

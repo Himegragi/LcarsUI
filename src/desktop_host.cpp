@@ -477,17 +477,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (frame_.modal) return 0;
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
-        // A wheel over a dropdown panel belongs to the popup, not its background.
-        if (std::any_of(frame_.overlays.begin(), frame_.overlays.end(), [&](const Placement& p) {
-                return p.popup && !p.tooltip && p.bounds.contains(point.x, point.y) && p.clip.contains(point.x, point.y);
-            })) return 0;
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
-        // Route to the deepest visible viewport that can move in this direction.
-        for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
-            if (!it->clip.contains(point.x, point.y)) continue;
-            int next = std::clamp(it->offset - delta, 0, it->maximum);
-            if (frame_.scroll_to(ui_, *it->state, next)) break;
-        }
+        frame_.wheel(ui_, point.x, point.y, delta);
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
