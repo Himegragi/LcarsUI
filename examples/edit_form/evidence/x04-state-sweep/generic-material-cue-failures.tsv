@@ -1,0 +1,7 @@
+appearance	case	status	evidence
+material	X04-error-member	FAIL	shipped 960x720 150% form.region: driven=1, semantics, association and cue=0, restored=1
+material	X04-error-member	FAIL	shipped 960x720 150% form.volume: driven=1, semantics, association and cue=0, restored=1
+material	X04-error-member	FAIL	alternate 960x720 150% region.alt: driven=1, semantics, association and cue=0, restored=1
+material	X04-error-member	FAIL	alternate 960x720 150% volume: driven=1, semantics, association and cue=0, restored=1
+material	X04-conflict-member	FAIL	shipped 960x720 150% form.region: driven=1, field=0, latest=1, restored=1
+material	X04-conflict-member	FAIL	alternate 960x720 150% region.alt: driven=1, field=0, latest=1, restored=1

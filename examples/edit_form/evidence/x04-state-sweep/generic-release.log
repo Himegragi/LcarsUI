@@ -1,0 +1,514 @@
+-- The C compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- The CXX compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE)
+CMake Warning at build/Release/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+
+
+-- Found Python3: C:/Python314/python.exe (found version "3.14.6") found components: Interpreter
+-- Looking for atexit
+-- Looking for atexit - found
+-- Looking for mprotect
+-- Looking for mprotect - not found
+-- Looking for sysconf
+-- Looking for sysconf - not found
+-- Looking for getpagesize
+-- Looking for getpagesize - not found
+-- Looking for mmap
+-- Looking for mmap - not found
+-- Looking for isatty
+-- Looking for isatty - found
+-- Looking for unistd.h
+-- Looking for unistd.h - not found
+-- Looking for sys/mman.h
+-- Looking for sys/mman.h - not found
+-- Looking for stdbool.h
+-- Looking for stdbool.h - found
+-- Performing Test MSVC_UTF8_FLAG_SUPPORTED
+-- Performing Test MSVC_UTF8_FLAG_SUPPORTED - Success
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (24.1s)
+-- Generating done (0.7s)
+-- Build files have been written to: C:/Users/user/.t3/worktrees/LcarsUI/t3-668b59a0/build/Release
+[1/150] Building C object freetype\CMakeFiles\freetype.dir\src\autofit\autofit.c.obj
+[2/150] Building CXX object CMakeFiles\lcars_core.dir\src\component_type.cpp.obj
+[3/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbbox.c.obj
+[4/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbdf.c.obj
+[5/150] Building CXX object CMakeFiles\lcars_core.dir\src\layout.cpp.obj
+[6/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbitmap.c.obj
+[7/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftcid.c.obj
+[8/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftfstype.c.obj
+[9/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftgasp.c.obj
+[10/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftglyph.c.obj
+[11/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftgxval.c.obj
+[12/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftinit.c.obj
+[13/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftmm.c.obj
+[14/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftotval.c.obj
+[15/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftpatent.c.obj
+[16/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftpfr.c.obj
+[17/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftbase.c.obj
+[18/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftsynth.c.obj
+[19/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\fttype1.c.obj
+[20/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftwinfnt.c.obj
+[21/150] Building C object freetype\CMakeFiles\freetype.dir\src\base\ftstroke.c.obj
+[22/150] Building C object freetype\CMakeFiles\freetype.dir\src\bzip2\ftbzip2.c.obj
+[23/150] Building C object freetype\CMakeFiles\freetype.dir\src\bdf\bdf.c.obj
+[24/150] Building C object freetype\CMakeFiles\freetype.dir\src\cache\ftcache.c.obj
+[25/150] Building C object freetype\CMakeFiles\freetype.dir\src\cid\type1cid.c.obj
+[26/150] Building C object freetype\CMakeFiles\freetype.dir\src\cff\cff.c.obj
+[27/150] Building C object freetype\CMakeFiles\freetype.dir\src\lzw\ftlzw.c.obj
+[28/150] Building C object freetype\CMakeFiles\freetype.dir\src\gzip\ftgzip.c.obj
+[29/150] Building C object freetype\CMakeFiles\freetype.dir\src\pcf\pcf.c.obj
+[30/150] Building C object freetype\CMakeFiles\freetype.dir\src\pfr\pfr.c.obj
+[31/150] Building C object freetype\CMakeFiles\freetype.dir\src\psnames\psnames.c.obj
+[32/150] Building C object freetype\CMakeFiles\freetype.dir\src\pshinter\pshinter.c.obj
+[33/150] Building C object freetype\CMakeFiles\freetype.dir\src\raster\raster.c.obj
+[34/150] Building C object freetype\CMakeFiles\freetype.dir\src\sdf\sdf.c.obj
+[35/150] Building C object freetype\CMakeFiles\freetype.dir\src\smooth\smooth.c.obj
+[36/150] Building C object freetype\CMakeFiles\freetype.dir\src\psaux\psaux.c.obj
+[37/150] Building C object freetype\CMakeFiles\freetype.dir\src\svg\svg.c.obj
+[38/150] Building C object freetype\CMakeFiles\freetype.dir\src\type1\type1.c.obj
+[39/150] Building C object freetype\CMakeFiles\freetype.dir\src\type42\type42.c.obj
+[40/150] Building C object freetype\CMakeFiles\freetype.dir\src\sfnt\sfnt.c.obj
+[41/150] Building C object freetype\CMakeFiles\freetype.dir\src\winfonts\winfnt.c.obj
+[42/150] Building C object freetype\CMakeFiles\freetype.dir\builds\windows\ftdebug.c.obj
+[43/150] Building C object freetype\CMakeFiles\freetype.dir\builds\windows\ftsystem.c.obj
+[44/150] Building C object freetype\CMakeFiles\freetype.dir\src\truetype\truetype.c.obj
+[45/150] Building RC object freetype\CMakeFiles\freetype.dir\src\base\ftver.rc.res
+[46/150] Linking C static library freetype\freetype.lib
+[47/150] Building CXX object CMakeFiles\lcars_core.dir\src\core.cpp.obj
+[48/150] Linking CXX static library lcars_core.lib
+[49/150] Building CXX object CMakeFiles\lcars_list_page.dir\examples\list_page\list_page.cpp.obj
+[50/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-blob.cc.obj
+[51/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-aat-map.cc.obj
+[52/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer-serialize.cc.obj
+[53/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer-verify.cc.obj
+[54/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\OT\Var\VARC\VARC.cc.obj
+[55/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-buffer.cc.obj
+[56/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext-font.cc.obj
+[57/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext-shape.cc.obj
+[58/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-common.cc.obj
+[59/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-coretext.cc.obj
+[60/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite-font.cc.obj
+[61/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite-shape.cc.obj
+[62/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-directwrite.cc.obj
+[63/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-aat-layout.cc.obj
+[64/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-draw.cc.obj
+[65/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-fallback-shape.cc.obj
+[66/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-face-builder.cc.obj
+[67/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-gdi.cc.obj
+[68/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-font.cc.obj
+[69/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-face.cc.obj
+[70/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-glib.cc.obj
+[71/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ft.cc.obj
+[72/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-graphite2.cc.obj
+[73/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-map.cc.obj
+[74/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-number.cc.obj
+[75/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-cff1-table.cc.obj
+[76/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-cff2-table.cc.obj
+[77/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-color.cc.obj
+[78/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-fetch.cc.obj
+[79/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-face.cc.obj
+[80/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-map.cc.obj
+[81/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-meta.cc.obj
+[82/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-math.cc.obj
+[83/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-font.cc.obj
+[84/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-name.cc.obj
+[85/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-metrics.cc.obj
+[86/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-normalize.cc.obj
+[87/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape-fallback.cc.obj
+[88/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shape.cc.obj
+[89/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-default.cc.obj
+[90/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-layout.cc.obj
+[91/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-hangul.cc.obj
+[92/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-hebrew.cc.obj
+[93/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-indic-table.cc.obj
+[94/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-indic.cc.obj
+[95/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-khmer.cc.obj
+[96/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-arabic.cc.obj
+[97/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-myanmar.cc.obj
+[98/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-syllabic.cc.obj
+[99/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-thai.cc.obj
+[100/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-use.cc.obj
+[101/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-shaper-vowel-constraints.cc.obj
+[102/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-tag.cc.obj
+[103/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint-bounded.cc.obj
+[104/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-outline.cc.obj
+[105/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint-extents.cc.obj
+[106/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ot-var.cc.obj
+[107/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-paint.cc.obj
+[108/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shape-plan.cc.obj
+[109/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-set.cc.obj
+[110/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shape.cc.obj
+[111/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-shaper.cc.obj
+[112/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-ucd.cc.obj
+[113/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-unicode.cc.obj
+[114/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-uniscribe.cc.obj
+[115/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-style.cc.obj
+[116/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-wasm-api.cc.obj
+[117/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-static.cc.obj
+[118/150] Building CXX object CMakeFiles\lcars_appearance_web.dir\src\appearance_web.cpp.obj
+[119/150] Linking CXX static library lcars_list_page.lib
+[120/150] Building CXX object harfbuzz\CMakeFiles\harfbuzz.dir\src\hb-wasm-shape.cc.obj
+[121/150] Building CXX object CMakeFiles\lcars_appearance_material.dir\src\appearance_material.cpp.obj
+[122/150] Building CXX object CMakeFiles\lcars_desktop.dir\src\renderer_opengl.cpp.obj
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETSTRINGPROC' (aka 'const unsigned char *(*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(22,2): note: expanded from macro 'GL_FUNCTIONS'
+   22 |  X(PFNGLGETSTRINGPROC, GetString) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETINTEGERVPROC' (aka 'void (*)(unsigned int, int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(23,2): note: expanded from macro 'GL_FUNCTIONS'
+   23 |  X(PFNGLGETINTEGERVPROC, GetIntegerv) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETERRORPROC' (aka 'unsigned int (*)()') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(24,2): note: expanded from macro 'GL_FUNCTIONS'
+   24 |  X(PFNGLGETERRORPROC, GetError) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLVIEWPORTPROC' (aka 'void (*)(int, int, int, int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(25,2): note: expanded from macro 'GL_FUNCTIONS'
+   25 |  X(PFNGLVIEWPORTPROC, Viewport) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLCLEARCOLORPROC' (aka 'void (*)(float, float, float, float)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(26,2): note: expanded from macro 'GL_FUNCTIONS'
+   26 |  X(PFNGLCLEARCOLORPROC, ClearColor) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLCLEARPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(27,2): note: expanded from macro 'GL_FUNCTIONS'
+   27 |  X(PFNGLCLEARPROC, Clear) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLENABLEPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(28,2): note: expanded from macro 'GL_FUNCTIONS'
+   28 |  X(PFNGLENABLEPROC, Enable) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDISABLEPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(29,2): note: expanded from macro 'GL_FUNCTIONS'
+   29 |  X(PFNGLDISABLEPROC, Disable) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLSCISSORPROC' (aka 'void (*)(int, int, int, int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(30,2): note: expanded from macro 'GL_FUNCTIONS'
+   30 |  X(PFNGLSCISSORPROC, Scissor) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLBLENDFUNCPROC' (aka 'void (*)(unsigned int, unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(31,2): note: expanded from macro 'GL_FUNCTIONS'
+   31 |  X(PFNGLBLENDFUNCPROC, BlendFunc) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGENVERTEXARRAYSPROC' (aka 'void (*)(int, unsigned int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(32,2): note: expanded from macro 'GL_FUNCTIONS'
+   32 |  X(PFNGLGENVERTEXARRAYSPROC, GenVertexArrays) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLBINDVERTEXARRAYPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(33,2): note: expanded from macro 'GL_FUNCTIONS'
+   33 |  X(PFNGLBINDVERTEXARRAYPROC, BindVertexArray) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDELETEVERTEXARRAYSPROC' (aka 'void (*)(int, const unsigned int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(34,2): note: expanded from macro 'GL_FUNCTIONS'
+   34 |  X(PFNGLDELETEVERTEXARRAYSPROC, DeleteVertexArrays) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLCREATESHADERPROC' (aka 'unsigned int (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(35,2): note: expanded from macro 'GL_FUNCTIONS'
+   35 |  X(PFNGLCREATESHADERPROC, CreateShader) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLSHADERSOURCEPROC' (aka 'void (*)(unsigned int, int, const char *const *, const int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(36,2): note: expanded from macro 'GL_FUNCTIONS'
+   36 |  X(PFNGLSHADERSOURCEPROC, ShaderSource) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLCOMPILESHADERPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(37,2): note: expanded from macro 'GL_FUNCTIONS'
+   37 |  X(PFNGLCOMPILESHADERPROC, CompileShader) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETSHADERIVPROC' (aka 'void (*)(unsigned int, unsigned int, int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(38,2): note: expanded from macro 'GL_FUNCTIONS'
+   38 |  X(PFNGLGETSHADERIVPROC, GetShaderiv) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETSHADERINFOLOGPROC' (aka 'void (*)(unsigned int, int, int *, char *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(39,2): note: expanded from macro 'GL_FUNCTIONS'
+   39 |  X(PFNGLGETSHADERINFOLOGPROC, GetShaderInfoLog) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDELETESHADERPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(40,2): note: expanded from macro 'GL_FUNCTIONS'
+   40 |  X(PFNGLDELETESHADERPROC, DeleteShader) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLCREATEPROGRAMPROC' (aka 'unsigned int (*)()') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(41,2): note: expanded from macro 'GL_FUNCTIONS'
+   41 |  X(PFNGLCREATEPROGRAMPROC, CreateProgram) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLATTACHSHADERPROC' (aka 'void (*)(unsigned int, unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(42,2): note: expanded from macro 'GL_FUNCTIONS'
+   42 |  X(PFNGLATTACHSHADERPROC, AttachShader) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLLINKPROGRAMPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(43,2): note: expanded from macro 'GL_FUNCTIONS'
+   43 |  X(PFNGLLINKPROGRAMPROC, LinkProgram) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETPROGRAMIVPROC' (aka 'void (*)(unsigned int, unsigned int, int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(44,2): note: expanded from macro 'GL_FUNCTIONS'
+   44 |  X(PFNGLGETPROGRAMIVPROC, GetProgramiv) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGETPROGRAMINFOLOGPROC' (aka 'void (*)(unsigned int, int, int *, char *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(45,2): note: expanded from macro 'GL_FUNCTIONS'
+   45 |  X(PFNGLGETPROGRAMINFOLOGPROC, GetProgramInfoLog) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLUSEPROGRAMPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(46,2): note: expanded from macro 'GL_FUNCTIONS'
+   46 |  X(PFNGLUSEPROGRAMPROC, UseProgram) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDELETEPROGRAMPROC' (aka 'void (*)(unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(47,2): note: expanded from macro 'GL_FUNCTIONS'
+   47 |  X(PFNGLDELETEPROGRAMPROC, DeleteProgram) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLGENTEXTURESPROC' (aka 'void (*)(int, unsigned int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(48,2): note: expanded from macro 'GL_FUNCTIONS'
+   48 |  X(PFNGLGENTEXTURESPROC, GenTextures) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLBINDTEXTUREPROC' (aka 'void (*)(unsigned int, unsigned int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(49,2): note: expanded from macro 'GL_FUNCTIONS'
+   49 |  X(PFNGLBINDTEXTUREPROC, BindTexture) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLTEXIMAGE2DPROC' (aka 'void (*)(unsigned int, int, int, int, int, int, unsigned int, unsigned int, const void *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(50,2): note: expanded from macro 'GL_FUNCTIONS'
+   50 |  X(PFNGLTEXIMAGE2DPROC, TexImage2D) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLTEXPARAMETERIPROC' (aka 'void (*)(unsigned int, unsigned int, int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(51,2): note: expanded from macro 'GL_FUNCTIONS'
+   51 |  X(PFNGLTEXPARAMETERIPROC, TexParameteri) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDELETETEXTURESPROC' (aka 'void (*)(int, const unsigned int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(52,2): note: expanded from macro 'GL_FUNCTIONS'
+   52 |  X(PFNGLDELETETEXTURESPROC, DeleteTextures) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLDRAWARRAYSPROC' (aka 'void (*)(unsigned int, int, int)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(53,2): note: expanded from macro 'GL_FUNCTIONS'
+   53 |  X(PFNGLDRAWARRAYSPROC, DrawArrays) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(62,22): warning: cast from 'PROC' (aka 'long long (*)()') to 'PFNGLREADPIXELSPROC' (aka 'void (*)(int, int, int, int, unsigned int, unsigned int, void *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   62 |         GL_FUNCTIONS(LOAD)
+      |         ~~~~~~~~~~~~~^~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(54,2): note: expanded from macro 'GL_FUNCTIONS'
+   54 |  X(PFNGLREADPIXELSPROC, ReadPixels) \
+      |  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(61,33): note: expanded from macro 'LOAD'
+   61 | #define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\user\.t3\worktrees\LcarsUI\t3-668b59a0\src\renderer_opengl.cpp(124,25): warning: cast from 'PROC' (aka 'long long (*)()') to 'Create' (aka 'HGLRC__ *(*)(HDC__ *, HGLRC__ *, const int *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+  124 |             auto create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB"));
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+34 warnings generated.
+[123/150] Building CXX object CMakeFiles\lcars_desktop.dir\src\text.cpp.obj
+[124/150] Linking CXX static library lcars_appearance_web.lib
+[125/150] Linking CXX static library lcars_appearance_material.lib
+[126/150] Linking CXX static library harfbuzz\harfbuzz.lib
+[127/150] Building CXX object CMakeFiles\lcars_desktop.dir\src\desktop_host.cpp.obj
+[128/150] Building CXX object CMakeFiles\lcars_edit_form.dir\examples\edit_form\edit_form.cpp.obj
+[129/150] Linking CXX static library lcars_edit_form.lib
+[130/150] Building CXX object CMakeFiles\lcars_tests.dir\tests\tests.cpp.obj
+[131/150] Building CXX object CMakeFiles\lcars_list_page_tests.dir\tests\list_page.cpp.obj
+[132/150] Linking CXX static library lcars_desktop.lib
+[133/150] Building CXX object CMakeFiles\lcars_layout_tests.dir\tests\layout.cpp.obj
+[134/150] Building CXX object CMakeFiles\lcars_edit_form_web.dir\examples\edit_form\main.cpp.obj
+[135/150] Building CXX object CMakeFiles\lcars_list_page_web.dir\examples\list_page\main.cpp.obj
+[136/150] Building CXX object CMakeFiles\lcars_edit_form_material.dir\examples\edit_form\main.cpp.obj
+[137/150] Building CXX object CMakeFiles\lcars_list_page_material.dir\examples\list_page\main.cpp.obj
+[138/150] Linking CXX executable lcars_tests.exe
+[139/150] Building CXX object CMakeFiles\lcars_components_tests.dir\tests\components.cpp.obj
+[140/150] Linking CXX executable lcars_layout_tests.exe
+[141/150] Linking CXX executable lcars_components_tests.exe
+[142/150] Linking CXX executable lcars_list_page_tests.exe
+[143/150] Linking CXX executable lcars_edit_form_web.exe
+[144/150] Linking CXX executable lcars_list_page_web.exe
+[145/150] Linking CXX executable lcars_edit_form_material.exe
+[146/150] Linking CXX executable lcars_list_page_material.exe
+[147/150] Building CXX object CMakeFiles\lcars_edit_form_tests.dir\tests\edit_form.cpp.obj
+[148/150] Linking CXX executable lcars_edit_form_tests.exe
+[149/150] Building CXX object CMakeFiles\lcars_host_verify.dir\tests\host_verify.cpp.obj
+[150/150] Linking CXX executable lcars_host_verify.exe
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-668b59a0/build/Release
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-668b59a0/build/Release
+    Start 1: core_regressions
+1/7 Test #1: core_regressions .................   Passed    0.10 sec
+    Start 2: components
+2/7 Test #2: components .......................   Passed    0.11 sec
+    Start 3: layout
+3/7 Test #3: layout ...........................   Passed    0.08 sec
+    Start 4: edit_form
+4/7 Test #4: edit_form ........................   Passed    5.32 sec
+    Start 5: list_page
+5/7 Test #5: list_page ........................   Passed    0.11 sec
+    Start 6: consumer_example
+6/7 Test #6: consumer_example .................   Passed   20.45 sec
+    Start 7: host_native
+7/7 Test #7: host_native ......................   Passed  426.15 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) = 452.38 sec
