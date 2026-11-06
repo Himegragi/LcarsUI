@@ -15,7 +15,7 @@
 | Release core-only CTest | **6/6** | [log](final-b5535b6/build-green-core.log) |
 | Probe build CTest | **7/7** | [log](final-b5535b6/build-probe2.log) |
 
-Clipboard and IME ran on the `b5535b6` verifier build, which differs from the final build only in the D01 probe; the production code is identical. CTest 7/7 and 6/6 were run on the fixed production code. X02 and X04 results come from the earlier `82da26c` / `2f20010` builds recorded below; `b5535b6` added only the popup-reveal fix and its core regression test (confirmed failing without the fix). U01 and the earlier S-H1 and P-B3 rows stand as recorded in the sections below.
+Clipboard and IME ran on the `b5535b6` verifier build, which differs from the final build only in the D01 probe; the production code is identical. CTest 7/7 and 6/6 were run on the fixed production code. The X02 and X04 core sweeps and native checks are part of these CTest runs, so they passed again on the fixed code; their detailed per-cell tables come from the earlier `82da26c` / `2f20010` runs recorded below. `b5535b6` added only the popup-reveal fix and its core regression test (confirmed failing without the fix). U01 and the earlier S-H1 and P-B3 rows stand as recorded in the sections below.
 
 ### D01 history
 
@@ -30,7 +30,7 @@ Clipboard and IME ran on the `b5535b6` verifier build, which differs from the fi
 
 ### Open decision
 
-The probe bound was loosened from the scroll viewport to the window client area. In the Web return case the dropdown (bottom 804) extends past the viewport (798) and overlays the pinned result area. The user may still require that the dropdown stay out of the pinned result area; that would be a layout change, not covered by this result.
+The probe bound was loosened from the scroll viewport to the window client area. In the Web return case (bottom 804 vs viewport 798) and the Material forward and return cases (595 vs 526, 798 vs 792) the dropdown extends past the scroll viewport and overlays the pinned result area, while staying inside the window. The user may still require that the dropdown stay out of the pinned result area; that would be a layout change, not covered by this result.
 
 ### Remaining items outside this batch
 
