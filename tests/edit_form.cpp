@@ -1387,6 +1387,20 @@ void popup_and_scroll_matrix() {
         check(!h.region.describe()->expanded && h.tabs.describe()->focused && *h.region.draft() == OptionValue{"north"} &&
               *h.tabs.active() == OptionValue{"v01"}, "X02 outside click cancels and still activates its target");
 
+        // A relayout that re-reveals the focused source (resize, DPI change) is not scroll input:
+        // the open dropdown keeps its candidate and follows its anchor (B04, D01).
+        h.region.focus(); auto revealed = draw(dropdown_id);
+        if (revealed.maximum > 0) {
+            h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
+            form.scroll.offset = form.scroll.offset == 0 ? revealed.maximum : 0;
+            auto relaid = draw(dropdown_id);
+            auto follow = std::find_if(relaid.overlays.begin(), relaid.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
+            check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"} &&
+                  follow != relaid.overlays.end() && inside(follow->bounds),
+                  "X02 relayout reveal keeps the open dropdown and its candidate");
+            host.key_down({Key::escape});
+        }
+
         h.region.focus(); auto scroll_frame = draw(dropdown_id);
         h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
         check(h.region.describe()->candidate == OptionValue{"south"}, "X02 scroll starts with an unconfirmed candidate");

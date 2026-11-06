@@ -353,7 +353,6 @@ struct Arranger {
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
         int offset = std::clamp(state.offset, 0, region.maximum);
-        int before_reveal = offset;
         if (!reveal.empty()) {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == reveal; });
             if (it != placed.end()) {
@@ -371,7 +370,8 @@ struct Arranger {
                 offset = std::clamp(offset, 0, region.maximum);
             }
         }
-        if (!measuring && offset != before_reveal) ui.scrolled();
+        // Revealing the focused source during arrangement (resize, DPI change) is layout, not
+        // scroll input: an open popup or tooltip stays and follows its anchor (B04, D01).
         state.offset = region.offset = offset;
         for (auto& p : placed) {
             translate(p, 0, -offset);
