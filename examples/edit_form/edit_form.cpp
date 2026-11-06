@@ -224,6 +224,14 @@ MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
     if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
+    if (reject_notices_conflict_) {
+        reject_notices_conflict_ = false;
+        handles.notices.toggle();
+        notices_applied_ = notices.value;
+        if (notices_changed_) notices_changed_();
+        refresh_conflict();
+        return {{Status::invalid_value, u"Source changed during apply"}, {}};
+    }
     applied_ = name.value;
     notices_applied_ = notices.value;
     mode_applied_ = mode.value;

@@ -34,6 +34,7 @@ private:
     bool offline_disabled_ = false;
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
+    bool reject_notices_conflict_ = false;
     bool pages_ = false;
     std::array<int, 3> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
@@ -78,6 +79,8 @@ public:
     void update_mode_source(lcars::OptionValue value);
     void update_region_source(lcars::OptionValue value);
     void update_progress(int value);
+    // Fixture: reject the next apply after a concurrent boolean-source update and draft edit.
+    void reject_next_apply_with_notices_source_change() { reject_notices_conflict_ = true; }
 private:
     bool validate();
     lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);
