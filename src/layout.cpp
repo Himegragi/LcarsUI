@@ -159,8 +159,14 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
 bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
     if (modal || owner_ != &detail::access(ui)) return false;
     // A popup owns its own wheel input; it must not scroll the background beneath it.
-    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
-        if (it->popup && !it->tooltip && it->bounds.contains(x, y) && it->clip.contains(x, y)) return false;
+    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
+        if (!it->popup || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
+        if (it->kind == Kind::dropdown) {
+            auto current = detail::access(ui).describe(it->id);
+            if (!current || !current->expanded) continue; // the frame can outlive a dismissed panel
+        }
+        return false;
+    }
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->clip.contains(x, y)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;

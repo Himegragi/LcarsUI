@@ -938,7 +938,7 @@ void popup_and_scroll_matrix() {
         h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
         auto wheel_frame = draw();
         auto viewport = wheel_frame.regions.front().clip;
-        int wheel_step = form.scroll.offset + 2 <= wheel_frame.maximum ? -1 : 1;
+        int wheel_step = form.scroll.offset + 3 <= wheel_frame.maximum ? -1 : 1;
         check(wheel_frame.wheel(form.ui, viewport.x + 1, viewport.y + 1, wheel_step) &&
               !h.region.describe()->expanded && !h.region.describe()->candidate && h.region.describe()->focused &&
               *h.region.draft() == OptionValue{"north"}, "X02 wheel outside the popup cancels through the shared frame path");
@@ -946,6 +946,15 @@ void popup_and_scroll_matrix() {
         check(wheel_frame.wheel(form.ui, viewport.x + 1, viewport.y + 1, wheel_step) &&
               form.scroll.offset == after_first_wheel - wheel_step,
               "X02 consecutive wheel messages accumulate before the next frame");
+        auto stale_popup = std::find_if(wheel_frame.overlays.begin(), wheel_frame.overlays.end(),
+                                        [](const Placement& p) { return p.popup && !p.tooltip; });
+        if (stale_popup != wheel_frame.overlays.end()) {
+            int x = stale_popup->bounds.x + stale_popup->bounds.w / 2;
+            int y = stale_popup->bounds.y + stale_popup->bounds.h / 2;
+            if (viewport.contains(x, y))
+                check(wheel_frame.wheel(form.ui, x, y, wheel_step),
+                      "X02 a dismissed popup no longer intercepts wheel input before repaint");
+        }
 
         // Choose real offsets from the assembled page's own geometry. If the page cannot
         // expose an edge at this size, don't invent extra overflow to manufacture a sample.
