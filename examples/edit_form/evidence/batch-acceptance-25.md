@@ -1,5 +1,282 @@
 # First component batch acceptance — issue #25
 
+## X02 / X04 close attempt (2026-11-06)
+
+**X02: OPEN. X04: OPEN.** The tested source is `2273cea`; the local integration tip `fe6fe13` was already an ancestor. This section supersedes the earlier X02/X04 follow-up, which is retained as history. The resulting code and evidence commits are on `batch/x02-x04-close`.
+
+### X02 per-sample results
+
+Each cell covers both shipped and alternate IDs. `D` means the specified subset passed, not that X02 as a whole passed. The core checks use the assembled pages, typed handles, fake metrics and the shared frame input seam. The native checks use real Win32 messages, host paint and fonts. `M0` is not applicable because the background has no overflow; `M+` means modal wheel blocking was exercised with overflow. `O` is an applicable or required cross-check that remains open. [Final Debug native rows](x02-x04-close/debug-final.tsv); [core and native log](x02-x04-close/debug-final.log); [Release rows](x02-x04-close/release-final.tsv).
+
+| Page | DIP size | Scale | Web | Material | Exercised / limit |
+| --- | --- | --- | --- | --- | --- |
+| V01 | 960×720 | 100% | D; O | D; O | Dropdown wheel and thumb at partial/clipped edges; track at clipped edge. Track to partial edge was unreachable from a visible start in this fixture. |
+| V01 | 960×720 | 150% | D; O | D; O | Same. |
+| V01 | 640×480 | 100% | D | D | Dropdown wheel, track and thumb at partial and fully clipped edges. |
+| V01 | 640×480 | 150% | D | D | Same. |
+| V02 | 960×720 | 100% | D | D | Nested list wheel and keyboard reveal; no popup is assembled. |
+| V02 | 960×720 | 150% | D | D | Same. |
+| V02 | 640×480 | 100% | D | D | Same. |
+| V02 | 640×480 | 150% | D | D | Same. |
+| V03 | 960×720 | 100% | D; M0 | D; M0 | Tooltip dismissal/dwell and dialog actions; background scrolling and modal-wheel blocking are N/A without overflow. |
+| V03 | 960×720 | 150% | D; M0 | D; M0 | Same. |
+| V03 | 640×480 | 100% | D; M+; O | D; M+; O | Tooltip wheel/track/thumb close and fresh dwell with a visible anchor; partial/clipped V03 anchor cases remain untested. |
+| V03 | 640×480 | 150% | D; M+; O | D; M+; O | Same. |
+
+The existing long-description fixture was used to reach V01 edges; no content was added to create modal overflow. Drawing the previously omitted tab group name legitimately changes the page height, so some former 640×480 M0 samples now have overflow. Wheel over a dropdown panel is kept from scrolling the background; an independently scrollable dropdown-panel list is not implemented or verified here. A fully clipped focused tooltip source is covered through an additional tooltip on the assembled V01 dropdown, not as a substitute for the missing V03 edge samples.
+
+### Verification
+
+- Debug desktop: **7/7** CTest entries and **340/340** native checks, plus **32 N/A** native rows on `2273cea` ([log](x02-x04-close/debug-final.log), [rows](x02-x04-close/debug-final.tsv)). The assembled suite passed **42/42** cases for each appearance and ID set, 168 case executions and 14,940 cumulative checks.
+- Release desktop: **7/7** CTest entries and **340/340** native checks, plus **32 N/A** native rows ([log](x02-x04-close/release-final.log), [rows](x02-x04-close/release-final.tsv)).
+- Release core-only: **6/6** CTest entries ([log](x02-x04-close/core-final.log)).
+- Earlier at `d4aeba8`, the first Debug desktop run was **6/7**, with **339/340** native checks: Web AC08 pointer-copy and undo results were unexpected, and clipboard text restoration was reported successful ([log](x02-x04-close/debug-first.log), [rows](x02-x04-close/debug-first.tsv)). The one requested native rerun passed **341/341**, with **31 N/A** rows ([rows](x02-x04-close/debug-retry/host.tsv)). The later final build is a different source revision; neither passing run explains the earlier failure.
+- The retry saved representative V02 rasters for [Web](x02-x04-close/debug-retry/web-x04-v02-selection.bmp) and [Material](x02-x04-close/debug-retry/material-x04-v02-selection.bmp); these are supplementary, not complete text comparisons.
+- `--clipboard-only`, `--ime` and `--dpi` were not run. Existing idle-desktop and user-trial evidence remains historical.
+
+Trailing spaces were removed from the saved logs and TSVs without changing their results.
+
+### Not completed
+
+1. X02: cover partial and fully clipped V03 tooltip anchors on the real input path where reachable, the 960×720 dropdown track-to-partial case, keyboard scrolling while popups are open, pointer-hover dwell after scrolling, and independently scrolling a list inside a dropdown panel. The assembled 960×720 V03 background has no overflow; the 960×720 V01 track geometry could not reach the partial endpoint from a visible start. These cases are not counted as passes.
+2. X04: extend the generated inventory into a state-driving sweep for every component and every applicable disabled, read-only, selected/checked, candidate, error, conflict/latest, executing, modal and tooltip state. Compare restrictions and cues, associated labels, hidden/clipped components and every value against clipped native paint; run the same general sweep at the core size/scale seam. The assembled checkbox conflict and a representative executing button are tested, but do not establish that full matrix.
+3. The earlier clipboard failure remains unexplained. UIA/screen-reader, MCP adapters and the prior deferred design work remain separate.
+
+### Generated X04 component × state inventory
+
+The table below is generated from [Web observations](x02-x04-close/web-x04-sweep.tsv) and [Material observations](x02-x04-close/material-x04-sweep.tsv) by [the generator](x02-x04-close/make-x04-table.py). It is also available as a [standalone table](x02-x04-close/x04-table.md). `O` means open; `N/A` comes from the component type or known modal/tooltip membership; `O (n P)` records some positive snapshots while the remainder is open. Label error cells remain open because the inventory does not record each label's association role. Name/value fractions count visible normal snapshots whose semantic string was present in a recorded text run with at least one unclipped glyph sample; they do not prove that the entire string was visible. Hidden/clipped `P` is limited to the recorded checks. The native observer records component ownership, text or graphical cue, color, clip and whether any nontransparent raster sample passed the clip; it is not OCR or an occlusion check. Normal restrictions and the remaining state columns are not yet driven by this sweep.
+
+| Appearance / IDs | Component | Type | Name | Value | Restriction | Hidden | Clipped | Disabled | Read-only | Selected | Candidate | Error | Conflict | Executing | Modal | Tooltip |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| web / shipped | `form.title.pages.tabs` | tabs | 12/12 observed | 12/12 observed | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.intro` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.state` | label | N/A | O | N/A | P | O (4 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.draft` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.applied` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `result.count` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.label` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.help` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name.error` | label | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.name` | text | 4/4 observed | 4/4 observed | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `fixture.normal` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.read_only` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.disabled` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.error` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.long` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.offline_disabled` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `fixture.region_empty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.apply` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.notices.latest` | button | 2/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.mode.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.region.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.volume.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.notices` | checkbox | 4/4 observed | 0/4 observed | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `form.mode` | radio group | 2/2 observed | 2/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `form.region` | dropdown | 2/2 observed | 0/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `form.volume` | slider | O | O | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.detail` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.search` | text | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.list` | list | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v02.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.one` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.twenty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.hundred` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.sort` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.erase` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.disable` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v02.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.source` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.result` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.progress` | progress | 4/4 observed | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| web / shipped | `form.title.pages.v03.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.half` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | O (0 P) |
+| web / shipped | `form.title.pages.v03.full` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.below` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.above` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.open` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.v03.temporary` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / shipped | `form.title.pages.dialog.title` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| web / shipped | `form.title.pages.dialog.body` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| web / shipped | `form.title.pages.dialog.cancel` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| web / shipped | `form.title.pages.dialog.confirm` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| web / alternate | `t.pages.tabs` | tabs | 12/12 observed | 12/12 observed | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A |
+| web / alternate | `t` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `i` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `s` | label | N/A | O | N/A | P | O (4 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `d` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `r` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `c` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.l` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.h` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n.e` | label | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `n` | text | 4/4 observed | 4/4 observed | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `f1` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `f2` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `f3` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `f4` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `f5` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `offline` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `region.empty.alt` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `f6` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `go` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `notices.latest` | button | 2/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `mode.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `region.alt.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `volume.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `notices` | checkbox | 4/4 observed | 0/4 observed | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `mode` | radio group | 2/2 observed | 2/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `region.alt` | dropdown | 2/2 observed | 0/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `volume` | slider | O | O | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.detail` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.search` | text | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.list` | list | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v02.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.one` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.twenty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.hundred` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.sort` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.erase` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.disable` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v02.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.source` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.result` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.progress` | progress | 4/4 observed | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| web / alternate | `t.pages.v03.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.half` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | O (0 P) |
+| web / alternate | `t.pages.v03.full` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.below` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.above` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.open` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.v03.temporary` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| web / alternate | `t.pages.dialog.title` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| web / alternate | `t.pages.dialog.body` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| web / alternate | `t.pages.dialog.cancel` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| web / alternate | `t.pages.dialog.confirm` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| material / shipped | `form.title.pages.tabs` | tabs | 12/12 observed | 12/12 observed | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.intro` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.state` | label | N/A | O | N/A | P | O (4 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.draft` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.applied` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `result.count` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.label` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.help` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name.error` | label | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.name` | text | 4/4 observed | 4/4 observed | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `fixture.normal` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.read_only` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.disabled` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.error` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.long` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.offline_disabled` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `fixture.region_empty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.apply` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.notices.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.mode.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.region.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.volume.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.notices` | checkbox | 4/4 observed | 0/4 observed | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `form.mode` | radio group | 2/2 observed | 2/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `form.region` | dropdown | 2/2 observed | 0/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `form.volume` | slider | O | O | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.detail` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.search` | text | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.list` | list | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v02.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.one` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.twenty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.hundred` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.sort` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.erase` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.disable` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v02.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.source` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.result` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.progress` | progress | 4/4 observed | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| material / shipped | `form.title.pages.v03.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.half` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | O (0 P) |
+| material / shipped | `form.title.pages.v03.full` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.below` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.above` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.open` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.v03.temporary` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / shipped | `form.title.pages.dialog.title` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| material / shipped | `form.title.pages.dialog.body` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| material / shipped | `form.title.pages.dialog.cancel` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| material / shipped | `form.title.pages.dialog.confirm` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| material / alternate | `t.pages.tabs` | tabs | 12/12 observed | 12/12 observed | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A |
+| material / alternate | `t` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `i` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `s` | label | N/A | O | N/A | P | O (4 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `d` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `r` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `c` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.l` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.h` | label | N/A | 4/4 observed | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n.e` | label | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `n` | text | 4/4 observed | 4/4 observed | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `f1` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `f2` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `f3` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `f4` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `f5` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `offline` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `region.empty.alt` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `f6` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `go` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `notices.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `mode.latest` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `region.alt.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `volume.latest` | button | O | N/A | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `notices` | checkbox | 4/4 observed | 0/4 observed | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `mode` | radio group | 2/2 observed | 2/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `region.alt` | dropdown | 2/2 observed | 0/2 observed | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `volume` | slider | O | O | O (0 P) | P | O (4 P) | O (0 P) | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.detail` | label | N/A | 2/2 observed | N/A | P | O (2 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.search` | text | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.list` | list | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v02.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.one` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.twenty` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.hundred` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.sort` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.erase` | button | 2/2 observed | N/A | O (0 P) | P | O (2 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.disable` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v02.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.title` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.source` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.result` | label | N/A | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.progress` | progress | 4/4 observed | 4/4 observed | N/A | P | O (0 P) | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| material / alternate | `t.pages.v03.zero` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.half` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | O (0 P) |
+| material / alternate | `t.pages.v03.full` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.below` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.above` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.reset` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.open` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.v03.temporary` | button | 4/4 observed | N/A | O (0 P) | P | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | N/A | N/A |
+| material / alternate | `t.pages.dialog.title` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| material / alternate | `t.pages.dialog.body` | label | N/A | O | N/A | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | O | N/A | N/A | O (0 P) | N/A |
+| material / alternate | `t.pages.dialog.cancel` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+| material / alternate | `t.pages.dialog.confirm` | button | O | N/A | O (0 P) | O (0 P) | O (0 P) | O (0 P) | N/A | N/A | N/A | N/A | N/A | O (0 P) | O (0 P) | N/A |
+
 ## X02 / X04 implementation follow-up (2026-11-06)
 
 **Current result: NOT COMPLETED. X02 and X04 remain open.** This section supersedes only the X02 and X04 rows in the earlier sections. The tested code is `32632d2` on `batch/x02-x04`; the local integration tip `dee2d74` was already an ancestor. No production, host input, IME, or DPI code changed. The existing D01, E01 and user-trial evidence above the removal follow-up remains valid for the earlier build; those idle-desktop tests were deliberately not rerun here.
@@ -29,28 +306,7 @@ Each cell covers **both shipped and alternate ID sets**. `D` means the new check
 
 The following rows apply to **both appearances and both ID sets**. `B` is the prior baseline: semantic names/values/option labels were compared with text **sent to** each arranged component's paint adapter with fake metrics, even if clipped; it does not establish visible pixels. `S` is a new paint-command state check, `R` is a representative real-font host raster check, and `O` is still open. A dash means the state is not supplied by this assembled fixture or not applicable to that row. `S` checks the listed cues, not a complete clipped-pixel comparison. [Core cases](x02-x04/edit-form.log); [native checks](x02-x04/host.tsv); [V01 error](x02-x04/web-x04-v01-error.bmp), [V02 selection](x02-x04/web-x04-v02-selection.bmp), [V03 dialog](x02-x04/web-x04-v03-dialog.bmp) and corresponding Material images in the same directory. The real raster checks detect colored/text pixels in expected regions; they do not OCR or compare every semantic string.
 
-| Page / component handles | Normal | Disabled | Read-only / selected | Error / source conflict | Executing |
-| --- | --- | --- | --- | --- | --- |
-| V01 `title`, `intro`, `state`, `draft`, `result`, `count` labels | B; visibility O | — | — | `state`: S conflict wording; other state-dependent values O | — |
-| V01 `name_label`, `name_help`, `name_error` associations | O as separate carriers; field name/error checked | — | — | name error association checked; visible help/error clipping O | — |
-| V01 `name` | B; visibility O | S suffix/muted | S suffix; selection color S, semantic selection comparison O | S error text/color and conflict state/latest action; R error pixels | — |
-| V01 `normal`, `read_only`, `disabled`, `error`, `long_text`, `offline_disabled`, `region_empty`, `reset` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
-| V01 `apply`, `latest`, `notices_latest`, `mode_latest`, `region_latest`, `volume_latest` buttons | B; visibility O | S `apply`; other disabled states O | — | S name/mode/region/volume latest actions; checkbox latest O | O while executing |
-| V01 `notices` checkbox | B | S muted | S checked/unchecked indicator | O checkbox conflict/error and latest action in assembled fixture | — |
-| V01 `mode` radio group | B | S group muted and disabled option wording | S selected accent | S conflict notice and latest action; error O | — |
-| V01 `region` dropdown | B | S suffix/muted | O candidate and selected overlay presentation | S empty error, conflict notice and latest action | — |
-| V01 `volume` slider | B | S suffix/muted | O all value/track positions | S conflict notice and latest action; error O | — |
-| V02 `title`, `detail` labels | B; visibility O | — | — | O state-dependent detail output | — |
-| V02 `search` text | B; visibility O | O if restricted | O | O | — |
-| V02 `zero`, `one`, `twenty`, `hundred`, `sort`, `disable_eight`, `reset` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
-| V02 `erase` button | B | S muted | — | — | O while executing |
-| V02 `list` | B option labels; semantic list name O | S disabled row wording | S selected marker/highlight; R selected-row pixels | O other combinations | — |
-| Shared `tabs` | B option labels; semantic group name O | O disabled tab in assembled page | S active highlight | O invalid tab presentation | — |
-| V03 `v03_title`, `progress_source`, `dialog_result` labels | B; visibility O | — | — | O state-dependent output | — |
-| V03 `progress` | B | — | S earlier source/value/fill checks; O complete visible comparison | — | — (display is not a work manager) |
-| V03 `progress_zero`, `progress_half`, `progress_full`, `progress_below`, `progress_above`, `reset_v03`, `dialog_open`, `dialog_temporary` buttons | B; visibility O | O per button where applicable | — | — | O while executing |
-| V03 dialog `dialog_title`, `dialog_body`, `dialog_cancel`, `dialog_confirm` | S text sent to adapter while open; R text-region pixels | O buttons if restricted | — | — | O buttons while executing |
-| V03 `progress_tip` | O complete semantic-description versus visible text comparison | — | — | — | — |
+The historical hand-written matrix is superseded by the generated X04 inventory in the current top section.
 
 The hidden-page check inventories every placement produced on each active page and verifies it is absent and reports `hidden` admission on the other pages. One fully clipped V01 button is checked for a zero visible intersection and no hit. This is not an exhaustive visibility report for every component, and the semantic snapshot does not expose a general visible/clipped property. Direct component probes do not honor the host's clipping and may record offscreen commands. The native raster samples cover a state on each page under each appearance, but not every component or state.
 

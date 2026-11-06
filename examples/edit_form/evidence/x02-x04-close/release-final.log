@@ -1,0 +1,889 @@
+Start testing: Nov 06 17:40 Taipei Standard Time
+----------------------------------------------------------
+1/7 Testing: core_regressions
+1/7 Test: core_regressions
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"core_regressions" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS 54 checks: core admission and appearance geometry
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"core_regressions" end time: Nov 06 17:40 Taipei Standard Time
+"core_regressions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/7 Testing: components
+2/7 Test: components
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_components_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"components" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS G07 revalidate after focus callback
+PASS G07 removal releases confirmation connection
+PASS G07 bounded removal storage
+PASS General page membership
+PASS G07 deferred removal and stale identity
+PASS C08 C09 list page admission
+PASS G07 page changes do not recurse
+PASS C09 disabled and modal admission
+PASS G11 cross-page rejection
+PASS C09 manual tabs and hidden admission
+PASS L03 list selection survives reorder
+PASS C08 list focus and keyboard
+PASS R11 list neighbor follows old identity order
+PASS G07 list write cannot reenter
+PASS C06 candidate and draft are separate
+PASS F07 dropdown exit and option identity
+PASS G07 dropdown changes do not recurse
+PASS G07 dropdown programmatic edits repaint
+PASS G11 edits during numeric submission
+PASS C12 progress source lifecycle
+PASS G10 numeric source and conflict lifecycle
+PASS N04 non-divisible steps and keys
+PASS N04 invalid slider ranges
+PASS C07 numeric draft and confirmation
+PASS G04 selection operations reflect write admission
+PASS G10 standalone typed confirmations
+PASS G11 radio conflict and latest
+PASS G11 mixed rejection
+PASS N03 all disabled options
+PASS G11 mixed confirmation batch
+PASS C05 empty selection and disabled options
+PASS C04 keyboard and disabled semantics
+PASS C04 connected checkbox toggles
+PASS Standalone confirmation shares command guard
+PASS Public text operations obey restrictions
+PASS Handle queries report expiry
+PASS Configuration requires UI thread
+PASS G11 confirmation action cannot be replaced
+PASS G10 unconnected text rejects edits
+PASS G10 standalone confirmed connection
+PASS G10 source notifications request a repaint
+PASS G10 cancel clears rejection without writing
+PASS G10 explicit immediate write retains rejected draft
+PASS G11 a fresh draft starts at the current source
+PASS G11 source updates preserve composition
+PASS G10 connected text requires explicit write timing
+PASS G11 confirmation blocks reentry but preserves new edits
+PASS G11 rejected group retains drafts and focuses first error
+PASS G11 confirmation submits draft and origin and keeps history
+PASS G11 source conflicts preserve drafts until cancel
+PASS G10 source updates follow component lifetime
+PASS G10 typed handles expire with their component tree
+PASS C01 labels associate by target id
+PASS C01 field error has one source
+PASS AC11 tab order skips labels and disabled
+PASS AC06 button activates once per press
+PASS AC09 typing records one history entry per input
+PASS AC08 caret moves by code point and extends with Shift
+PASS Clipboard unavailable differs from no text
+PASS AC09 paste turns each line break into one space
+PASS AC10 read-only allows viewing and copying only
+PASS AC10 disabled field refuses every entry and keeps data
+PASS AC14 composition commits once and never applies
+PASS G07 focus notifications queue instead of recursing
+PASS AC10 keyboard editing obeys the same admission
+PASS AC08 over-limit edit is rejected whole
+PASS AC11 owner hears focus moves and semantics list actions
+components: 67/67 cases, 4273 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"components" end time: Nov 06 17:40 Taipei Standard Time
+"components" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/7 Testing: layout
+3/7 Test: layout
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_layout_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"layout" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS Appearance controls component words and geometry
+PASS G11 reveal cross-page error
+PASS C09 only active page is drawn
+PASS B03 nested reveal
+PASS R02 list keyboard row reveal and clipped hit
+PASS N06 assembled layout with long text and type size
+PASS B04 popup topmost hit and placement
+PASS R05 dropdown states are readable
+PASS B04 stack and popup edge placement
+PASS C07 slider track and drag
+PASS C05 radio pointer geometry
+PASS Registered component reaches layout, hit and input
+PASS Layout rejects foreign and expired handles
+PASS AC05 long label wraps and pushes following controls down
+PASS AC05 Latin words wrap at spaces
+PASS B01 command kinds are placed like buttons
+PASS AC12 field roles stay with their field in both appearances
+PASS AC13 narrow window moves results below
+PASS AC13 scrolling reveals focus and clips hits
+PASS R06 resize after deep scroll settles in the first frame
+PASS AC08 pointer hits map to the painted caret positions
+PASS AC04 long text keeps caret visible and reset clears offset
+layout: 22/22 cases, 124 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"layout" end time: Nov 06 17:40 Taipei Standard Time
+"layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/7 Testing: edit_form
+4/7 Test: edit_form
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_edit_form_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"edit_form" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, shipped IDs): 42/42 cases, 3735 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (web, alternate IDs): 42/42 cases, 7470 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, shipped IDs): 42/42 cases, 11205 checks
+PASS N01 long field label and error
+PASS N03 radio boundaries in each appearance
+PASS N04 slider boundaries in each appearance
+PASS N05 disabled tabs in each appearance
+PASS X01 keyboard journey
+PASS X05 page reset and rerun
+PASS X04 painted text and semantic baseline
+PASS X04 painted state and modal text
+PASS X04 hidden pages and clipped targets
+X02 modal background scroll N/A: no overflow at 960x720 100%
+X02 modal background scroll N/A: no overflow at 960x720 150%
+PASS X02 popup and scroll size/scale matrix
+PASS P08 repeated removal and reset storage
+PASS P08 reset and page isolation
+PASS P06 tooltip layout
+PASS C11 tooltip lifetime and window focus
+PASS P05 tooltip pointer visit
+PASS P05 tooltip keyboard delay and Escape
+PASS P01 cancel dialog
+PASS P02 P03 modal input and confirm
+PASS P05 pointer focus tooltip
+PASS P04 removed opener and Escape
+PASS P04 removed opener and confirm
+PASS P07 progress display and source
+PASS L07 L08 R07 page scopes
+PASS L01 L02 V02 navigation in each appearance
+PASS L03 L04 L05 R03 R10 V02 identities
+PASS N08 R11 V02 neighbors
+PASS F08 region confirmation and error order
+PASS F01 five fields apply once
+PASS G11 checkbox conflict is visible and recoverable
+PASS X04 assembled checkbox conflict and latest action
+PASS G11 option conflicts are visible and recoverable
+PASS G11 volume conflict
+PASS F09 volume confirmation
+PASS F09 checkbox and radio apply together
+PASS G11 source updates offer the latest value
+PASS AC04 initial values, apply and reset
+PASS AC05 blank name error follows blur and apply
+PASS AC06 apply button starts once
+PASS AC09 paste, undo and redo never touch the applied result
+PASS AC10 read-only and disabled fixtures restrict and recover
+PASS AC11 keyboard reaches every entry and semantics answer
+PASS AC12 both appearances give same results
+edit_form (material, alternate IDs): 42/42 cases, 14940 checks
+<end of output>
+Test time =   0.23 sec
+----------------------------------------------------------
+Test Passed.
+"edit_form" end time: Nov 06 17:40 Taipei Standard Time
+"edit_form" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/7 Testing: list_page
+5/7 Test: list_page
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_list_page_tests.exe"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"list_page" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+PASS L03 duplicate names and sorting
+PASS L05 R03 R10 deletion and reentry
+PASS L04 filtering clears selection
+PASS R09 N08 disabling selected row
+PASS L01 L02 empty single and keyboard endpoints
+PASS R11 filtering uses old order
+list_page: 6/6 cases, 20 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"list_page" end time: Nov 06 17:40 Taipei Standard Time
+"list_page" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/7 Testing: consumer_example
+6/7 Test: consumer_example
+Command: "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--build-and-test" "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/examples/consumer" "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/consumer" "--build-generator" "Ninja" "--build-options" "-DLCARS_SOURCE_DIR=C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec" "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_CXX_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe" "-DCMAKE_C_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe" "-DCMAKE_MAKE_PROGRAM=C:/PROGRA~1/LLVM/bin/ninja.exe" "--test-command" "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--output-on-failure"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"consumer_example" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+Internal cmake changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/consumer
+======== CMake output     ======
+Configuring done (0.0s)
+Generating done (0.1s)
+Build files have been written to: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/consumer
+======== End CMake output ======
+Change Dir: 'C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/consumer'
+
+Run Clean Command: C:/PROGRA~1/LLVM/bin/ninja.exe clean
+[1/1] Cleaning all built files...
+Cleaning... 8 files.
+
+Run Build Command(s): C:/PROGRA~1/LLVM/bin/ninja.exe
+[1/8] Building CXX object lcars\CMakeFiles\lcars_appearance_material.dir\src\appearance_material.cpp.obj
+[2/8] Linking CXX static library lcars\lcars_appearance_material.lib
+[3/8] Building CXX object CMakeFiles\profile_alias.dir\main.cpp.obj
+[4/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\component_type.cpp.obj
+[5/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\layout.cpp.obj
+[6/8] Building CXX object lcars\CMakeFiles\lcars_core.dir\src\core.cpp.obj
+[7/8] Linking CXX static library lcars\lcars_core.lib
+[8/8] Linking CXX executable profile_alias.exe
+
+Running test command: "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe" "--output-on-failure"
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/consumer
+    Start 1: profile_alias
+1/1 Test #1: profile_alias ....................   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.03 sec
+
+<end of output>
+Test time =   5.50 sec
+----------------------------------------------------------
+Test Passed.
+"consumer_example" end time: Nov 06 17:40 Taipei Standard Time
+"consumer_example" time elapsed: 00:00:05
+----------------------------------------------------------
+
+7/7 Testing: host_native
+7/7 Test: host_native
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/lcars_host_verify.exe" "--evidence" "C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release/evidence/host"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-01044bec/build/Release
+"host_native" start time: Nov 06 17:40 Taipei Standard Time
+Output:
+----------------------------------------------------------
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web C09-native Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web P07-progress Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web P02-P03-dialog Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus
+PASS web P03-dialog-layout Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%
+PASS web P01-dialog-escape Escape cancels and returns focus without changing progress
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web P05-P06-R08-tooltip-messages initial=1, focus=1, escape=1, refocus-delay=1, returned=1, geometry=1, space=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web R02-native-end End selects T100 and reveals its entire row at 640x480
+PASS web L06-N07-native-scroll wheel=1, thumb drag=1, click T100=1, shrink clamped=1
+PASS web R09-native-disabled-row disabled T008 click ignored=1, Down from T007 skips to T009=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web B03-native-nested End reveals T100 through both viewports=1, wheel at inner limit moves outer=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web registered-component custom color and hit region render; inside click and Enter each activate once
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web F09-checkbox-radio Space toggled=1, checkbox clicks=1, arrow=1, disabled click ignored=1, enabled click=1, apply=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web F09-slider arrow=1, Home=1, End=1, native drag=1, apply=1, disabled=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web F07-dropdown-native candidate=1, Escape=1, Tab=1, outside action=1, popup click=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC07-R01 translated WM_CHAR spaces=3 delivered while the button held focus; name length after activation=0; history entries after activation=1 (the error fixture's blanking only); typing space afterwards=inserted once; trace: WM_KEYDOWN	32	first	focus=fixture.error | WM_CHAR	32	first	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYUP	32	repeat	focus=fixture.error |
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC06-enter Enter press + auto-repeat on apply -> applies=1; Enter in the name field adds nothing
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC06-F10-N02 press+move out+release=0, click=1, press+WM_CANCELMODE+release=1, Space+WM_KILLFOCUS+release=1, disabled click total=1
+PASS web AC10-native-disabled click on the disabled name then typing: focus=, text unchanged=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC11-tab Tab order: fixture.normal fixture.read_only fixture.disabled fixture.error fixture.long form.reset form.name form.notices form.mode form.region form.volume fixture.offline_disabled fixture.region_empty form.apply fixture.normal ; Shift+Tab back to apply=yes; focused apply ring pixel is accent=yes, unfocused reset ring is not=yes (web-focus-apply.bmp)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web R06-native-100 640x480 wheel to offset 732/732; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 672 max 672, identical to the next frame=yes, apply at 24,356 64x40 hit=form.apply
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web R06-native-150 640x480 wheel to offset 1099/1099; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 1009 max 1009, identical to the next frame=yes, apply at 36,534 96x60 hit=form.apply
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-960x720-100-initial: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=204, name 24,220 433x98, draft 489,220 433x48
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-960x720-100-long-error: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=303, name 24,292 433x125, draft 489,292 433x48
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-960x720-150-initial: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=307, name 36,330 649x148, draft 733,330 649x72
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-960x720-150-long-error: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=456, name 36,438 649x189, draft 733,438 649x72
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-640x480-100-initial: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=588, name 24,244 578x98, draft 24,956 578x24
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-640x480-100-long-error: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=759, name 24,388 578x125, draft 24,1127 578x24
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-640x480-150-initial: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=883, name 36,366 867x148, draft 36,1435 867x36
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web AC13-layout web-640x480-150-long-error: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=1140, name 36,582 867x189, draft 36,1692 867x36
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v01 960x720 100%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v01 960x720 150%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v01 640x480 100%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v01 640x480 150%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v02 960x720 100%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v02 960x720 150%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v02 640x480 100%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v02 640x480 150%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v03 960x720 100%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v03 960x720 150%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v03 640x480 100%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-page-matrix v03 640x480 150%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss shipped 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel shipped 960x720 100%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel shipped 960x720 100%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel shipped 960x720 100%: track moved and canceled=1, anchor=visible
+PASS web X02-v01-thumb-cancel shipped 960x720 100%: thumb moved and canceled=1, anchor=partial
+PASS web X02-v01-edge-wheel shipped 960x720 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel shipped 960x720 100% clipped: anchor=clipped, canceled=1
+N/A web X02-v01-edge-track shipped 960x720 100% partial: endpoint not reachable with this page and input
+PASS web X02-v01-edge-track shipped 960x720 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb shipped 960x720 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb shipped 960x720 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list shipped 960x720 100%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog shipped 960x720 100%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A web X02-v03-tooltip-wheel shipped 960x720 100%: no background overflow
+N/A web X02-v03-tooltip-track shipped 960x720 100%: no background overflow
+N/A web X02-v03-tooltip-thumb shipped 960x720 100%: no background overflow
+PASS web X02-v03-tooltip shipped 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss shipped 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel shipped 960x720 150%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel shipped 960x720 150%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel shipped 960x720 150%: track moved and canceled=1, anchor=visible
+PASS web X02-v01-thumb-cancel shipped 960x720 150%: thumb moved and canceled=1, anchor=partial
+PASS web X02-v01-edge-wheel shipped 960x720 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel shipped 960x720 150% clipped: anchor=clipped, canceled=1
+N/A web X02-v01-edge-track shipped 960x720 150% partial: endpoint not reachable with this page and input
+PASS web X02-v01-edge-track shipped 960x720 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb shipped 960x720 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb shipped 960x720 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list shipped 960x720 150%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog shipped 960x720 150%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A web X02-v03-tooltip-wheel shipped 960x720 150%: no background overflow
+N/A web X02-v03-tooltip-track shipped 960x720 150%: no background overflow
+N/A web X02-v03-tooltip-thumb shipped 960x720 150%: no background overflow
+PASS web X02-v03-tooltip shipped 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss shipped 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel shipped 640x480 100%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel shipped 640x480 100%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel shipped 640x480 100%: track moved and canceled=1, anchor=partial
+PASS web X02-v01-thumb-cancel shipped 640x480 100%: thumb moved and canceled=1, anchor=clipped
+PASS web X02-v01-edge-wheel shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-track shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-track shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list shipped 640x480 100%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog shipped 640x480 100%: modal wheel=1, scroll maximum=24, Esc=1, Cancel=1, Confirm=1
+PASS web X02-v03-tooltip-wheel shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-track shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-thumb shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip shipped 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss shipped 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel shipped 640x480 150%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel shipped 640x480 150%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel shipped 640x480 150%: track moved and canceled=1, anchor=partial
+PASS web X02-v01-thumb-cancel shipped 640x480 150%: thumb moved and canceled=1, anchor=clipped
+PASS web X02-v01-edge-wheel shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-track shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-track shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list shipped 640x480 150%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog shipped 640x480 150%: modal wheel=1, scroll maximum=36, Esc=1, Cancel=1, Confirm=1
+PASS web X02-v03-tooltip-wheel shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-track shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-thumb shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip shipped 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss alternate 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel alternate 960x720 100%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel alternate 960x720 100%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel alternate 960x720 100%: track moved and canceled=1, anchor=visible
+PASS web X02-v01-thumb-cancel alternate 960x720 100%: thumb moved and canceled=1, anchor=partial
+PASS web X02-v01-edge-wheel alternate 960x720 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel alternate 960x720 100% clipped: anchor=clipped, canceled=1
+N/A web X02-v01-edge-track alternate 960x720 100% partial: endpoint not reachable with this page and input
+PASS web X02-v01-edge-track alternate 960x720 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb alternate 960x720 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb alternate 960x720 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list alternate 960x720 100%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog alternate 960x720 100%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A web X02-v03-tooltip-wheel alternate 960x720 100%: no background overflow
+N/A web X02-v03-tooltip-track alternate 960x720 100%: no background overflow
+N/A web X02-v03-tooltip-thumb alternate 960x720 100%: no background overflow
+PASS web X02-v03-tooltip alternate 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss alternate 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel alternate 960x720 150%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel alternate 960x720 150%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel alternate 960x720 150%: track moved and canceled=1, anchor=visible
+PASS web X02-v01-thumb-cancel alternate 960x720 150%: thumb moved and canceled=1, anchor=partial
+PASS web X02-v01-edge-wheel alternate 960x720 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel alternate 960x720 150% clipped: anchor=clipped, canceled=1
+N/A web X02-v01-edge-track alternate 960x720 150% partial: endpoint not reachable with this page and input
+PASS web X02-v01-edge-track alternate 960x720 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb alternate 960x720 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb alternate 960x720 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list alternate 960x720 150%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog alternate 960x720 150%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A web X02-v03-tooltip-wheel alternate 960x720 150%: no background overflow
+N/A web X02-v03-tooltip-track alternate 960x720 150%: no background overflow
+N/A web X02-v03-tooltip-thumb alternate 960x720 150%: no background overflow
+PASS web X02-v03-tooltip alternate 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss alternate 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel alternate 640x480 100%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel alternate 640x480 100%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel alternate 640x480 100%: track moved and canceled=1, anchor=partial
+PASS web X02-v01-thumb-cancel alternate 640x480 100%: thumb moved and canceled=1, anchor=clipped
+PASS web X02-v01-edge-wheel alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-track alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-track alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list alternate 640x480 100%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog alternate 640x480 100%: modal wheel=1, scroll maximum=24, Esc=1, Cancel=1, Confirm=1
+PASS web X02-v03-tooltip-wheel alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-track alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-thumb alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip alternate 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X02-v01-dismiss alternate 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS web X02-v01-wheel-cancel alternate 640x480 150%: moved and canceled=1, anchor=visible
+PASS web X02-v01-popup-wheel alternate 640x480 150%: wheel over panel does not scroll background or cancel=1
+PASS web X02-v01-track-cancel alternate 640x480 150%: track moved and canceled=1, anchor=partial
+PASS web X02-v01-thumb-cancel alternate 640x480 150%: thumb moved and canceled=1, anchor=clipped
+PASS web X02-v01-edge-wheel alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-wheel alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-track alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-track alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v01-edge-thumb alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS web X02-v01-edge-thumb alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS web X02-v02-list alternate 640x480 150%: End=1, hit=1, wheel=1, End again=1
+PASS web X02-v03-dialog alternate 640x480 150%: modal wheel=1, scroll maximum=36, Esc=1, Cancel=1, Confirm=1
+PASS web X02-v03-tooltip-wheel alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-track alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip-thumb alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS web X02-v03-tooltip alternate 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS web X04-native-paint-observation The actual host paint path records visible error text under its owning field
+PASS web X04-v01-raster Name semantics report an error and the real host raster contains error-colored pixels in the error line
+PASS web X04-checkbox-conflict Assembled checkbox conflict and latest action are painted, then latest adopts the source
+PASS web X04-button-executing Real paint during the callback identifies executing and semantics refuse reactivation
+PASS web X04-v02-raster T003 is semantically selected and its visible real-host row contains the selection color
+PASS web X04-list-and-tabs-names Visible list and tab group names agree with the typed semantic descriptions
+PASS web X04-v03-raster Open dialog semantic title, body and button names have real-host text pixels in their line regions
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material C09-native Arrow only moves tab focus; Enter and pointer activate; hidden content is absent and both drafts survive
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material P07-progress Keyboard fixtures drive 0/50/100/-10/110; source and clamped semantics agree with track pixels; external update repaints
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material P02-P03-dialog Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus
+PASS material P03-dialog-layout Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%
+PASS material P01-dialog-escape Escape cancels and returns focus without changing progress
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material P05-P06-R08-tooltip-messages initial=1, focus=1, escape=1, refocus-delay=1, returned=1, geometry=1, space=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material R02-native-end End selects T100 and reveals its entire row at 640x480
+PASS material L06-N07-native-scroll wheel=1, thumb drag=1, click T100=1, shrink clamped=1
+PASS material R09-native-disabled-row disabled T008 click ignored=1, Down from T007 skips to T009=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material B03-native-nested End reveals T100 through both viewports=1, wheel at inner limit moves outer=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material registered-component custom color and hit region render; inside click and Enter each activate once
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material F09-checkbox-radio Space toggled=1, checkbox clicks=1, arrow=1, disabled click ignored=1, enabled click=1, apply=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material F09-slider arrow=1, Home=1, End=1, native drag=1, apply=1, disabled=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material F07-dropdown-native candidate=1, Escape=1, Tab=1, outside action=1, popup click=1
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC07-R01 translated WM_CHAR spaces=3 delivered while the button held focus; name length after activation=0; history entries after activation=1 (the error fixture's blanking only); typing space afterwards=inserted once; trace: WM_KEYDOWN	32	first	focus=fixture.error | WM_CHAR	32	first	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYDOWN	32	repeat	focus=fixture.error | WM_CHAR	32	repeat	focus=fixture.error | WM_KEYUP	32	repeat	focus=fixture.error |
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC06-enter Enter press + auto-repeat on apply -> applies=1; Enter in the name field adds nothing
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC06-F10-N02 press+move out+release=0, click=1, press+WM_CANCELMODE+release=1, Space+WM_KILLFOCUS+release=1, disabled click total=1
+PASS material AC10-native-disabled click on the disabled name then typing: focus=, text unchanged=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC08-pointer-clipboard click caret=5, shift-click=5..8, drag=0..5, Ctrl+C=ok, fixture write=ok, Ctrl+V=ok, Ctrl+Z=ok; user clipboard text restored=yes
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC08-clipboard-contention 60ms clipboard hold: copy=ok, paste=ok, fixture write=ok, clipboard text restore=ok
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC11-tab Tab order: fixture.normal fixture.read_only fixture.disabled fixture.error fixture.long form.reset form.name form.notices form.mode form.region form.volume fixture.offline_disabled fixture.region_empty form.apply fixture.normal ; Shift+Tab back to apply=yes; focused apply ring pixel is accent=yes, unfocused reset ring is not=yes (material-focus-apply.bmp)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material R06-native-100 640x480 wheel to offset 762/762; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 702 max 702, identical to the next frame=yes, apply at 24,352 80x44 hit=form.apply
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material R06-native-150 640x480 wheel to offset 1144/1144; SetWindowPos 720x540 -> 1 WM_PAINT, first frame offset 1054 max 1054, identical to the next frame=yes, apply at 36,528 120x66 hit=form.apply
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-960x720-100-initial: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=234, name 24,228 433x92, draft 489,228 433x48
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-960x720-100-long-error: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=331, name 24,300 433x117, draft 489,300 433x48
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-960x720-150-initial: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=352, name 36,342 649x139, draft 733,342 649x72
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-960x720-150-long-error: 25 placements, no overlap=yes, inside width=yes, results beside form=yes, entries revealed and hit=14/14, scroll max=498, name 36,450 649x177, draft 733,450 649x72
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-640x480-100-initial: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=618, name 24,252 578x92, draft 24,986 578x24
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-640x480-100-long-error: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=787, name 24,396 578x117, draft 24,1155 578x24
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-640x480-150-initial: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=928, name 36,378 867x139, draft 36,1480 867x36
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material AC13-layout material-640x480-150-long-error: 25 placements, no overlap=yes, inside width=yes, results below form=yes, entries revealed and hit=14/14, scroll max=1182, name 36,594 867x177, draft 36,1734 867x36
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v01 960x720 100%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v01 960x720 150%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v01 640x480 100%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v01 640x480 150%: visible overlap=0, width=1, entries revealed/hit=15/15; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v02 960x720 100%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v02 960x720 150%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v02 640x480 100%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v02 640x480 150%: visible overlap=0, width=1, entries revealed/hit=10/10; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v03 960x720 100%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v03 960x720 150%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v03 640x480 100%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-page-matrix v03 640x480 150%: visible overlap=0, width=1, entries revealed/hit=9/9; missing=
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss shipped 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel shipped 960x720 100%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel shipped 960x720 100%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel shipped 960x720 100%: track moved and canceled=1, anchor=visible
+PASS material X02-v01-thumb-cancel shipped 960x720 100%: thumb moved and canceled=1, anchor=partial
+PASS material X02-v01-edge-wheel shipped 960x720 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel shipped 960x720 100% clipped: anchor=clipped, canceled=1
+N/A material X02-v01-edge-track shipped 960x720 100% partial: endpoint not reachable with this page and input
+PASS material X02-v01-edge-track shipped 960x720 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb shipped 960x720 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb shipped 960x720 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list shipped 960x720 100%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog shipped 960x720 100%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A material X02-v03-tooltip-wheel shipped 960x720 100%: no background overflow
+N/A material X02-v03-tooltip-track shipped 960x720 100%: no background overflow
+N/A material X02-v03-tooltip-thumb shipped 960x720 100%: no background overflow
+PASS material X02-v03-tooltip shipped 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss shipped 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel shipped 960x720 150%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel shipped 960x720 150%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel shipped 960x720 150%: track moved and canceled=1, anchor=visible
+PASS material X02-v01-thumb-cancel shipped 960x720 150%: thumb moved and canceled=1, anchor=partial
+PASS material X02-v01-edge-wheel shipped 960x720 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel shipped 960x720 150% clipped: anchor=clipped, canceled=1
+N/A material X02-v01-edge-track shipped 960x720 150% partial: endpoint not reachable with this page and input
+PASS material X02-v01-edge-track shipped 960x720 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb shipped 960x720 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb shipped 960x720 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list shipped 960x720 150%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog shipped 960x720 150%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A material X02-v03-tooltip-wheel shipped 960x720 150%: no background overflow
+N/A material X02-v03-tooltip-track shipped 960x720 150%: no background overflow
+N/A material X02-v03-tooltip-thumb shipped 960x720 150%: no background overflow
+PASS material X02-v03-tooltip shipped 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss shipped 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel shipped 640x480 100%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel shipped 640x480 100%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel shipped 640x480 100%: track moved and canceled=1, anchor=partial
+PASS material X02-v01-thumb-cancel shipped 640x480 100%: thumb moved and canceled=1, anchor=clipped
+PASS material X02-v01-edge-wheel shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-track shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-track shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb shipped 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb shipped 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list shipped 640x480 100%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog shipped 640x480 100%: modal wheel=1, scroll maximum=44, Esc=1, Cancel=1, Confirm=1
+PASS material X02-v03-tooltip-wheel shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-track shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-thumb shipped 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip shipped 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss shipped 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel shipped 640x480 150%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel shipped 640x480 150%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel shipped 640x480 150%: track moved and canceled=1, anchor=partial
+PASS material X02-v01-thumb-cancel shipped 640x480 150%: thumb moved and canceled=1, anchor=clipped
+PASS material X02-v01-edge-wheel shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-track shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-track shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb shipped 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb shipped 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list shipped 640x480 150%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog shipped 640x480 150%: modal wheel=1, scroll maximum=66, Esc=1, Cancel=1, Confirm=1
+PASS material X02-v03-tooltip-wheel shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-track shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-thumb shipped 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip shipped 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss alternate 960x720 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel alternate 960x720 100%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel alternate 960x720 100%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel alternate 960x720 100%: track moved and canceled=1, anchor=visible
+PASS material X02-v01-thumb-cancel alternate 960x720 100%: thumb moved and canceled=1, anchor=partial
+PASS material X02-v01-edge-wheel alternate 960x720 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel alternate 960x720 100% clipped: anchor=clipped, canceled=1
+N/A material X02-v01-edge-track alternate 960x720 100% partial: endpoint not reachable with this page and input
+PASS material X02-v01-edge-track alternate 960x720 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb alternate 960x720 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb alternate 960x720 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list alternate 960x720 100%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog alternate 960x720 100%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A material X02-v03-tooltip-wheel alternate 960x720 100%: no background overflow
+N/A material X02-v03-tooltip-track alternate 960x720 100%: no background overflow
+N/A material X02-v03-tooltip-thumb alternate 960x720 100%: no background overflow
+PASS material X02-v03-tooltip alternate 960x720 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss alternate 960x720 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel alternate 960x720 150%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel alternate 960x720 150%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel alternate 960x720 150%: track moved and canceled=1, anchor=visible
+PASS material X02-v01-thumb-cancel alternate 960x720 150%: thumb moved and canceled=1, anchor=partial
+PASS material X02-v01-edge-wheel alternate 960x720 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel alternate 960x720 150% clipped: anchor=clipped, canceled=1
+N/A material X02-v01-edge-track alternate 960x720 150% partial: endpoint not reachable with this page and input
+PASS material X02-v01-edge-track alternate 960x720 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb alternate 960x720 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb alternate 960x720 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list alternate 960x720 150%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog alternate 960x720 150%: modal wheel=N/A (no overflow), scroll maximum=0, Esc=1, Cancel=1, Confirm=1
+N/A material X02-v03-tooltip-wheel alternate 960x720 150%: no background overflow
+N/A material X02-v03-tooltip-track alternate 960x720 150%: no background overflow
+N/A material X02-v03-tooltip-thumb alternate 960x720 150%: no background overflow
+PASS material X02-v03-tooltip alternate 960x720 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss alternate 640x480 100%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel alternate 640x480 100%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel alternate 640x480 100%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel alternate 640x480 100%: track moved and canceled=1, anchor=partial
+PASS material X02-v01-thumb-cancel alternate 640x480 100%: thumb moved and canceled=1, anchor=clipped
+PASS material X02-v01-edge-wheel alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-track alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-track alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb alternate 640x480 100% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb alternate 640x480 100% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list alternate 640x480 100%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog alternate 640x480 100%: modal wheel=1, scroll maximum=44, Esc=1, Cancel=1, Confirm=1
+PASS material X02-v03-tooltip-wheel alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-track alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-thumb alternate 640x480 100%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip alternate 640x480 100%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X02-v01-dismiss alternate 640x480 150%: candidate=1, Esc=1, Tab=1, outside=1
+PASS material X02-v01-wheel-cancel alternate 640x480 150%: moved and canceled=1, anchor=visible
+PASS material X02-v01-popup-wheel alternate 640x480 150%: wheel over panel does not scroll background or cancel=1
+PASS material X02-v01-track-cancel alternate 640x480 150%: track moved and canceled=1, anchor=partial
+PASS material X02-v01-thumb-cancel alternate 640x480 150%: thumb moved and canceled=1, anchor=clipped
+PASS material X02-v01-edge-wheel alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-wheel alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-track alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-track alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v01-edge-thumb alternate 640x480 150% partial: anchor=partial, canceled=1
+PASS material X02-v01-edge-thumb alternate 640x480 150% clipped: anchor=clipped, canceled=1
+PASS material X02-v02-list alternate 640x480 150%: End=1, hit=1, wheel=1, End again=1
+PASS material X02-v03-dialog alternate 640x480 150%: modal wheel=1, scroll maximum=66, Esc=1, Cancel=1, Confirm=1
+PASS material X02-v03-tooltip-wheel alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-track alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip-thumb alternate 640x480 150%: moved and hid=1, fresh dwell=1, anchor=visible
+PASS material X02-v03-tooltip alternate 640x480 150%: shown=1, transparent=1, Esc=1, focus leave=1, pointer shown=1, pointer leave=1 (controlled dwell clock)
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+PASS material X04-native-paint-observation The actual host paint path records visible error text under its owning field
+PASS material X04-v01-raster Name semantics report an error and the real host raster contains error-colored pixels in the error line
+PASS material X04-checkbox-conflict Assembled checkbox conflict and latest action are painted, then latest adopts the source
+PASS material X04-button-executing Real paint during the callback identifies executing and semantics refuse reactivation
+PASS material X04-v02-raster T003 is semantically selected and its visible real-host row contains the selection color
+PASS material X04-list-and-tabs-names Visible list and tab group names agree with the typed semantic descriptions
+PASS material X04-v03-raster Open dialog semantic title, body and button names have real-host text pixels in their line regions
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+OpenGL 3.3.0 NVIDIA 610.88 | NVIDIA GeForce RTX 3060/PCIe/SSE2
+340 native checks, 0 failures
+<end of output>
+Test time =  93.76 sec
+----------------------------------------------------------
+Test Passed.
+"host_native" end time: Nov 06 17:42 Taipei Standard Time
+"host_native" time elapsed: 00:01:33
+----------------------------------------------------------
+
+End testing: Nov 06 17:42 Taipei Standard Time
