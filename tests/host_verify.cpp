@@ -2586,32 +2586,40 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         live.form.handles.region.focus();
         live.tap(VK_RETURN);
         live.host.paint();
+        // Report which part of the popup predicate failed: absent dropdown, geometry or hit.
+        auto popup_check = [&](const Frame& f, std::string& detail) {
+            auto it = std::find_if(f.overlays.begin(), f.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
+            bool expanded = live.form.handles.region.describe() && live.form.handles.region.describe()->expanded;
+            detail = "overlays=" + std::to_string(f.overlays.size()) + " expanded=" + std::to_string(expanded) +
+                     " dropdown=" + std::to_string(it != f.overlays.end());
+            if (it == f.overlays.end()) return false;
+            auto r = it->bounds;
+            // Popups are clipped to the window, not to the scroll viewport (layout overlay placement, B04);
+            // the core X02 matrix uses the same window bound.
+            RECT client{}; GetClientRect(live.host.window(), &client);
+            bool inside = r.x >= 0 && r.y >= 0 && r.x + r.w <= client.right && r.y + r.h <= client.bottom;
+            auto* target = f.hit(r.x + r.w / 2, r.y + r.h / 2);
+            bool hit = target && target->popup && target->id == it->id;
+            detail += " bounds=" + std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.w) + "x" + std::to_string(r.h) +
+                      " viewport=" + std::to_string(f.viewport.w) + "x" + std::to_string(f.viewport.h) +
+                      " client=" + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
+                      " inside=" + std::to_string(inside) + " hit=" + std::to_string(hit);
+            return inside && hit;
+        };
         before = dpi_messages;
         UINT popup_dpi = move(monitors[1]);
         const auto& frame = live.host.frame();
-        bool popup = !frame.overlays.empty();
-        if (popup) {
-            const auto& overlay = frame.overlays.front();
-            auto r = overlay.bounds;
-            auto* target = frame.hit(r.x + r.w / 2, r.y + r.h / 2);
-            popup = r.x >= 0 && r.y >= 0 && r.x + r.w <= frame.viewport.w && r.y + r.h <= frame.viewport.h &&
-                    target && target->popup;
-        }
+        std::string popup_detail;
+        bool popup = popup_check(frame, popup_detail);
         report.check("D01-popup-forward", popup_dpi == second && dpi_messages > before && popup,
                      "Open dropdown across monitor move: WM_DPICHANGED=" + std::to_string(dpi_messages - before) +
-                     "; popup inside viewport and hit=" + std::to_string(popup));
+                     "; popup inside window and hit=" + std::to_string(popup) + "; " + popup_detail);
         before = dpi_messages;
         UINT popup_return = move(monitors[0]);
         const auto& returned_frame = live.host.frame();
-        bool popup_back = !returned_frame.overlays.empty();
-        if (popup_back) {
-            auto r = returned_frame.overlays.front().bounds;
-            auto* target = returned_frame.hit(r.x + r.w / 2, r.y + r.h / 2);
-            popup_back = r.x >= 0 && r.y >= 0 && r.x + r.w <= returned_frame.viewport.w &&
-                         r.y + r.h <= returned_frame.viewport.h && target && target->popup;
-        }
+        bool popup_back = popup_check(returned_frame, popup_detail);
         report.check("D01-popup-return", popup_return == first && dpi_messages > before && popup_back,
-                     "Return: popup inside viewport and hit=" + std::to_string(popup_back));
+                     "Return: popup inside window and hit=" + std::to_string(popup_back) + "; " + popup_detail);
         return true;
     } catch (const Blocked& blocked) {
         report.check("BLOCKED", false, blocked.what());
