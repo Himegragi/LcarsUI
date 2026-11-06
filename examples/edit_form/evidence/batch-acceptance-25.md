@@ -1,5 +1,22 @@
 # First component batch acceptance — issue #25
 
+## Idle-desktop reruns, D01 100%↔150% and user trial (2026-11-06)
+
+**Current result: NOT COMPLETED — X02 and X04 remain open.** This section supersedes the D01, E01 and user-trial rows of the follow-up below; its S-H1, P-B3, X02, X04 and clipboard rows still stand. All runs below rebuilt the stated commit in a clean worktree and were run by the coordinator with no other desktop activity and no concurrent native tests.
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| D01 150%↔125%, `532c0e8` | **12/12** | [results](idle-rerun/dpi-532c0e8/dpi.tsv), [Release CTest 7/7](idle-rerun/dpi-532c0e8/release.log) |
+| D01 150%↔125%, `cf51267` | **12/12** | [results](idle-rerun/dpi-cf51267/dpi.tsv), [Release CTest 7/7](idle-rerun/release-cf51267.log) |
+| E01 real Microsoft Bopomofo, `cf51267` | **46/46** | [results](idle-rerun/ime-cf51267/ime.tsv), [events](idle-rerun/ime-cf51267/ime-events.log); IMTCTIP.DLL 6.2.26100.9711, ChtIME.exe 6.2.26100.9278 |
+| D01 100%↔150%, `cf51267` | **12/12** | [results](dpi-100-150/dpi.tsv), [Release CTest 7/7](dpi-100-150/release.log): `\\.\DISPLAY1` 144 DPI ↔ `\\.\DISPLAY2` 96 DPI, both appearances, forward and return, selection/focus and physical click caret, composition with IME caret and candidate-position request, open dropdown popup. |
+| D01 candidate window, visual | **Confirmed by the user** | The user watched the real Bopomofo candidate window follow the caret on both displays during the 100%↔150% run. |
+| U01 user trial | **Confirmed by the user** | The user reported V01, V02 and V03 working in a manual trial. |
+
+The earlier `cf51267` D01 10/12 (Web popup) and interrupted IME run were not reproduced with an idle desktop, and `532c0e8` also passed, so they are attributed to desktop activity during those runs and not to a regression. Each idle rerun was performed once; this does not prove the failures cannot recur.
+
+Still not completed: X02's uncrossed popup/scroll interactions and X04's complete per-component visible-versus-semantic comparison. The historical clipboard intermittency remains without an established cause; UIA/screen-reader and MCP adapters and the deferred design refactors remain separate work.
+
 ## Removal and acceptance follow-up (2026-11-06)
 
 **Current result: NOT COMPLETED.** This section supersedes the review-fix status below; the remaining sections are historical. The final code/test commit is `99d96ec`; local `integration/first-component-batch` at `532c0e8` was already an ancestor. Final verification used Windows 11 Pro N 26H2 build 26300.9711, clang-cl 19.1.5, OpenGL 3.3.0 NVIDIA 610.88, Microsoft Bopomofo IMTCTIP.DLL 6.2.26100.9711 / ChtIME.exe 6.2.26100.9278. The final evidence commit follows the tested code.
