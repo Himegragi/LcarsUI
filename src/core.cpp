@@ -1619,7 +1619,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
-        s.visible = it->second && available(id).status != Status::hidden && (control->page != "dialog" || modal_);
+        s.visible = it->second && available(id).status != Status::hidden;
     s.focusable = bool(focusable(*control));
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
@@ -1773,8 +1773,8 @@ Result detail::UiState::available(std::string_view id) const {
     if (!control || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
+    if (control->page == "dialog" && !modal_) return {Status::hidden, u"對話框尚未開啟"};
     if (!control->enabled) return {Status::disabled, u"目前無法執行"};
-    if (control->page == "dialog" && !modal_) return {Status::disabled, u"對話框尚未開啟"};
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};
 }
@@ -1951,8 +1951,9 @@ void detail::UiState::bind(Id id, Action action) {
     actions_.insert_or_assign(std::move(id), std::move(action));
 }
 Result detail::UiState::focusable(const Control& control) const {
+    if (auto result = available(control.id); !result) return result;
     if (!component_type(control.kind).can_focus()) return {Status::not_supported, u"標籤不能取得焦點"};
-    return available(control.id);
+    return {};
 }
 std::vector<Id> detail::UiState::focus_order() const {
     std::vector<Id> order;

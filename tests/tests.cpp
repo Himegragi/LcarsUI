@@ -35,7 +35,7 @@ void core_behavior(){
     check(run.invoke().status==Status::blocked_by_modal&&calls==0,"Modal must block commands");
     check(name.set_value(u"x").status==Status::blocked_by_modal,"Modal must block writes");
     detail::access(ui).modal(false);detail::access(ui).enable("run",false);
-    check(detail::access(ui).invoke("cancel").status==Status::disabled,"Hidden dialog actions must not execute");
+    check(detail::access(ui).invoke("cancel").status==Status::hidden,"Hidden dialog actions must not execute");
     check(run.invoke().status==Status::disabled,"Disabled command must fail");
     detail::access(ui).enable("run",true);check(bool(run.invoke())&&calls==1,"Enabled command executes once");
     Status background=Status::ok;
