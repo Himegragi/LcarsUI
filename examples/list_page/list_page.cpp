@@ -5,6 +5,31 @@
 namespace list_page {
 using namespace lcars;
 
+Result ImmediateSearchConnection::connect(TextHandle field, std::function<Result()> refresh) {
+    field_ = field;
+    auto source = field_.connect_source({[this] { return value_; }, [this](auto changed) {
+        changed_ = std::move(changed); return [this] { changed_ = {}; };
+    }});
+    if (!source) return source;
+    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const TextChange& change) {
+        value_ = change.value; if (changed_) changed_(); return refresh();
+    });
+    connected_ = bool(write);
+    return write;
+}
+Result ImmediateSearchConnection::reset() {
+    auto semantic = field_.describe();
+    if (!semantic) return {semantic.status, semantic.message};
+    // Reset is an owner action and remains available when the field is restricted.
+    if (!semantic->enabled) field_.enable(true);
+    if (semantic->read_only) field_.read_only(false);
+    auto result = field_.set_value(u"");
+    if (result) result = field_.reset_to_source();
+    if (semantic->read_only) field_.read_only(true);
+    if (!semantic->enabled) field_.enable(false);
+    return result;
+}
+
 Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>(std::vector<Control>{})),
       ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
@@ -25,12 +50,7 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     handles.list = ui.add_list({.id = prefix + "list", .kind = Kind::list, .label = u"範本"}, {});
     handles.erase = ui.add_button({.id = prefix + "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false});
     handles.detail = ui.add_label({.id = prefix + "detail", .kind = Kind::label});
-    handles.search.connect_source({[this] { return search_; }, [this](auto changed) {
-        search_changed_ = std::move(changed); return [this] { search_changed_ = {}; };
-    }});
-    handles.search.connect_immediate([this](const TextChange& change) {
-        search_ = change.value; if (search_changed_) search_changed_(); return refresh();
-    });
+    search_.connect(handles.search, [this] { return refresh(); });
     handles.list.connect_source({[this] { return selection_; }, [this](auto changed) {
         selection_changed_ = std::move(changed); return [this] { selection_changed_ = {}; };
     }});
@@ -82,7 +102,7 @@ void Page::clear_clip_padding() { clip_padding_id_.clear(); clip_padding_text_.c
 Result Page::refresh() {
     std::vector<RadioOption> visible;
     for (auto item : items_) {
-        if (item.label.find(search_) == std::u16string::npos) continue;
+        if (item.label.find(search_.value()) == std::u16string::npos) continue;
         if (item.value.id == "T008") item.enabled = !disabled_eight_;
         visible.push_back(std::move(item));
     }
@@ -90,15 +110,16 @@ Result Page::refresh() {
     return handles.list.set_items(std::move(visible));
 }
 Result Page::sample(int count) {
+    if (auto result = search_.reset(); !result) return result;
     items_.clear();
     for (int n = 1; n <= count; ++n) {
         char id[8], number[8]; std::snprintf(id, sizeof(id), "T%03d", n); std::snprintf(number, sizeof(number), "%02d", n);
         auto label = n == 5 || n == 6 ? std::u16string(u"共用範本") : u"範本 " + std::u16string(number, number + std::char_traits<char>::length(number));
         items_.push_back({{id}, std::move(label)});
     }
-    search_.clear(); descending_ = disabled_eight_ = false; selection_.reset(); scroll.offset = 0; list_scroll.offset = 0;
-    handles.erase.enable(false); if (selection_changed_) selection_changed_(); if (search_changed_) search_changed_();
-    handles.search.reset_to_source(); return refresh();
+    descending_ = disabled_eight_ = false; selection_.reset(); scroll.offset = 0; list_scroll.offset = 0;
+    handles.erase.enable(false); if (selection_changed_) selection_changed_();
+    return refresh();
 }
 layout::Node Page::page() const {
     using namespace lcars::layout;

@@ -1,6 +1,7 @@
 #include "edit_form.hpp"
 #include <algorithm>
 #include <string>
+#include <utility>
 
 namespace edit_form {
 using namespace lcars;
@@ -260,6 +261,7 @@ bool Form::validate() {
     return valid;
 }
 MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
+    if (auto observer = std::exchange(next_apply_observer_, {})) observer();
     const auto& name = std::get<TextChange>(changes[0]);
     const auto& notices = std::get<BoolChange>(changes[1]);
     const auto& mode = std::get<OptionChange>(changes[2]);

@@ -40,6 +40,7 @@ private:
     std::string clip_padding_id_;
     std::u16string clip_padding_text_;
     std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
+    std::function<void()> next_apply_observer_;
     bool pages_ = false;
     std::array<int, 3> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
@@ -86,6 +87,8 @@ public:
     void update_progress(int value);
     // Restore the application's original action after a temporary typed-handle binding.
     lcars::Result restore_fixture_action(lcars::ButtonHandle button) const;
+    // Fixture: observe one invocation inside the application's confirmation modification entry.
+    void observe_next_apply(std::function<void()> observer) { next_apply_observer_ = std::move(observer); }
     // Fixture: expand one existing label to exercise scroll clipping, then restore its model source.
     lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
     void clear_clip_padding();

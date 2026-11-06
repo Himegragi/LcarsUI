@@ -2,6 +2,7 @@
 // State transitions used by both the assembled core and native X04 checks.
 // Each driver starts with a fresh Form and restores its application model afterwards.
 #include "edit_form.hpp"
+#include "core_internal.hpp"
 #include <algorithm>
 
 namespace x04 {
@@ -39,6 +40,29 @@ inline const lcars::Placement* placement(const lcars::Frame& frame, const lcars:
         if constexpr (std::is_same_v<T, std::monostate>) return nullptr;
         else return frame.find(handle);
     }, value);
+}
+// Determine clipping applicability from the assembled layout tree, including modal
+// content even when closed. Associated labels use their field's placement.
+inline std::optional<bool> enclosing_scroll(const lcars::layout::Node& node, lcars::detail::UiState& ui,
+                                             std::string_view id, bool inside = false) {
+    inside = inside || node.type == lcars::layout::Node::Type::scroll;
+    if (node.type == lcars::layout::Node::Type::control) {
+        auto actual = ui.layout_id(node.component);
+        if (actual && *actual == id) return inside;
+    }
+    for (const auto& child : node.children)
+        if (auto found = enclosing_scroll(child, ui, id, inside)) return found;
+    return std::nullopt;
+}
+inline std::optional<bool> enclosing_scroll(edit_form::Form& form, const lcars::Semantics& semantic) {
+    return enclosing_scroll(form.page(), lcars::detail::access(form.ui),
+                            semantic.target.empty() ? semantic.id : semantic.target);
+}
+inline bool inside_client(const lcars::Placement& placement, int width, int height) {
+    lcars::Rect client{0, 0, width, height};
+    return placement.bounds.w > 0 && placement.bounds.h > 0 &&
+        lcars::intersect(placement.bounds, client) == placement.bounds &&
+        lcars::intersect(placement.bounds, placement.clip) == placement.bounds;
 }
 // Passive labels and progress have no user operation. All other page members retry a
 // typed operation; admission must reject it before examining the proposed value.
@@ -165,6 +189,11 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
     }, entry.handle);
     return restored && baseline_context(form);
 }
+// Applicability follows the application-owned connection, not component IDs.
+inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
+    auto field = std::get_if<lcars::TextHandle>(&entry.handle);
+    return field && form.list && form.list->search_connection().owns(*field);
+}
 inline bool group_conflict_supported(const lcars::Semantics& s) {
     using lcars::Kind;
     return s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
@@ -199,9 +228,19 @@ inline lcars::ButtonHandle latest_for(edit_form::Form& form, const Entry& entry)
         else return {};
     }, entry.handle);
 }
-inline bool execution_supported(edit_form::Form& form, const lcars::ButtonHandle& button) {
+inline bool execution_supported(edit_form::Form&, const lcars::ButtonHandle& button) {
     auto semantic = button.describe();
-    return semantic && semantic->kind == lcars::Kind::button && semantic->id != form.handles.apply.describe()->id;
+    return semantic && semantic->kind == lcars::Kind::button;
+}
+inline bool observe_execution(edit_form::Form& form, const lcars::ButtonHandle& button,
+                              std::function<lcars::Result()> observer) {
+    if (button.describe()->id == form.handles.apply.describe()->id) {
+        // The confirmation action remains protected; observe its actual modification entry.
+        if (button.bind([] { return lcars::Result{}; }).status != lcars::Status::invalid_value) return false;
+        form.observe_next_apply([observer = std::move(observer)] { (void)observer(); });
+        return true;
+    }
+    return bool(button.bind(std::move(observer)));
 }
 inline bool prepare_execution(edit_form::Form& form, const Entry& entry) {
     auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
@@ -214,7 +253,8 @@ inline bool prepare_execution(edit_form::Form& form, const Entry& entry) {
 inline bool restore_execution(edit_form::Form& form, const Entry& entry, bool enabled) {
     auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
     if (!button) return false;
-    bool restored = bool(form.restore_fixture_action(*button)) && bool(button->enable(enabled));
+    bool is_apply = button->describe()->id == form.handles.apply.describe()->id;
+    bool restored = (is_apply ? bool(form.handles.reset.invoke()) : bool(form.restore_fixture_action(*button))) && bool(button->enable(enabled));
     if (entry.page == "modal")
         restored = bool(form.handles.dialog.settle(false)) && bool(form.handles.reset_v03.invoke()) && restored;
     return baseline_context(form) && restored;

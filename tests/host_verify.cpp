@@ -1306,13 +1306,14 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
                     bool selected = type.supports_state(S::selected);
                     bool candidate = type.supports_state(S::candidate);
                     bool error = type.supports_state(S::error);
-                    bool conflict = type.supports_state(S::conflict);
+                    bool conflict = type.supports_state(S::conflict) && !x04::conflict_inapplicable(f.form, entry);
                     bool associated = !s->target.empty();
+                    auto scroll = x04::enclosing_scroll(f.form, *s);
                     out << (alternate ? "alternate" : "shipped") << '\t' << size.first << 'x' << size.second << '\t' << int(scale * 100)
                         << '\t' << page << '\t' << s->id << '\t' << static_cast<int>(k) << '\t' << (s->visible ? "yes" : "no")
                         << '\t' << text_status(s->name) << '\t' << text_status(s->value) << '\t' << applicable(restricted) << '\t'
                         << (!active && std::string_view(entry.page) != "modal" && !s->visible && !any && !placement && !associated ? "P" : active ? "N/A" : "O") << '\t'
-                        << (active && placement && !s->visible && !any && !associated ? "P" : "O") << '\t'
+                        << (scroll && !*scroll ? "N/A" : active && placement && !s->visible && !any && !associated ? "P" : "O") << '\t'
                         << applicable(restricted) << '\t' << applicable(type.supports_state(S::read_only)) << '\t' << applicable(selected) << '\t'
                         << applicable(candidate) << '\t' << applicable(error) << '\t' << applicable(conflict) << '\t'
                         << applicable(type.supports_state(S::executing)) << '\t' << applicable(std::string_view(entry.page) == "modal") << '\t'
@@ -1350,12 +1351,49 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
                         x04::hidden_retry(entry.handle);
                 }
             }
+            bool closed = bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke());
+            f.settle();
+            closed = closed && bool(f.form.handles.dialog_cancel.invoke()); f.settle();
+            for (const auto& entry : entries) if (entry.page == "modal") {
+                auto semantic = x04::describe(entry.handle);
+                bool painted = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
+                    [&](const auto& draw) { return draw.visible && draw.owner == semantic->id; });
+                bool rejected = detail::access(f.form.ui).available(semantic->id).status == Status::hidden &&
+                    detail::access(f.form.ui).pointer_down(semantic->id).status == Status::hidden && x04::hidden_retry(entry.handle);
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-hidden-member", closed && !semantic->visible && !painted &&
+                    !x04::placement(f.host.frame(), entry.handle) && rejected,
+                    sample + ": closed dialog; semantics, paint, placement and admission");
+            }
             for (const auto& [id, result] : results) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + id;
                 report.check("X04-hidden-member", result.pages == 2 && result.passed,
                     sample + ": both inactive pages; semantics, paint, placement and admission");
+            }
+        }
+}
+
+// Every placement without an enclosing scroll region must also fit the client.
+void x04_fixed_placement_matrix(const Appearance& appearance, Report& report) {
+    for (bool alternate : {false, true}) for (auto size : {std::pair{960, 720}, std::pair{640, 480}})
+        for (float scale : {1.f, 1.5f}) {
+            Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
+            bool opened = bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke());
+            f.settle();
+            int width = int(std::lround(size.first * scale)), height = int(std::lround(size.second * scale));
+            for (const auto& entry : x04::inventory(f.form)) {
+                auto semantic = x04::describe(entry.handle); auto scroll = x04::enclosing_scroll(f.form, *semantic);
+                if (!scroll || *scroll) continue;
+                auto* item = x04::placement(f.host.frame(), entry.handle);
+                bool inside = item && x04::inside_client(*item, width, height);
+                std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
+                    std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
+                    std::to_string(int(scale * 100)) + "% " + semantic->id;
+                report.check("X04-fixed-placement", opened && inside, sample + ": no enclosing scroll; inside client=" + std::to_string(inside));
             }
         }
 }
@@ -1410,7 +1448,7 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                     !x04::execution_supported(f.form, *button)) continue;
                 bool baseline_ok = x04::baseline_context(f.form); auto baseline = x04::snapshot(f.form);
                 auto before = button->describe(); bool prepared = x04::prepare_execution(f.form, entry), observed = false;
-                bool bound = bool(button->bind([&] {
+                bool bound = x04::observe_execution(f.form, *button, [&] {
                     f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id);
                     f.host.paint(); auto semantic = button->describe(); auto* item = f.host.frame().find(*button);
                     std::u16string ink;
@@ -1423,7 +1461,7 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                         ink.find(semantic->name) != std::u16string::npos &&
                         ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
                     return Result{};
-                }));
+                });
                 bool invoked = bound && bool(button->invoke()) && observed && !*button->executing();
                 bool restored = x04::restore_execution(f.form, entry, before->enabled) && x04::same_model(baseline, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
@@ -2623,6 +2661,7 @@ int run(const std::filesystem::path& folder) {
         popup_dismissal_matrix(*appearance, report);
         semantic_raster_samples(*appearance, report, folder);
         x04_client_size_matrix(*appearance, report);
+        x04_fixed_placement_matrix(*appearance, report);
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);
@@ -2661,6 +2700,7 @@ int run_x04(const std::filesystem::path& folder) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         semantic_raster_samples(*appearance, report, folder);
         x04_client_size_matrix(*appearance, report);
+        x04_fixed_placement_matrix(*appearance, report);
         x04_hidden_matrix(*appearance, report);
         x04_selected_matrix(*appearance, report);
         x04_normal_matrix(*appearance, report);

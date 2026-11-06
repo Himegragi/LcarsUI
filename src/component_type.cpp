@@ -49,7 +49,7 @@ void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, 
 }
 class Label final : public ComponentType {
 public:
-    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::error}); }
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;

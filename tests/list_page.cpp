@@ -27,6 +27,16 @@ void filtering_clears_selection_without_restoring_it() {
     check(!page.selection() && list.describe()->options.size() == 1 && list.describe()->options[0].value == OptionValue{"T020"}, "Filtering clears the hidden selection");
     check(bool(page.handles.search.set_value(u"")) && !page.selection(), "Clearing search does not restore it");
 }
+void sample_reset_clears_immediate_search() {
+    list_page::Page page; auto& search = page.handles.search;
+    check(page.search_connection().owns(search), "Search is attached to the immediate-only connection");
+    check(bool(search.set_value(u"20")) && !search.describe()->source_conflict, "Search writes through immediately");
+    check(bool(page.handles.twenty.invoke()) && search.describe()->value.empty() &&
+          !search.describe()->source_conflict && page.handles.list.describe()->options.size() == 20,
+          "Sample reset clears search and restores the list without a conflict");
+    check(search.undo().status == Status::empty_history, "Sample reset clears the old search edit history");
+}
+
 void disabling_a_selected_row_clears_it() {
     list_page::Page page; auto& list = page.handles.list;
     list.focus(); list.select({"T008"});
@@ -60,6 +70,7 @@ int main() {
         {"L03 duplicate names and sorting", duplicate_names_survive_sorting},
         {"L05 R03 R10 deletion and reentry", deletion_recovers_cursor_then_reentry_starts_at_first},
         {"L04 filtering clears selection", filtering_clears_selection_without_restoring_it},
+        {"Sample reset clears immediate search", sample_reset_clears_immediate_search},
         {"R09 N08 disabling selected row", disabling_a_selected_row_clears_it},
         {"L01 L02 empty single and keyboard endpoints", empty_single_and_keyboard_endpoints},
         {"R11 filtering uses old order", filtering_uses_old_order_for_cursor_recovery},

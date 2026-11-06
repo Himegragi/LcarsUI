@@ -894,7 +894,7 @@ void x04_executing_inventory_at_each_size_and_scale() {
             auto before = button->describe(); auto message = std::string("X04 executing ") + before->id;
             check(x04::prepare_execution(form, entry), (message + " prepare").c_str());
             bool observed = false;
-            check(bool(button->bind([&] {
+            check(x04::observe_execution(form, *button, [&] {
                 auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                      int(size.second * scale), scale, form.scroll, before->id);
                 auto semantic = button->describe(); auto* item = frame.find(*button);
@@ -906,13 +906,29 @@ void x04_executing_inventory_at_each_size_and_scale() {
                     button->invoke().status == Status::busy && paint.drawn.find(semantic->name) != std::u16string::npos &&
                     paint.drawn.find(appearance->component_presentation().executing_suffix) != std::u16string::npos;
                 return Result{};
-            })), (message + " bind").c_str());
+            }), (message + " bind or confirmation observer").c_str());
             check(bool(button->invoke()) && observed && !*button->executing(), (message + " callback").c_str());
             check(x04::restore_execution(form, entry, before->enabled) && x04::same_model(baseline, x04::snapshot(form)),
                   (message + " restore").c_str());
         }
         check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.progress_zero.invoke()) && form.progress() == 0,
               "X04 restored action still invokes the application model");
+    }
+}
+
+void x04_fixed_placements_fit_each_client() {
+    for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
+        edit_form::Form form(ids, true); test::FakeMeasure measure;
+        check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "X04 open fixed overlay");
+        int width = int(std::lround(size.first * scale)), height = int(std::lround(size.second * scale));
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, width, height, scale, form.scroll);
+        for (const auto& entry : x04::inventory(form)) {
+            auto semantic = x04::describe(entry.handle); auto scroll = x04::enclosing_scroll(form, *semantic);
+            if (!scroll || *scroll) continue;
+            auto* item = x04::placement(frame, entry.handle);
+            auto message = std::string("X04 fixed placement fits client ") + semantic->id;
+            check(item && x04::inside_client(*item, width, height), message.c_str());
+        }
     }
 }
 
@@ -1271,6 +1287,18 @@ void x04_hidden_inventory_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true);
         test::FakeMeasure measure;
+        check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()) &&
+              bool(form.handles.dialog_cancel.invoke()), "X04 close dialog for hidden sweep");
+        auto closed = arrange(form.page(), form.ui, *appearance, measure,
+                              int(size.first * scale), int(size.second * scale), scale, form.scroll);
+        for (const auto& entry : x04::inventory(form)) if (entry.page == "modal") {
+            auto semantic = x04::describe(entry.handle);
+            auto message = std::string("X04 closed dialog hidden ") + semantic->id;
+            check(!semantic->visible && !x04::placement(closed, entry.handle) &&
+                  detail::access(form.ui).available(semantic->id).status == Status::hidden &&
+                  detail::access(form.ui).pointer_down(semantic->id).status == Status::hidden &&
+                  x04::hidden_retry(entry.handle), message.c_str());
+        }
         for (auto page : {"v01", "v02", "v03"}) {
             check(bool(form.handles.tabs.activate({page})), "X04 activate page");
             auto frame = arrange(form.page(), form.ui, *appearance, measure,
@@ -1561,6 +1589,29 @@ void v03_reset_restores_the_temporary_source_and_keeps_other_pages() {
     check(*h.name.draft() == u"Retained V01 draft", "Resetting V03 preserves the V01 draft");
 }
 
+void closed_dialog_members_are_hidden_and_reject_input() {
+    edit_form::Form form(ids, true); auto& h = form.handles;
+    test::FakeMeasure measure; auto& host = detail::access(form.ui);
+    check(bool(h.tabs.activate({"v03"})) && bool(h.dialog_open.invoke()), "Open dialog for hidden regression");
+    check(bool(h.dialog_cancel.invoke()), "Close dialog for hidden regression");
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+    check(!h.dialog_title.describe()->visible && !h.dialog_body.describe()->visible &&
+          !h.dialog_cancel.describe()->visible && !h.dialog_confirm.describe()->visible &&
+          !frame.find(h.dialog_title) && !frame.find(h.dialog_body) &&
+          !frame.find(h.dialog_cancel) && !frame.find(h.dialog_confirm), "Closed dialog has no visible members or placements");
+    check(h.dialog_cancel.focus().status == Status::hidden && h.dialog_cancel.invoke().status == Status::hidden &&
+          h.dialog_confirm.invoke().status == Status::hidden &&
+          host.pointer_down(h.dialog_confirm.describe()->id).status == Status::hidden &&
+          host.pointer_down(h.dialog_title.describe()->id).status == Status::hidden &&
+          host.pointer_down(h.dialog_body.describe()->id).status == Status::hidden,
+          "Closed dialog rejects focus, public operation and pointer as hidden");
+    check(bool(h.progress_half.focus()), "Focus visible background after closing");
+    host.key_down({Key::enter}); host.key_up(Key::enter);
+    check(form.dialog_confirmations() == 0 && !*h.dialog.is_open(), "Keyboard does not activate closed dialog");
+    check(bool(h.dialog_confirm.enable(false)) && h.dialog_confirm.invoke().status == Status::hidden,
+          "Hidden takes precedence over a disabled dialog member");
+}
+
 void dialog_cancel_preserves_progress() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
@@ -1786,6 +1837,7 @@ int main() {
         {"X04 name conflict has a field cue", x04_name_conflict_is_drawn_at_field},
         {"X04 name read-only at each size and scale", x04_name_read_only_size_scale},
         {"X04 executing inventory at each size and scale", x04_executing_inventory_at_each_size_and_scale},
+        {"X04 fixed placements fit each client", x04_fixed_placements_fit_each_client},
         {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
         {"X04 error inventory at each size and scale", x04_error_inventory_at_each_size_and_scale},
         {"X04 candidate inventory at each size and scale", x04_candidate_inventory_at_each_size_and_scale},
@@ -1807,6 +1859,7 @@ int main() {
         {"C11 tooltip lifetime and window focus", tooltip_window_modal_and_source_lifetime},
         {"P05 tooltip pointer visit", tooltip_pointer_visit_can_restart_after_escape},
         {"P05 tooltip keyboard delay and Escape", tooltip_keyboard_delay_and_escape},
+        {"Closed dialog members are hidden", closed_dialog_members_are_hidden_and_reject_input},
         {"P01 cancel dialog", dialog_cancel_preserves_progress},
         {"P02 P03 modal input and confirm", dialog_confines_input_and_confirms_once},
         {"P05 pointer focus tooltip", tooltip_pointer_focus_ends_on_leave},

@@ -1284,7 +1284,7 @@ void component_type_reports_state_applicability() {
     using S = detail::ComponentState;
     struct Row { Kind kind; std::vector<S> states; };
     const Row rows[] = {
-        {Kind::label, {S::normal, S::error}},
+        {Kind::label, {S::normal}},
         {Kind::button, {S::normal, S::disabled, S::executing}},
         {Kind::text, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
         {Kind::checkbox, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
