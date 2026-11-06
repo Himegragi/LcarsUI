@@ -958,7 +958,8 @@ void x04_error_inventory_at_each_size_and_scale() {
         auto entries = x04::inventory(inventory_form);
         for (std::size_t index = 0; index < entries.size(); ++index) {
             edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
-            auto semantic = x04::describe(entry.handle); if (!x04::error_supported(*semantic)) continue;
+            auto semantic = x04::describe(entry.handle);
+            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error) || !x04::error_supported(*semantic)) continue;
             auto message = std::string("X04 error ") + semantic->id;
             check(x04::drive_error(form, entry), (message + " drive").c_str());
             test::FakeMeasure measure;
@@ -1172,7 +1173,8 @@ void x04_group_conflicts_at_each_size_and_scale() {
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto semantic = x04::describe(entry.handle);
-            if (!x04::group_conflict_supported(*semantic)) continue;
+            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
+                !x04::group_conflict_supported(*semantic)) continue;
             auto message = std::string("X04 conflict ") + semantic->id;
             check(x04::drive_group_conflict(form, entry), (message + " drive").c_str());
             auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),

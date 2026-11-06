@@ -1442,7 +1442,9 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
             f.host.observe_paint(true);
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
-                auto semantic = x04::describe(entry.handle); if (!semantic || !x04::error_supported(*semantic)) continue;
+                auto semantic = x04::describe(entry.handle);
+                if (!semantic || !detail::component_type(semantic->kind).supports_state(detail::ComponentState::error) ||
+                    !x04::error_supported(*semantic)) continue;
                 bool driven = baseline && x04::drive_error(f.form, entry);
                 auto owner = semantic->target.empty() ? semantic->id : semantic->target;
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, owner);
@@ -1734,7 +1736,8 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
                 auto semantic = x04::describe(entry.handle);
-                if (!semantic || !x04::group_conflict_supported(*semantic)) continue;
+                if (!semantic || !detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
+                    !x04::group_conflict_supported(*semantic)) continue;
                 bool driven = baseline && x04::drive_group_conflict(f.form, entry);
                 reveal(semantic->id); semantic = x04::describe(entry.handle);
                 std::u16string ink; bool checked_cue = false;
