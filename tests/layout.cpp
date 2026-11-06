@@ -108,6 +108,27 @@ void latin_words_wrap_at_spaces() {
     check((lines == std::vector<std::u16string>{u"中文Ctrl", u"說明"}), "CJK characters remain break opportunities");
 }
 
+void disabled_button_cue_fits_narrow_bounds() {
+    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+        Ui ui({});
+        auto button = ui.add_button({.id = "button", .kind = Kind::button, .label = u"A long control name", .enabled = false});
+        auto next = ui.add_label({.id = "next", .kind = Kind::label, .value = u"Next"});
+        FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(layout::column({layout::control(button), layout::control(next)}, 8), ui, *look, measure, 120, 400, 1.f, scroll);
+        auto* item = frame.find(button); auto* following = frame.find(next);
+        check(item && following && item->lines.size() > 1, "Narrow disabled button wraps its text");
+        std::u16string text;
+        for (const auto& line : item->lines) {
+            text += line.text;
+            check(intersect(line.bounds, item->bounds) == line.bounds, "Each disabled button line stays inside its bounds");
+        }
+        check(text.find(u"A long control name") != std::u16string::npos &&
+              text.find(look->component_presentation().disabled_suffix) != std::u16string::npos &&
+              following->bounds.y >= item->bounds.y + item->bounds.h + 8,
+              "Name and disabled cue fit without covering the following control");
+    }
+}
+
 void command_kinds_are_placed_like_buttons() {
     Ui ui({{.id = "tips", .kind = Kind::toggle, .label = u"啟用提示"}, {.id = "next", .kind = Kind::navigation, .label = u"下一頁"}});
     FakeMeasure measure;
@@ -482,6 +503,7 @@ int main() {
         {"Layout rejects foreign and expired handles", layout_rejects_foreign_or_expired_handles},
         {"AC05 long label wraps and pushes following controls down", long_label_wraps_and_pushes_following_controls_down},
         {"AC05 Latin words wrap at spaces", latin_words_wrap_at_spaces},
+        {"Disabled button cue fits narrow bounds", disabled_button_cue_fits_narrow_bounds},
         {"B01 command kinds are placed like buttons", command_kinds_are_placed_like_buttons},
         {"AC12 field roles stay with their field in both appearances", field_roles_stay_with_their_field_in_both_appearances},
         {"AC13 narrow window moves results below", narrow_window_moves_results_below},

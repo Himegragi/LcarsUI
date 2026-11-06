@@ -27,6 +27,7 @@ int height_of(const std::vector<Line>& lines) {
 std::u16string command_title(const ComponentLayout& c) {
     auto title = c.control.label;
     auto semantic = c.ui.describe(c.control.id);
+    if (semantic && !semantic->enabled) title += c.appearance.component_presentation().disabled_suffix;
     if (semantic && semantic->executing) title += c.appearance.component_presentation().executing_suffix;
     return title;
 }
@@ -145,11 +146,18 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         int line = c.measure.line_height(p.text_size);
-        int w = std::min(c.width, command_width(c)), h = c.appearance.button_height(line, c.scale);
+        int w = std::min(c.width, command_width(c));
+        int room = std::max(1, w - 2 * c.appearance.button_padding(c.scale));
+        auto lines = wrap(c.measure, command_title(c), p.text_size, room);
+        int text_height = static_cast<int>(lines.size()) * line;
+        int h = c.appearance.button_height(text_height, c.scale);
         p.bounds = {0, 0, w, h};
-        auto text = command_title(c);
-        auto title = c.measure.measure(text, p.text_size);
-        p.lines.push_back({{(w - static_cast<int>(title.width)) / 2, (h - line) / 2, static_cast<int>(std::ceil(title.width)), line}, std::move(text)});
+        int y = (h - text_height) / 2;
+        for (auto& text : lines) {
+            int width = static_cast<int>(std::ceil(c.measure.measure(text, p.text_size).width));
+            p.lines.push_back({{(w - width) / 2, y, width, line}, std::move(text)});
+            y += line;
+        }
     }
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement;
@@ -216,7 +224,7 @@ public:
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.appearance.component_presentation().gap);
-        p.lines.push_back({{0, 0, c.width, line}, semantics.name});
+        p.lines.push_back({{0, 0, c.width, line}, semantics.name + (semantics.enabled ? u"" : c.appearance.component_presentation().disabled_suffix)});
         int y = line + scaled(c.scale, c.appearance.component_presentation().gap_small);
         for (const auto& option : semantics.options) {
             p.options.push_back({0, y, c.width, row});
@@ -234,7 +242,7 @@ public:
     void paint(ComponentPaint& c) const override {
         auto p = c.appearance.palette();
         const auto& item = c.placement;
-        if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, p.text);
+        if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
         if (c.semantics.focused) c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.appearance.component_presentation().inset), item.bounds.h}, p.accent);
         for (std::size_t i = 0; i < item.options.size(); ++i) {
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
@@ -259,7 +267,7 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.appearance.component_presentation().row_padding);
-        p.label_lines = block(c.measure, s.name, p.text_size, c.width);
+        p.label_lines = block(c.measure, s.name + (s.enabled ? u"" : c.appearance.component_presentation().disabled_suffix), p.text_size, c.width);
         int y = height_of(p.label_lines);
         if (y) y += scaled(c.scale, c.appearance.component_presentation().gap_small);
         if (s.options.empty()) {
