@@ -1,0 +1,17 @@
+name: Core
+on: [push, pull_request]
+jobs:
+  core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test core
+        shell: pwsh
+        run: ./build.ps1 -Configuration Release -CoreOnly
+      - name: Upload CTest logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-ctest-logs
+          path: build/Release-core/Testing/Temporary/
+          if-no-files-found: warn
