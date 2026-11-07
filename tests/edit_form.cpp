@@ -6,6 +6,7 @@
 #include "check.hpp"
 #include "edit_form.hpp"
 #include "fake_measure.hpp"
+#include "geometry.hpp"
 #include <cmath>
 using namespace lcars;
 using test::check;
@@ -487,7 +488,7 @@ void v02_empty_single_and_navigation() {
     auto visible = [&](std::size_t index) {
         auto next = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
         auto* list = next.find(h.list);
-        return list && index < list->options.size() && intersect(list->options[index], list->clip) == list->options[index];
+        return list && index < list->options.size() && test::inside(list->options[index], list->clip);
     };
     host.key_down({Key::down});
     check(page.selection() == OptionValue{"T004"} && visible(3), "Down selects and reveals T004");
@@ -685,11 +686,10 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
     auto frame = arrange(root, ui, *appearance, measure, 160, 110, 1.f, scroll);
     check(*tip.visible() && frame.overlays.size() == 1, "A visible tooltip produces an overlay");
     auto& popup = frame.overlays.front();
-    check(popup.bounds.x >= 0 && popup.bounds.y >= 0 && popup.bounds.x + popup.bounds.w <= 160 &&
-          popup.bounds.y + popup.bounds.h <= 110 && popup.lines.size() > 1,
+    check(test::inside(popup.bounds, {0, 0, 160, 110}) && popup.lines.size() > 1,
           "Tooltip wraps and stays inside a narrow window");
     for (const auto& line : popup.lines)
-        check(intersect(line.bounds, popup.bounds) == line.bounds, "Each line remains within the tooltip");
+        check(test::inside(line.bounds, popup.bounds), "Each line remains within the tooltip");
     check(frame.hit(popup.bounds.x + 1, popup.bounds.y + 1) != &popup, "Tooltip does not intercept pointer input");
 }
 
@@ -1345,11 +1345,77 @@ void visible_text_agrees_with_semantics_on_each_page() {
     }
 }
 
+void d01_text_survives_scale_change() {
+    for (auto scales : {std::pair{1.f, 1.5f}, std::pair{1.5f, 1.f},
+                        std::pair{1.25f, 1.5f}, std::pair{1.5f, 1.25f}}) {
+        edit_form::Form form(ids, true);
+        auto& h = form.handles;
+        auto& host = detail::access(form.ui);
+        test::FakeMeasure measure;
+        auto draw = [&](float scale) {
+            return arrange(form.page(), form.ui, *appearance, measure, int(640 * scale), int(480 * scale),
+                           scale, form.scroll, ids.name);
+        };
+        h.name.set_value(u"ABCDE"); h.name.focus(); h.name.select(1, 3);
+        auto initial = draw(scales.first);
+        check(initial.find(h.name), "D01 initial field is laid out");
+        auto moved = draw(scales.second);
+        auto* field = moved.find(h.name);
+        auto* session = host.edit(ids.name);
+        check(field && session && session->text == u"ABCDE" && session->selection.anchor == 1 &&
+              session->selection.caret == 3 && h.name.describe()->focused, "D01 scale change preserves text, selection and focus");
+        int x = field->caret_x(2), y = field->bounds.y + field->field.editor.y + field->field.editor.h / 2;
+        auto* hit = moved.hit(x, y);
+        check(hit && hit->id == ids.name && moved.text_offset(h.name, x) == 2, "D01 scaled field hits the expected caret position");
+        check(bool(host.pointer_down(hit->id)) && bool(host.select(hit->id, moved.text_offset(h.name, x), moved.text_offset(h.name, x))) &&
+              bool(host.pointer_up(hit->id)) && session->selection.anchor == 2 && session->selection.caret == 2,
+              "D01 pointer placement selects the expected caret");
+
+        h.name.select(1, 3);
+        check(bool(host.composition_update(u"xy", 1)), "D01 composition starts");
+        draw(scales.first);
+        moved = draw(scales.second);
+        field = moved.find(h.name); session = host.edit(ids.name);
+        check(field && session && session->composing && session->preedit == u"xy" && session->preedit_caret == 1 &&
+              session->selection.anchor == 1 && session->selection.caret == 3 && h.name.describe()->focused,
+              "D01 composition and focus survive scale change");
+        int start = field->caret_x(session->begin());
+        int candidate = field->caret_x(session->visible_caret());
+        check(moved.text_offset(h.name, start) == 1 && moved.text_offset(h.name, candidate) == 2 && candidate > start &&
+              field->field.editor.h > 0 && field->bounds.y + field->field.editor.y >= 0,
+              "D01 scaled frame exposes composition and candidate caret geometry");
+    }
+}
+
+void d01_popup_survives_scale_change() {
+    for (auto scales : {std::pair{1.f, 1.5f}, std::pair{1.5f, 1.f},
+                        std::pair{1.25f, 1.5f}, std::pair{1.5f, 1.25f}}) {
+        edit_form::Form form(ids, true);
+        auto& h = form.handles;
+        auto& host = detail::access(form.ui);
+        test::FakeMeasure measure;
+        auto draw = [&](float scale) {
+            return arrange(form.page(), form.ui, *appearance, measure, int(640 * scale), int(480 * scale),
+                           scale, form.scroll, ids.region);
+        };
+        h.region.focus();
+        auto initial = draw(scales.first);
+        check(initial.maximum > 0 && bool(h.region.open()), "D01 popup setup has scroll and opens");
+        host.key_down({Key::down}); host.key_down({Key::down});
+        form.scroll.offset = 0; // force the next reveal to move the viewport
+        auto moved = draw(scales.second);
+        check(h.region.describe()->focused && h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"},
+              "D01 scale change retains the focused open popup and candidate");
+        check(bool(test::popup_in_client(moved, {0, 0, int(640 * scales.second), int(480 * scales.second)}, ids.region)),
+              "D01 scaled popup stays inside the window and receives center hits");
+    }
+}
+
 void popup_and_scroll_matrix() {
     struct Size { int w, h; };
     for (auto size : {Size{960, 720}, Size{640, 480}}) for (float scale : {1.f, 1.5f}) {
         const int w = int(size.w * scale), height = int(size.h * scale);
-        auto inside = [&](Rect r) { return r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= height; };
+        auto inside = [&](Rect r) { return test::inside(r, {0, 0, w, height}); };
         edit_form::Form form(ids, true);
         auto& h = form.handles;
         auto& host = detail::access(form.ui);
@@ -1362,7 +1428,7 @@ void popup_and_scroll_matrix() {
         check(bool(h.region.open()), "X02 open dropdown after scroll reveal");
         auto dropdown = draw(dropdown_id);
         auto pop = std::find_if(dropdown.overlays.begin(), dropdown.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
-        check(pop != dropdown.overlays.end() && inside(pop->bounds) && !pop->options.empty(), "X02 dropdown stays in window after reveal");
+        check(bool(test::popup_in_client(dropdown, {0, 0, w, height}, dropdown_id)) && !pop->options.empty(), "X02 dropdown stays in window and receives center hits after reveal");
         auto row = pop->options.front();
         auto hit = dropdown.hit(row.x + row.w / 2, row.y + row.h / 2);
         check(hit && hit->popup && hit->id == dropdown_id, "X02 dropdown receives the topmost hit");
@@ -1396,7 +1462,7 @@ void popup_and_scroll_matrix() {
             auto relaid = draw(dropdown_id);
             auto follow = std::find_if(relaid.overlays.begin(), relaid.overlays.end(), [](const Placement& p) { return p.popup && !p.tooltip; });
             check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"} &&
-                  follow != relaid.overlays.end() && inside(follow->bounds),
+                  follow != relaid.overlays.end() && bool(test::popup_in_client(relaid, {0, 0, w, height}, dropdown_id)),
                   "X02 relayout reveal keeps the open dropdown and its candidate");
             host.key_down({Key::escape});
         }
@@ -1501,7 +1567,7 @@ void popup_and_scroll_matrix() {
         auto list_frame = draw(list.describe()->id);
         auto* list_item = list_frame.find(list);
         check(list_item && !list_item->options.empty() && form.list->list_scroll.offset > 0 &&
-              intersect(list_item->options.back(), list_item->clip) == list_item->options.back(),
+              test::inside(list_item->options.back(), list_item->clip),
               "X02 End scrolls nested list to the last visible row");
 
         check(bool(h.tabs.activate({"v03"})), "X02 open popup page");
@@ -1866,6 +1932,8 @@ int main() {
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
         {"X04 painted state and modal text", painted_states_agree_with_semantics},
         {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},
+        {"D01 text survives scale change", d01_text_survives_scale_change},
+        {"D01 popup survives scale change", d01_popup_survives_scale_change},
         {"X02 popup and scroll size/scale matrix", popup_and_scroll_matrix},
         {"P08 repeated removal and reset storage", repeated_v03_remove_reset_keeps_storage_bounded},
         {"P08 reset and page isolation", v03_reset_restores_the_temporary_source_and_keeps_other_pages},
