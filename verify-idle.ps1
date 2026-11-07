@@ -33,11 +33,12 @@ foreach ($name in @('clipboard', 'ime', 'dpi')) {
             $tsv = Join-Path $folder "$name.tsv"
             # Avoid counting an old report if the verifier aborts before creating one.
             if (Test-Path -LiteralPath $tsv) { Remove-Item -LiteralPath $tsv }
-            $runArgs = switch ($name) {
+            # @() keeps a single flag as an array so += appends instead of concatenating strings.
+            $runArgs = @(switch ($name) {
                 'clipboard' { @('--clipboard-only', '--repeat', '100') }
                 'ime' { @('--ime') }
                 'dpi' { @('--dpi') }
-            }
+            })
             $runArgs += @('--evidence', $folder)
             $previous = $ErrorActionPreference
             try {
