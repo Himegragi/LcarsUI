@@ -105,6 +105,19 @@ void detail::UiState::commit_removals() {
     }
     if (!pending_removals_.empty() && operation_depth_ == 0) commit_removals();
 }
+Result detail::UiState::set_presentation(const PresentationSettings& settings) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
+        (settings.density != Density::standard && settings.density != Density::compact))
+        return {Status::invalid_value, u"Invalid presentation setting"};
+    if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
+    if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};
+    if (settings == presentation_) return {};
+    presentation_ = settings;
+    if (presentation_changed_) presentation_changed_();
+    if (invalidate_) invalidate_();
+    return {};
+}
 detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(controls)) {
     OperationScope operation(this);
     std::map<Id, bool> ids;
@@ -2519,7 +2532,10 @@ Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmFi
     return state_->connect_mixed_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
+Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
+const PresentationSettings& Ui::presentation() const { return state_->presentation(); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
 const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
 }
+

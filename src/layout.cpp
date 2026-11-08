@@ -1,3 +1,4 @@
+#include <limits>
 #include "lcars/layout.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
@@ -208,7 +209,7 @@ struct Arranger {
     Frame frame;
     bool measuring = false;
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
-    int pixels(int size) const { return d(size ? size : appearance.text_size()); }
+    int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
     int component_width(const Node& node) {
         auto id = node.type == Node::Type::control ? ui.layout_id(node.component) : std::nullopt;
@@ -365,8 +366,22 @@ struct Arranger {
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
         int offset = std::clamp(state.offset, 0, region.maximum);
-        if (!reveal.empty()) {
-            auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == reveal; });
+        bool size_changed = state.text_size != 0 && state.text_size != ui.presentation().text_size;
+        auto target_id = !reveal.empty() ? reveal : (size_changed ? std::string_view(ui.focused()) : std::string_view{});
+        if (size_changed && target_id.empty() && !state.anchor_id.empty()) {
+            auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == state.anchor_id; });
+            if (it != placed.end()) {
+                Rect target = it->bounds;
+                if (!state.anchor_option.empty()) {
+                    auto semantic = ui.describe(it->id);
+                    if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < it->options.size(); ++i)
+                        if (semantic->options[i].value.id == state.anchor_option) { target = it->options[i]; break; }
+                }
+                offset = std::clamp(target.y - r.y, 0, region.maximum);
+            }
+        }
+        if (!target_id.empty()) {
+            auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == target_id; });
             if (it != placed.end()) {
                 auto target = it->bounds;
                 if (it->kind == Kind::list) {
@@ -380,6 +395,22 @@ struct Arranger {
                 if (top < offset || target.h > r.h) offset = top;
                 else if (bottom > offset + r.h) offset = bottom - r.h;
                 offset = std::clamp(offset, 0, region.maximum);
+            }
+        }
+        state.text_size = ui.presentation().text_size;
+        state.anchor_id.clear(); state.anchor_option.clear();
+        int best = std::numeric_limits<int>::max();
+        for (const auto& p : placed) {
+            if (p.kind == Kind::list && !p.options.empty()) {
+                auto semantic = ui.describe(p.id);
+                if (semantic) for (std::size_t i = 0; i < p.options.size() && i < semantic->options.size(); ++i) {
+                    const auto& row = p.options[i];
+                    if (row.y + row.h > r.y + offset && row.y < best) {
+                        best = row.y; state.anchor_id = p.id; state.anchor_option = semantic->options[i].value.id;
+                    }
+                }
+            } else if (p.bounds.y + p.bounds.h > r.y + offset && p.bounds.y < best) {
+                best = p.bounds.y; state.anchor_id = p.id; state.anchor_option.clear();
             }
         }
         // Revealing the focused source during arrangement (resize, DPI change) is layout, not
