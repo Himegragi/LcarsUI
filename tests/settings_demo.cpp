@@ -724,6 +724,8 @@ void appearance_font_history() {
     for (int i=0; i<149; ++i) { auto n=std::to_string(i); auto key=u"Font" + std::u16string(n.begin(),n.end()); info.fonts.push_back({key,key}); }
     settings_demo::Demo demo(info); demo.nav.select({"appearance"});
     auto& tree=demo.ui.semantics();
+    auto options=tree.children({"appearance.font"});
+    test::check(options && options->size()==151, "default and all 150 families remain semantic options");
     test::check(bool(tree.perform({"appearance.font", OptionValue{"family:Consolas"}}, Verb::select)), "select font");
     test::check(demo.ui.presentation().font_family == u"Consolas", "font applies");
     test::check(bool(detail::access(demo.ui).key_down({.ctrl=true,.letter=u'Z'})), "undo font");
