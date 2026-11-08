@@ -50,10 +50,13 @@ void exercise() {
         auto* item = frame.find(demo.nav);
         test::check(item && item->options.size() == 4 && item->bounds.w >= 160, "four navigation rows retain natural width");
         demo.nav.focus();
-        auto semantic = demo.nav.describe();
-        RoleProbe probe(detail::access(demo.ui), *item, *semantic, *appearance, 1, true);
-        detail::component_type(Kind::navigation_list).paint(probe);
-        test::check(probe.selected && probe.focused, "selected and focused rows carry draw roles");
+        for (const char* page : {"general", "items", "appearance", "about"}) {
+            demo.nav.select({page});
+            auto semantic = demo.nav.describe();
+            RoleProbe probe(detail::access(demo.ui), *item, *semantic, *appearance, 1, true);
+            detail::component_type(Kind::navigation_list).paint(probe);
+            test::check(probe.selected && probe.focused, "selected and focused rows carry draw roles");
+        }
         for (std::size_t i=0; i<item->options.size(); ++i) {
             const auto& r = item->options[i];
             test::check(frame.option_at(*item, r.x+r.w/2, r.y+r.h/2) == i, "row center hits painted row");
