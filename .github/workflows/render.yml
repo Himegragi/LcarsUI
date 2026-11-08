@@ -14,6 +14,11 @@ jobs:
       - name: Build full Release configuration
         shell: pwsh
         run: ./build.ps1 -Configuration Release -SkipTests
+      - name: Check startup failure without Mesa
+        shell: pwsh
+        run: |
+          & ./build/Release/lcars_renderer_failure_tests.exe --gdi-version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Download and verify Mesa
         shell: pwsh
         run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\lcars-mesa"

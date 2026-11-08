@@ -65,6 +65,10 @@ void renderer_failure_admission() {
     check(name.describe()->value == u"draft", "Failure preserves readable draft");
     check(detail::access(ui).set_value("missing", u"x").status == Status::not_found, "Missing ID precedes failure");
     check(detail::access(ui).key_down({.key=Key::tab}).status == Status::renderer_failed, "Failure rejects focus traversal");
+    Status background=Status::ok;
+    std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
+    check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
+    check(name.describe()->operations.empty(), "Failure advertises no operations");
     detail::access(ui).renderer_failed(false);
     check(bool(name.set_value(u"recovered")), "Recovery permits edits");
 }

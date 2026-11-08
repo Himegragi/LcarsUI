@@ -107,6 +107,8 @@ void detail::UiState::commit_removals() {
 }
 Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact))
         return {Status::invalid_value, u"Invalid presentation setting"};
@@ -1134,8 +1136,10 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
 Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     OperationScope operation(this);
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
     if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
@@ -1750,8 +1754,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
-        s.visible = it->second && available(id).status != Status::hidden;
-    s.focusable = bool(focusable(*control));
+        s.visible = it->second && available(id, true).status != Status::hidden;
+    s.focusable = bool(available(id, true)) && component_type(control->kind).can_focus();
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
@@ -1832,7 +1836,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         const auto& field = it->second;
         s.source_conflict = field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
     }
-    if (!s.focusable) return s;
+    if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
     bool admits_activation = component_type(control->kind).has_activate_operation() && !s.executing;
     if (auto it = bools_.find(id); it != bools_.end()) {
@@ -1897,12 +1901,12 @@ EditSession* detail::UiState::edit(std::string_view id) {
     OperationScope operation(this);
     auto it = edits_.find(id); return it == edits_.end() ? nullptr : &it->second.session;
 }
-Result detail::UiState::available(std::string_view id) const {
+Result detail::UiState::available(std::string_view id, bool ignore_renderer_failure) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
     if (!control || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
-    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
+    if (renderer_failed_ && !ignore_renderer_failure) return {Status::renderer_failed, u"Renderer failed"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
     if (control->page == "dialog" && (!modal_ || (dialog_member(id) && (active_dialog_.empty() || std::find(dialogs_.at(active_dialog_).members.begin(), dialogs_.at(active_dialog_).members.end(), id) == dialogs_.at(active_dialog_).members.end())))) return {Status::hidden, u"對話框尚未開啟"};
@@ -2137,6 +2141,7 @@ Result detail::UiState::move_focus(Id next) {
 }
 Result detail::UiState::composition_update(std::u16string preedit, unsigned caret) {
     OperationScope operation(this);
+    if (!composing_.empty()) if (auto result = available(composing_); !result) return result;
     if (composing_.empty()) {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
@@ -2148,6 +2153,7 @@ Result detail::UiState::composition_update(std::u16string preedit, unsigned care
 Result detail::UiState::composition_commit(std::u16string_view text) {
     OperationScope operation(this);
     auto target = composing_.empty() ? focus_ : composing_;
+    if (auto result = available(target); !result) return result;
     composition_cancel();
     if (!edits_.contains(target)) return {Status::invalid_value, u"沒有接收組字的文字欄位"};
     auto committed = without_controls(text);
@@ -2165,11 +2171,11 @@ Result detail::UiState::composition_cancel() {
 }
 Result detail::UiState::focus(std::string_view id) {
     OperationScope operation(this);
+    const auto* control = find(id);
+    if (auto result = available(id); !result) return result;
+    if (auto result = focusable(*control); !result) return result;
     pointer_focus_ = false;
     refresh_tooltips();
-    const auto* control = find(id);
-    if (!control) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
 Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
@@ -2324,10 +2330,10 @@ Result detail::UiState::key_up(Key key) {
 }
 Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
-    if (!popup_source_.empty() && popup_source_ != id) close_popup();
+    if (auto result = available(id); !result) return result;
     const auto* control = find(id);
-    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
+    if (!popup_source_.empty() && popup_source_ != id) close_popup();
     if (control->kind == Kind::navigation_list && option) {
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
@@ -2356,6 +2362,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 }
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
     auto armed = std::exchange(pointer_armed_, {});
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
@@ -2639,7 +2646,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
-    n.hidden = u.available(ref.id).status == Status::hidden;
+    n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();

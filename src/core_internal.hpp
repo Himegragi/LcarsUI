@@ -122,7 +122,7 @@ public:
     EditSession* edit(std::string_view id);
     Result set_value(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
-    Result available(std::string_view id) const;
+    Result available(std::string_view id, bool ignore_renderer_failure = false) const;
 
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
