@@ -1,3 +1,4 @@
+#include "presentation_matrix.hpp"
 #include "core_internal.hpp"
 // Native verification of the V01 form in a real Win32 window for both appearances.
 // Keyboard and mouse cases are posted to the window queue and pumped through the host's own
@@ -2211,18 +2212,27 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         auto* field = dark_frame.find(d.name); auto colors = appearance.palette(ThemeVariant::dark());
         bool error_ink = field && !field->error_lines.empty() && contains_color(image, intersect(field->error_lines.front().bounds, field->clip), colors.error);
         bool invalid = d.name.describe()->invalid;
+        auto error_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-error-cpu.bmp"), error_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-error", error_compare, bool(error_compare));
         d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
         dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
         field = dark_frame.find(d.name);
         bool selection = field && contains_color(image, intersect(field->bounds, field->clip), colors.selection);
         bool focus = field && contains_color(image, intersect(field->bounds, field->clip), colors.accent);
+        auto selection_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-selection-cpu.bmp"), selection_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-selection", selection_compare, bool(selection_compare));
         d.disabled.invoke();
         dark.host.observe_paint(true); dark.host.paint();
         bool disabled = !d.name.describe()->enabled && std::any_of(dark.host.paint_observations().begin(), dark.host.paint_observations().end(), [&](const auto& event) {
             return event.visible && event.text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
         });
         dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-disabled.bmp"));
-        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled,
+        auto disabled_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-disabled-cpu.bmp"), disabled_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-disabled", disabled_compare, bool(disabled_compare));
+        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled && bool(error_compare) && bool(selection_compare) && bool(disabled_compare),
                      "CPU raster: applied=" + std::to_string(applied) + ", error=" + std::to_string(error_ink) + ", selection=" + std::to_string(selection) + ", focus=" + std::to_string(focus) + ", invalid=" + std::to_string(invalid) + ", disabled=" + std::to_string(disabled));
     }
     Fixture f(appearance, true);
@@ -2734,7 +2744,7 @@ BOOL CALLBACK collect_monitor(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
     return TRUE;
 }
 
-bool dpi_session(const Appearance& appearance, Report& report) {
+bool dpi_session(const Appearance& appearance, Report& report, bool presentation = false) {
     try {
         std::vector<MONITORINFOEXW> monitors;
         EnumDisplayMonitors(nullptr, nullptr, collect_monitor, reinterpret_cast<LPARAM>(&monitors));
@@ -2742,6 +2752,7 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         std::sort(monitors.begin(), monitors.end(), [](const auto& a, const auto& b) { return a.rcMonitor.left < b.rcMonitor.left; });
         Live live(appearance);
         DpiObserver observer(live.host.window());
+        if (presentation) { auto settings = live.form.ui.presentation(); settings.text_size = 28; if (!live.form.ui.set_presentation(settings)) throw Blocked("28 DIP setting rejected"); }
         auto& ui = live.form.ui;
         const auto& ids = live.ids;
         auto move = [&](const MONITORINFOEXW& monitor) {
@@ -2758,6 +2769,8 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         live.host.paint();
         int before = dpi_messages;
         UINT second = move(monitors[1]);
+        if (presentation && !((first == 96 && second == 144) || (first == 144 && second == 96)))
+            throw Blocked("PR02 requires one 100% and one 150% monitor");
         auto* session = detail::access(ui).edit(ids.name);
         auto* field = live.host.frame().find(live.form.handles.name);
         bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
@@ -3036,6 +3049,74 @@ int run_clipboard(const std::filesystem::path& folder, int repeat) {
     return report.failures ? 1 : 0;
 }
 
+int run_presentation_idle(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "presentation.tsv");
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        try {
+            Live live(*appearance); Profiles profiles;
+            if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo unavailable");
+            if (!system_font_catalog().contains(u"Microsoft JhengHei") || !system_font_catalog().contains(u"MingLiU"))
+                throw Blocked("PR01 requires installed Microsoft JhengHei and MingLiU");
+            auto settings = live.form.ui.presentation(); settings.font_family = u"Microsoft JhengHei";
+            if (!live.form.ui.set_presentation(settings)) throw Blocked("initial font setting rejected");
+            live.start_in_name(); live.type("JI3");
+            auto* session = detail::access(live.form.ui).edit(live.ids.name);
+            bool composing = session && session->composing && !session->preedit.empty();
+            if (!composing) throw Blocked("Microsoft Bopomofo did not start composition");
+            bool positions = composing;
+            for (int step = 0; step < 4; ++step) {
+                if (step == 0) settings.text_size = 28;
+                if (step == 1) settings.font_family = u"MingLiU";
+                if (step == 2) settings.variant = ThemeVariant::dark();
+                if (step == 3) settings.density = Density::compact;
+                positions &= bool(live.form.ui.set_presentation(settings));
+                auto* field = live.host.frame().find(live.form.handles.name);
+                IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+                bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
+                POINT caret{field ? field->caret_x(session->begin()) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+                ClientToScreen(live.host.window(), &caret);
+                CANDIDATEFORM candidate{}; bool candidate_ok = false;
+                if (auto imc = ImmGetContext(live.host.window())) {
+                    candidate.dwIndex = 0;
+                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) && candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+                    ImmReleaseContext(live.host.window(), imc);
+                }
+                positions &= session->composing && query && position.pt.x == caret.x && position.pt.y == caret.y && candidate_ok;
+            }
+            live.tap(VK_RETURN); live.wait(250);
+            bool committed = session && !session->composing && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && live.history() == 1;
+            report.check("PR01", composing && positions && committed, profiles.active() + "; IMTCTIP " + file_version(LR"(C:\Windows\System32\IME\IMETC\IMTCTIP.DLL)") + "; candidates and caret=" + std::to_string(positions) + "; single commit and undo=" + std::to_string(committed));
+        } catch (const Blocked& error) { report.check("PR01", false, error.what()); }
+        dpi_session(*appearance, report, true);
+        report.open("PR03", "Install a font for the current user, confirm its catalog entry and local path, and inspect its display in V04; record the evidence manually.");
+        report.open("PR04", "Generate trial screenshots and record first-frame font-switch timing and user feedback.");
+    }
+    CoUninitialize();
+    return report.failures ? 1 : 0;
+}
+
+int native_presentation_matrix(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "presentation-matrix.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        try {
+            presentation_matrix::run(edit_form::default_ids(), *appearance, [&](edit_form::Form& form) {
+                DesktopOptions options; options.title = u"Presentation matrix";
+                auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
+                return [host, &form](int width, int height, float scale, std::string_view reveal) {
+                    return host->layout(width, height, scale, form.scroll, reveal);
+                };
+            }, [](bool ok, const std::string& message) { if (!ok) throw std::runtime_error(message); });
+            report.check("MX01-shaped", true, "all presentation dimensions and focusable components");
+        } catch (const std::exception& error) { report.check("MX01-shaped", false, error.what()); }
+    }
+    return report.failures ? 1 : 0;
+}
+
 int trial_screenshots(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     std::ofstream manifest(folder / "trial.tsv");
@@ -3070,7 +3151,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
@@ -3078,6 +3159,8 @@ int wmain(int argc, wchar_t** argv) {
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
             else if (arg == L"--trial-screenshots") trial = true;
+            else if (arg == L"--presentation-matrix") matrix = true;
+            else if (arg == L"--presentation-idle") presentation = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3090,7 +3173,9 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
+        if (presentation) return run_presentation_idle(evidence);
         if (trial) return trial_screenshots(evidence);
+        if (matrix) return native_presentation_matrix(evidence);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");

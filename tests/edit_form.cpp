@@ -1,3 +1,4 @@
+#include "presentation_matrix.hpp"
 #include "x04_drivers.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
@@ -2383,30 +2384,12 @@ void both_appearances_give_same_results() {
 }
 
 void presentation_combination_matrix() {
-    for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()})
-    for (auto density : {Density::standard, Density::compact})
-    for (int size : {12, 16, 28})
-    for (auto dimensions : {std::pair{960, 720}, std::pair{640, 480}})
-    for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true); test::FakeMeasure measure;
-        auto settings = form.ui.presentation(); settings.variant = variant; settings.density = density; settings.text_size = size;
-        check(bool(form.ui.set_presentation(settings)), "MX01 settings accepted");
-        auto entries = x04::inventory(form);
-        for (const auto& entry : entries) {
-            if (entry.page == "modal") continue;
-            if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "MX01 page activated");
-            auto semantic = x04::describe(entry.handle);
-            if (!semantic || !semantic->focusable || !semantic->enabled) continue;
-            check(x04::focus(entry.handle), "MX01 focus accepted");
-            auto frame = arrange(form.page(), form.ui, *appearance, measure, dimensions.first, dimensions.second, scale, form.scroll, semantic->id);
-            auto item = x04::placement(frame, entry.handle);
-            check(item && (x04::inside_client(*item, dimensions.first, dimensions.second) || (item->bounds.h > item->clip.h && intersect(item->bounds, item->clip).h == item->clip.h)), ("MX01 focus target revealed: " + semantic->id + " page=" + entry.page + " size=" + std::to_string(size) + " scale=" + std::to_string(scale) + (item ? " bounds=" + std::to_string(item->bounds.y) + "," + std::to_string(item->bounds.h) + " clip=" + std::to_string(item->clip.y) + "," + std::to_string(item->clip.h) : " missing")).c_str());
-            if (item && x04::inside_client(*item, dimensions.first, dimensions.second)) {
-                auto hit = frame.hit(item->bounds.x + item->bounds.w / 2, item->bounds.y + item->bounds.h / 2);
-                check(hit && hit->id == item->id, "MX01 hit and placement agree");
-            }
-        }
-    }
+    presentation_matrix::run(ids, *appearance, [&](edit_form::Form& form) {
+        return [&](int width, int height, float scale, std::string_view reveal) {
+            test::FakeMeasure measure;
+            return arrange(form.page(), form.ui, *appearance, measure, width, height, scale, form.scroll, reveal);
+        };
+    }, [](bool ok, const std::string& message) { check(ok, message.c_str()); });
 }
 
 }
