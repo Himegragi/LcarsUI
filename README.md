@@ -66,6 +66,6 @@ feedback and the first frame time after changing fonts (PR04). Generate the
 ./build/Release/lcars_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
 ```
 
-PR04 and PS10 require coordinator review/verification and are not marked as
-passed by the generator. A report with open or failed cases causes the idle
+PR04 requires coordinator review and is not marked as passed by the generator.
+PS10 runs automatically in the `presentation_recovery` CTest. A report with open or failed cases causes the idle
 script to return a failure status.

@@ -1,8 +1,10 @@
 ﻿#include "desktop_host.hpp"
 #include "core_internal.hpp"
 #include "edit_form.hpp"
+#include "lcars/fonts.hpp"
 #include "renderer_failure_checks.hpp"
 #include <iostream>
+#include <algorithm>
 #include <stdexcept>
 #include <chrono>
 #include <cstdlib>
@@ -130,8 +132,55 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     }
     else { host.run(); check(host.renderer_failure()->kind==RendererFailureKind::frame_error, "RF04 result"); host.close(); check(form.handles.name.describe()->value==u"workstation A", "RF04 retained draft"); }
 }
+static void presentation_during_failure(const Appearance& appearance) {
+    edit_form::Form form(edit_form::default_ids(), true);
+    check(bool(form.handles.name.set_value(u"Station W")), "PS10 prepare Latin text");
+    RendererTestHooks hooks; hooks.gl_error_at_frame = 1;
+    DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, false, true, &hooks);
+    host.force_scale(1.f); host.client_size(960, 720);
+    host.paint();
+    check(host.renderer_failed(), "PS10 simulated failure");
+    int frames = host.frames();
+    auto settings = form.ui.presentation();
+    settings.text_size = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
+    const auto& families = system_font_catalog().families();
+    auto font = std::find_if(families.begin(), families.end(), [](const FontFamily& family) { return family.key != u"Segoe UI"; });
+    settings.font_family = font == families.end() ? u"LcarsUI missing PS10 font" : font->key;
+    check(bool(form.ui.set_presentation(settings)) && form.ui.presentation() == settings, "PS10 settings accepted while failed");
+    auto invalid = settings; invalid.text_size = 29;
+    check(form.ui.set_presentation(invalid).status == Status::invalid_value && form.ui.presentation() == settings, "PS10 invalid settings remain atomic");
+    check(form.handles.dark.toggle().status == Status::renderer_failed && form.ui.presentation() == settings, "PS10 presentation control remains blocked");
+    host.paint();
+    check(host.frames() == frames && host.renderer_failed(), "PS10 failure suppresses drawing");
+    hooks.gl_error_at_frame = 0;
+    check(bool(host.rebuild_renderer()), "PS10 rebuild");
+    host.observe_paint(true);
+    host.paint();
+    auto field = host.frame().find(form.handles.name);
+    auto dark = appearance.palette(ThemeVariant::dark()).text;
+    bool dark_text = std::any_of(host.paint_observations().begin(), host.paint_observations().end(), [&](const auto& event) {
+        return event.type == PaintObservation::Type::text && event.visible && event.color.r == dark.r && event.color.g == dark.g && event.color.b == dark.b;
+    });
+    check(host.frames() == frames + 1 && !host.renderer_failed() && field && field->text_size == 28 && dark_text && form.ui.presentation() == settings,
+          "PS10 first recovered frame uses stored presentation");
+    edit_form::Form reference(edit_form::default_ids(), true);
+    check(bool(reference.handles.name.set_value(u"Station W")), "PS10 reference Latin text");
+    check(bool(reference.ui.set_presentation(settings)), "PS10 reference settings");
+    DesktopHost reference_host(reference.ui, appearance, [&] { return reference.page(); }, reference.scroll, {}, false, true);
+    reference_host.force_scale(1.f); reference_host.client_size(960, 720); reference_host.paint();
+    auto expected = reference_host.frame().find(reference.handles.name);
+    check(expected && field->bounds.w == expected->bounds.w && field->bounds.h == expected->bounds.h &&
+          field->field.editor == expected->field.editor && field->run.width == expected->run.width,
+          "PS10 first recovered frame matches independently configured font and density");
+    auto comparison = host.compare_gpu(960, 720, 1.f);
+    check(bool(comparison), "PS10 recovered CPU/GPU frame comparison");
+}
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "--ps10") {
+            for (auto appearance : {&web_appearance(), &material_appearance()}) presentation_during_failure(*appearance);
+            std::cout << "PS10 passed for both appearances\n"; return 0;
+        }
         if (argc == 2 && std::string(argv[1]) == "--gdi-version") {
             edit_form::Form form;
             auto result=Desktop::create(form.ui,web_appearance(),[&]{return form.page();},form.scroll);
