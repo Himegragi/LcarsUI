@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
 
 namespace lcars::detail {
 namespace {
@@ -237,31 +238,39 @@ void DesktopHost::paint() {
     float s = scale();
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
-    Canvas canvas(r.right, r.bottom, appearance_.palette().background);
+    RecordingCanvas recording(r.right, r.bottom, appearance_.palette().background);
     paint_observations_.clear();
-    canvas.count_ink = observe_paint_;
-    draw(canvas, frame_, s, GetFocus() == window_);
-    renderer_->draw(canvas);
+    recording.count_ink = observe_paint_;
+    draw(recording, frame_, s, GetFocus() == window_);
+    for (const auto& observation : recording.list.observations) {
+        paint_observations_.push_back({static_cast<PaintObservation::Type>(observation.type), observation.owner, observation.text,
+            observation.bounds, observation.clip, observation.color,
+            command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
+            observation.popup, observation.tooltip});
+    }
+    auto image = render_cpu(recording.list, r.right, r.bottom);
+    renderer_->draw(image);
     ++frames_;
     sync_ime();
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
 }
-Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Canvas* copy) {
+Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    Canvas canvas(width, height, appearance_.palette().background);
-    draw(canvas, frame, s, true);
-    if (copy) *copy = canvas;
-    std::vector<unsigned char> pixels(canvas.pixels);
+    RecordingCanvas recording(width, height, appearance_.palette().background);
+    draw(recording, frame, s, true);
+    auto image = render_cpu(recording.list, width, height);
+    if (copy) *copy = image;
+    std::vector<unsigned char> pixels(image.pixels);
     for (std::size_t i = 0; i < pixels.size(); i += 4) std::swap(pixels[i], pixels[i + 2]);
     BITMAPFILEHEADER file{};
     BITMAPINFOHEADER info{};
     file.bfType = 0x4d42;
     file.bfOffBits = sizeof(file) + sizeof(info);
     file.bfSize = file.bfOffBits + static_cast<DWORD>(pixels.size());
-    info.biSize = sizeof(info); info.biWidth = width; info.biHeight = height; info.biPlanes = 1; info.biBitCount = 32;
+    info.biSize = sizeof(info); info.biWidth = width; info.biHeight = -height; info.biPlanes = 1; info.biBitCount = 32;
     info.biSizeImage = static_cast<DWORD>(pixels.size());
     std::ofstream out(bmp, std::ios::binary);
     out.write(reinterpret_cast<const char*>(&file), sizeof(file));
@@ -271,40 +280,61 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
     return frame;
 }
 
-void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_focused) {
+bool DesktopHost::compare_legacy(int width, int height, float s) {
+    auto frame = arrange(width, height, s);
+    Canvas old(width, height, appearance_.palette().background);
+    draw(old, frame, s, true);
+    RecordingCanvas recording(width, height, appearance_.palette().background);
+    draw(recording, frame, s, true);
+    return old.pixels == render_cpu(recording.list, width, height).pixels;
+}
+
+template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
     const auto p = appearance_.palette();
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
-        Canvas& canvas;
+        Target& canvas;
         Text& renderer;
         std::vector<PaintObservation>* observations;
         PaintAdapter(UiState& ui, const Placement& item, const Semantics& semantics, const Appearance& appearance,
-                     float scale, bool window_focused, Canvas& target, Text& text, std::vector<PaintObservation>* events)
+                     float scale, bool window_focused, Target& target, Text& text, std::vector<PaintObservation>* events)
             : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
+        void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.current_role=value; }
+        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                if (observations) canvas.list.observations.push_back({type, placement.id, std::move(text), bounds,
+                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size()});
+            }
+        }
+        std::size_t cursor() const {
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+            return 0;
+        }
         void fill(Rect rect, Color color) override {
-            auto before = canvas.ink; canvas.fill(rect, color);
-            if (observations) observations->push_back({PaintObservation::Type::fill, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+            auto begin=cursor(); canvas.fill(rect, color);
+            observe(DrawObservation::Type::fill, {}, rect, color, begin);
         }
         void rounded(Rect rect, int radius, Color color) override {
-            auto before = canvas.ink; canvas.rounded(rect, radius, color);
-            if (observations) observations->push_back({PaintObservation::Type::rounded, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+            auto begin=cursor(); canvas.rounded(rect, radius, color);
+            observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
             auto layout = renderer.shape(value, pixels);
-            auto before = canvas.ink;
+            auto begin=cursor();
             renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
-            if (observations) observations->push_back({PaintObservation::Type::text, placement.id, std::u16string(value),
-                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, canvas.clip, color,
-                canvas.ink != before, placement.popup, placement.tooltip});
+            observe(DrawObservation::Type::text, std::u16string(value),
+                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin);
         }
     };
     for (const auto& item : frame.items) {
         canvas.clip = intersect(item.clip, whole);
         auto semantics = detail::access(ui_).describe(item.id);
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
     }
     for (const auto& region : frame.regions) {
         canvas.clip = intersect(region.clip, whole);
@@ -315,38 +345,53 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     }
     if (frame.modal) {
         canvas.clip = whole;
-        for (int y = 0; y < canvas.height; ++y)
-            for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, {0, 0, 0}, 110);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {0, 0, 0, 110});
+        } else {
+            for (int y = 0; y < canvas.height; ++y)
+                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, {0, 0, 0}, 110);
+        }
         canvas.rounded(frame.modal_panel, static_cast<int>(appearance_.radius() * s), p.surface);
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
         if (item.tooltip) {
-            auto before_border = canvas.ink;
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,true,true);
+            auto observe_tooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                    if (observe_paint_ && canvas.count_ink) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
+                        canvas.clip, color, true, true, begin, canvas.list.commands.size()});
+                }
+            };
+            auto cursor = [&]() -> std::size_t {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+                return 0;
+            };
+            auto begin = cursor();
             canvas.rounded(item.bounds, static_cast<int>(appearance_.radius() * s), p.border);
-            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
-                item.id, {}, item.bounds, canvas.clip, p.border, canvas.ink != before_border, true, true});
+            observe_tooltip(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
             int inset = std::max(1, static_cast<int>(std::lround(1 * s)));
             Rect inner{item.bounds.x + inset, item.bounds.y + inset,
                        std::max(0, item.bounds.w - 2 * inset), std::max(0, item.bounds.h - 2 * inset)};
-            auto before_surface = canvas.ink;
+            begin = cursor();
             canvas.rounded(inner, static_cast<int>(appearance_.radius() * s), p.surface);
-            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
-                item.id, {}, inner, canvas.clip, p.surface, canvas.ink != before_surface, true, true});
+            observe_tooltip(DrawObservation::Type::rounded, {}, inner, p.surface, begin);
             canvas.clip = intersect(canvas.clip, inner);
             for (const auto& line : item.lines) {
-                auto before = canvas.ink;
+                begin = cursor();
                 text_.draw(canvas, text_.shape(line.text, item.text_size), line.bounds.x,
                            line.bounds.y + ShapedMeasure::baseline(item.text_size), p.text);
-                if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::text,
-                    item.id, line.text, line.bounds, canvas.clip, p.text, canvas.ink != before, true, true});
+                observe_tooltip(DrawObservation::Type::text, line.text, line.bounds, p.text, begin);
             }
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
             continue;
         }
         auto semantics = detail::access(ui_).describe(item.id);
         if (!semantics || (!frame.modal && !semantics->expanded)) continue;
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
     }
     canvas.clip = whole;
 }

@@ -94,7 +94,7 @@ Canvas::Canvas(int w,int h,Color color):width(w),height(h),pixels(static_cast<st
 void Canvas::blend(int x,int y,Color color,unsigned alpha){
     if(!clip.contains(x,y)||x<0||y<0||x>=width||y>=height)return;
     if(count_ink && alpha) ++ink;
-    auto index=(static_cast<std::size_t>(height-1-y)*width+x)*4;
+    auto index=(static_cast<std::size_t>(y)*width+x)*4;
     const unsigned char ink[]={color.r,color.g,color.b};
     for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
     pixels[index+3]=255;
@@ -131,6 +131,25 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
             else throw std::runtime_error("Unsupported font bitmap format");
             canvas.blend(left+col,top+row,glyph.id?color:Color{195,35,48},alpha);
         }
+    }
+}
+void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
+    for(auto& glyph:layout.glyphs){
+        auto& font=impl_->font(glyph.font); font.size(layout.size);
+        require(FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT)==0,"Glyph load failed");
+        require(FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)==0,"Glyph rasterization failed");
+        auto& bitmap=font.face->glyph->bitmap;
+        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font.face->glyph->bitmap_left;
+        int top=baseline-static_cast<int>(std::round(glyph.dy))-font.face->glyph->bitmap_top;
+        std::vector<unsigned char> coverage(static_cast<std::size_t>(bitmap.width)*bitmap.rows);
+        for(unsigned row=0;row<bitmap.rows;++row) for(unsigned col=0;col<bitmap.width;++col){
+            unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row,alpha=0;
+            if(bitmap.pixel_mode==FT_PIXEL_MODE_GRAY) alpha=bitmap.buffer[source*std::abs(bitmap.pitch)+col];
+            else if(bitmap.pixel_mode==FT_PIXEL_MODE_MONO) alpha=(bitmap.buffer[source*std::abs(bitmap.pitch)+col/8]&(0x80>>(col%8)))?255:0;
+            else throw std::runtime_error("Unsupported font bitmap format");
+            coverage[static_cast<std::size_t>(row)*bitmap.width+col]=static_cast<unsigned char>(alpha);
+        }
+        canvas.glyph({left,top,static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows)},glyph.id?color:Color{195,35,48},std::move(coverage));
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {
