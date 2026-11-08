@@ -46,6 +46,7 @@ struct Node {
     int min_column = 0;  // grid: as many columns as fit at this width, at least one
     ScrollState* scroll_state = nullptr; // bounded nested viewport: caller keeps this state alive
     int scroll_height = 0; // viewport height in DIP; 0 fills the available space
+    bool scrollable_text = false; // a single label may receive focus when it overflows
     std::vector<Node> children;
 };
 Node control(ComponentHandle component, int text_size = 0);
@@ -54,6 +55,7 @@ Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural wid
 Node grid(std::vector<Node> children, int min_column, int gap = 16);
 Node scroll(Node child);  // fills available space, using arrange's scroll state
 Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
+Node scroll_text(LabelHandle label, ScrollState& state, int height);
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 struct DialogLayout { DialogHandle dialog; Node content; };

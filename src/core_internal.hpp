@@ -132,6 +132,7 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
         if (semantic_schedule_ && !semantic_pending_.empty()) semantic_schedule_();
@@ -358,6 +359,8 @@ private:
     Result edit_key(KeyPress key);
     Result notify();
     std::function<void()> changed_, invalidate_;
+    struct TextScroll { ScrollState* state; int maximum, line_height; };
+    std::map<std::string, TextScroll, std::less<>> text_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
