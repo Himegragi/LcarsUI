@@ -10,10 +10,28 @@
 using namespace lcars;
 using namespace lcars::detail;
 static void check(bool value, const char* what) { if (!value) throw std::runtime_error(what); }
+static void diagnostics(const Appearance& appearance) {
+    edit_form::Form form;
+    RendererTestHooks hooks; hooks.hide_khr_debug=true;
+    auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
+    check(created.desktop && !created.desktop->capabilities().debug_messages, "DG02 hidden debug");
+    edit_form::Form debug_form;
+    RendererTestHooks debug_hooks; debug_hooks.misuse_once=true;
+    DesktopOptions options; options.debug_context=DebugContext::on;
+    std::vector<RenderDiagnostic> events; auto owner=std::this_thread::get_id(); bool right_thread=true;
+    options.on_diagnostic=[&](const RenderDiagnostic& event) { right_thread &= std::this_thread::get_id()==owner; events.push_back(event); };
+    DesktopHost host(debug_form.ui,appearance,[&]{return debug_form.page();},debug_form.scroll,options,false,true,&debug_hooks);
+    check(host.capabilities().debug_messages,"DG01 KHR_debug available");
+    host.paint(); host.pump();
+    bool found=false;
+    for (const auto& event:events) if (event.category==DiagnosticCategory::api_misuse && event.backend==u"OpenGL" && event.native_code && !event.native_message.empty() && !event.source_time && event.received_at.time_since_epoch().count()) found=true;
+    check(found && right_thread,"DG01 debug event");
+}
 static void startup(const Appearance& appearance) {
+    diagnostics(appearance);
     for (int mode=0; mode<2; ++mode) {
         edit_form::Form form;
-        RendererTestHooks hooks;
+        RendererTestHooks hooks; hooks.hide_khr_debug=true;
         if (mode==0) hooks.fragment_shader_override="invalid shader"; else hooks.fail_context_33=true;
         auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
         auto e=created.failure;
@@ -58,7 +76,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     check(bool(form.handles.name.focus()) && bool(form.handles.name.select(0,11)), "prepare selection");
     if (modal) check(bool(form.handles.dialog.open(form.handles.name)), "prepare modal");
     auto selection=access(form.ui).edit(form.ids().name)->selection;
-    RendererTestHooks hooks; hooks.gl_error_at_frame=reset?0:2; hooks.reset_at_frame=reset?2:0; hooks.fail_rebuild_once=handled;
+    RendererTestHooks hooks; hooks.hide_khr_debug=true; hooks.gl_error_at_frame=reset?0:2; hooks.reset_at_frame=reset?2:0; hooks.fail_rebuild_once=handled;
     DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,false,&hooks);
     auto before=host.compare_gpu(640,480,1.f);
     check(before.passed, "pre-failure comparison");
