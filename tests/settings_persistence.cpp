@@ -38,6 +38,24 @@ void save_from_draft() {
     auto loaded=store.load(); test::check(loaded.document && loaded.document->name==u"工作站 A", "draft is present in file");
     std::filesystem::remove_all(path);
 }
+void close_persistence() {
+    auto path=std::filesystem::temp_directory_path()/"lcars-close-persistence";
+    std::filesystem::remove_all(path);
+    settings_demo::SettingsStore store(path); settings_demo::Demo demo;
+    int closes=0; demo.on_close([&] { ++closes; });
+    demo.on_save([&](const auto& document) { return store.save(document); });
+    test::check(bool(demo.volume.set_value(65)) && !demo.request_close(), "close asks to save");
+    test::check(bool(demo.close_save.invoke()) && closes==1 && store.load().document->volume==65, "close save writes and exits");
+    auto bytes=[&] { std::ifstream file(path/"settings.json", std::ios::binary); return std::string(std::istreambuf_iterator<char>(file), {}); };
+    auto before=bytes();
+    test::check(bool(demo.volume.set_value(70)) && !demo.request_close(), "close asks again");
+    test::check(bool(demo.close_discard.invoke()) && closes==2, "discard exits");
+    auto loaded=store.load();
+    test::check(loaded.document && bytes()==before, "discard leaves file bytes unchanged");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document);
+    test::check(reopened.document().volume==65, "reopened demo retains saved volume");
+    std::filesystem::remove_all(path);
+}
 void validation() {
     settings_demo::Demo demo; auto good=settings_demo::write_settings(demo.document());
     auto replace=[&](std::string from,std::string to) { auto copy=good; auto pos=copy.find(from); test::check(pos!=std::string::npos,"fixture contains field"); copy.replace(pos,from.size(),to); return copy; };
@@ -67,7 +85,7 @@ void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"appearance persistence",appearance_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

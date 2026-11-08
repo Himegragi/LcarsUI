@@ -16,6 +16,7 @@ struct RendererFailure { RendererFailureKind kind; std::uint32_t native_code = 0
 enum class StartupFailureKind { window, context_version, context_creation, shader, resource };
 struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; };
 struct RendererCapabilities { std::u16string version, vendor, renderer; bool debug_context = false, debug_messages = false, reset_detection = false; };
+enum class CloseDecision { close, keep_open };
 class Desktop;
 struct DesktopCreation;
 namespace detail { struct RendererTestHooks; }
@@ -25,6 +26,7 @@ struct DesktopOptions {
     std::function<void(const RenderDiagnostic&)> on_diagnostic;
     DebugContext debug_context = DebugContext::build_default;
     std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;
+    std::function<CloseDecision(Desktop&)> on_close_requested;
 };
 struct DesktopCreation;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
@@ -34,6 +36,8 @@ public:
     static DesktopCreation create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions = {});
     RunResult run();
     Result rebuild_renderer();
+    Result close();
+    void* native_window() const;
     Result set_title(std::u16string title);
     bool renderer_failed() const;
     RendererCapabilities capabilities() const;

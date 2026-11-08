@@ -33,6 +33,8 @@ class Demo {
     std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
     std::function<void()> license_selection_changed_;
     lcars::ButtonHandle undo_, redo_, revert_, save_;
+    lcars::LabelHandle close_title_, close_message_;
+    std::function<void()> close_handler_;
     lcars::LabelHandle load_title_, load_message_, error_title_, error_message_;
     lcars::ButtonHandle load_ok_, error_ok_;
     lcars::DialogHandle load_dialog_, error_dialog_;
@@ -50,6 +52,7 @@ class Demo {
     int next_item_id_ = 21;
     lcars::ButtonHandle item_cancel_, delete_cancel_, delete_confirm_;
     lcars::Result refresh_items();
+    lcars::Result save_document();
     SettingsDocument snapshot() const;
     void apply(const SettingsDocument&);
     void dirty(bool coalesce = false);
@@ -73,7 +76,13 @@ public:
     lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
     lcars::TextHandle item_name, item_note;
-    lcars::DialogHandle item_dialog, delete_dialog;
+    lcars::DialogHandle item_dialog, delete_dialog, close_dialog;
+    lcars::ButtonHandle close_save, close_discard, close_cancel;
+    void on_close(std::function<void()> callback) { close_handler_ = std::move(callback); }
+    bool request_close();
+    bool is_dirty() const;
+    bool blank_name_draft() const;
+    std::u16string save_failed_renderer();
     lcars::CheckboxHandle notices, dark, compact;
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region, font;
