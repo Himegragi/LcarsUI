@@ -138,6 +138,26 @@ void semantic_navigation_pages() {
         }
     }
 }
+void semantic_items_and_dialogs() {
+    settings_demo::Demo demo; auto& tree = demo.ui.semantics();
+    auto contains = [&](const char* dialog, const char* member) {
+        auto children = tree.children({dialog});
+        return children && std::any_of(children->begin(), children->end(), [&](const auto& ref) { return ref.id == member; });
+    };
+    test::check(contains("items.dialog", "items.dialog.name") && !contains("items.dialog", "items.delete_dialog.confirm") &&
+                contains("items.delete_dialog", "items.delete_dialog.confirm") && !contains("items.delete_dialog", "items.dialog.name"),
+                "semantic dialogs contain only their own members");
+    test::check(bool(demo.nav.select({"items"})) && bool(demo.items_add.invoke()), "open Items editor");
+    test::check(!tree.get({"items.dialog"})->hidden && !tree.get({"items.dialog.name"})->hidden &&
+                tree.get({"items.delete_dialog"})->hidden && tree.get({"items.delete_dialog.confirm"})->hidden &&
+                tree.get({"items.list"})->blocked_by_modal, "editor semantics expose modal and hidden peer dialog");
+    test::check(bool(demo.item_dialog.settle(false)) && bool(demo.items_list.select({"T001"})) && bool(demo.items_delete.invoke()),
+                "open Items delete confirmation");
+    test::check(tree.get({"items.dialog"})->hidden && tree.get({"items.dialog.name"})->hidden &&
+                !tree.get({"items.delete_dialog"})->hidden && !tree.get({"items.delete_dialog.confirm"})->hidden,
+                "semantic visibility follows the active Items dialog");
+}
+
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -323,4 +343,4 @@ void item_search_count_and_empty_state() {
     }
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"dark newer components", dark_new_component_sweep}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}}; return test::run("settings demo", cases); }
