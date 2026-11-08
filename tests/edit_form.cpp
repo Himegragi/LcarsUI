@@ -292,7 +292,7 @@ void semantic_notifications() {
 }
 
 void semantic_focus_driver() {
-    for (int scenario = 0; scenario < 6; ++scenario) {
+    for (int scenario = 0; scenario < 7; ++scenario) {
     edit_form::Form form(ids, true); auto& state = detail::access(form.ui);
     auto entries = x04::inventory(form);
     if (scenario == 1) for (const auto& entry : entries) std::visit([](const auto& h) {
@@ -304,13 +304,14 @@ void semantic_focus_driver() {
     if (scenario == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
     if (scenario == 4) form.handles.tabs.activate({"v03"});
     if (scenario == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
+    if (scenario == 6) detail::access(form.ui).renderer_failed(true);
     for (const auto& entry : entries) {
         auto id = state.layout_id(entry.handle); if (!id) continue;
         auto typed = std::visit([](const auto& handle) -> Status {
             if constexpr (requires { handle.focus(); }) return handle.focus().status;
             else return Status::not_supported;
         }, entry.handle);
-        if (scenario == 5 && typed == Status::not_supported) continue;
+        if (scenario >= 5 && typed == Status::not_supported) continue;
         auto semantic = form.ui.semantics().perform({*id}, Verb::focus).status;
         check(typed == semantic, "semantic focus matches typed handle");
         if (auto list = std::get_if<ListHandle>(&entry.handle)) {
@@ -344,7 +345,7 @@ void semantic_removal_notification() {
 }
 
 void semantic_verb_drivers() {
-    for (int state = 0; state < 6; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
+    for (int state = 0; state < 7; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
                       Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
         edit_form::Form a(ids, true), b(ids, true);
         auto typed_entries = x04::inventory(a); auto semantic_entries = x04::inventory(b);
@@ -358,6 +359,7 @@ void semantic_verb_drivers() {
             if (state == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
             if (state == 4) form.handles.tabs.activate({"v03"});
             if (state == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
+            if (state == 6) detail::access(form.ui).renderer_failed(true);
         };
         prepare(a, typed_entries); prepare(b, semantic_entries);
         check(typed_entries.size() == semantic_entries.size(), "same inventory for verb driver");
@@ -385,11 +387,11 @@ void semantic_verb_drivers() {
                 }
                 return Status::not_supported;
             }, typed_entries[i].handle);
-            if (state == 5 && expected == Status::not_supported) continue;
+            if (state >= 5 && expected == Status::not_supported) continue;
             auto ref = detail::access(b.ui).layout_id(semantic_entries[i].handle);
             if (!ref) { check(expected == Status::not_found, "removed handle is unavailable"); continue; }
             auto snapshot = b.ui.semantics().get({*ref});
-            if (snapshot && (snapshot->hidden || !snapshot->enabled || snapshot->blocked_by_modal))
+            if (snapshot && (state == 6 || snapshot->hidden || !snapshot->enabled || snapshot->blocked_by_modal))
                 check(snapshot->verbs.empty(), "restricted node omits verbs");
             Argument arg;
             if (verb == Verb::set_value) {
@@ -402,6 +404,7 @@ void semantic_verb_drivers() {
             {
                 auto children = b.ui.semantics().children({*ref});
                 if (children) for (const auto& child : *children) if (child.item) {
+                    if (state == 6 && verb != Verb::select) continue;
                     if (verb != Verb::select) {
                         check(b.ui.semantics().perform(child, verb, arg).status == Status::not_supported,
                               "inapplicable logical-item verb is not supported");
