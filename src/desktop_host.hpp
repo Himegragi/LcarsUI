@@ -56,6 +56,7 @@ public:
     void clear_atlas() { text_.clear_atlas(); }
     unsigned atlas_clears() const { return text_.atlas_clears(); }
     unsigned atlas_batches() const { return text_.atlas_batches(); }
+    unsigned atlas_peak_pages() const { return text_.atlas_peak_pages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }

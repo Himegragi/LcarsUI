@@ -170,7 +170,7 @@ void atlas_native(const Appearance& appearance, Report& report) {
     report.check("GA02", forward && f.host.atlas_clears()==clears+2 && f.host.compare_legacy(960,720,1.f), "scale changes clear once and retain S1 pixels");
     f.host.configure_atlas(64,1);
     bool same=f.host.compare_legacy(960,720,1.f);
-    report.check("GA03-CPU", same && f.host.atlas_batches()>0, "small atlas batches retain S1 pixels");
+    report.check("GA03-CPU", same && f.host.atlas_batches()>0 && f.host.atlas_peak_pages()<=1, "small atlas batches retain S1 pixels within one page");
     f.host.configure_atlas(1024,4);
     auto settings=f.form.ui.presentation(); settings.text_size=18;
     f.form.ui.set_presentation(settings); f.host.paint();

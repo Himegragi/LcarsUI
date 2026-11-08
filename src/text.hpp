@@ -41,6 +41,7 @@ public:
     void configure_atlas(int page_size, int max_pages);
     unsigned atlas_clears() const;
     unsigned atlas_batches() const;
+    unsigned atlas_peak_pages() const;
     unsigned rasterizations() const;
     TextLayout shape(std::u16string_view text,int pixels);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);

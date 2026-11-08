@@ -53,12 +53,32 @@ int main() {
 
     GlyphAtlas tiny(4, 1);
     RecordingCanvas batches(2, 1, {0, 0, 0});
-    auto one = tiny.get({0, 1, 18}, [] { return GlyphBitmap{1, 1, 0, 0, {64}}; });
-    batches.glyph({0, 0, 1, 1}, {255, 0, 0}, one.region.page, one.region.rect);
-    auto two = tiny.get({0, 2, 18}, [] { return GlyphBitmap{1, 1, 0, 0, {255}}; });
-    batches.glyph({1, 0, 1, 1}, {255, 0, 0}, two.region.page, two.region.rect);
-    require(tiny.batches() == 1 && render_cpu(batches.list, 2, 1).pixels ==
-            std::vector<unsigned char>{64, 0, 0, 255, 255, 0, 0, 255}, "eviction preserves earlier batch pixels");
+    batches.glyph_deferred({255,0,0}, [&] {
+        auto before=tiny.batches(); auto g=tiny.get({0,1,18}, [] { return GlyphBitmap{1,1,0,0,{64}}; });
+        return ResolvedGlyph{{0,0,1,1},g.region,tiny.batches(),before!=tiny.batches()};
+    });
+    batches.glyph_deferred({255,0,0}, [&] {
+        auto before=tiny.batches(); auto g=tiny.get({0,2,18}, [] { return GlyphBitmap{1,1,0,0,{255}}; });
+        return ResolvedGlyph{{1,0,1,1},g.region,tiny.batches(),before!=tiny.batches()};
+    });
+    require(render_cpu(batches.list,2,1).pixels ==
+            std::vector<unsigned char>{64,0,0,255,255,0,0,255} &&
+            tiny.batches()>0 && tiny.peak_pages()<=1, "bounded atlas preserves segmented output");
+
+    GlyphAtlas accumulated(6,1);
+    int loads=0;
+    auto sample=[&] { ++loads; return GlyphBitmap{1,1,0,0,{255}}; };
+    for(unsigned id=1;id<=4;++id) accumulated.get({0,id,18},sample);
+    RecordingCanvas frame(2,1,{0,0,0});
+    for(unsigned id : {1u,5u}) frame.glyph_deferred({255,255,255}, [&,id] {
+        auto before=accumulated.batches(); auto g=accumulated.get({0,id,18},sample);
+        return ResolvedGlyph{{static_cast<int>(id==5),0,1,1},g.region,accumulated.batches(),before!=accumulated.batches()};
+    });
+    auto result=render_cpu(frame.list,2,1); auto after=loads;
+    require(result.pixels == std::vector<unsigned char>{255,255,255,255,255,255,255,255} &&
+            accumulated.batches()>0 && accumulated.peak_pages()==1 &&
+            render_cpu(frame.list,2,1).pixels==result.pixels && loads==after,
+            "full cache rebuild retains all glyphs needed by the current frame");
 
     const unsigned char gray[] = {30, 40, 10, 20};
     require(bitmap_coverage(BitmapMode::gray, 2, 2, -2, gray) == std::vector<unsigned char>{10,20,30,40}, "gray bitmap with negative pitch");

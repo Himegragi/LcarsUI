@@ -140,32 +140,37 @@ void Text::clear_atlas() { impl_->atlas.clear(); }
 void Text::configure_atlas(int size,int pages) { impl_->atlas=GlyphAtlas(size,pages); }
 unsigned Text::atlas_clears() const { return impl_->atlas.clears(); }
 unsigned Text::atlas_batches() const { return impl_->atlas.batches(); }
+unsigned Text::atlas_peak_pages() const { return impl_->atlas.peak_pages(); }
 unsigned Text::rasterizations() const { return impl_->rasterizations; }
 void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
-    for(const auto& glyph:layout.glyphs){
-        auto entry=impl_->atlas.get({glyph.font,glyph.id,layout.size},[&] {
-            ++impl_->rasterizations;
-            GlyphBitmap result{0,0,0,0,{}};
-            auto& font=impl_->font(glyph.font);
-            if(FT_Set_Pixel_Sizes(font.face,0,layout.size) || FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT) ||
-               FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)) {
-                OutputDebugStringA("LcarsUI: glyph rasterization failed\n"); return result;
-            }
-            const auto& bitmap=font.face->glyph->bitmap;
-            result.width=static_cast<int>(bitmap.width); result.height=static_cast<int>(bitmap.rows);
-            result.left=font.face->glyph->bitmap_left; result.top=font.face->glyph->bitmap_top;
-            if(bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY && bitmap.pixel_mode!=FT_PIXEL_MODE_MONO && bitmap.pixel_mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
-                OutputDebugStringA("LcarsUI: unsupported glyph bitmap format\n"); result.width=result.height=0; return result;
-            }
-            auto mode=bitmap.pixel_mode==FT_PIXEL_MODE_GRAY?BitmapMode::gray:
-                bitmap.pixel_mode==FT_PIXEL_MODE_MONO?BitmapMode::mono:BitmapMode::bgra;
-            result.pixels=bitmap_coverage(mode,bitmap.width,bitmap.rows,bitmap.pitch,bitmap.buffer);
-            return result;
+    for(const auto glyph:layout.glyphs){
+        const int size=layout.size;
+        canvas.glyph_deferred(glyph.id?color:Color{195,35,48}, [this,glyph,size,x,baseline] {
+            const auto before=impl_->atlas.batches();
+            auto entry=impl_->atlas.get({glyph.font,glyph.id,size},[&] {
+                ++impl_->rasterizations;
+                GlyphBitmap result{0,0,0,0,{}};
+                auto& font=impl_->font(glyph.font);
+                if(FT_Set_Pixel_Sizes(font.face,0,size) || FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT) ||
+                   FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)) {
+                    OutputDebugStringA("LcarsUI: glyph rasterization failed\n"); return result;
+                }
+                const auto& bitmap=font.face->glyph->bitmap;
+                result.width=static_cast<int>(bitmap.width); result.height=static_cast<int>(bitmap.rows);
+                result.left=font.face->glyph->bitmap_left; result.top=font.face->glyph->bitmap_top;
+                if(bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY && bitmap.pixel_mode!=FT_PIXEL_MODE_MONO && bitmap.pixel_mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
+                    OutputDebugStringA("LcarsUI: unsupported glyph bitmap format\n"); result.width=result.height=0; return result;
+                }
+                auto mode=bitmap.pixel_mode==FT_PIXEL_MODE_GRAY?BitmapMode::gray:
+                    bitmap.pixel_mode==FT_PIXEL_MODE_MONO?BitmapMode::mono:BitmapMode::bgra;
+                result.pixels=bitmap_coverage(mode,bitmap.width,bitmap.rows,bitmap.pitch,bitmap.buffer);
+                return result;
+            });
+            int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+entry.left;
+            int top=baseline-static_cast<int>(std::round(glyph.dy))-entry.top;
+            return ResolvedGlyph{{left,top,entry.region.rect.w,entry.region.rect.h},entry.region,
+                                 impl_->atlas.batches(),impl_->atlas.batches()!=before};
         });
-        if(!entry.region.page) continue;
-        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+entry.left;
-        int top=baseline-static_cast<int>(std::round(glyph.dy))-entry.top;
-        canvas.glyph({left,top,entry.region.rect.w,entry.region.rect.h},glyph.id?color:Color{195,35,48},entry.region.page,entry.region.rect);
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {
