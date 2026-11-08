@@ -1629,8 +1629,9 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto semantic = x04::describe(entry.handle);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
+                const auto palette = appearance.palette(f.form.ui.presentation().variant);
                 auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
-                    ? appearance.palette().accent : appearance.palette().selection;
+                    ? palette.accent : palette.selection;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
                     if (draw.owner != semantic->id || !draw.visible) continue;
