@@ -46,3 +46,26 @@ Check `Result::status` and query status before using results. Read-only, disable
 The earlier settings MVP is preserved unchanged on the **local** branch `prototype/mvp-settings` at `e6d3fb3`. Its sources, targets, persistence and smoke tests are not part of this S1 branch. Applicable core and host regressions remain in the S1 tests.
 
 The native host currently targets Windows and OpenGL 3.3. Full grapheme, RTL, UIA, MCP, multi-page and cross-monitor DPI coverage are outside S1; see the form documentation for the supported text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+## Presentation verification
+
+The presentation matrix runs in `edit_form` with fake measurement and in
+`presentation_matrix_native` with shaped Windows text. Sizes are in DIP; each
+is converted to physical pixels at the requested scale. Both use the same
+component inventory and drivers. Native comparison uses the CPU reference and
+GPU backend; failures save CPU, GPU and difference images.
+
+On an idle author desktop, run `./verify-idle.ps1 -Only presentation`. PR01
+requires Microsoft Bopomofo, Microsoft JhengHei and MingLiU; PR02 requires 100%
+and 150% monitors. The report keeps PR03 and PR04 open: install a per-user font
+and record its catalog entry, file path and display (PR03), then collect user
+feedback and the first frame time after changing fonts (PR04). Generate the
+16 V01 trial images and manifest with:
+
+```powershell
+./build/Release/lcars_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
+```
+
+PR04 and PS10 require coordinator review/verification and are not marked as
+passed by the generator. A report with open or failed cases causes the idle
+script to return a failure status.

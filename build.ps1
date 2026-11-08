@@ -24,8 +24,8 @@ function Invoke-Native([string]$Program, [string[]]$Arguments, [string]$Failure)
 }
 
 $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
-$vsRoot = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vsRoot) { throw 'Visual Studio C++ Build Tools not found' }
+$vsRoot = & $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vsRoot) { throw 'Visual Studio 2022 C++ Build Tools not found' }
 $devCmd = Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
 # VsDevCmd calls vswhere.exe by name; the installer folder is not on PATH by default.
 $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH

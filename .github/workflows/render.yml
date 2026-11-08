@@ -19,6 +19,32 @@ jobs:
         run: |
           & ./build/Release/lcars_renderer_failure_tests.exe --gdi-version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install and verify Release package
+        shell: pwsh
+        run: |
+          ctest --test-dir build/Release --output-on-failure -R "package_install|consumer_example|third_party_notices"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install build/Release --prefix "$env:RUNNER_TEMP\lcars-full"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP\lcars-full" -Configurations Release -Generators Ninja,VS2022 -Evidence build/evidence/render-package
+      - name: Record package prefix on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/evidence/render-package | Out-Null
+          $prefix = "$env:RUNNER_TEMP\lcars-full"
+          if (Test-Path -LiteralPath $prefix) {
+            Get-ChildItem -LiteralPath $prefix -Recurse -File | ForEach-Object { $_.FullName.Substring($prefix.Length).TrimStart('\', '/') } | Sort-Object | Set-Content build/evidence/render-package/prefix-files.txt
+          } else {
+            'Package prefix was not created.' | Set-Content build/evidence/render-package/prefix-files.txt
+          }
+      - name: Upload package evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-package-evidence
+          path: build/evidence/render-package/
+          if-no-files-found: warn
       - name: Download and verify Mesa
         shell: pwsh
         run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\lcars-mesa"
