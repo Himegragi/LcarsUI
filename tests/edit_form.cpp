@@ -2,6 +2,7 @@
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
+#include "render.hpp"
 // Assembled showcase acceptance through public operations and the host input seam.
 // Every case runs for both appearances and both the shipped and alternate ID sets (AC02).
 #include "check.hpp"
@@ -777,6 +778,77 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
     check(frame.hit(popup.bounds.x + 1, popup.bounds.y + 1) != &popup, "Tooltip does not intercept pointer input");
 }
 
+struct PaintRoleProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    detail::RecordingCanvas recording{960, 4000, {0, 0, 0}};
+    std::vector<std::pair<detail::PaintRole,Rect>> emitted;
+    void role(detail::PaintRole value) override { recording.current_role=value; }
+    void fill(Rect r, Color color) override { emitted.emplace_back(recording.current_role,r); recording.fill(r,color); }
+    void rounded(Rect r, int radius, Color color) override { emitted.emplace_back(recording.current_role,r); recording.rounded(r,radius,color); }
+    void clip(Rect r) override { recording.clip=intersect(recording.clip,r); }
+    void text(std::u16string_view value, int size, int x, int y, Color color) override {
+        if(value.empty()) return;
+        emitted.emplace_back(recording.current_role,Rect{x,y,1,size});
+        recording.glyph({x,y,1,1},color,{255});
+    }
+    int count(detail::PaintRole role) const { return static_cast<int>(std::count_if(emitted.begin(),emitted.end(),[&](const auto& item){return (static_cast<unsigned>(item.first) & static_cast<unsigned>(role)) != 0;})); }
+};
+void draw_command_state_matrix() {
+    edit_form::Form inventory_form(ids,true);
+    const auto count=x04::inventory(inventory_form).size();
+    for(std::size_t index=0; index<count; ++index) for(int state_index=0; state_index<6; ++state_index) {
+        edit_form::Form form(ids,true); auto entry=x04::inventory(form)[index]; auto& ui=detail::access(form.ui);
+        if(entry.page=="modal") { if(!form.handles.tabs.activate({"v03"}) || !form.handles.dialog_open.invoke()) continue; }
+        else if(entry.page!="shared" && !form.handles.tabs.activate({std::string(entry.page)})) continue;
+        auto semantic=x04::describe(entry.handle); if(!semantic) continue;
+        bool applicable=true;
+        if(state_index==1) {
+            applicable=std::visit([](const auto& handle) { return requires { handle.enable(false); }; }, entry.handle);
+            if(applicable) check(x04::set_enabled(entry.handle,false), "Supported disable setup succeeds");
+        }
+        if(state_index==2) {
+            applicable=semantic->enabled && semantic->focusable;
+            if(applicable) check(x04::focus(entry.handle), "Supported focus setup succeeds");
+        }
+        if(state_index==3) {
+            applicable=entry.page!="modal" && x04::error_supported(*semantic);
+            if(applicable) check(x04::drive_error(form,entry), "Supported error setup succeeds");
+        }
+        if(state_index==4) {
+            applicable=semantic->enabled && (semantic->kind==Kind::checkbox || semantic->kind==Kind::radio_group || semantic->kind==Kind::list || semantic->kind==Kind::tabs);
+            if(applicable) check(x04::drive_selected(entry), "Supported selection setup succeeds");
+        }
+        if(state_index==5) {
+            applicable=semantic->kind==Kind::text && semantic->enabled && !semantic->read_only;
+            if(applicable) {
+                check(x04::focus(entry.handle), "Composition target can focus");
+                check(bool(ui.composition_update(u"preedit",3)), "Composition setup succeeds");
+            }
+        }
+        if(!applicable) continue;
+        test::FakeMeasure measure; auto frame=arrange(form.page(),form.ui,*appearance,measure,960,4000,1.f,form.scroll);
+        auto item=x04::placement(frame,entry.handle); semantic=x04::describe(entry.handle);
+        if(!item || !semantic) continue;
+        PaintRoleProbe probe(ui,*item,*semantic,*appearance,1.f,true); detail::component_type(item->kind).paint(probe);
+        for(const auto& command : probe.recording.list.commands) {
+            using Type=detail::DrawCommand::Type;
+            check(command.type==Type::clear || command.type==Type::clip || command.type==Type::fill ||
+                  command.type==Type::rounded || command.type==Type::glyph || command.type==Type::begin_group ||
+                  command.type==Type::end_group, "DL02 command belongs to the supported set");
+        }
+        if(state_index==2) {
+            check(probe.count(detail::PaintRole::focus_indicator)>0,"DL03 focus cue");
+            bool within=std::any_of(probe.emitted.begin(),probe.emitted.end(),[&](const auto& mark) {
+                auto hit=intersect(mark.second,item->bounds);
+                return (static_cast<unsigned>(mark.first) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) && hit.w>0 && hit.h>0;
+            });
+            check(within,"DL03 focus cue intersects component bounds");
+        }
+        if(state_index==2 && semantic->kind==Kind::text && !semantic->read_only) check(probe.count(detail::PaintRole::caret)==1,"DL03 one caret");
+        if(state_index==3 && semantic->invalid && !semantic->error.empty()) check(probe.count(detail::PaintRole::error_text)>0,"DL03 error text cue");
+        if(state_index==5) check(probe.count(detail::PaintRole::composition)>0,"DL03 composition cue");
+    }
+}
 // Record the text sent to the component paint adapter, independently of layout's line lists.
 struct PaintTextProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -2013,6 +2085,7 @@ int main() {
         {"X04 group conflicts at each size and scale", x04_group_conflicts_at_each_size_and_scale},
         {"X04 selected inventory at each size and scale", x04_selected_inventory_at_each_size_and_scale},
         {"X04 hidden inventory at each size and scale", x04_hidden_inventory_at_each_size_and_scale},
+        {"DL02 DL03 state matrix", draw_command_state_matrix},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
         {"X04 painted state and modal text", painted_states_agree_with_semantics},
         {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},
