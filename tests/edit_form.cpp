@@ -211,6 +211,18 @@ void semantic_admission_priority() {
     form.handles.dialog.settle(false);
 }
 
+void semantic_renderer_failure() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "draft before renderer failure");
+    detail::access(form.ui).renderer_failed(true);
+    check(tree.text(ids.name).value == u"工作站 A" && tree.get({ids.name})->value == u"工作站 A", "renderer failure preserves semantic reads");
+    check(tree.perform({ids.apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
+          "renderer failure rejects semantic invoke");
+    check(tree.perform({ids.result}, Verb::invoke).status == Status::renderer_failed, "renderer failure precedes unsupported verb");
+    detail::access(form.ui).renderer_failed(false);
+    check(bool(tree.perform({ids.apply}, Verb::invoke)) && form.applies() == 1, "semantic invoke resumes after renderer recovery");
+}
+
 void semantic_notifications() {
     edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
     std::vector<SemanticEvent> events; bool inside = false, recursed = false, changed = false;
@@ -2863,6 +2875,7 @@ int main() {
         {"Semantic list operations", semantic_list_operations},
         {"Semantic text and thread", semantic_text_and_thread},
         {"Semantic admission priority", semantic_admission_priority},
+        {"Semantic renderer failure", semantic_renderer_failure},
         {"Semantic notifications", semantic_notifications},
         {"Semantic focus driver", semantic_focus_driver},
         {"Semantic subscriber exception boundary", semantic_subscriber_exception_boundary},

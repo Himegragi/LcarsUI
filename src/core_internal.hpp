@@ -122,7 +122,7 @@ public:
     EditSession* edit(std::string_view id);
     Result set_value(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
-    Result available(std::string_view id) const;
+    Result available(std::string_view id, bool ignore_renderer_failure = false) const;
     Result available_option(std::string_view id, const OptionValue& value) const;
 
     void bind(Id id, Action action);
@@ -188,6 +188,8 @@ public:
     void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
+    Result creation_access() const;
+    void renderer_failed(bool failed) { renderer_failed_ = failed; }
 private:
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
@@ -203,7 +205,7 @@ private:
     friend class ::lcars::DialogHandle;
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
-    Result configuration_access(std::string_view id) const;
+    Result configuration_access(std::string_view id, bool read_only = false) const;
     Result connect_source(const Id& id, TextSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
@@ -359,7 +361,7 @@ private:
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
-    bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false;
+    bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);
 unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);

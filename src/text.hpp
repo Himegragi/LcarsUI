@@ -54,6 +54,7 @@ public:
     unsigned atlas_batches() const;
     unsigned atlas_peak_pages() const;
     unsigned rasterizations() const;
+    std::vector<const AtlasPage*> atlas_pages() const;
     TextLayout shape(std::u16string_view text,int pixels);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);

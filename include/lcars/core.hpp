@@ -16,7 +16,7 @@ namespace lcars {
 enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
-enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
+enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
 struct Result {
     Status status = Status::ok;
     std::u16string message;

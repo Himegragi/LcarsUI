@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <algorithm>
 #include <unordered_map>
 
@@ -102,7 +103,7 @@ struct Scene {
         if (vao) g.DeleteVertexArrays(1,&vao);
         if (program) g.DeleteProgram(program);
     }
-    void init() {
+    void init(const std::string& fragment_override) {
         const char* vertex = R"(#version 330 core
 uniform vec2 screen; uniform vec4 rect;
 out vec2 pixel;
@@ -127,7 +128,7 @@ void main(){
  outputColor=vec4(tint.rgb,tint.a*coverage);
 })";
         GLuint vs=0,fs=0;
-        try { vs=shader(g,GL_VERTEX_SHADER,vertex); fs=shader(g,GL_FRAGMENT_SHADER,fragment);
+        try { vs=shader(g,GL_VERTEX_SHADER,vertex); fs=shader(g,GL_FRAGMENT_SHADER,fragment_override.empty() ? fragment : fragment_override.c_str());
             program=g.CreateProgram();g.AttachShader(program,vs);g.AttachShader(program,fs);g.LinkProgram(program);
         } catch (...) {if(vs)g.DeleteShader(vs);if(fs)g.DeleteShader(fs);throw;}
         g.DeleteShader(vs);g.DeleteShader(fs);
@@ -148,17 +149,46 @@ struct Renderer::Impl {
     HGLRC context=nullptr,bootstrap=nullptr;
     GL gl;
     std::unique_ptr<Scene> scene;
-    explicit Impl(HWND handle):window(handle) {
+    RendererTestHooks* hooks;
+    int frames = 0;
+    PFNGLGETGRAPHICSRESETSTATUSPROC reset_status = nullptr;
+    RendererCapabilities caps;
+    explicit Impl(HWND handle, RendererTestHooks* test, DebugContext debug):window(handle), hooks(test) {
         try {
             dc=GetDC(window);require(dc!=nullptr,"GetDC failed");
             PIXELFORMATDESCRIPTOR pfd{};pfd.nSize=sizeof(pfd);pfd.nVersion=1;
             pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;pfd.iPixelType=PFD_TYPE_RGBA;pfd.cColorBits=32;pfd.cAlphaBits=8;
-            int format=ChoosePixelFormat(dc,&pfd);require(format&&SetPixelFormat(dc,format,&pfd),"Pixel format failed");
+            int format=GetPixelFormat(dc); if (!format) { format=ChoosePixelFormat(dc,&pfd); require(format&&SetPixelFormat(dc,format,&pfd),"Pixel format failed"); }
             bootstrap=wglCreateContext(dc);require(bootstrap&&wglMakeCurrent(dc,bootstrap),"WGL bootstrap failed");
             using Create=HGLRC(WINAPI*)(HDC,HGLRC,const int*);
-            auto create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB"));
-            const int attributes[]={0x2091,3,0x2092,3,0x9126,1,0};context=create(dc,nullptr,attributes);
-            require(context!=nullptr,"OpenGL 3.3 core is required");
+            auto get_string = reinterpret_cast<PFNGLGETSTRINGPROC>(symbol("glGetString"));
+            auto version = reinterpret_cast<const char*>(get_string(GL_VERSION));
+            auto vendor = reinterpret_cast<const char*>(get_string(GL_RENDERER));
+            std::string actual = std::string(version ? version : "unknown") + " / " + (vendor ? vendor : "unknown");
+            auto to16=[](const std::string& v) { return std::u16string(v.begin(), v.end()); };
+            if (hooks && hooks->fail_context_33) throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
+            Create create = nullptr;
+            try { create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB")); } catch (...) { throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}}; }
+            using Extensions=const char*(WINAPI*)(HDC);
+            auto extproc=wglGetProcAddress("wglGetExtensionsStringARB");
+            auto ext=extproc ? reinterpret_cast<Extensions>(extproc)(dc) : nullptr;
+            std::string extensions=ext ? ext : "";
+            bool robust=!(hooks && hooks->hide_robustness) && extensions.find("WGL_ARB_create_context_robustness")!=std::string::npos;
+#ifdef NDEBUG
+            bool debug_enabled=debug==DebugContext::on;
+#else
+            bool debug_enabled=debug!=DebugContext::off;
+#endif
+            int flags=(debug_enabled ? 0x0001 : 0) | (robust ? 0x0004 : 0);
+            std::vector<int> attributes={0x2091,3,0x2092,3,0x9126,1,0x2094,flags};
+            if (robust) { attributes.push_back(0x8256); attributes.push_back(0x8252); }
+            attributes.push_back(0);
+            context=create(dc,nullptr,attributes.data());
+            if (!context) {
+                int major=0, minor=0; if (version) std::sscanf(version,"%d.%d",&major,&minor);
+                auto kind=(major<3 || (major==3 && minor<3)) ? StartupFailureKind::context_version : StartupFailureKind::context_creation;
+                throw StartupError{{kind,u"OpenGL 3.3 core",to16(actual),u"Unable to create OpenGL 3.3 core context"}};
+            }
             require(wglMakeCurrent(nullptr,nullptr)!=FALSE,"WGL detach failed");
             require(wglDeleteContext(bootstrap)!=FALSE,"WGL bootstrap cleanup failed");bootstrap=nullptr;
             require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");gl.load();
@@ -169,8 +199,22 @@ struct Renderer::Impl {
             if (interval && interval != reinterpret_cast<PROC>(1) && interval != reinterpret_cast<PROC>(2) &&
                 interval != reinterpret_cast<PROC>(3) && interval != reinterpret_cast<PROC>(-1))
                 reinterpret_cast<SwapInterval>(interval)(1);
-            scene=std::make_unique<Scene>(gl);scene->init();
-        } catch(...) {release();throw;}
+            auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.GetString(key)); return to16(p ? p : ""); };
+            caps.version=string16(GL_VERSION); caps.vendor=string16(GL_VENDOR); caps.renderer=string16(GL_RENDERER);
+            caps.debug_context=debug_enabled;
+            if (robust) {
+                auto proc=wglGetProcAddress("glGetGraphicsResetStatusARB");
+                if (proc && proc != reinterpret_cast<PROC>(1) && proc != reinterpret_cast<PROC>(2) && proc != reinterpret_cast<PROC>(3) && proc != reinterpret_cast<PROC>(-1)) reset_status=reinterpret_cast<PFNGLGETGRAPHICSRESETSTATUSPROC>(proc);
+            }
+            caps.reset_detection=reset_status!=nullptr;
+            scene=std::make_unique<Scene>(gl);
+            try { scene->init(hooks ? hooks->fragment_shader_override : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
+            if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
+        } catch (const StartupError&) { release(); throw; }
+          catch (const std::exception& e) {
+            std::string message=e.what(); release();
+            throw StartupError{{StartupFailureKind::context_creation,{}, {},std::u16string(message.begin(),message.end())}};
+        } catch (...) { release(); throw; }
     }
     void release(){if(context && dc)wglMakeCurrent(dc,context);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
     ~Impl(){release();}
@@ -247,11 +291,32 @@ struct Renderer::Impl {
             g.Uniform1f(uniform("radius"),float(command.radius));g.Uniform1i(uniform("kind"),kind);
             g.DrawArrays(GL_TRIANGLES,0,6);
         }
-        require(g.GetError()==GL_NO_ERROR,"OpenGL frame failed");
+        GLenum error=GL_NO_ERROR, first=GL_NO_ERROR;
+        std::vector<unsigned> errors;
+        while ((error=g.GetError())!=GL_NO_ERROR) { if (first==GL_NO_ERROR) first=error; errors.push_back(error); }
+        ++frames;
+        if (hooks && hooks->reset_at_frame==frames) { hooks->reset_at_frame=0; throw FrameError{{RendererFailureKind::device_reset,0x8253,u"Graphics reset"}}; }
+        if (reset_status) { auto reset=reset_status(); if (reset!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::device_reset,reset,u"Graphics reset"}}; }
+        if (hooks && hooks->gl_error_at_frame==frames) { first=hooks->injected_error; errors.push_back(first); hooks->gl_error_at_frame=0; }
+        if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
-Renderer::Renderer(HWND window):impl_(std::make_unique<Impl>(window)){}
+Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug):impl_(std::make_unique<Impl>(window,hooks,debug)){}
 Renderer::~Renderer()=default;
+RenderDiagnostic frame_diagnostic(unsigned code) {
+    RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
+    diagnostic.category=DiagnosticCategory::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
+    return diagnostic;
+}
+void Renderer::restore_atlas(const std::vector<const AtlasPage*>& pages) {
+    require(wglMakeCurrent(impl_->dc,impl_->context)!=FALSE,"WGL activation failed");
+    auto& gl=impl_->gl;
+    for (std::size_t i=0; i<pages.size() && i<4; ++i) {
+        const auto& page=*pages[i]; gl.BindTexture(GL_TEXTURE_2D,impl_->scene->textures[i]);
+        gl.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
+    }
+    require(gl.GetError()==GL_NO_ERROR,"Atlas upload failed");
+}
 double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submission_ms,std::chrono::steady_clock::time_point* presented){
     auto start=std::chrono::steady_clock::now();
     auto& gl=impl_->gl; GLuint query=0; GLuint64 ns=0;
@@ -259,11 +324,12 @@ double Renderer::draw(const DrawList& list,int width,int height,bool measure,boo
     impl_->execute(list,width,height,offscreen);
     if(measure) gl.EndQuery(GL_TIME_ELAPSED);
     if(submission_ms) *submission_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
-    if(!offscreen) require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");
+    if(!offscreen && !SwapBuffers(impl_->dc)) throw FrameError{{RendererFailureKind::present_failed,GetLastError(),u"SwapBuffers failed"}};
     if(presented) *presented=std::chrono::steady_clock::now();
     if(measure){gl.GetQueryObjectui64v(query,GL_QUERY_RESULT,&ns); gl.DeleteQueries(1,&query);}
     return double(ns)/1000000.0;
 }
+RendererCapabilities Renderer::capabilities() const { return impl_->caps; }
 std::string Renderer::name() const {
     return std::string(reinterpret_cast<const char*>(impl_->gl.GetString(GL_RENDERER))) + " / " +
         reinterpret_cast<const char*>(impl_->gl.GetString(GL_VERSION));

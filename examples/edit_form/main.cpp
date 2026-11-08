@@ -18,7 +18,9 @@ int wmain() {
         auto name = appearance.name();
         lcars::DesktopOptions options;
         options.title = u"LcarsUI 編輯表單 — " + std::u16string(name.begin(), name.end());
-        return lcars::run_desktop(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
+        auto creation = lcars::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
+        if (!creation.desktop) return 1;
+        return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << "LcarsUI: " << e.what() << '\n';
         return 1;

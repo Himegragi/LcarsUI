@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace lcars::detail {
@@ -46,7 +47,7 @@ struct GpuComparison {
 class DesktopHost {
 public:
     DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                const DesktopOptions& options, bool trace = false, bool background = false);
+                const DesktopOptions& options, bool trace = false, bool background = false, RendererTestHooks* hooks = nullptr);
     ~DesktopHost();
     DesktopHost(const DesktopHost&) = delete;
     DesktopHost& operator=(const DesktopHost&) = delete;
@@ -85,6 +86,12 @@ public:
     double input_present_ms() const { return input_present_ms_; }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }
+    bool renderer_failed() const { return renderer_failure_.has_value(); }
+    const std::optional<RendererFailure>& renderer_failure() const { return renderer_failure_; }
+    void on_renderer_failure(std::function<void(const RendererFailure&)> callback) { failure_callback_ = std::move(callback); }
+    Result rebuild_renderer();
+    void close() { release(); }
+    RendererCapabilities capabilities() const { return renderer_ ? renderer_->capabilities() : capabilities_; }
     std::vector<std::wstring>& ime_log() { return ime_log_; }
     std::vector<std::wstring>& trace() { return trace_; }  // verification mode: input messages as handled
     LRESULT message(UINT msg, WPARAM w, LPARAM l);
@@ -116,6 +123,14 @@ private:
     PerfSamples perf_samples_;
     int frames_ = 0;
     bool failed_ = false;
+    bool painting_ = false;
+    bool quit_ = false;
+    std::thread::id owner_ = std::this_thread::get_id();
+    RendererTestHooks* hooks_ = nullptr;
+    DebugContext debug_context_ = DebugContext::build_default;
+    RendererCapabilities capabilities_;
+    std::optional<RendererFailure> renderer_failure_;
+    std::function<void(const RendererFailure&)> failure_callback_;
     std::string reveal_;                        // focus target to scroll into view on the next arrange
     enum class Drag { none, text, thumb, slider } drag_ = Drag::none;
     int drag_origin_ = 0, drag_offset_ = 0;
@@ -129,6 +144,7 @@ private:
     Frame arrange(int width, int height, float scale);
     void configure_font(std::u16string_view family);
     void release();
+    void fail_renderer(RendererFailure failure);
     template<class Target> void draw(Target& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
@@ -139,4 +155,9 @@ private:
     void after_input(const std::string& focus_before);
     void log_ime(const wchar_t* event, std::u16string_view detail = {});
 };
+}
+
+namespace lcars {
+// Internal test factory: exercises the public desktop lifecycle with injected backend failures.
+DesktopCreation create_desktop_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, detail::RendererTestHooks*);
 }
