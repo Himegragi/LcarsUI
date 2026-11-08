@@ -91,6 +91,35 @@ void semantic_tree_reads_registered_components() {
           "Semantic tree enumerates and reads a registered button");
 }
 
+void semantic_form_operations() {
+    edit_form::Form form(ids, true);
+    auto& tree = form.ui.semantics();
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"Workstation A"))), "semantic name draft");
+    check(bool(tree.perform({ids.notices}, Verb::toggle)), "semantic checkbox");
+    check(bool(tree.perform({ids.mode, OptionValue{"focus"}}, Verb::select)), "semantic radio selection");
+    check(bool(tree.perform({ids.region}, Verb::open)), "semantic dropdown open");
+    check(bool(tree.perform({ids.region, OptionValue{"south"}}, Verb::select)), "semantic dropdown selection");
+    check(bool(tree.perform({ids.volume}, Verb::set_value, 65)), "semantic slider");
+    check(form.applies() == 0 && bool(tree.perform({ids.apply}, Verb::invoke)), "semantic apply");
+    check(form.applies() == 1 && form.applied() == u"Workstation A" && !form.notices_applied() &&
+          form.mode_applied() == OptionValue{"focus"} && form.region_applied() == OptionValue{"south"} &&
+          form.volume_applied() == 65, "semantic F01 results");
+}
+
+void semantic_modal_operations() {
+    edit_form::Form form(ids, true);
+    auto& tree = form.ui.semantics();
+    auto prefix = ids.title + ".pages.";
+    check(bool(tree.perform({prefix + "tabs", OptionValue{"v03"}}, Verb::select)), "semantic switch page");
+    check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)), "semantic open dialog");
+    auto half = tree.get({prefix + "v03.half"});
+    check(half && half->blocked_by_modal && half->enabled, "modal background readable");
+    check(tree.perform({prefix + "v03.half"}, Verb::invoke).status == Status::blocked_by_modal, "modal rejects background");
+    check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
+    check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
+          "semantic cancel dialog");
+}
+
 void write_semantic_tsv(edit_form::Form& form, const char* state) {
     const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
     auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
@@ -2426,6 +2455,8 @@ int main() {
         {"SEM02 SEM03 SEM08 showcase tree", semantic_showcase_states_and_identity},
         {"SEM11 unnamed diagnostic", semantic_unnamed_diagnostic},
         {"Semantic tree reads registered components", semantic_tree_reads_registered_components},
+        {"Semantic form operations", semantic_form_operations},
+        {"Semantic modal operations", semantic_modal_operations},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},

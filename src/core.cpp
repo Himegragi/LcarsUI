@@ -2686,4 +2686,36 @@ Query<std::u16string> SemanticTree::text(std::string_view id) const {
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
     return {Status::ok, {}, n->value};
 }
+Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
+    auto node = get(ref);
+    if (!node) return {node.status, node.message};
+    if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
+    if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (node->role == Role::text && verb == Verb::set_value) {
+        if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
+        return {Status::invalid_value, {}};
+    }
+    if (node->role == Role::text) {
+        if (verb == Verb::select) {
+            if (auto selection = std::get_if<Selection>(&argument)) return state_->select(ref.id, selection->anchor, selection->caret);
+            return {Status::invalid_value, {}};
+        }
+        if (verb == Verb::undo) return state_->undo(ref.id);
+        if (verb == Verb::redo) return state_->redo(ref.id);
+    }
+    auto handle = state_->layout_handle(ref.id);
+    if (auto tabs = std::get_if<TabsHandle>(&handle); tabs && ref.item && verb == Verb::select) return tabs->activate(*ref.item);
+    if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && verb == Verb::toggle) return checkbox->toggle();
+    if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && ref.item && verb == Verb::select) return radio->select(*ref.item);
+    if (auto dropdown = std::get_if<DropdownHandle>(&handle)) {
+        if (ref.item && verb == Verb::select) return dropdown->select(*ref.item);
+        if (!ref.item && verb == Verb::open) return dropdown->open();
+        if (!ref.item && verb == Verb::cancel) return dropdown->cancel();
+    }
+    if (auto slider = std::get_if<SliderHandle>(&handle); slider && verb == Verb::set_value) {
+        if (auto value = std::get_if<int>(&argument)) return slider->set_value(*value);
+        return {Status::invalid_value, {}};
+    }
+    return {Status::not_supported, {}};
+}
 }
