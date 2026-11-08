@@ -27,7 +27,12 @@ public:
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width);
 
-struct ScrollState { int offset = 0; };  // physical pixels, clamped by every arrange
+struct ScrollState {
+    int offset = 0; // physical pixels, clamped by every arrange
+    int text_size = 0;
+    std::string anchor_id;
+    std::string anchor_option;
+};
 
 namespace layout {
 struct Node {

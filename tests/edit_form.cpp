@@ -108,6 +108,39 @@ void presentation_reflow_keeps_tooltip_and_modal() {
     state.key_down({Key::tab}); check(h.dialog_cancel.describe()->focused, "PS06 tab stays inside");
 }
 
+void ps07_list_anchor_survives_size_change() {
+    edit_form::Form form(ids, true); form.handles.tabs.activate({"v02"});
+    auto& page = *form.list; auto& h = page.handles; test::FakeMeasure measure;
+    auto settings = form.ui.presentation(); settings.text_size = 12; form.ui.set_presentation(settings);
+    h.hundred.invoke(); h.list.focus(); h.list.select({"T050"});
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll); };
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw();
+    auto* list = frame.find(h.list);
+    check(list && test::inside(list->options[49], list->clip) && page.selection() == OptionValue{"T050"}, "PS07 focused item remains visible");
+    settings.text_size = 12; form.ui.set_presentation(settings); frame = draw();
+    h.list.enable(false); h.list.enable(true);
+    list = frame.find(h.list); auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& r) { return r.state == &page.list_scroll; });
+    page.list_scroll.offset += list->options[29].y - region->viewport.y;
+    frame = draw(); list = frame.find(h.list);
+    check(list->options[29].y == list->clip.y, "PS07 T030 starts at viewport top");
+    settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(); list = frame.find(h.list);
+    check(list && list->options[29].y == list->clip.y, "PS07 unfocused top item stays anchored");
+}
+
+void ps08_large_text_wraps_without_overlap() {
+    edit_form::Form form(ids, true); test::FakeMeasure measure;
+    form.handles.name.set_error(u"A long error message that must wrap onto multiple lines at the larger text size without overlapping the next control.");
+    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name);
+    auto* field = frame.find(form.handles.name); auto* next = frame.find(form.handles.notices);
+    check(field && next && field->error_lines.size() > 1, "PS08 large error wraps");
+    auto editor = field->field.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
+    for (const auto& line : field->label_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 label fits without editor overlap");
+    for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
+    for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
+    check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
+}
+
 void long_field_label_and_error_keep_their_association() {
     Ui ui({});
     const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
@@ -1994,6 +2027,8 @@ int main() {
         {"PS size scaling", presentation_size_scales_explicit_and_default_text},
         {"PS02-04 reflow", presentation_reflow_preserves_edit_and_popup},
         {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
+        {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},
+        {"PS08 large text", ps08_large_text_wraps_without_overlap},
         {"V04 size slider", v04_slider_updates_global_text_size},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
