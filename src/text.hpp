@@ -12,7 +12,7 @@
 #include <optional>
 #include "font_files.hpp"
 namespace lcars::detail {
-struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; };
+struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; std::uint64_t face_id = 0; };
 // Convert a FreeType bitmap row into single-channel coverage. Returns false for
 // unsupported pixel modes; the caller paints a missing-glyph box in that case.
 bool bitmap_coverage(unsigned mode, const unsigned char* row, unsigned width,
@@ -59,7 +59,7 @@ public:
     void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
     void test_bitmap_mode(int mode); // -1 uses the rasterizer's pixel mode
-    void set_primary_family(std::u16string family);
+    void set_primary_family(std::u16string family, bool new_generation = false);
     std::optional<float> test_axis_coordinate(unsigned font, std::uint32_t dwrite_tag);
 private:
     struct Impl;

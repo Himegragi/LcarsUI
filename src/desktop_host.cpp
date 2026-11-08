@@ -174,7 +174,7 @@ void DesktopHost::configure_font(std::u16string_view family) {
     auto resolution=system_font_catalog().resolve(settings);
     enqueue_font_diagnostics(diagnostics_,font_configured_?0:system_font_catalog_error(),resolution);
     requested_font_=family; font_configured_=true;
-    text_.set_primary_family(!family.empty() && resolution.requested_available ? resolution.primary : std::u16string{});
+    text_.set_primary_family(!family.empty() && resolution.requested_available ? resolution.primary : std::u16string{}, true);
     if(window_) PostMessageW(window_,WM_APP+43,0,0);
 }
 DesktopHost::~DesktopHost() { release(); }

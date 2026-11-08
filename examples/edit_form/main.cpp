@@ -6,7 +6,10 @@
 
 int wmain() {
     try {
-        edit_form::Form form(edit_form::default_ids(), true);
+        edit_form::Form form(edit_form::default_ids(), true, [](std::u16string_view family) {
+            lcars::PresentationSettings settings; settings.font_family = family;
+            return lcars::system_font_catalog().resolve(settings);
+        });
 #ifdef LCARS_APPEARANCE_material
         const auto& appearance = lcars::material_appearance();
 #else
