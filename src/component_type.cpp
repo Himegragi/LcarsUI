@@ -458,6 +458,52 @@ public:
     bool has_activate_operation() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
 };
+// TODO(#35): migrate these paints to draw-list selection and focus roles.
+class NavigationList final : public ComponentType {
+public:
+    bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected}); }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.navigation_layout_handle(c); }
+    int natural_width(const ComponentLayout& c) const override {
+        auto semantic = c.ui.describe(c.control.id);
+        int width = 0;
+        for (const auto& option : semantic->options) width = std::max(width, static_cast<int>(c.measure.measure(option.label, c.placement.text_size).width));
+        return std::max(scaled(c.scale, 160), width + scaled(c.scale, 48));
+    }
+    void arrange(ComponentLayout& c) const override {
+        auto semantic = *c.ui.describe(c.control.id);
+        int line = c.measure.line_height(c.placement.text_size);
+        bool material = c.appearance.name() == "Material-inspired";
+        int height = line + scaled(c.scale, material ? 32 : 16);
+        for (std::size_t i = 0; i < semantic.options.size(); ++i) {
+            int y = static_cast<int>(i) * height;
+            c.placement.options.push_back({0, y, c.width, height});
+            auto label = semantic.options[i].label;
+            if (!semantic.options[i].enabled) label += u"????";
+            c.placement.lines.push_back({{scaled(c.scale, 16), y + (height-line)/2, c.width-scaled(c.scale, 32), line}, std::move(label)});
+        }
+        c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.options.size())};
+    }
+    void paint(ComponentPaint& c) const override {
+        auto palette = c.appearance.palette();
+        bool material = c.appearance.name() == "Material-inspired";
+        c.fill(c.placement.bounds, material ? palette.surface : palette.panel);
+        if (!material) c.fill({c.placement.bounds.x+c.placement.bounds.w-scaled(c.scale,1), c.placement.bounds.y, scaled(c.scale,1), c.placement.bounds.h}, palette.border);
+        for (std::size_t i=0; i<c.placement.options.size(); ++i) {
+            const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
+            if (option.selected) {
+                int radius = material ? rect.h / 2 : scaled(c.scale, 6);
+                if (c.semantics.focused) c.rounded(rect, radius, palette.accent);
+                auto inset = c.semantics.focused ? scaled(c.scale, 2) : 0;
+                c.rounded({rect.x+inset, rect.y+inset, rect.w-2*inset, rect.h-2*inset}, std::max(0, radius-inset), palette.selection);
+                if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);
+            }
+            const auto& line = c.placement.lines[i];
+            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);
+        }
+    }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.navigation_key_down(key); }
+};
+NavigationList navigation_list;
 Tabs tabs;
 Progress progress;
 Slider slider;
@@ -472,7 +518,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}};
+        {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}, {Kind::navigation_list, &navigation_list}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable
