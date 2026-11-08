@@ -27,6 +27,7 @@ struct SemanticNode {
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
     bool hidden = false, visible = false, blocked_by_modal = false;
+    bool selection_required = false;
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;

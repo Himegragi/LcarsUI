@@ -3,11 +3,18 @@
 #include <iostream>
 #include <string>
 #include <atomic>
+#include <mutex>
+#include <vector>
+#include "uia_pattern_drivers.hpp"
 
 class PropertyEvents final : public IUIAutomationPropertyChangedEventHandler {
     std::atomic<ULONG> refs_{1};
 public:
     HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    PROPERTYID expected = UIA_ToggleToggleStatePropertyId;
+    LONG expected_value = ToggleState_Off;
+    bool double_value = false; double expected_double = 0;
+    bool string_value = false; std::wstring expected_string;
     ~PropertyEvents() { CloseHandle(received); }
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
         if (!out) return E_POINTER; *out = nullptr;
@@ -17,7 +24,7 @@ public:
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
     ULONG STDMETHODCALLTYPE Release() override { ULONG n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override {
-        if (id == UIA_ToggleToggleStatePropertyId && value.vt == VT_I4 && value.lVal == ToggleState_Off) SetEvent(received);
+        if (id == expected && ((string_value && value.vt == VT_BSTR && value.bstrVal && expected_string == value.bstrVal) || (!string_value && !double_value && value.vt == VT_I4 && value.lVal == expected_value) || (double_value && value.vt == VT_R8 && value.dblVal == expected_double))) SetEvent(received);
         return S_OK;
     }
 };
@@ -26,6 +33,7 @@ class SelectionEvents final : public IUIAutomationEventHandler {
     std::atomic<ULONG> refs_{1};
 public:
     HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    EVENTID expected = UIA_SelectionItem_ElementSelectedEventId;
     ~SelectionEvents() { CloseHandle(received); }
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
         if (!out) return E_POINTER; *out = nullptr;
@@ -35,7 +43,48 @@ public:
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
     ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override {
-        if (id == UIA_SelectionItem_ElementSelectedEventId) SetEvent(received); return S_OK;
+        if (id == expected) SetEvent(received); return S_OK;
+    }
+};
+
+class StructureEvents final : public IUIAutomationStructureChangedEventHandler {
+    std::atomic<ULONG> refs_{1};
+public:
+    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ~StructureEvents() { CloseHandle(received); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationStructureChangedEventHandler)) return E_NOINTERFACE;
+        *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this); AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override {
+        if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK;
+    }
+};
+
+class FocusEvents final : public IUIAutomationFocusChangedEventHandler {
+    std::atomic<ULONG> refs_{1};
+public:
+    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::wstring expected = L"T004";
+    std::mutex mutex; std::vector<std::wstring> observed;
+    HANDLE apply_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ~FocusEvents() { CloseHandle(received); CloseHandle(apply_received); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationFocusChangedEventHandler)) return E_NOINTERFACE;
+        *out = static_cast<IUIAutomationFocusChangedEventHandler*>(this); AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override {
+        BSTR id = nullptr; if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && id) {
+            std::wstring value(id); if (value == L"T003" || value == L"T004") { std::lock_guard lock(mutex); observed.push_back(value); }
+            if (value == expected) SetEvent(received); if (value == L"form.apply") SetEvent(apply_received);
+        }
+        SysFreeString(id); return S_OK;
     }
 };
 
@@ -56,7 +105,18 @@ IUIAutomationElement* find_id(IUIAutomation* automation, IUIAutomationElement* r
     }
     VariantClear(&value); return element;
 }
+HRESULT invoke_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
+    auto e = find_id(uia, root, id); IUIAutomationInvokePattern* p = nullptr;
+    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p)) : E_FAIL;
+    if (SUCCEEDED(hr) && p) hr = p->Invoke(); if (p) p->Release(); if (e) e->Release(); return hr;
+}
+HRESULT select_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
+    auto e = find_id(uia, root, id); IUIAutomationSelectionItemPattern* p = nullptr;
+    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&p)) : E_FAIL;
+    if (SUCCEEDED(hr) && p) hr = p->Select(); if (p) p->Release(); if (e) e->Release(); return hr;
+}
 int wmain(int argc, wchar_t** argv) {
+    std::cout << std::unitbuf;
     if (argc != 3 || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
     std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" " + argv[2];
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
@@ -75,6 +135,7 @@ int wmain(int argc, wchar_t** argv) {
     if (SUCCEEDED(hr)) hr = automation->CreatePropertyCondition(UIA_AutomationIdPropertyId, value, &condition);
     if (SUCCEEDED(hr)) hr = root->FindFirst(TreeScope_Descendants, condition, &element);
     bool pass = SUCCEEDED(hr) && element;
+    auto focus_events = new FocusEvents(); auto focus_subscribed = pass ? automation->AddFocusChangedEventHandler(nullptr, focus_events) : E_FAIL;
     if (pass) {
         CONTROLTYPEID type = 0; BSTR name = nullptr, label_id = nullptr; RECT bounds{}, client{};
         IUIAutomationElement* label = nullptr;
@@ -86,7 +147,13 @@ int wmain(int argc, wchar_t** argv) {
         GetClientRect(search.window, &client); POINT origin{0, 0}; ClientToScreen(search.window, &origin);
         field = field && bounds.left >= origin.x && bounds.top >= origin.y && bounds.right <= origin.x + client.right && bounds.bottom <= origin.y + client.bottom && bounds.right > bounds.left && bounds.bottom > bounds.top && !hidden;
         if (hidden) hidden->Release(); if (label) label->Release(); SysFreeString(name); SysFreeString(label_id);
+        auto structures = new StructureEvents();
+        auto structure_subscribed = automation->AddStructureChangedEventHandler(root, TreeScope_Element, nullptr, structures);
         SendMessageW(search.window, WM_APP + 80, 6, 0);
+        bool structure = SUCCEEDED(structure_subscribed) && WaitForSingleObject(structures->received, 2000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(structure_subscribed)) automation->RemoveStructureChangedEventHandler(root, structures);
+        structures->Release();
+        std::cout << "UIA10 structure event: " << (structure ? "PASS" : "FAIL") << '\n'; pass &= structure;
         auto first = find_id(automation, root, L"T005"); auto second = find_id(automation, root, L"T006");
         BSTR first_name = nullptr, second_name = nullptr, first_id = nullptr, second_id = nullptr; CONTROLTYPEID first_type = 0, second_type = 0;
         bool items = first && second && SUCCEEDED(first->get_CurrentControlType(&first_type)) && SUCCEEDED(second->get_CurrentControlType(&second_type)) &&
@@ -94,15 +161,36 @@ int wmain(int argc, wchar_t** argv) {
             SUCCEEDED(first->get_CurrentName(&first_name)) && SUCCEEDED(second->get_CurrentName(&second_name)) && first_name && second_name &&
             std::wstring(first_name) == L"共用範本" && std::wstring(first_name) == std::wstring(second_name) &&
             SUCCEEDED(first->get_CurrentAutomationId(&first_id)) && SUCCEEDED(second->get_CurrentAutomationId(&second_id)) && first_id && second_id && std::wstring(first_id) != std::wstring(second_id);
+        bool list_case = SUCCEEDED(select_id(automation, root, L"T006")) && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.sort"));
+        IUIAutomationSelectionItemPattern* list_item = nullptr; BOOL selected_item = FALSE;
+        list_case = list_case && second && SUCCEEDED(second->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&list_item))) && list_item && SUCCEEDED(list_item->get_CurrentIsSelected(&selected_item)) && selected_item;
+        if (list_item) list_item->Release();
+        list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.disable")) && select_id(automation, root, L"T008") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
+        list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.sort"));
+        bool list_focus = SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 19, 0) == 0 && WaitForSingleObject(focus_events->received, 10000) == WAIT_OBJECT_0;
+        { std::lock_guard lock(focus_events->mutex); list_focus = list_focus && focus_events->observed.size() >= 2 && focus_events->observed[0] == L"T003" && focus_events->observed[1] == L"T004"; }
+        std::cout << "UIA14 list focus: " << (list_focus ? "PASS" : "FAIL") << '\n'; pass &= list_focus;
+        pass &= patterns(automation, root);
+        list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.hundred"));
+        auto last_item = find_id(automation, root, L"T100"); BOOL last_offscreen = FALSE;
+        list_case = list_case && last_item && SUCCEEDED(last_item->get_CurrentIsOffscreen(&last_offscreen)) && last_offscreen;
+        if (last_item) last_item->Release();
+        list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.twenty"));
+        std::cout << "UIA09 list: " << (list_case ? "PASS" : "FAIL") << '\n'; pass &= list_case;
         SysFreeString(first_name); SysFreeString(second_name); SysFreeString(first_id); SysFreeString(second_id); if (first) first->Release(); if (second) second->Release();
         SendMessageW(search.window, WM_APP + 80, 5, 0);
-        pass = field && items;
+        pass = pass && field && items && patterns(automation, root);
         std::cout << "UIA01 details field=" << field << " items=" << items << '\n';
     }
     std::cout << "UIA01 tree and identity: " << (pass ? "PASS" : "FAIL") << " hr=0x" << std::hex << hr << '\n';
     if (pass) {
         auto apply = find_id(automation, root, L"form.apply");
+        bool focus = apply && SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 17, 0) == 0 && WaitForSingleObject(focus_events->apply_received, 2000) == WAIT_OBJECT_0;
+        std::cout << "UIA14 focus event: " << (focus ? "PASS" : "FAIL") << '\n'; pass &= focus;
         auto count = find_id(automation, root, L"result.count");
+        auto name_events = new PropertyEvents(); name_events->expected = UIA_NamePropertyId; name_events->string_value = true; name_events->expected_string = L"\u5957\u7528\u6b21\u6578\uff1a1";
+        PROPERTYID name_property = UIA_NamePropertyId;
+        auto name_subscribed = count ? automation->AddPropertyChangedEventHandlerNativeArray(count, TreeScope_Element, nullptr, name_events, &name_property, 1) : E_FAIL;
         IUIAutomationInvokePattern* invoke = nullptr; BSTR before = nullptr; BSTR after = nullptr;
         HRESULT get_name = count ? count->get_CurrentName(&before) : E_FAIL;
         HRESULT get_invoke = apply ? apply->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke)) : E_FAIL;
@@ -112,6 +200,9 @@ int wmain(int argc, wchar_t** argv) {
             SUCCEEDED(invoke_hr) && SUCCEEDED(get_after) && before && after &&
             std::wstring(before, SysStringLen(before)) == L"套用次數：0" &&
             std::wstring(after, SysStringLen(after)) == L"套用次數：1";
+        bool name_event = SUCCEEDED(name_subscribed) && WaitForSingleObject(name_events->received, 2000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(name_subscribed)) automation->RemovePropertyChangedEventHandler(count, name_events); name_events->Release();
+        std::cout << "Name event: " << (name_event ? "PASS" : "FAIL") << '\n'; pass &= name_event;
         std::cout << "UIA02 Invoke: " << (invoked ? "PASS" : "FAIL") << '\n'; pass &= invoked;
         if (!invoked) std::cout << "  hr " << get_name << ' ' << get_invoke << ' ' << invoke_hr << ' ' << get_after << '\n';
         SysFreeString(before); SysFreeString(after);
@@ -127,6 +218,7 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "UIA03 Toggle: " << (toggled ? "PASS" : "FAIL") << '\n'; pass &= toggled;
         if (SUCCEEDED(subscribed)) automation->RemovePropertyChangedEventHandler(notices, events);
         events->Release(); if (toggle) toggle->Release(); if (notices) notices->Release();
+        pass &= patterns(automation, root);
         auto mode = find_id(automation, root, L"form.mode");
         IUIAutomationSelectionPattern* selection = nullptr;
         IUIAutomationElementArray* selected = nullptr;
@@ -147,24 +239,37 @@ int wmain(int argc, wchar_t** argv) {
         radio = radio && SUCCEEDED(selection_subscribed) && WaitForSingleObject(selection_events->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(selection_subscribed)) automation->RemoveAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, focus_option, selection_events);
         selection_events->Release();
+        radio = radio && SUCCEEDED(invoke_id(automation, root, L"fixture.offline_disabled")) && select_id(automation, mode, L"offline") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
         std::cout << "UIA04 radio selection: " << (radio ? "PASS" : "FAIL") << '\n'; pass &= radio;
         if (select_item) select_item->Release(); if (focus_option) focus_option->Release();
         if (selected) selected->Release(); if (selection) selection->Release(); if (mode) mode->Release();
         auto region = find_id(automation, root, L"form.region");
         IUIAutomationExpandCollapsePattern* expand = nullptr;
         ExpandCollapseState expanded{};
+        auto expand_events = new PropertyEvents(); expand_events->expected = UIA_ExpandCollapseExpandCollapseStatePropertyId; expand_events->expected_value = ExpandCollapseState_Expanded;
+        PROPERTYID expand_property = UIA_ExpandCollapseExpandCollapseStatePropertyId;
+        auto expand_subscribed = region ? automation->AddPropertyChangedEventHandlerNativeArray(region, TreeScope_Element, nullptr, expand_events, &expand_property, 1) : E_FAIL;
         bool dropdown = region && SUCCEEDED(region->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, IID_PPV_ARGS(&expand))) && expand &&
-            SUCCEEDED(expand->Expand()) && SUCCEEDED(expand->get_CurrentExpandCollapseState(&expanded)) && expanded == ExpandCollapseState_Expanded &&
+            SUCCEEDED(expand->Expand()) && SUCCEEDED(expand_subscribed) && WaitForSingleObject(expand_events->received, 2000) == WAIT_OBJECT_0 && SUCCEEDED(expand->get_CurrentExpandCollapseState(&expanded)) && expanded == ExpandCollapseState_Expanded &&
             SUCCEEDED(expand->Collapse()) && SUCCEEDED(expand->get_CurrentExpandCollapseState(&expanded)) && expanded == ExpandCollapseState_Collapsed;
+        dropdown = dropdown && SUCCEEDED(expand->Expand()) && SUCCEEDED(select_id(automation, region, L"south"));
+        auto south = find_id(automation, region, L"south"); IUIAutomationSelectionItemPattern* south_pattern = nullptr; BOOL south_selected = FALSE;
+        dropdown = dropdown && south && SUCCEEDED(south->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&south_pattern))) && south_pattern && SUCCEEDED(south_pattern->get_CurrentIsSelected(&south_selected)) && south_selected;
+        if (south_pattern) south_pattern->Release(); if (south) south->Release();
         std::cout << "UIA05 dropdown: " << (dropdown ? "PASS" : "FAIL") << '\n'; pass &= dropdown;
+        if (SUCCEEDED(expand_subscribed)) automation->RemovePropertyChangedEventHandler(region, expand_events); expand_events->Release();
         if (expand) expand->Release(); if (region) region->Release();
         auto volume = find_id(automation, root, L"form.volume"); IUIAutomationRangeValuePattern* range = nullptr;
         double min = 0, max = 0, step = 0, value_now = 0;
+        auto range_events = new PropertyEvents(); range_events->expected = UIA_RangeValueValuePropertyId; range_events->double_value = true; range_events->expected_double = 65;
+        PROPERTYID range_property = UIA_RangeValueValuePropertyId;
+        auto range_subscribed = volume ? automation->AddPropertyChangedEventHandlerNativeArray(volume, TreeScope_Element, nullptr, range_events, &range_property, 1) : E_FAIL;
         bool slider = volume && SUCCEEDED(volume->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&range))) && range &&
             SUCCEEDED(range->get_CurrentMinimum(&min)) && min == 0 && SUCCEEDED(range->get_CurrentMaximum(&max)) && max == 100 &&
-            SUCCEEDED(range->get_CurrentSmallChange(&step)) && step == 5 && SUCCEEDED(range->SetValue(65)) &&
-            range->SetValue(62.5) == E_INVALIDARG && SUCCEEDED(range->get_CurrentValue(&value_now)) && value_now == 65;
+            SUCCEEDED(range->get_CurrentSmallChange(&step)) && step == 5 && SUCCEEDED(range->SetValue(65)) && SUCCEEDED(range_subscribed) && WaitForSingleObject(range_events->received, 2000) == WAIT_OBJECT_0 &&
+            range->SetValue(101) == E_INVALIDARG && range->SetValue(62.5) == E_INVALIDARG && SUCCEEDED(range->get_CurrentValue(&value_now)) && value_now == 65;
         std::cout << "UIA06 slider: " << (slider ? "PASS" : "FAIL") << '\n'; pass &= slider;
+        if (SUCCEEDED(range_subscribed)) automation->RemovePropertyChangedEventHandler(volume, range_events); range_events->Release();
         if (range) range->Release(); if (volume) volume->Release();
         const HRESULT expected[] = {S_OK, static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE), static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED),
             static_cast<HRESULT>(UIA_E_INVALIDOPERATION), static_cast<HRESULT>(UIA_E_INVALIDOPERATION), static_cast<HRESULT>(UIA_E_INVALIDOPERATION), E_INVALIDARG,
@@ -189,18 +294,47 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT hidden_hr = invoke ? invoke->Invoke() : E_FAIL;
         mapping = mapping && hidden_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
         if (invoke) invoke->Release(); if (apply) apply->Release();
+        pass &= patterns(automation, root);
+        auto progress = find_id(automation, root, L"form.title.pages.v03.progress"); IUIAutomationRangeValuePattern* progress_pattern = nullptr; BOOL readonly = FALSE; double progress_value = 0;
+        auto progress_events = new PropertyEvents(); progress_events->expected = UIA_RangeValueValuePropertyId; progress_events->double_value = true; progress_events->expected_double = 100;
+        PROPERTYID progress_property = UIA_RangeValueValuePropertyId;
+        auto progress_subscribed = progress ? automation->AddPropertyChangedEventHandlerNativeArray(progress, TreeScope_Element, nullptr, progress_events, &progress_property, 1) : E_FAIL;
+        bool progress_case = progress && SUCCEEDED(progress->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&progress_pattern))) && progress_pattern && SUCCEEDED(progress_pattern->get_CurrentIsReadOnly(&readonly)) && readonly && SUCCEEDED(progress_pattern->get_CurrentValue(&progress_value)) && progress_value == 50 && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v03.above")) && SUCCEEDED(progress_subscribed) && WaitForSingleObject(progress_events->received, 2000) == WAIT_OBJECT_0 && SUCCEEDED(progress_pattern->get_CurrentValue(&progress_value)) && progress_value == 100;
+        std::cout << "UIA11 progress: " << (progress_case ? "PASS" : "FAIL") << '\n'; pass &= progress_case;
+        if (SUCCEEDED(progress_subscribed)) automation->RemovePropertyChangedEventHandler(progress, progress_events); progress_events->Release(); if (progress_pattern) progress_pattern->Release(); if (progress) progress->Release();
+        invoke_id(automation, root, L"form.title.pages.v03.half");
         auto modal_target = find_id(automation, root, L"form.title.pages.v03.temporary"); IUIAutomationInvokePattern* modal_action = nullptr;
         if (modal_target) modal_target->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&modal_action));
+        auto window_events = new SelectionEvents(); window_events->expected = UIA_Window_WindowOpenedEventId;
+        auto window_subscribed = automation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, root, TreeScope_Subtree, nullptr, window_events);
         SendMessageW(search.window, WM_APP + 80, 7, 0);
+        bool opened_event = SUCCEEDED(window_subscribed) && WaitForSingleObject(window_events->received, 2000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(window_subscribed)) automation->RemoveAutomationEventHandler(UIA_Window_WindowOpenedEventId, root, window_events); window_events->Release();
+        std::cout << "UIA12 window opened event: " << (opened_event ? "PASS" : "FAIL") << '\n'; pass &= opened_event;
+        pass &= patterns(automation, root);
         auto dialog = find_id(automation, root, L"form.title.pages.dialog"); IUIAutomationWindowPattern* window_pattern = nullptr; BOOL is_modal = FALSE;
         bool window = dialog && SUCCEEDED(dialog->GetCurrentPatternAs(UIA_WindowPatternId, IID_PPV_ARGS(&window_pattern))) && window_pattern &&
             SUCCEEDED(window_pattern->get_CurrentIsModal(&is_modal)) && is_modal && SUCCEEDED(window_pattern->Close());
         std::cout << "UIA12 modal window: " << (window ? "PASS" : "FAIL") << '\n'; pass &= window;
         if (window_pattern) window_pattern->Release(); if (dialog) dialog->Release();
         if (window) SendMessageW(search.window, WM_APP + 80, 7, 0);
+        auto half = find_id(automation, root, L"form.title.pages.v03.half"); BOOL half_enabled = FALSE;
+        auto tabs = find_id(automation, root, L"form.title.pages.tabs");
+        bool modal_background = half && SUCCEEDED(half->get_CurrentIsEnabled(&half_enabled)) && half_enabled && tabs && select_id(automation, tabs, L"v01") == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
+        std::cout << "UIA12 background: " << (modal_background ? "PASS" : "FAIL") << '\n'; pass &= modal_background;
+        if (half) half->Release(); if (tabs) tabs->Release();
         HRESULT modal_hr = modal_action ? modal_action->Invoke() : E_FAIL;
         mapping = mapping && modal_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
         SendMessageW(search.window, WM_APP + 80, 8, 0);
+        auto tip_events = new SelectionEvents(); tip_events->expected = UIA_ToolTipOpenedEventId;
+        auto tip_subscribed = automation->AddAutomationEventHandler(UIA_ToolTipOpenedEventId, root, TreeScope_Subtree, nullptr, tip_events);
+        auto tip_setup = SendMessageW(search.window, WM_APP + 80, 18, 0);
+        bool tip_event = tip_setup == 0 && SUCCEEDED(tip_subscribed) && WaitForSingleObject(tip_events->received, 3000) == WAIT_OBJECT_0;
+        auto tip = find_id(automation, root, L"form.title.pages.v03.half.tip"); CONTROLTYPEID tip_type = 0; BSTR tip_name = nullptr;
+        bool tooltip = tip_event && tip && SUCCEEDED(tip->get_CurrentControlType(&tip_type)) && tip_type == UIA_ToolTipControlTypeId && SUCCEEDED(tip->get_CurrentName(&tip_name)) && tip_name && std::wstring(tip_name) == L"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002";
+        if (!tooltip) std::cout << "tip setup=" << tip_setup << " event=" << tip_event << " element=" << bool(tip) << " type=" << tip_type << " subscribed=" << std::hex << tip_subscribed << std::dec << '\n';
+        std::cout << "UIA13 tooltip: " << (tooltip ? "PASS" : "FAIL") << '\n'; pass &= tooltip;
+        SysFreeString(tip_name); if (tip) tip->Release(); if (SUCCEEDED(tip_subscribed)) automation->RemoveAutomationEventHandler(UIA_ToolTipOpenedEventId, root, tip_events); tip_events->Release();
         if (modal_action) modal_action->Release(); if (modal_target) modal_target->Release();
         SendMessageW(search.window, WM_APP + 80, 5, 0);
         auto invoke_id = [&](const wchar_t* id) {
@@ -239,6 +373,7 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "UIA19 removal: " << (lifecycle ? "PASS" : "FAIL") << " hr=0x" << std::hex << removed_hr << ' ' << still_removed << '\n'; pass &= lifecycle;
         if (old_id) SafeArrayDestroy(old_id); if (new_id) SafeArrayDestroy(new_id); if (temporary) temporary->Release(); if (replacement) replacement->Release();
     }
+    if (SUCCEEDED(focus_subscribed)) automation->RemoveFocusChangedEventHandler(focus_events); focus_events->Release();
     if (element) element->Release(); if (condition) condition->Release(); VariantClear(&value);
     if (root) root->Release(); if (automation) automation->Release();
     if (search.window) PostMessageW(search.window, WM_CLOSE, 0, 0);

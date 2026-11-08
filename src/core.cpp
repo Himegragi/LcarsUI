@@ -2760,6 +2760,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (n.role == Role::label) n.name = s.value;
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
+    n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
@@ -2778,7 +2779,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
-        if (!n.hidden && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
     auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };

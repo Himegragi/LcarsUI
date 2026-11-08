@@ -31,6 +31,9 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 14: lcars::detail::access(active_form->ui).renderer_failed(false); return 0;
         case 15: return static_cast<LRESULT>(active_form->handles.notices.toggle().status);
         case 16: return root_requests;
+        case 17: return static_cast<LRESULT>(active_form->handles.apply.focus().status);
+        case 18: lcars::detail::access(active_form->ui).window_active(true); return static_cast<LRESULT>(active_form->handles.progress_half.focus().status);
+        case 19: { auto r = active_form->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(active_form->ui).key_down({.key=lcars::Key::down}).status); }
         }
     }
     return CallWindowProcW(original_proc, window, msg, w, l);

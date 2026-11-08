@@ -28,6 +28,29 @@ HRESULT status_hr(Status s) {
     }
 }
 class Provider;
+// UIA can reenter the provider, so raise outside the UI thread. One draining
+// worker preserves semantic event order without blocking host shutdown.
+struct EventQueue : std::enable_shared_from_this<EventQueue> {
+    std::mutex mutex;
+    std::deque<std::function<void()>> pending;
+    bool running = false;
+    void post(std::function<void()> action) {
+        std::lock_guard lock(mutex); pending.push_back(std::move(action));
+        if (running) return;
+        running = true;
+        std::thread([self = shared_from_this()] {
+            auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            for (;;) {
+                std::function<void()> next;
+                { std::lock_guard guard(self->mutex);
+                  if (self->pending.empty()) { self->running = false; break; }
+                  next = std::move(self->pending.front()); self->pending.pop_front(); }
+                try { next(); } catch (...) { }
+            }
+            if (SUCCEEDED(init)) CoUninitialize();
+        }).detach();
+    }
+};
 struct Request {
     std::mutex mutex; std::condition_variable changed;
     enum class State { waiting, running, done, abandoned } state = State::waiting;
@@ -37,9 +60,11 @@ struct Request {
 struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
     Ui* ui; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identity_available = true;
     std::deque<std::shared_ptr<Request>> queue;
+    std::shared_ptr<EventQueue> events = std::make_shared<EventQueue>();
     std::vector<Provider*> providers;
     Subscription subscription;
     bool observing = false;
+    std::unordered_map<std::string, bool> overlay_visibility;
     HRESULT com_init = E_FAIL;
     explicit Impl(Ui& u, HWND w) : ui(&u), hwnd(w), thread(GetCurrentThreadId()) {}
     HRESULT call(std::function<HRESULT()> action) {
@@ -265,7 +290,11 @@ public:
         }); Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
     }
     HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
-    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
+    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selection_required; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
     HRESULT STDMETHODCALLTYPE Select() override { return perform(Verb::select); }
     HRESULT STDMETHODCALLTYPE AddToSelection() override { return perform(Verb::select); }
     HRESULT STDMETHODCALLTYPE RemoveFromSelection() override { return UIA_E_INVALIDOPERATION; }
@@ -333,6 +362,10 @@ void UiaBridge::Impl::observe() {
     // Each semantic observer snapshots the tree around operations, so install
     // this one only once a client has requested the window's UIA root.
     observing = true;
+    if (auto roots = ui->semantics().children({})) for (const auto& ref : *roots) {
+        auto node = ui->semantics().get(ref);
+        if (node && (node->role == Role::dialog || node->role == Role::tooltip)) overlay_visibility[ref.id] = !node->hidden;
+    }
     std::weak_ptr<Impl> weak = shared_from_this();
     subscription = ui->semantics().subscribe([weak](const SemanticEvent& event) {
         auto ctx = weak.lock(); if (!ctx || !ctx->alive) return;
@@ -341,31 +374,117 @@ void UiaBridge::Impl::observe() {
                 p->disconnecting = true; p->valid = false; UiaDisconnectProvider(p); p->disconnecting = false;
             }
         }
+        if (event.kind == SemanticEventKind::structure_changed && event.ref.id.empty()) {
+            auto roots = ctx->ui->semantics().children({});
+            if (roots) for (const auto& ref : *roots) {
+                auto n = ctx->ui->semantics().get(ref);
+                if (!n || (n->role != Role::dialog && n->role != Role::tooltip)) continue;
+                bool visible = !n->hidden;
+                auto [entry, inserted] = ctx->overlay_visibility.try_emplace(ref.id, visible);
+                bool changed = !inserted && entry->second != visible; entry->second = visible;
+                if (!changed || !UiaClientsAreListening()) continue;
+                EVENTID id = n->role == Role::dialog ? (visible ? UIA_Window_WindowOpenedEventId : UIA_Window_WindowClosedEventId)
+                    : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
+                auto p = ctx->provider(ref); p->AddRef();
+                ctx->events->post([p, id] {
+                    UiaRaiseAutomationEvent(p, id); p->Release(); });
+            }
+        }
         if (!UiaClientsAreListening()) return;
+        if (event.kind == SemanticEventKind::layout_changed) {
+            auto p = ctx->provider({}); p->AddRef();
+            ctx->events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_LayoutInvalidatedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::text_selection_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_Text_TextSelectionChangedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::text_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_Text_TextChangedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::focus_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_AutomationFocusChangedEventId);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::structure_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->events->post([p] {
+                UiaRaiseStructureChangedEvent(p, StructureChangeType_ChildrenInvalidated, nullptr, 0);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "enabled") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool enabled = n->enabled;
+            ctx->events->post([p, enabled] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "value") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); auto value = n->value;
+            ctx->events->post([p, value = std::move(value)] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_BSTR; after.bstrVal = bstr(value);
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ValueValuePropertyId, before, after); VariantClear(&after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "name") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); auto name = n->name;
+            ctx->events->post([p, name = std::move(name)] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_BSTR; after.bstrVal = bstr(name);
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_NamePropertyId, before, after); VariantClear(&after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "numeric_value") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->numeric_value) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); double value = *n->numeric_value;
+            ctx->events->post([p, value] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_R8; after.dblVal = value;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_RangeValueValuePropertyId, before, after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "expanded") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool expanded = n->expanded;
+            ctx->events->post([p, expanded] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_I4;
+                before.lVal = expanded ? ExpandCollapseState_Collapsed : ExpandCollapseState_Expanded;
+                after.lVal = expanded ? ExpandCollapseState_Expanded : ExpandCollapseState_Collapsed;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ExpandCollapseExpandCollapseStatePropertyId, before, after);
+                p->Release(); });
+        }
         if (event.kind == SemanticEventKind::property_changed && event.property == "selected") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool selected = n->selected;
-            std::thread([p, selected] {
-                auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            ctx->events->post([p, selected] {
                 VARIANT before, after; VariantInit(&before); VariantInit(&after);
                 before.vt = after.vt = VT_BOOL; before.boolVal = selected ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = selected ? VARIANT_TRUE : VARIANT_FALSE;
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_SelectionItemIsSelectedPropertyId, before, after);
                 if (selected) UiaRaiseAutomationEvent(p, UIA_SelectionItem_ElementSelectedEventId);
-                p->Release(); if (SUCCEEDED(init)) CoUninitialize();
-            }).detach();
+                p->Release(); });
         }
         if (event.kind == SemanticEventKind::property_changed && event.property == "checked") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->checked) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool checked = *n->checked;
-            std::thread([p, checked] {
-                auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            ctx->events->post([p, checked] {
                 VARIANT old_value, new_value; VariantInit(&old_value); VariantInit(&new_value);
                 old_value.vt = new_value.vt = VT_I4;
                 new_value.lVal = checked ? ToggleState_On : ToggleState_Off;
                 old_value.lVal = checked ? ToggleState_Off : ToggleState_On;
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_ToggleToggleStatePropertyId, old_value, new_value);
-                p->Release(); if (SUCCEEDED(init)) CoUninitialize();
-            }).detach();
+                p->Release(); });
         }
     });
 }
