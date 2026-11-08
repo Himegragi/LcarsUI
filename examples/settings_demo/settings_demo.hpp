@@ -30,6 +30,12 @@ class Demo {
     std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
     std::function<void()> license_selection_changed_;
     lcars::ButtonHandle undo_, redo_, revert_, save_;
+    lcars::LabelHandle load_title_, load_message_, error_title_, error_message_;
+    lcars::ButtonHandle load_ok_, error_ok_;
+    lcars::DialogHandle load_dialog_, error_dialog_;
+    std::function<std::u16string(const SettingsDocument&)> save_handler_;
+    std::u16string settings_path_;
+    bool save_failed_ = false;
     std::vector<Item> items_;
     std::u16string search_value_, item_name_source_, item_note_source_;
     std::function<void()> item_name_changed_, item_note_changed_;
@@ -64,6 +70,11 @@ public:
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region;
     lcars::SliderHandle volume;
+    void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
+    lcars::Result save() { return save_.invoke(); }
+    void load_document(const SettingsDocument&);
+    void show_load_notice(std::u16string title, std::u16string message);
+    SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
     lcars::Result set_presentation(const lcars::PresentationSettings& settings);
     explicit Demo(AboutInfo about = {});
