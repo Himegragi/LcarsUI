@@ -124,7 +124,9 @@ int main() {
         text.set_primary_family(u"Microsoft JhengHei");
         auto chosen=text.shape(u"A",18);
         if(chosen.glyphs.empty() || chosen.glyphs[0].font!=10) return 43;
+        auto clears=text.atlas_clears();
         text.set_primary_family({});
+        if (text.atlas_clears()!=clears+1) return 46;
     }
     auto layout = text.shape(u"笑😀心❤️", 18);
     if (layout.missing != 0) return 2;
@@ -242,6 +244,8 @@ int main() {
     events.clear();
     RecordingCanvas recorded(64,64,{255,255,255});
     failed_load.draw(recorded,valid,0,30,{0,0,0});
+    auto recorded_image=render_cpu(recorded.list,64,64);
+    if(recorded_image.pixels!=unsupported.pixels) return 45;
     if(std::count(events.begin(),events.end(),"text.glyph_format_unsupported")!=1 || recorded.list.commands.size()<=1) return 34;
     RecordingCanvas recorded_missing(64,64,{255,255,255});
     without_fonts.draw(recorded_missing,private_glyph,0,30,{0,0,0});
