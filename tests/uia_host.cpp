@@ -1,5 +1,6 @@
 ﻿#include "desktop_host.hpp"
 #include "edit_form.hpp"
+#include "core_internal.hpp"
 #include <windows.h>
 #include <iostream>
 namespace {
@@ -20,6 +21,16 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 6: return static_cast<LRESULT>(active_form->handles.tabs.activate({"v02"}).status);
         case 7: return static_cast<LRESULT>(active_form->handles.dialog_open.invoke().status);
         case 8: return static_cast<LRESULT>(active_form->handles.dialog_cancel.invoke().status);
+        case 9: return static_cast<LRESULT>(active_form->handles.name.read_only(true).status);
+        case 10: return static_cast<LRESULT>(active_form->handles.name.read_only(false).status);
+        case 11: {
+            auto focused = active_form->handles.name.focus();
+            if (!focused) return static_cast<LRESULT>(focused.status);
+            return static_cast<LRESULT>(lcars::detail::access(active_form->ui).composition_update(u"測", 1).status);
+        }
+        case 12: return static_cast<LRESULT>(lcars::detail::access(active_form->ui).composition_cancel().status);
+        case 13: lcars::detail::access(active_form->ui).renderer_failed(true); return 0;
+        case 14: lcars::detail::access(active_form->ui).renderer_failed(false); return 0;
         }
     }
     return CallWindowProcW(original_proc, window, msg, w, l);
@@ -40,6 +51,10 @@ int wmain(int argc, wchar_t** argv) {
         }
         auto disabled = form.ui.add_button({.id = "fixture.real_disabled", .kind = lcars::Kind::button, .label = u"Disabled"}).value.value();
         disabled.enable(false);
+        auto write = form.ui.add_button({.id = "fixture.name_write", .kind = lcars::Kind::button, .label = u"Write name"}).value.value();
+        write.bind([&form] { return form.handles.name.set_value(u"UIA test"); });
+        auto invalid = form.ui.add_button({.id = "fixture.name_invalid", .kind = lcars::Kind::button, .label = u"Invalid name"}).value.value();
+        invalid.bind([&form] { return form.handles.name.set_value(std::u16string(lcars::default_max_text_length + 1, u'x')); });
         const auto& appearance = material ? lcars::material_appearance() : lcars::web_appearance();
         lcars::DesktopOptions options; options.title = u"LcarsUI UIA test host";
         lcars::detail::DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, options, false, true);

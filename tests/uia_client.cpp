@@ -157,7 +157,25 @@ int wmain(int argc, wchar_t** argv) {
         SendMessageW(search.window, WM_APP + 80, 8, 0);
         if (modal_action) modal_action->Release(); if (modal_target) modal_target->Release();
         SendMessageW(search.window, WM_APP + 80, 5, 0);
-        if (!mapping) std::cout << "UIA15 actual disabled/hidden/modal: 0x" << std::hex << disabled_hr << ' ' << hidden_hr << ' ' << modal_hr << '\n';
+        auto invoke_id = [&](const wchar_t* id) {
+            auto target = find_id(automation, root, id); IUIAutomationInvokePattern* action = nullptr;
+            HRESULT result = target ? target->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&action)) : E_FAIL;
+            if (SUCCEEDED(result) && action) result = action->Invoke();
+            if (action) action->Release(); if (target) target->Release(); return result;
+        };
+        HRESULT invalid_hr = invoke_id(L"fixture.name_invalid");
+        auto read_only_setup = SendMessageW(search.window, WM_APP + 80, 9, 0);
+        HRESULT readonly_hr = invoke_id(L"fixture.name_write");
+        SendMessageW(search.window, WM_APP + 80, 10, 0);
+        auto composing_setup = SendMessageW(search.window, WM_APP + 80, 11, 0);
+        HRESULT busy_hr = invoke_id(L"form.apply");
+        SendMessageW(search.window, WM_APP + 80, 12, 0);
+        SendMessageW(search.window, WM_APP + 80, 13, 0);
+        HRESULT renderer_hr = invoke_id(L"form.apply");
+        SendMessageW(search.window, WM_APP + 80, 14, 0);
+        mapping = mapping && invalid_hr == E_INVALIDARG && read_only_setup == 0 && readonly_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION) &&
+            composing_setup == 0 && busy_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION) && renderer_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
+        if (!mapping) std::cout << "UIA15 actual disabled/hidden/modal/invalid/readonly/busy/renderer: 0x" << std::hex << disabled_hr << ' ' << hidden_hr << ' ' << modal_hr << ' ' << invalid_hr << ' ' << readonly_hr << ' ' << busy_hr << ' ' << renderer_hr << '\n';
         std::cout << "UIA15 status mapping: " << (mapping ? "PASS" : "FAIL") << '\n'; pass &= mapping;
         SendMessageW(search.window, WM_APP + 80, 2, 0);
         auto temporary = find_id(automation, root, L"form.title.pages.v03.temporary"); SAFEARRAY* old_id = nullptr; SAFEARRAY* new_id = nullptr;
