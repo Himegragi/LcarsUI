@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // State transitions used by both the assembled core and native X04 checks.
 // Each driver starts with a fresh Form and restores its application model afterwards.
 #include "edit_form.hpp"
@@ -196,7 +196,10 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
+        if constexpr (std::is_same_v<T, CheckboxHandle>) {
+            if (h.describe()->id == form.handles.dark.describe()->id) return bool(h.toggle());
+            return bool(form.handles.reset.invoke());
+        } else if constexpr (std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
@@ -456,3 +459,4 @@ inline const TextStateDriver name_conflict{
     [](edit_form::Form& form) { return form.handles.latest.invoke(); }
 };
 }
+
