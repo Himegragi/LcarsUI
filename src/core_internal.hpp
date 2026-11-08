@@ -55,9 +55,9 @@ public:
     void window_active(bool active);
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
-    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
-    Result open_dialog(const ComponentHandle& opener);
-    Result settle_dialog(bool confirmed);
+    DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
+    Result open_dialog(const Id& id, const ComponentHandle* opener);
+    Result settle_dialog(const Id& id, bool confirmed);
     ComponentHandle list_layout_handle(const Control& control);
     Result list_key_down(KeyPress key);
     ComponentHandle dropdown_layout_handle(const Control& control);
@@ -265,7 +265,10 @@ private:
         Id initial, fallback, opener;
         std::function<void(bool)> result;
         bool configured = false, transitioning = false;
-    } dialog_;
+    };
+    std::map<Id, DialogState, std::less<>> dialogs_;
+    Id active_dialog_;
+    bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
     struct NumericField {

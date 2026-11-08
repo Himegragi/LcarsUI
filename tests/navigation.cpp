@@ -51,7 +51,14 @@ void exercise() {
     auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();
     auto dialog = modal_ui.add_dialog("dialog", {first}, first, fallback, [](bool) {}).value.value();
     auto nav2 = modal_ui.add_navigation_list({.id="nav2",.kind=Kind::navigation_list}, {{{"a"},u"A",true,{}},{{"b"},u"B",true,{}}}, {"a"}).value.value();
+    auto second = modal_ui.add_button({.id="second",.kind=Kind::button}).value.value();
+    auto dialog2 = modal_ui.add_dialog("dialog2", {second}, second, fallback, [](bool) {});
+    check(bool(dialog2), "multiple dialogs can be registered");
     check(bool(dialog.open(fallback)), "open modal");
+    check(dialog2->open(fallback).status == Status::busy, "second dialog cannot open concurrently");
+    check(bool(dialog.settle(false)) && bool(dialog2->open()), "second dialog opens after first settles");
+    check(*dialog2->is_open() && !*dialog.is_open(), "only active dialog reports open");
+    check(bool(dialog2->settle(false)) && bool(dialog.open(fallback)), "first dialog can reopen");
     check(nav2.select({"b"}).status == Status::blocked_by_modal && nav2.selected()->id == "a", "modal blocks navigation selection");
     check(modal_ui.add_navigation_list({.id="nav",.kind=Kind::navigation_list}, {{{"x"},u"X",true,{first}}}, {"x"}).status == Status::invalid_value, "dialog member rejected");
 }
