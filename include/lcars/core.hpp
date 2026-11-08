@@ -267,6 +267,7 @@ struct NumericChange;
 class SliderHandle {
 public:
     SliderHandle() = default;
+    Result on_blur(std::function<void()> callback) const;
     Result set_value(int value) const;
     Result use_latest() const;
     Result focus() const;

@@ -34,6 +34,7 @@ public:
     static DesktopCreation create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions = {});
     RunResult run();
     Result rebuild_renderer();
+    Result set_title(std::u16string title);
     bool renderer_failed() const;
     RendererCapabilities capabilities() const;
 private:

@@ -1419,6 +1419,14 @@ Result TextHandle::focus() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->focus(id_);
 }
+Result SliderHandle::on_blur(std::function<void()> callback) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
+    else ui_->blur_callbacks_.erase(id_);
+    return {};
+}
 Result TextHandle::on_blur(std::function<void()> callback) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
