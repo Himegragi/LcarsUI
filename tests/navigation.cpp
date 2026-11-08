@@ -128,6 +128,17 @@ void exercise() {
     source.on_blur([&] { nested=second_dialog.open(); });
     source.focus();
     check(bool(first_dialog.open()) && nested.status==Status::busy && !*second_dialog.is_open(), "opening cannot reenter another dialog during blur");
+    Ui rapid_ui;
+    auto rapid_background = rapid_ui.add_button({.id="background",.kind=Kind::button}).value.value();
+    auto rapid_button = rapid_ui.add_button({.id="member",.kind=Kind::button}).value.value();
+    auto rapid_dialog = rapid_ui.add_dialog("rapid", {rapid_button}, rapid_button, rapid_background, [](bool) {}).value.value();
+    std::vector<bool> visibility_changes;
+    auto observer = rapid_ui.semantics().subscribe([&](const SemanticEvent& event) {
+        if (event.ref.id == "rapid" && event.property == "hidden" && event.hidden) visibility_changes.push_back(*event.hidden);
+    });
+    check(bool(rapid_dialog.open()) && bool(rapid_dialog.settle(false)), "rapid dialog transitions succeed");
+    rapid_ui.semantics().dispatch_events();
+    check(visibility_changes == std::vector<bool>{false, true}, "queued dialog events retain each visibility transition");
     Ui modal_ui;
     auto first = modal_ui.add_button({.id="first",.kind=Kind::button}).value.value();
     auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();

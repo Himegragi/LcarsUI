@@ -452,6 +452,15 @@ int wmain(int argc, wchar_t** argv) {
         invoke_id(automation, root, L"form.title.pages.v03.half");
         auto modal_target = find_id(automation, root, L"form.title.pages.v03.temporary"); IUIAutomationInvokePattern* modal_action = nullptr;
         if (modal_target) modal_target->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&modal_action));
+        auto rapid_open = new SelectionEvents(); rapid_open->expected = UIA_Window_WindowOpenedEventId;
+        auto rapid_close = new SelectionEvents(); rapid_close->expected = UIA_Window_WindowClosedEventId;
+        auto rapid_open_sub = automation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, root, TreeScope_Subtree, nullptr, rapid_open);
+        auto rapid_close_sub = automation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, root, TreeScope_Subtree, nullptr, rapid_close);
+        bool rapid_events = SUCCEEDED(rapid_open_sub) && SUCCEEDED(rapid_close_sub) && SendMessageW(search.window, WM_APP + 80, 25, 0) == 0 && WaitForSingleObject(rapid_open->received, 5000) == WAIT_OBJECT_0 && WaitForSingleObject(rapid_close->received, 5000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(rapid_open_sub)) automation->RemoveAutomationEventHandler(UIA_Window_WindowOpenedEventId, root, rapid_open);
+        if (SUCCEEDED(rapid_close_sub)) automation->RemoveAutomationEventHandler(UIA_Window_WindowClosedEventId, root, rapid_close);
+        rapid_open->Release(); rapid_close->Release();
+        std::cout << "UIA12 rapid window transitions: " << (rapid_events ? "PASS" : "FAIL") << '\n'; pass &= rapid_events;
         auto closed_events = new SelectionEvents(); closed_events->expected = UIA_Window_WindowClosedEventId;
         auto closed_subscribed = automation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, root, TreeScope_Subtree, nullptr, closed_events);
         auto window_events = new SelectionEvents(); window_events->expected = UIA_Window_WindowOpenedEventId;

@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <functional>
 #include <thread>
-#include <unordered_map>
 
 namespace lcars::detail {
 namespace {
@@ -71,7 +70,6 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
     std::vector<Provider*> providers;
     Subscription subscription;
     bool observing = false;
-    std::unordered_map<std::string, bool> overlay_visibility;
     HRESULT com_init = E_FAIL;
     explicit Impl(Ui& u, HWND w, std::function<const Frame&()> f) : ui(&u), frame(std::move(f)), hwnd(w), thread(GetCurrentThreadId()) {}
     HRESULT call(std::function<HRESULT()> action) {
@@ -878,10 +876,6 @@ void UiaBridge::Impl::observe() {
     // Each semantic observer snapshots the tree around operations, so install
     // this one only once a client has requested the window's UIA root.
     observing = true;
-    if (auto roots = ui->semantics().children({})) for (const auto& ref : *roots) {
-        auto node = ui->semantics().get(ref);
-        if (node && (node->role == Role::dialog || node->role == Role::tooltip)) overlay_visibility[ref.id] = !node->hidden;
-    }
     std::weak_ptr<Impl> weak = shared_from_this();
     subscription = ui->semantics().subscribe([weak](const SemanticEvent& event) {
         auto ctx = weak.lock(); if (!ctx || !ctx->alive) return;
@@ -890,23 +884,15 @@ void UiaBridge::Impl::observe() {
                 p->disconnecting = true; p->valid = false; UiaDisconnectProvider(p); p->disconnecting = false;
             }
         }
-        if (event.kind == SemanticEventKind::structure_changed && event.ref.id.empty()) {
-            auto roots = ctx->ui->semantics().children({});
-            if (roots) for (const auto& ref : *roots) {
-                auto n = ctx->ui->semantics().get(ref);
-                if (!n || (n->role != Role::dialog && n->role != Role::tooltip)) continue;
-                bool visible = !n->hidden;
-                auto [entry, inserted] = ctx->overlay_visibility.try_emplace(ref.id, visible);
-                bool changed = !inserted && entry->second != visible; entry->second = visible;
-                if (!changed || !UiaClientsAreListening()) continue;
-                EVENTID id = n->role == Role::dialog ? (visible ? UIA_Window_WindowOpenedEventId : UIA_Window_WindowClosedEventId)
-                    : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
-                auto p = ctx->provider(ref); p->AddRef();
-                ctx->overlay_events->post([p, id] {
-                    UiaRaiseAutomationEvent(p, id); p->Release(); });
-            }
-        }
         if (!UiaClientsAreListening()) return;
+        if (event.kind == SemanticEventKind::property_changed && event.property == "hidden" && event.hidden) {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || (n->role != Role::dialog && n->role != Role::tooltip)) return;
+            bool visible = !*event.hidden;
+            EVENTID id = n->role == Role::dialog ? (visible ? UIA_Window_WindowOpenedEventId : UIA_Window_WindowClosedEventId)
+                : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->overlay_events->post([p, id] { UiaRaiseAutomationEvent(p, id); p->Release(); });
+        }
         if (event.kind == SemanticEventKind::layout_changed) {
             auto p = ctx->provider({}); p->AddRef();
             ctx->text_events->post([p] {

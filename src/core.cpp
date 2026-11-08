@@ -2860,9 +2860,9 @@ void detail::UiState::semantic_diff() {
     const bool was_empty = semantic_pending_.empty();
     auto after = semantic_snapshot();
     std::vector<SemanticEvent> changes;
-    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}) {
+    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {}) {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
-        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property)});
+        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
     };
     auto find = [](const auto& nodes, const NodeRef& ref) -> const SemanticNode* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
@@ -2879,7 +2879,11 @@ void detail::UiState::semantic_diff() {
     for (const auto& node : after) {
         auto old = find(semantic_before_, node.ref);
         if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }
-        if (node.hidden != old->hidden) emit(SemanticEventKind::structure_changed, {});
+        if (node.hidden != old->hidden) {
+            if (node.role == Role::dialog || node.role == Role::tooltip)
+                emit(SemanticEventKind::property_changed, node.ref, "hidden", node.hidden);
+            emit(SemanticEventKind::structure_changed, {});
+        }
         bool focused_item = !node.ref.item && std::any_of(after.begin(), after.end(), [&](const auto& child) {
             return child.ref.id == node.ref.id && child.ref.item && child.focused;
         });

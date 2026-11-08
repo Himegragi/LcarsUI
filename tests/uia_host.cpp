@@ -36,6 +36,7 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 21: lcars::detail::access(active_form->ui).window_active(true); return 0;
         case 23: return static_cast<LRESULT>(active_form->handles.dialog_open.focus().status);
         case 24: return lcars::detail::access(active_form->ui).focused() == "form.title.pages.v03.half";
+        case 25: { auto opened = active_form->handles.dialog_open.invoke(); if (!opened) return static_cast<LRESULT>(opened.status); return static_cast<LRESULT>(active_form->handles.dialog_cancel.invoke().status); }
         case 22: { auto r = active_form->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(active_form->ui).key_down({.key=lcars::Key::down}).status); }
         case 17: { auto settings = active_form->ui.presentation(); settings.text_size = static_cast<int>(l); return static_cast<LRESULT>(active_form->ui.set_presentation(settings).status); }
         case 19: { const auto* item = lcars::detail::find_placement(active_host->frame(), "form.name"); if (!item) return -1; POINT p{item->caret_x(static_cast<unsigned>(l)), item->bounds.y + item->field.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
