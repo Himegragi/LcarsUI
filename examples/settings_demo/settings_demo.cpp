@@ -188,11 +188,11 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (auto r=refresh_items(); !r) return r;
         dirty(); return Result{};
     });
-    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=Kind::label,.value=u"???????"}).value.value();
-    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=Kind::label,.value=u"??????????????????"}).value.value();
-    close_save = ui.add_button({.id="app.close_dialog.save",.kind=Kind::button,.label=u"??"}).value.value();
-    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=Kind::button,.label=u"???"}).value.value();
-    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=Kind::button,.label=u"??"}).value.value();
+    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=Kind::label,.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
+    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=Kind::label,.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
+    close_save = ui.add_button({.id="app.close_dialog.save",.kind=Kind::button,.label=u"\u5132\u5b58"}).value.value();
+    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=Kind::button,.label=u"\u4e0d\u5132\u5b58"}).value.value();
+    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
     close_dialog = ui.add_dialog("app.close_dialog", {close_title_,close_message_,close_save,close_discard,close_cancel}, close_save, save_, [](bool) {}).value.value();
     close_cancel.bind([this] { return close_dialog.settle(false); });
     close_discard.bind([this] { auto result=close_dialog.settle(true); if (result && close_handler_) close_handler_(); return result; });

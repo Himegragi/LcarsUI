@@ -718,6 +718,18 @@ void failure_choices() {
     prompt.choice=settings_demo::SaveChoice::discard;
     test::check(settings_demo::failure_close(prompt,true,false,save) && writes==1, "discard does not save");
 }
+void failure_draft_save() {
+    settings_demo::Demo demo;
+    settings_demo::SettingsDocument saved=demo.document();
+    demo.on_save([&](const auto& document) { saved=document; return std::u16string{}; });
+    test::check(bool(demo.name.set_value(u"Draft")), "prepare draft");
+    detail::access(demo.ui).renderer_failed(true);
+    test::check(demo.is_dirty() && demo.save_failed_renderer().empty() && saved.name==u"Draft", "failure saves valid draft");
+    detail::access(demo.ui).renderer_failed(false);
+    test::check(bool(demo.name.set_value(u"")), "prepare blank draft");
+    detail::access(demo.ui).renderer_failed(true);
+    test::check(demo.blank_name_draft() && demo.save_failed_renderer().empty() && saved.name==demo.document().name, "failure preserves committed name when draft blank");
+}
 void close_invalid_name() {
     settings_demo::Demo demo; int closed=0;
     demo.on_close([&] { ++closed; });
@@ -743,7 +755,7 @@ void close_save_and_layout() {
     failed.on_close([&] { ++closed; }); failed.on_save([](const auto&) { return std::u16string(u"disk full"); });
     test::check(bool(failed.volume.set_value(65)) && !failed.request_close(), "prepare failed save");
     test::check(!failed.close_save.invoke() && closed==0 && failed.is_dirty(), "failed save keeps changes and window");
-    test::check(failed.ui.semantics().get({"app.error_dialog.ok"}).status==Status::ok, "error dialog available");
+    test::check(failed.ui.semantics().get({"app.error_dialog.ok"})->focused, "error dialog available");
 }
 void close_item_draft() {
     settings_demo::Demo demo;
@@ -763,6 +775,10 @@ void close_dialog_flow() {
     test::check(bool(demo.volume.set_value(65)), "dirty volume");
     test::check(!demo.request_close(), "dirty close is vetoed");
     test::check(demo.close_dialog.is_open().value == true, "close dialog opened");
+    test::check(demo.ui.semantics().get({"app.close_dialog.title"})->value == u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f", "close title text");
+    test::check(demo.ui.semantics().get({"app.close_dialog.save"})->name == u"\u5132\u5b58", "close save label");
+    test::check(demo.ui.semantics().get({"app.close_dialog.discard"})->name == u"\u4e0d\u5132\u5b58", "close discard label");
+    test::check(demo.ui.semantics().get({"app.close_dialog.cancel"})->name == u"\u53d6\u6d88", "close cancel label");
     test::check(bool(demo.close_cancel.invoke()), "cancel close");
     test::check(!demo.close_dialog.is_open().value.value() && closed == 0, "cancel keeps application open");
     test::check(!demo.request_close(), "second request vetoed");
@@ -832,4 +848,4 @@ void appearance_interleaved_history() {
     state.key_down({.ctrl=true,.letter=u'Z'});
     test::check(demo.ui.presentation().variant==ThemeVariant::light(), "undo intervening toggle independently");
 }
-int main() { const test::Case cases[] = {{"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

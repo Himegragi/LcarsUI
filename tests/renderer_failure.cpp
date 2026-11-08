@@ -103,9 +103,12 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
     check(bool(form.handles.name.set_value(u"workstation A")), "prepare public draft");
     RendererTestHooks hooks; hooks.gl_error_at_frame=1; hooks.fail_rebuild_once=handled;
     DesktopOptions options;
-    int callbacks=0;
+    int callbacks=0, close_calls=0;
+    options.on_close_requested=[&](Desktop&) { ++close_calls; return CloseDecision::keep_open; };
     if (handled) options.on_renderer_failed=[&](Desktop& desktop, const RendererFailure& failure) {
         ++callbacks;
+        SendMessageW(static_cast<HWND>(desktop.native_window()), WM_SYSKEYDOWN, VK_F4, 1LL << 29);
+        check(close_calls==1, "Alt F4 requests close during renderer failure");
         check(failure.kind==RendererFailureKind::frame_error, "public failure kind");
         check(bool(desktop.set_title(u"Title during failure")), "title works during renderer failure");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");

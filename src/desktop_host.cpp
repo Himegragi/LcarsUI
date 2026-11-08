@@ -600,7 +600,8 @@ void DesktopHost::after_input(const Id& focus_before) {
 }
 
 LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
-    if (renderer_failure_ && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
+    const bool close_key = msg == WM_SYSKEYDOWN && w == VK_F4 && (l & (1LL << 29));
+    if (renderer_failure_ && !close_key && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
         (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || (msg >= WM_IME_STARTCOMPOSITION && msg <= WM_IME_COMPOSITION) ||
         msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_TIMER || msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE)) return 0;
     if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));

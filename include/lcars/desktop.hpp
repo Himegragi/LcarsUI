@@ -24,9 +24,9 @@ struct DesktopOptions {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
     std::function<void(const RenderDiagnostic&)> on_diagnostic;
-    std::function<CloseDecision(Desktop&)> on_close_requested;
     DebugContext debug_context = DebugContext::build_default;
     std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;
+    std::function<CloseDecision(Desktop&)> on_close_requested;
 };
 struct DesktopCreation;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
