@@ -15,6 +15,15 @@ struct RoleProbe : detail::ComponentPaint {
     void clip(Rect) override {}
     void text(std::u16string_view, int, int, int, Color) override { record(); }
 };
+struct TextProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    std::vector<std::u16string> drawn;
+    void role(detail::PaintRole) override {}
+    void fill(Rect, Color) override {}
+    void rounded(Rect, int, Color) override {}
+    void clip(Rect) override {}
+    void text(std::u16string_view value, int, int, int, Color) override { drawn.emplace_back(value); }
+};
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -130,4 +139,45 @@ void exercise() {
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}}; return test::run("settings demo", cases); }
+void item_search_count_and_empty_state() {
+    struct SearchCase { std::u16string query, count; std::vector<std::string> ids; };
+    const std::vector<SearchCase> cases = {
+        {u"\u5171\u7528", u"\u5171 20 \u7b46\uff0c\u986f\u793a 2 \u7b46", {"T005", "T006"}},
+        {u"\u7bc4\u672c 0", u"\u5171 20 \u7b46\uff0c\u986f\u793a 7 \u7b46", {"T001", "T002", "T003", "T004", "T007", "T008", "T009"}},
+        {u"XYZ", u"\u5171 20 \u7b46\uff0c\u986f\u793a 0 \u7b46", {}},
+        {u"", u"\u5171 20 \u7b46\uff0c\u986f\u793a 20 \u7b46", {}}
+    };
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo;
+        test::check(bool(demo.nav.select({"items"})), "open items page");
+        auto& state = detail::access(demo.ui);
+        const auto status = state.describe("app.status")->value;
+        for (const auto& c : cases) {
+            std::vector<std::u16string> redraw_counts;
+            state.on_invalidate([&] { redraw_counts.push_back(state.describe("items.count")->value); });
+            test::check(bool(demo.items_search.set_value(c.query)), "search succeeds");
+            state.on_invalidate({});
+            test::check(!redraw_counts.empty() && std::all_of(redraw_counts.begin(), redraw_counts.end(), [&](const auto& value) { return value == c.count; }), "every requested redraw observes the updated count");
+            auto list = demo.items_list.describe();
+            test::check(bool(list) && list->options.size() == (c.query.empty() ? 20 : c.ids.size()), "search returns the expected number of items");
+            for (std::size_t i = 0; i < c.ids.size(); ++i)
+                test::check(list->options[i].value.id == c.ids[i], "search preserves the expected item identities");
+            test::FakeMeasure measure; ScrollState scroll;
+            auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
+            auto count = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& item) { return item.id == "items.count"; });
+            std::u16string rendered_count;
+            if (count != frame.items.end()) for (const auto& line : count->lines) rendered_count += line.text;
+            test::check(count != frame.items.end() && rendered_count == c.count, "item count text matches the search result");
+            if (c.query == u"XYZ") {
+                auto* empty = frame.find(demo.items_list);
+                test::check(empty && empty->options.empty() && empty->lines.size() == 1 && empty->lines[0].text == u"\u6c92\u6709\u9805\u76ee", "empty search displays the empty-list message");
+                TextProbe paint(state, *empty, *list, *appearance, 1, false);
+                detail::component_type(Kind::list).paint(paint);
+                test::check(std::find(paint.drawn.begin(), paint.drawn.end(), u"\u6c92\u6709\u9805\u76ee") != paint.drawn.end(), "empty-list message is painted");
+            }
+            test::check(state.describe("app.status")->value == status && !state.describe("app.undo")->enabled, "search does not mark the document changed");
+        }
+    }
+}
+
+int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}}; return test::run("settings demo", cases); }

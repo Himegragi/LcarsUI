@@ -32,7 +32,12 @@ Demo::Demo() {
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
     items_search.connect_source({[this] { return search_value_; }, [this](auto changed) { search_changed_=std::move(changed); return [this] { search_changed_={}; }; }});
-    items_search.connect_immediate([this](const TextChange& c) { search_value_=c.value; if (search_changed_) search_changed_(); return refresh_items(); });
+    items_search.connect_immediate([this](const TextChange& c) {
+        search_value_=c.value;
+        if (auto r=refresh_items(); !r) return r;
+        if (search_changed_) search_changed_();
+        return Result{};
+    });
     items_list.connect_source({[this] { return selection_; }, [this](auto changed) { selection_changed_=std::move(changed); return [this] { selection_changed_={}; }; }});
     items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
@@ -137,11 +142,17 @@ Result Demo::refresh_items() {
     std::vector<RadioOption> visible;
     for (const auto& item : items_) if (fold_ascii(item.name).find(query) != std::u16string::npos) visible.push_back({item.id,item.name});
     auto count = visible.size();
-    if (auto r=items_list.set_items(std::move(visible)); !r) return r;
+    auto old_count = items_count_.describe();
+    if (!old_count) return {old_count.status, old_count.message};
     auto number = [](std::size_t n) { auto str=std::to_string(n); return std::u16string(str.begin(),str.end()); };
     auto text = u"\u5171 " + number(items_.size()) + u" \u7b46\uff0c\u986f\u793a " + number(count) + u" \u7b46";
     if (items_.size() >= 1000) text += u"\uff08\u5df2\u9054\u4e0a\u9650\uff09";
     if (auto r=items_count_.connect_source([text] { return text; }); !r) return r;
+    if (auto r=items_list.set_items(std::move(visible)); !r) {
+        auto previous = old_count->value;
+        items_count_.connect_source([previous] { return previous; });
+        return r;
+    }
     return items_add.enable(items_.size()<1000);
 }
 void Demo::dirty() { undo_.enable(true); }
