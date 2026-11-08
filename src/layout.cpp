@@ -70,6 +70,9 @@ Node scroll(Node child, ScrollState& state, int height) {
     if (height <= 0) throw std::invalid_argument("Nested scroll height must be positive");
     Node n = scroll(std::move(child)); n.scroll_state = &state; n.scroll_height = height; return n;
 }
+Node scroll_text(LabelHandle label, ScrollState& state, int height) {
+    Node n = scroll(control(label), state, height); n.scrollable_text = true; return n;
+}
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
 Node modal(Node background, std::vector<DialogLayout> dialogs) {
@@ -365,6 +368,8 @@ struct Arranger {
         ScrollRegion region; region.state = &state; region.viewport = region.clip = r;
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
+        if (node.scrollable_text && placed.size() == 1)
+            ui.set_scrollable_text(placed.front().id, state, region.maximum, measure.line_height(placed.front().text_size));
         int offset = std::clamp(state.offset, 0, region.maximum);
         bool size_changed = state.text_size != 0 && state.text_size != ui.presentation().text_size;
         auto target_id = !reveal.empty() ? reveal : (size_changed ? std::string_view(ui.focused()) : std::string_view{});

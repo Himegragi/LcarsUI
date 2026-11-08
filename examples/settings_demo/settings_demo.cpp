@@ -1,4 +1,5 @@
 #include "settings_demo.hpp"
+#include "lcars/version.hpp"
 #include <algorithm>
 #include <cstdio>
 using namespace lcars;
@@ -9,7 +10,7 @@ std::u16string fold_ascii(std::u16string value) {
     return value;
 }
 }
-Demo::Demo() {
+Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
     title_ = ui.add_label({.id="app.page_title",.kind=Kind::label}).value.value();
@@ -27,6 +28,26 @@ Demo::Demo() {
     items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
     items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
     items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
+        about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
+        nav.add_member({"about"}, about_labels_.back());
+    }
+    about_labels_[0].connect_source([] { return u"LcarsUI 設定管理示範 0.1.0"; });
+    about_labels_[1].connect_source([] { return u"LcarsUI 框架 " + std::u16string(lcars::framework_version); });
+    about_labels_[2].connect_source([this] { return u"建置：" + about_.build; });
+    about_labels_[3].connect_source([this] { return u"外觀：" + about_.appearance; });
+    about_labels_[4].connect_source([this] { return u"繪製：" + about_.renderer; });
+    about_labels_[5].connect_source([] { return u"診斷：未選用"; });
+    about_labels_[6].connect_source([this] { return about_.settings_path; });
+    std::vector<RadioOption> license_options;
+    for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
+    licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label}).value.value();
+    licenses.connect_source({[this] { return license_selection_; }, [this](auto changed) { license_selection_changed_ = std::move(changed); return [this] { license_selection_changed_ = {}; }; }});
+    licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
+    license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
+    nav.add_member({"about"}, licenses);
+    nav.add_member({"about"}, license_text_);
     for (int n=1; n<=20; ++n) {
         char id[8], number[8]; std::snprintf(id,sizeof(id),"T%03d",n); std::snprintf(number,sizeof(number),"%02d",n);
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
@@ -231,6 +252,7 @@ void Demo::apply(const SettingsDocument& value) {
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
     ui.set_presentation(value.presentation); refresh_items(); current_=value; update_history_controls();
 }
+void Demo::set_renderer(std::u16string value) { about_.renderer = std::move(value); }
 layout::Node Demo::page() const {
     using namespace layout;
     std::vector<Node> content{control(title_,24)};
@@ -240,6 +262,11 @@ layout::Node Demo::page() const {
     if (nav.selected()->id == "items") {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
+    }
+    if (nav.selected()->id == "about") {
+        for (auto label : about_labels_) content.push_back(control(label));
+        content.push_back(control(licenses));
+        content.push_back(scroll_text(license_text_, license_scroll, 200));
     }
     content.push_back(control(status_));
     content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));

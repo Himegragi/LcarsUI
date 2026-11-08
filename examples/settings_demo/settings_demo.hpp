@@ -12,6 +12,11 @@ struct SettingsDocument {
     lcars::PresentationSettings presentation;
     bool operator==(const SettingsDocument&) const = default;
 };
+struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
+struct AboutInfo {
+    std::vector<AboutLicense> licenses;
+    std::u16string appearance, renderer, settings_path, build;
+};
 class Demo {
     std::u16string name_value_ = u"測試使用者";
     bool notices_value_ = true;
@@ -19,6 +24,11 @@ class Demo {
     int volume_value_ = 40;
     std::function<void()> name_changed_, notices_changed_, mode_changed_, region_changed_, volume_changed_;
     lcars::LabelHandle title_, status_, name_label_, name_help_, name_error_;
+    std::vector<lcars::LabelHandle> about_labels_;
+    lcars::LabelHandle license_text_;
+    AboutInfo about_;
+    std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
+    std::function<void()> license_selection_changed_;
     lcars::ButtonHandle undo_, redo_, revert_, save_;
     std::vector<Item> items_;
     std::u16string search_value_, item_name_source_, item_note_source_;
@@ -42,9 +52,11 @@ class Demo {
 public:
     lcars::Ui ui;
     lcars::ScrollState scroll;
+    mutable lcars::ScrollState license_scroll;
     lcars::NavigationListHandle nav;
     lcars::TextHandle name, items_search;
     lcars::ListHandle items_list;
+    lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
     lcars::TextHandle item_name, item_note;
     lcars::DialogHandle item_dialog, delete_dialog;
@@ -52,9 +64,10 @@ public:
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region;
     lcars::SliderHandle volume;
-    Demo();
     void on_dirty_changed(std::function<void(bool)> callback);
     lcars::Result set_presentation(const lcars::PresentationSettings& settings);
+    explicit Demo(AboutInfo about = {});
+    void set_renderer(std::u16string value);
     lcars::layout::Node page() const;
 };
 }

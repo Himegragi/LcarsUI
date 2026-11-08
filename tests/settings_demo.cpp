@@ -1,5 +1,6 @@
 #include "settings_demo.hpp"
 #include "lcars/semantics.hpp"
+#include "lcars/version.hpp"
 #include <algorithm>
 #include "check.hpp"
 #include "core_internal.hpp"
@@ -511,4 +512,70 @@ void history_toggle_undo() {
     test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "undo shortcut");
     test::check(*demo.notices.draft(), "undo restores notices");
 }
-int main() { const test::Case cases[] = {{"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+void about_page_content() {
+    settings_demo::AboutInfo info;
+    info.appearance = u"Minimal Web"; info.renderer = u"GL version — renderer";
+    info.build = u"123456789abc、Release"; info.settings_path = u"C:\\settings.json";
+    settings_demo::Demo demo(info);
+    test::check(bool(demo.nav.select({"about"})), "open About");
+    auto& tree = demo.ui.semantics();
+    for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path", "about.licenses", "about.license_text"}) {
+        test::check(bool(tree.get({id})), (std::string("About component exists: ") + id).c_str());
+    }
+    for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
+        auto node = tree.get({id});
+        test::check(node && !node->value.empty(), (std::string("About value: ") + id).c_str());
+    }
+    test::check(tree.get({"about.renderer"})->value == u"繪製：GL version — renderer", "renderer reports supplied capabilities");
+    test::check(tree.get({"about.framework"})->value.find(lcars::framework_version) != std::u16string::npos, "framework version is shown");
+}
+void about_licenses() {
+    settings_demo::AboutInfo info;
+    info.licenses = {{{"lcars"}, u"framework", u"framework license"}, {{"freetype"}, u"freetype", u"freetype license"}, {{"harfbuzz"}, u"harfbuzz", u"harfbuzz license"}, {{"khronos"}, u"khronos", u"khronos license"}, {{"json"}, u"json", u"json license"}};
+    settings_demo::Demo demo(info);
+    test::check(bool(demo.nav.select({"about"})), "open About");
+    for (const auto& license : info.licenses) {
+        test::check(bool(demo.licenses.select(license.id)), "select license");
+        auto text = demo.ui.semantics().get({"about.license_text"});
+        test::check(text && text->value == license.text, "selected license text is exposed");
+    }
+}
+void about_keyboard_scroll() {
+    settings_demo::AboutInfo info;
+    info.licenses = {{{"lcars"}, u"framework", std::u16string(5000, u'x')}};
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo(info); test::FakeMeasure measure;
+        demo.nav.select({"about"});
+        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        auto& state = detail::access(demo.ui);
+        demo.licenses.focus();
+        state.key_down({.key=Key::tab});
+        test::check(state.focused() == "about.license_text", "overflowing license receives Tab focus");
+        auto semantic = demo.ui.semantics().get({"about.license_text"});
+        test::check(semantic && semantic->role == Role::label && semantic->focusable, "license remains semantic text while focusable");
+        demo.licenses.focus();
+        test::check(bool(demo.ui.semantics().perform({"about.license_text"}, Verb::focus)), "semantic focus reaches overflowing license");
+        auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.license_text"; });
+        test::check(item != frame.items.end(), "license has placement");
+        auto description = state.describe("about.license_text");
+        RoleProbe paint(state, *item, *description, *appearance, 1.f, true);
+        detail::component_type(Kind::label).paint(paint);
+        test::check(paint.focused, "focused license draws a focus indicator");
+        state.key_down({.key=Key::down});
+        test::check(demo.license_scroll.offset > 0, "Down scrolls license");
+        state.key_down({.key=Key::end});
+        frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const auto& r) { return r.state == &demo.license_scroll; });
+        test::check(region != frame.regions.end() && region->offset == region->maximum, "End reveals last line");
+        state.key_down({.key=Key::home});
+        test::check(demo.license_scroll.offset == 0, "Home reveals first line");
+        settings_demo::AboutInfo short_info;
+        short_info.licenses = {{{"lcars"}, u"framework", u"short text"}};
+        settings_demo::Demo short_demo(short_info);
+        short_demo.nav.select({"about"});
+        arrange(short_demo.page(), short_demo.ui, *appearance, measure, 960, 720, 1.f, short_demo.scroll);
+        auto short_label = short_demo.ui.semantics().get({"about.license_text"});
+        test::check(short_label && !short_label->focusable, "fitting license stays out of Tab order");
+    }
+}
+int main() { const test::Case cases[] = {{"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
