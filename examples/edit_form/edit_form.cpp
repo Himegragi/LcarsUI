@@ -212,6 +212,12 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
             auto settings = ui.presentation(); settings.variant = change.value ? ThemeVariant::dark() : ThemeVariant::light();
             return ui.set_presentation(settings);
         });
+        handles.compact = ui.add_checkbox({.id = prefix + "v04.compact", .kind = Kind::checkbox, .label = u"\u7dfb\u6e4a"}).value.value();
+        handles.compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
+        handles.compact.connect_immediate([this](const BoolChange& change) {
+            auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
+            return ui.set_presentation(settings);
+        });
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
@@ -231,7 +237,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.dark, handles.preview}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.dark, handles.compact, handles.preview}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
@@ -399,6 +405,7 @@ layout::Node Form::page() const {
         items.push_back(control(handles.v04_title, 24));
         items.push_back(control(handles.text_size));
         items.push_back(control(handles.dark));
+        items.push_back(control(handles.compact));
         items.push_back(control(handles.preview));
         if (clipping_fixture) items.push_back(column({}, 0, 700));
         content = layout::scroll(column(std::move(items), 16, 24));

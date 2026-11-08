@@ -20,22 +20,26 @@ class Web final : public Appearance {
     }
     int radius() const override { return 6; }
     // Label above an outlined box; description and error stacked below it.
-    FieldLayout arrange_field(int width, const FieldText& text, float scale) const override {
+    FieldLayout arrange_field(int width, const FieldText& text, float scale) const override { return arrange_field(width, text, scale, Density::standard); }
+    FieldLayout arrange_field(int width, const FieldText& text, float scale, Density density) const override {
+        bool compact = density == Density::compact;
         auto d = [&](int v) { return static_cast<int>(std::lround(v * scale)); };
         FieldLayout f;
         int y = 0;
         f.label = {0, y, width, text.label};
-        y += text.label + (text.label ? d(6) : 0);
-        f.surface = {0, y, width, text.editor + d(20)};
-        f.editor = {d(12), y + d(10), width - d(24), text.editor};
+        y += text.label + (text.label ? d(compact ? 4 : 6) : 0);
+        f.surface = {0, y, width, text.editor + d(compact ? 10 : 20)};
+        f.editor = {d(12), y + d(compact ? 5 : 10), width - d(24), text.editor};
         y += f.surface.h;
-        if (text.description) { y += d(6); f.description = {0, y, width, text.description}; y += text.description; }
-        if (text.error) { y += d(6); f.error = {0, y, width, text.error}; y += text.error; }
+        if (text.description) { y += d(compact ? 4 : 6); f.description = {0, y, width, text.description}; y += text.description; }
+        if (text.error) { y += d(compact ? 4 : 6); f.error = {0, y, width, text.error}; y += text.error; }
         f.height = y;
         return f;
     }
     int button_height(int line_height, float scale) const override { return line_height + static_cast<int>(std::lround(16 * scale)); }
     int button_padding(float scale) const override { return static_cast<int>(std::lround(16 * scale)); }
+    int button_height(int line_height, float scale, Density density) const override { return line_height + static_cast<int>(std::lround((density == Density::compact ? 8 : 16) * scale)); }
+    int button_padding(float scale, Density density) const override { return static_cast<int>(std::lround((density == Density::compact ? 12 : 16) * scale)); }
 };
 }
 const Appearance& web_appearance() { static Web skin; return skin; }

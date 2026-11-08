@@ -20,6 +20,7 @@ using test::check;
 
 namespace {
 edit_form::Ids ids = edit_form::default_ids();
+Density behavior_density = Density::standard;
 const Appearance* appearance = &web_appearance();  // every case is rerun under each appearance
 
 edit_form::Ids alternate_ids() {
@@ -208,6 +209,63 @@ void presentation_size_scales_explicit_and_default_text() {
     check(bool(ui.set_presentation(settings)), "Size accepted");
     auto frame = arrange(root, ui, *appearance, measure, 640, 480, 1.f, scroll);
     check(frame.find(body)->text_size == 28 && frame.find(title)->text_size == 42, "Body and explicit title scale proportionally");
+}
+
+void compact_density_reflows_fields() {
+    Ui ui;
+    auto field = ui.add_text({.id = "density.field", .kind = Kind::text, .label = u"Name"}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    auto root = layout::control(field);
+    auto standard = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto settings = ui.presentation(); settings.density = Density::compact;
+    check(bool(ui.set_presentation(settings)), "Compact density accepted");
+    auto compact = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
+    check(compact.find(field)->bounds.h < standard.find(field)->bounds.h, "Compact field is shorter");
+    check(compact.find(field)->text_size == standard.find(field)->text_size, "Density preserves text size");
+}
+
+void compact_showcase_has_smaller_nonoverlapping_layout() {
+    edit_form::Form form(ids, true);
+    test::FakeMeasure measure;
+    auto standard = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+    auto settings = form.ui.presentation(); settings.density = Density::compact;
+    check(bool(form.ui.set_presentation(settings)), "Compact accepted");
+    auto compact = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+    check(compact.extent < standard.extent, "DN01 compact reduces V01 content height");
+    for (std::size_t i = 0; i < compact.items.size(); ++i) {
+        const auto& item = compact.items[i];
+        for (const auto& old : standard.items) if (old.id == item.id)
+            check(old.text_size == item.text_size, "DN01 text size is unchanged");
+        for (std::size_t j = i + 1; j < compact.items.size(); ++j) {
+            auto overlap = intersect(item.bounds, compact.items[j].bounds);
+            check(overlap.w == 0 || overlap.h == 0, "DN01 components do not overlap");
+        }
+    }
+}
+
+void compact_targets_meet_minimum_height() {
+    edit_form::Form form(ids, true);
+    auto settings = form.ui.presentation(); settings.density = Density::compact; settings.text_size = 12;
+    check(bool(form.ui.set_presentation(settings)), "Compact 12 DIP accepted");
+    test::FakeMeasure measure;
+    for (const char* page : {"v01", "v02", "v03", "v04"}) {
+        form.handles.tabs.activate({page});
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+        for (const auto& item : frame.items) {
+            if (item.kind == Kind::label || item.kind == Kind::progress) continue;
+            check(item.bounds.h >= 24, "Clickable component is at least 24 DIP high");
+            for (auto option : item.options) check(option.h >= 24, "Clickable row is at least 24 DIP high");
+        }
+    }
+}
+
+void v04_compact_checkbox_applies_density() {
+    edit_form::Form form(ids, true);
+    form.handles.tabs.activate({"v04"});
+    check(bool(form.handles.compact.toggle()), "Compact checkbox toggles");
+    check(form.ui.presentation().density == Density::compact, "Checkbox applies compact density");
+    check(bool(form.handles.compact.toggle()), "Compact checkbox toggles back");
+    check(form.ui.presentation().density == Density::standard, "Checkbox restores standard density");
 }
 
 void v04_slider_updates_global_text_size() {
@@ -496,6 +554,8 @@ void region_is_in_the_form_confirmation_group() {
 
 void all_five_fields_apply_once() {
     edit_form::Form form(ids);
+    auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
+    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
     form.handles.name.set_value(u"\u5de5\u4f5c\u7ad9 A");
     form.handles.notices.toggle(); form.handles.mode.select({"focus"});
     form.handles.region.select({"south"}); form.handles.volume.set_value(65);
@@ -737,6 +797,8 @@ void checkbox_and_radio_are_applied_together() {
 
 void v02_empty_single_and_navigation() {
     edit_form::Form form(ids, true);
+    auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
+    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
     form.handles.tabs.activate({"v02"});
     auto& page = *form.list;
     auto& h = page.handles;
@@ -2087,6 +2149,8 @@ void dialog_cancel_preserves_progress() {
 
 void dialog_confines_input_and_confirms_once() {
     edit_form::Form form(ids, true);
+    auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
+    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
     auto& h = form.handles;
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
@@ -2294,6 +2358,11 @@ int main() {
         {"PS08 large text", ps08_large_text_wraps_without_overlap},
         {"PV02 theme geometry", theme_switch_preserves_showcase_geometry},
         {"PV01 palette contrast", theme_variants_have_accessible_palettes},
+        {"DN01 V01 layout", compact_showcase_has_smaller_nonoverlapping_layout},
+        {"DN02 compact targets", compact_targets_meet_minimum_height},
+        {"DN01 compact field reflows", compact_density_reflows_fields},
+        {"V04 compact checkbox", v04_compact_checkbox_applies_density},
+
         {"V04 size slider", v04_slider_updates_global_text_size},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
@@ -2371,6 +2440,16 @@ int main() {
         failed |= test::run(each == &web_appearance() ? "edit_form (web, shipped IDs)" : "edit_form (material, shipped IDs)", cases);
         ids = alternate_ids();
         failed |= test::run(each == &web_appearance() ? "edit_form (web, alternate IDs)" : "edit_form (material, alternate IDs)", cases);
+    }
+    behavior_density = Density::compact;
+    for (const auto* each : {&web_appearance(), &material_appearance()}) {
+        appearance = each; ids = edit_form::default_ids();
+        const test::Case compact_cases[] = {
+            {"DN03 F01", all_five_fields_apply_once},
+            {"DN03 L02", v02_empty_single_and_navigation},
+            {"DN03 P02", dialog_confines_input_and_confirms_once},
+        };
+        failed |= test::run("compact behavior", compact_cases);
     }
     return failed;
 }
