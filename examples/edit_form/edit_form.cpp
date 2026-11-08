@@ -209,13 +209,13 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             if (resolve_font_) return resolve_font_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
         };
-        std::vector<RadioOption> fonts = {{{"default"}, u"??"}};
+        std::vector<RadioOption> fonts = {{{"default"}, u"\u9810\u8a2d"}};
         for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
             bool available = resolve(family).requested_available;
-            fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"?????"), available});
+            fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available});
         }
-        fonts.push_back({{"missing"}, u"??????????"});
-        handles.font = ui.add_dropdown({.id = prefix + "v04.font", .kind = Kind::dropdown, .label = u"??"}, std::move(fonts)).value.value();
+        fonts.push_back({{"missing"}, u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09"});
+        handles.font = ui.add_dropdown({.id = prefix + "v04.font", .kind = Kind::dropdown, .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
         handles.font.connect_source({[this] {
             const auto& f = ui.presentation().font_family;
             return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
@@ -231,17 +231,23 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.font_status.connect_source([this, resolve] {
             auto result = resolve(ui.presentation().font_family);
             auto size = std::to_string(ui.presentation().text_size);
-            return u"?????" + result.primary + (result.requested_available ? u"" : u"???????") + u"????? " + std::u16string(size.begin(), size.end()) +
-                (ui.presentation().variant == ThemeVariant::dark() ? u"???" : u"???") +
-                (ui.presentation().density == Density::compact ? u"???" : u"???");
+            return u"\u76ee\u524d\u72c0\u614b\uff1a" + result.primary + (result.requested_available ? u"" : u"\uff08\u5df2\u6539\u7528\u9810\u8a2d\uff09") + u"\uff0c\u6587\u5b57\u5927\u5c0f " + std::u16string(size.begin(), size.end()) +
+                (ui.presentation().variant == ThemeVariant::dark() ? u"\uff0c\u6df1\u8272" : u"\uff0c\u6dfa\u8272") +
+                (ui.presentation().density == Density::compact ? u"\uff0c\u7dca\u6e4a" : u"\uff0c\u6a19\u6e96");
         });
-        handles.reset_v04 = ui.add_button({.id = prefix + "v04.reset", .kind = Kind::button, .label = u"?? V04"}).value.value();
+        handles.reset_v04 = ui.add_button({.id = prefix + "v04.reset", .kind = Kind::button, .label = u"\u91cd\u8a2d V04"}).value.value();
         bind_action(handles.reset_v04, [this] {
             auto result = ui.set_presentation({}); if (!result) return result;
-            if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_();
-            handles.font.use_latest(); handles.text_size.use_latest(); return Result{};
+            if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_();
+            handles.font.use_latest(); handles.text_size.use_latest(); handles.dark.use_latest(); return Result{};
         });
         handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
+        handles.dark = ui.add_checkbox({.id = prefix + "v04.dark", .kind = Kind::checkbox, .label = u"\u6df1\u8272"}).value.value();
+        handles.dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](std::function<void()> changed) { dark_changed_ = std::move(changed); return [this] { dark_changed_ = {}; }; }});
+        handles.dark.connect_immediate([this](const BoolChange& change) {
+            auto settings = ui.presentation(); settings.variant = change.value ? ThemeVariant::dark() : ThemeVariant::light();
+            auto result = ui.set_presentation(settings); if (result && dark_changed_) dark_changed_(); return result;
+        });
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
@@ -261,7 +267,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.preview, handles.font_status, handles.reset_v04}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.dark, handles.preview, handles.font_status, handles.reset_v04}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
@@ -422,7 +428,7 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.font), control(handles.text_size), control(handles.preview), control(handles.font_status), control(handles.reset_v04)}, 16, 24));
+    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.font), control(handles.text_size), control(handles.dark), control(handles.preview), control(handles.font_status), control(handles.reset_v04)}, 16, 24));
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));

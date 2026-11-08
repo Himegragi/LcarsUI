@@ -3,6 +3,7 @@
 // Applications use lcars/core.hpp and typed handles instead.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
+#include "lcars/semantics.hpp"
 #include <array>
 #include <map>
 #include <set>
@@ -13,6 +14,7 @@ using Id = std::string;
 namespace detail {
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
+    friend class lcars::SemanticTree;
 public:
     using Action = std::function<Result()>;
     // Nest public operations and callbacks; structural changes commit after the outermost returns.
@@ -107,6 +109,8 @@ public:
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
     std::optional<Semantics> describe(std::string_view id) const;
+    void semantic_frame(const Frame& frame);
+    std::string semantic_page(std::string_view id) const;
     void frame_visibility(std::map<Id, bool, std::less<>> visibility);
     // Current display text: field content, or label text (bound provider wins over static value).
     std::u16string text(std::string_view id) const;
@@ -266,6 +270,11 @@ private:
     Id popup_source_;
     std::map<Id, bool, std::less<>> visibility_;
     bool has_frame_visibility_ = false;
+    std::map<Id, Rect, std::less<>> semantic_bounds_;
+    std::map<Id, std::vector<Rect>, std::less<>> semantic_options_;
+    std::vector<Id> semantic_order_;
+    std::map<Id, Rect, std::less<>> semantic_positions_;
+    std::set<Id, std::less<>> diagnosed_names_;
     struct DialogState {
         std::vector<Id> members;
         Id initial, fallback, opener;

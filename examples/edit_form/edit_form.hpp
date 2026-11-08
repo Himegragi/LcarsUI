@@ -46,7 +46,7 @@ private:
     std::function<lcars::FontResolution(std::u16string_view)> resolve_font_;
     bool pages_ = false;
     std::array<int, 4> page_offsets_{};
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_, font_changed_, text_size_changed_;
+    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_, font_changed_, text_size_changed_, dark_changed_;
 public:
     explicit Form(Ids ids = default_ids(), bool pages = false,
                   std::function<lcars::FontResolution(std::u16string_view)> resolve_font = {});
@@ -58,6 +58,7 @@ public:
         lcars::LabelHandle v04_title, font_status;
         lcars::DropdownHandle font;
         lcars::ButtonHandle reset_v04;
+        lcars::CheckboxHandle dark;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
         lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;

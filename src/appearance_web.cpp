@@ -8,6 +8,12 @@ class Web final : public Appearance {
         return {{245,247,250},{255,255,255},{255,255,255},{24,33,48},{91,105,126},
                 {211,218,228},{30,79,187},{255,255,255},{200,220,255},{172,37,49}};
     }
+    bool supports(const ThemeVariant& variant) const override { return variant == ThemeVariant::light() || variant == ThemeVariant::dark(); }
+    Palette palette(const ThemeVariant& variant) const override {
+        if (variant == ThemeVariant::dark()) return {{16,19,25},{24,28,36},{30,35,45},{231,235,241},{156,166,182},
+                {66,75,92},{122,166,255},{12,22,44},{44,72,128},{255,128,128},{0,0,0},160};
+        return palette();
+    }
     FieldParts field(Rect b, int size) const override {
         return {{b.x,b.y,b.w,size+8}, {b.x,b.y+size+13,b.w,size+24},
                 {b.x+12,b.y+size+23,b.w-24,size+4},false};

@@ -262,7 +262,7 @@ void DesktopHost::paint() {
     float s = scale();
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
-    RecordingCanvas recording(r.right, r.bottom, appearance_.palette().background);
+    RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
     paint_observations_.clear();
     recording.count_ink = observe_paint_;
     draw(recording, frame_, s, GetFocus() == window_);
@@ -285,7 +285,7 @@ Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, s
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    RecordingCanvas recording(width, height, appearance_.palette().background);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
     draw(recording, frame, s, true);
     auto image = render_cpu(recording.list, width, height);
     if (copy) *copy = image;
@@ -308,16 +308,16 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
     auto frame = arrange(width, height, s);
-    Canvas old(width, height, appearance_.palette().background);
+    Canvas old(width, height, appearance_.palette(ui_.presentation().variant).background);
     draw(old, frame, s, true);
-    RecordingCanvas recording(width, height, appearance_.palette().background);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
     draw(recording, frame, s, true);
     return old.pixels == render_cpu(recording.list, width, height).pixels;
 }
 
 template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
-    const auto p = appearance_.palette();
+    const auto p = appearance_.palette(ui_.presentation().variant);
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
         Target& canvas;
@@ -372,10 +372,10 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
     if (frame.modal) {
         canvas.clip = whole;
         if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {0, 0, 0, 110});
+            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {p.scrim.r, p.scrim.g, p.scrim.b, p.scrim_alpha});
         } else {
             for (int y = 0; y < canvas.height; ++y)
-                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, {0, 0, 0}, 110);
+                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, p.scrim, p.scrim_alpha);
         }
         canvas.rounded(frame.modal_panel, static_cast<int>(appearance_.radius() * s), p.surface);
     }

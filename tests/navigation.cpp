@@ -1,4 +1,5 @@
 #include "lcars/core.hpp"
+#include "lcars/semantics.hpp"
 #include "core_internal.hpp"
 #include "check.hpp"
 using namespace lcars;
@@ -8,6 +9,10 @@ void exercise() {
     auto nav = ui.add_navigation_list({.id="nav", .kind=Kind::navigation_list},
         {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}, {{"three"}, u"Three", false, {}}}, {"one"});
     check(bool(nav), "navigation list is created");
+    auto semantic = ui.semantics().get({"nav"});
+    auto option = ui.semantics().get({"nav", OptionValue{"one"}});
+    check(semantic && semantic->role == Role::list && option && option->role == Role::list_item && option->selected,
+          "navigation list exposes list and list-item semantics");
     auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
     check(bool(nav->add_member({"one"}, field)), "attach member");
     check(nav->selected()->id == "one", "initial page is selected");

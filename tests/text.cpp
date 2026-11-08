@@ -142,7 +142,7 @@ int main() {
     }
     if (catalog.contains(u"MingLiU")) {
         text.set_primary_family(u"MingLiU");
-        auto ming = text.shape(u"?A", 24);
+        auto ming = text.shape(u"\u4e2dA", 24);
         if (ming.missing || ming.glyphs.size() != 2 || ming.glyphs[0].font != 10 || ming.glyphs[1].font != 10 || !ming.glyphs[0].face_id || ming.glyphs[0].face_id != ming.glyphs[1].face_id) return 47;
         text.set_primary_family(u"Segoe UI");
         auto other = text.shape(u"A", 24);
