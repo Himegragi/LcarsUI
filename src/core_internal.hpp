@@ -131,6 +131,7 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // Native input methods must finalize before core changes the focused editing target.
@@ -342,6 +343,8 @@ private:
     Result edit_key(KeyPress key);
     Result notify();
     std::function<void()> changed_, invalidate_;
+    struct TextScroll { ScrollState* state; int maximum, line_height; };
+    std::map<std::string, TextScroll, std::less<>> text_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
