@@ -396,7 +396,7 @@ void hs01_step_matrix() {
         {"text size",none,[](auto& d){ auto p=d.ui.presentation(); p.text_size=28; d.set_presentation(p); },1},
         {"dark",none,[](auto& d){ auto p=d.ui.presentation(); p.variant=ThemeVariant::dark(); d.set_presentation(p); },1},
         {"compact",none,[](auto& d){ auto p=d.ui.presentation(); p.density=Density::compact; d.set_presentation(p); },1},
-        {"reset presentation",[](auto& d){ auto p=d.ui.presentation(); p.font_family=u"Consolas"; p.text_size=28; p.variant=ThemeVariant::dark(); p.density=Density::compact; d.set_presentation(p); },[](auto& d){ d.set_presentation(PresentationSettings{}); },2},
+        {"reset presentation",[](auto& d){ auto p=d.ui.presentation(); p.font_family=u"Consolas"; d.set_presentation(p); p.text_size=28; d.set_presentation(p); p.variant=ThemeVariant::dark(); d.set_presentation(p); p.density=Density::compact; d.set_presentation(p); },[](auto& d){ d.set_presentation(PresentationSettings{}); },5},
         {"revert",[](auto& d){ d.notices.toggle(); },[](auto& d){ detail::access(d.ui).invoke("app.revert"); },2}
     };
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
