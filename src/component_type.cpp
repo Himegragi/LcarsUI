@@ -463,7 +463,6 @@ public:
     bool has_activate_operation() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
 };
-// TODO(#35): migrate these paints to draw-list selection and focus roles.
 class NavigationList final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected}); }
@@ -483,7 +482,7 @@ public:
             int y = static_cast<int>(i) * height;
             c.placement.options.push_back({0, y, c.width, height});
             auto label = semantic.options[i].label;
-            if (!semantic.options[i].enabled) label += u"????";
+            if (!semantic.options[i].enabled) label += u"\uff08\u505c\u7528\uff09";
             c.placement.lines.push_back({{scaled(c.scale, 16), y + (height-line)/2, c.width-scaled(c.scale, 32), line}, std::move(label)});
         }
         c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.options.size())};
@@ -497,10 +496,12 @@ public:
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             if (option.selected) {
                 int radius = material ? rect.h / 2 : scaled(c.scale, 6);
-                if (c.semantics.focused) c.rounded(rect, radius, palette.accent);
+                if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.rounded(rect, radius, palette.accent); });
                 auto inset = c.semantics.focused ? scaled(c.scale, 2) : 0;
-                c.rounded({rect.x+inset, rect.y+inset, rect.w-2*inset, rect.h-2*inset}, std::max(0, radius-inset), palette.selection);
-                if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);
+                marked(c, PaintRole::selection, [&] {
+                    c.rounded({rect.x+inset, rect.y+inset, rect.w-2*inset, rect.h-2*inset}, std::max(0, radius-inset), palette.selection);
+                    if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);
+                });
             }
             const auto& line = c.placement.lines[i];
             c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);

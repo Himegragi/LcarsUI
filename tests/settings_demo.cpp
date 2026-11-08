@@ -2,7 +2,19 @@
 #include "check.hpp"
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
+#include "component_type.hpp"
 using namespace lcars;
+struct RoleProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    detail::PaintRole current = detail::PaintRole::content;
+    bool selected = false, focused = false;
+    void role(detail::PaintRole value) override { current = value; }
+    void record() { selected |= current == detail::PaintRole::selection; focused |= current == detail::PaintRole::focus_indicator; }
+    void fill(Rect, Color) override { record(); }
+    void rounded(Rect, int, Color) override { record(); }
+    void clip(Rect) override {}
+    void text(std::u16string_view, int, int, int, Color) override { record(); }
+};
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -11,11 +23,11 @@ void exercise() {
     test::check(detail::access(demo.ui).focused() == "app.nav", "navigation initially focused");
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(detail::access(demo.ui).focused() == "general.name", "tab enters general page");
-    demo.name.set_value(u"??? A");
+    demo.name.set_value(u"\u5de5\u4f5c\u7ad9 A");
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(!demo.name.describe()->source_conflict, "confirmed name agrees with source");
     test::check(bool(demo.name.focus()), "name can be edited again");
-    test::check(bool(demo.name.set_value(u"??? B")), "second edit succeeds");
+    test::check(bool(demo.name.set_value(u"\u5de5\u4f5c\u7ad9 B")), "second edit succeeds");
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(!demo.name.describe()->source_conflict, "second confirmation agrees with source");
     demo.volume.set_value(45);
@@ -28,6 +40,11 @@ void exercise() {
         auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
         auto* item = frame.find(demo.nav);
         test::check(item && item->options.size() == 4 && item->bounds.w >= 160, "four navigation rows retain natural width");
+        demo.nav.focus();
+        auto semantic = demo.nav.describe();
+        RoleProbe probe(detail::access(demo.ui), *item, *semantic, *appearance, 1, true);
+        detail::component_type(Kind::navigation_list).paint(probe);
+        test::check(probe.selected && probe.focused, "selected and focused rows carry draw roles");
         for (std::size_t i=0; i<item->options.size(); ++i) {
             const auto& r = item->options[i];
             test::check(frame.option_at(*item, r.x+r.w/2, r.y+r.h/2) == i, "row center hits painted row");
