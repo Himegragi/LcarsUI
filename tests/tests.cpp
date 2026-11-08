@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "renderer_failure_checks.hpp"
 #include "lcars/appearance.hpp"
 #include <chrono>
 #include <fstream>
@@ -61,10 +62,12 @@ void renderer_failure_admission() {
     name.connect_confirmed([](const TextChange&) { return Result{}; });
     check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
     detail::access(ui).renderer_failed(true);
-    check(name.set_value(u"changed").status == Status::renderer_failed, "Failure rejects edits");
-    check(name.describe()->value == u"draft", "Failure preserves readable draft");
+    check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");
     check(detail::access(ui).set_value("missing", u"x").status == Status::not_found, "Missing ID precedes failure");
     check(detail::access(ui).key_down({.key=Key::tab}).status == Status::renderer_failed, "Failure rejects focus traversal");
+    check(name.enable(false).status == Status::renderer_failed, "Failure rejects disabling focused control");
+    check(name.reset_to_source().status == Status::renderer_failed, "Failure rejects resetting draft");
+    check(detail::access(ui).focused() == "name", "Failure freezes focus");
     Status background=Status::ok;
     std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
     check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");

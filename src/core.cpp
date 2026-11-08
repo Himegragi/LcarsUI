@@ -178,7 +178,7 @@ Result ProgressHandle::connect_source(NumericSource source) const {
 Query<Semantics> ProgressHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 TextHandle detail::UiState::add_text(Control control) {
@@ -320,7 +320,7 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
 Query<Semantics> CheckboxHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<bool> CheckboxHandle::draft() const {
@@ -439,7 +439,7 @@ Result ListHandle::enable(bool enabled) const {
 Query<Semantics> ListHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Result RadioGroupHandle::use_latest() const {
@@ -561,7 +561,7 @@ Result detail::UiState::radio_key_down(KeyPress key) {
 Query<Semantics> RadioGroupHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
@@ -740,7 +740,7 @@ Result detail::UiState::dropdown_key_down(KeyPress key) {
 Query<Semantics> DropdownHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
@@ -904,7 +904,7 @@ Result detail::UiState::slider_key_down(KeyPress key) {
 Query<Semantics> SliderHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<int> SliderHandle::draft() const {
@@ -1077,7 +1077,7 @@ void detail::UiState::window_active(bool active) {
 Query<bool> TooltipHandle::visible() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(source_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(source_, true); !r) return {r.status, r.message, std::nullopt};
     auto it = ui_->tooltips_.find(source_);
     if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
     return {Status::ok, {}, it->second.visible};
@@ -1172,7 +1172,7 @@ Query<bool> DialogHandle::is_open() const {
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
     auto it = ui_->dialogs_.find(id_);
     if (it == ui_->dialogs_.end()) return {Status::not_found, u"Dialog not found", std::nullopt};
-    if (auto r = ui_->configuration_access(it->second.initial); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(it->second.initial, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->modal_ && ui_->active_dialog_ == id_};
 }
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
@@ -1264,7 +1264,7 @@ Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> 
 Query<Semantics> TabsHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<OptionValue> TabsHandle::active() const {
@@ -1310,7 +1310,7 @@ Result NavigationListHandle::on_page_change(std::function<void(OptionValue, Opti
 Query<Semantics> NavigationListHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<OptionValue> NavigationListHandle::selected() const {
@@ -1474,10 +1474,11 @@ Result TextHandle::cut() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->cut(id_);
 }
-Result detail::UiState::configuration_access(std::string_view id) const {
+Result detail::UiState::configuration_access(std::string_view id, bool read_only) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (!find(id) || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
+    if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
 Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
@@ -1726,7 +1727,7 @@ Result TextHandle::set_value(std::u16string value) const {
 Query<Semantics> TextHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::u16string> TextHandle::draft() const {
@@ -1738,13 +1739,13 @@ Query<std::u16string> TextHandle::draft() const {
 Query<Semantics> ButtonHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<Semantics> LabelHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 std::optional<Semantics> detail::UiState::describe(std::string_view id) const {

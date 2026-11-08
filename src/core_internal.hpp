@@ -198,7 +198,7 @@ private:
     friend class ::lcars::DialogHandle;
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
-    Result configuration_access(std::string_view id) const;
+    Result configuration_access(std::string_view id, bool read_only = false) const;
     Result connect_source(const Id& id, TextSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);

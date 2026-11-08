@@ -14,7 +14,7 @@ struct RendererTestHooks {
     unsigned injected_error = 0x0505;
 };
 struct StartupError { StartupFailure failure; };
-struct FrameError { RendererFailure failure; };
+struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
 class Renderer {
 public:
     explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::build_default);
@@ -23,6 +23,7 @@ public:
     Image read_back(const DrawList& list, int width, int height);
     std::string name() const;
     RendererCapabilities capabilities() const;
+    void restore_atlas(const std::vector<const AtlasPage*>& pages);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

@@ -186,9 +186,10 @@ Result DesktopHost::rebuild_renderer() {
     } shader_override(hooks_);
     try {
         renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_);
+        renderer_->restore_atlas(text_.atlas_pages());
         capabilities_=renderer_->capabilities();
-    } catch (const StartupError& e) { return {Status::failed,e.failure.message}; }
-      catch (const std::exception& e) { std::string text=e.what(); return {Status::failed,std::u16string(text.begin(),text.end())}; }
+    } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
+      catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,std::u16string(text.begin(),text.end())}; }
     renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
     InvalidateRect(window_,nullptr,FALSE);
     return {};
@@ -316,6 +317,12 @@ void DesktopHost::paint() {
     double gpu=0;
     try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented); }
     catch (const FrameError& e) {
+        for (auto code : e.codes) {
+            RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
+            diagnostic.category=DiagnosticCategory::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
+            diagnostics_.push(diagnostic);
+        }
+        if (!e.codes.empty()) PostMessageW(window_,WM_APP+43,0,0);
         fail_renderer(e.failure); return;
     }
     catch (const std::exception& e) {
@@ -604,7 +611,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_APP+44:
         if (renderer_failure_) {
             if (failure_callback_) { auto failure = *renderer_failure_; failure_callback_(failure); }
-            else quit_ = true;
+            else { quit_ = true; release(); }
         }
         return 0;
     case WM_APP+43:

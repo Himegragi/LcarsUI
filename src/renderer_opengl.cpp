@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <algorithm>
 #include <unordered_map>
 
@@ -183,7 +184,11 @@ struct Renderer::Impl {
             if (robust) { attributes.push_back(0x8256); attributes.push_back(0x8252); }
             attributes.push_back(0);
             context=create(dc,nullptr,attributes.data());
-            if (!context) throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}};
+            if (!context) {
+                int major=0, minor=0; if (version) std::sscanf(version,"%d.%d",&major,&minor);
+                auto kind=(major<3 || (major==3 && minor<3)) ? StartupFailureKind::context_version : StartupFailureKind::context_creation;
+                throw StartupError{{kind,u"OpenGL 3.3 core",to16(actual),u"Unable to create OpenGL 3.3 core context"}};
+            }
             require(wglMakeCurrent(nullptr,nullptr)!=FALSE,"WGL detach failed");
             require(wglDeleteContext(bootstrap)!=FALSE,"WGL bootstrap cleanup failed");bootstrap=nullptr;
             require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");gl.load();
@@ -204,6 +209,7 @@ struct Renderer::Impl {
             caps.reset_detection=reset_status!=nullptr;
             scene=std::make_unique<Scene>(gl);
             try { scene->init(hooks ? hooks->fragment_shader_override : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
+            if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
         } catch (const StartupError&) { release(); throw; }
           catch (const std::exception& e) {
             std::string message=e.what(); release();
@@ -286,16 +292,26 @@ struct Renderer::Impl {
             g.DrawArrays(GL_TRIANGLES,0,6);
         }
         GLenum error=GL_NO_ERROR, first=GL_NO_ERROR;
-        while ((error=g.GetError())!=GL_NO_ERROR) if (first==GL_NO_ERROR) first=error;
+        std::vector<unsigned> errors;
+        while ((error=g.GetError())!=GL_NO_ERROR) { if (first==GL_NO_ERROR) first=error; errors.push_back(error); }
         ++frames;
         if (hooks && hooks->reset_at_frame==frames) { hooks->reset_at_frame=0; throw FrameError{{RendererFailureKind::device_reset,0x8253,u"Graphics reset"}}; }
         if (reset_status) { auto reset=reset_status(); if (reset!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::device_reset,reset,u"Graphics reset"}}; }
-        if (hooks && hooks->gl_error_at_frame==frames) { first=hooks->injected_error; hooks->gl_error_at_frame=0; }
-        if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"}};
+        if (hooks && hooks->gl_error_at_frame==frames) { first=hooks->injected_error; errors.push_back(first); hooks->gl_error_at_frame=0; }
+        if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
 Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug):impl_(std::make_unique<Impl>(window,hooks,debug)){}
 Renderer::~Renderer()=default;
+void Renderer::restore_atlas(const std::vector<const AtlasPage*>& pages) {
+    require(wglMakeCurrent(impl_->dc,impl_->context)!=FALSE,"WGL activation failed");
+    auto& gl=impl_->gl;
+    for (std::size_t i=0; i<pages.size() && i<4; ++i) {
+        const auto& page=*pages[i]; gl.BindTexture(GL_TEXTURE_2D,impl_->scene->textures[i]);
+        gl.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
+    }
+    require(gl.GetError()==GL_NO_ERROR,"Atlas upload failed");
+}
 double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submission_ms,std::chrono::steady_clock::time_point* presented){
     auto start=std::chrono::steady_clock::now();
     auto& gl=impl_->gl; GLuint query=0; GLuint64 ns=0;

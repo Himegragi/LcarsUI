@@ -1,9 +1,11 @@
 ﻿#include "desktop_host.hpp"
 #include "core_internal.hpp"
 #include "edit_form.hpp"
+#include "renderer_failure_checks.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 using namespace lcars;
 using namespace lcars::detail;
@@ -35,8 +37,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
     if (handled) options.on_renderer_failed=[&](Desktop& desktop, const RendererFailure& failure) {
         ++callbacks;
         check(failure.kind==RendererFailureKind::frame_error, "public failure kind");
-        check(form.handles.name.draft().value==u"workstation A", "public draft readable");
-        check(form.handles.name.set_value(u"lost").status==Status::renderer_failed, "public draft protected");
+        check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");
         check(desktop.rebuild_renderer().status==Status::failed && desktop.renderer_failed(), "public rebuild failure");
         hooks.gl_error_at_frame=0;
         check(bool(desktop.rebuild_renderer()), "public rebuild succeeds");
@@ -52,6 +53,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
 }
 static void failure(const Appearance& appearance, bool reset, bool handled, bool modal = false) {
     edit_form::Form form(edit_form::default_ids(), true);
+    auto original=form.handles.name.draft().value;
     check(bool(form.handles.name.set_value(u"workstation A")), "prepare draft");
     check(bool(form.handles.name.focus()) && bool(form.handles.name.select(0,11)), "prepare selection");
     if (modal) check(bool(form.handles.dialog.open(form.handles.name)), "prepare modal");
@@ -61,11 +63,12 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     auto before=host.compare_gpu(640,480,1.f);
     check(before.passed, "pre-failure comparison");
     int callbacks=0;
+    const auto owner=std::this_thread::get_id();
     if (handled) host.on_renderer_failure([&](const RendererFailure& f) {
         ++callbacks;
+        check(std::this_thread::get_id()==owner, "notification on UI thread");
         check(f.kind==(reset?RendererFailureKind::device_reset:RendererFailureKind::frame_error), "failure kind");
-        check(form.handles.name.set_value(u"lost").status==Status::renderer_failed, "failed edit");
-        check(form.handles.name.describe()->value==u"workstation A", "read draft");
+        check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "failed edit preserves draft");
         check(access(form.ui).edit(form.ids().name)->selection.anchor==selection.anchor && access(form.ui).edit(form.ids().name)->selection.caret==selection.caret, "selection preserved");
         check(form.handles.name.describe()->operations.empty(), "failed operations omitted");
         check(form.handles.dialog.open().status==Status::renderer_failed, "dialog blocked");
@@ -77,6 +80,18 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     SendMessageW(host.window(),WM_KEYDOWN,VK_BACK,0);
     SendMessageW(host.window(),WM_KEYDOWN,VK_TAB,0);
     check(form.handles.name.draft().value==u"workstation A", "native input blocked");
+    if (std::getenv("CI")) {
+        ShowWindow(host.window(),SW_SHOW); SetForegroundWindow(host.window()); SetFocus(host.window());
+        check(GetForegroundWindow()==host.window(), "RF03 foreground window");
+        INPUT inputs[4]{};
+        inputs[0].type=INPUT_KEYBOARD; inputs[0].ki.wVk='X';
+        inputs[1]=inputs[0]; inputs[1].ki.dwFlags=KEYEVENTF_KEYUP;
+        inputs[2].type=INPUT_KEYBOARD; inputs[2].ki.wVk=VK_BACK;
+        inputs[3]=inputs[2]; inputs[3].ki.dwFlags=KEYEVENTF_KEYUP;
+        check(SendInput(4,inputs,sizeof(INPUT))==4, "RF03 SendInput");
+        host.pump();
+        check(form.handles.name.draft().value==u"workstation A", "RF03 SendInput blocked");
+    }
     if (handled) {
         host.pump(); check(callbacks==1, "single notification");
         if (!reset && !modal) {
@@ -88,6 +103,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
         host.paint(); check(!host.renderer_failed(), "recovered paint");
         auto after=host.compare_gpu(640,480,1.f);
         check(after.passed && compare_images(before.actual,after.actual,{}).different_pixels*200 <= 640u*480u, "recovered image");
+        if (!modal) check(bool(form.handles.name.undo()) && form.handles.name.draft().value==original, "undo history preserved");
     }
     else { host.run(); check(host.renderer_failure()->kind==RendererFailureKind::frame_error, "RF04 result"); host.close(); check(form.handles.name.describe()->value==u"workstation A", "RF04 retained draft"); }
 }
