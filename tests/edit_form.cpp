@@ -151,7 +151,8 @@ void semantic_list_operations() {
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "select duplicate-name item");
     std::string reveal;
     detail::access(form.ui).on_reveal([&](const std::string& id) { reveal = id; });
-    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus)) &&
+    check(form.list->handles.list.focus({"T005"}).status ==
+          tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus).status &&
           tree.get({prefix + "v02.list", OptionValue{"T005"}})->focused &&
           form.list->selection() == OptionValue{"T006"} && reveal == prefix + "v02.list", "focus item without changing selection and request reveal");
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T003"}}, Verb::select)) &&
@@ -205,6 +206,8 @@ void semantic_admission_priority() {
     check(bool(form.handles.dialog.open()), "open dialog over list");
     check(tree.perform({ids.title + ".pages.v02.list", OptionValue{"T008"}}, Verb::select).status == Status::disabled,
           "disabled item precedes modal block");
+    check(tree.perform({ids.title + ".pages.v02.list", OptionValue{"T008"}}, Verb::focus).status == Status::disabled &&
+          form.list->handles.list.focus({"T008"}).status == Status::disabled, "disabled focus precedes modal block through both paths");
     form.handles.dialog.settle(false);
 }
 
@@ -298,6 +301,12 @@ void semantic_focus_driver() {
         if (scenario == 5 && typed == Status::not_supported) continue;
         auto semantic = form.ui.semantics().perform({*id}, Verb::focus).status;
         check(typed == semantic, "semantic focus matches typed handle");
+        if (auto list = std::get_if<ListHandle>(&entry.handle)) {
+            auto children = form.ui.semantics().children({*id});
+            if (children) for (const auto& child : *children) if (child.item)
+                check(list->focus(*child.item).status == form.ui.semantics().perform(child, Verb::focus).status,
+                      "logical-item focus matches typed handle");
+        }
     }
     }
 }
@@ -419,6 +428,7 @@ void semantic_wrong_thread_drivers() {
                 auto status = std::visit([&](const auto& h) -> std::optional<Status> {
                     using T = std::decay_t<decltype(h)>;
                     if (ref.item) {
+                        if constexpr (std::is_same_v<T, ListHandle>) if (verb == Verb::focus) return h.focus(*ref.item).status;
                         if (verb != Verb::select) return {};
                         if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
                                       std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>) return h.select(*ref.item).status;

@@ -379,6 +379,7 @@ public:
     Result select(OptionValue value) const;
     Result set_items(std::vector<RadioOption> items) const;
     Result focus() const;
+    Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
     Result connect_source(OptionSource source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;

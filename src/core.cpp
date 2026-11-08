@@ -397,6 +397,20 @@ Result ListHandle::select(OptionValue value) const {
     f.writing = false;
     if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
 }
+Result ListHandle::focus(OptionValue value) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, {}};
+    if (auto result = ui_->available_option(id_, value); !result) return result;
+    auto& list = ui_->lists_.at(id_);
+    auto item = std::find_if(list.items.begin(), list.items.end(), [&](const auto& row) { return row.value == value; });
+    if (item == list.items.end()) return {Status::not_found, {}};
+    if (!item->enabled) return {Status::disabled, {}};
+    if (auto result = ui_->focus(id_); !result) return result;
+    list.cursor = std::move(value);
+    if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
+}
 Result detail::UiState::list_key_down(KeyPress key) {
     OperationScope operation(this);
     auto& f = lists_.at(focus_);
@@ -2827,7 +2841,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     auto invalid_argument = [&]() -> Result {
-        if (auto result = state_->available_option(ref.id, *ref.item); !result) return result;
+        if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
         if (auto it = state_->edits_.find(ref.id); it != state_->edits_.end() && it->second.session.composing)
             return {Status::busy, {}};
@@ -2837,14 +2851,8 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
         return invalid_argument();
     if (ref.item && node->role == Role::list_item && state_->lists_.contains(ref.id) && verb == Verb::focus) {
-        detail::UiState::OperationScope operation(state_);
-        if (auto result = state_->available(ref.id); !result) return result;
-        if (!node->enabled) return {Status::disabled, {}};
-        if (auto result = state_->focus(ref.id); !result) return result;
-        state_->lists_.at(ref.id).cursor = *ref.item;
-        if (state_->reveal_requested_) state_->reveal_requested_(ref.id);
-        if (state_->invalidate_) state_->invalidate_();
-        return {};
+        auto handle = state_->layout_handle(ref.id);
+        return std::get<ListHandle>(handle).focus(*ref.item);
     }
     if (!ref.item && verb == Verb::focus && node->role != Role::label && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
         return state_->focus(ref.id);
