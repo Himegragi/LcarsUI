@@ -78,6 +78,7 @@ struct KeyPress {
     bool shift = false, ctrl = false, repeat = false;
     char16_t letter = 0;  // uppercase ASCII letter for Ctrl shortcuts, e.g. u'Z'
 };
+struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
 struct Selection { unsigned anchor = 0, caret = 0; };
 // Host-provided system clipboard. Core never touches OS services directly.
 class Clipboard {
@@ -396,13 +397,15 @@ class DialogHandle {
 public:
     DialogHandle() = default;
     Result open(ComponentHandle opener) const;
+    Result open() const;
     Result settle(bool confirmed) const;
     Query<bool> is_open() const;
 private:
     friend class detail::UiState;
-    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime) : ui_(ui), lifetime_(std::move(lifetime)) {}
+    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id) : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
+    std::string id_;
 };
 // Non-owning reference to explanatory content attached to a source component.
 class TooltipHandle {
@@ -454,8 +457,9 @@ public:
     Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
-    Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ButtonHandle initial_focus,
+    Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result);
+    Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
