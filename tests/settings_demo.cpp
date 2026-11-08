@@ -104,6 +104,29 @@ void dark_new_component_sweep() {
             test::check(std::find(visited.begin(), visited.end(), id) != visited.end(), (std::string("dark sweep visited ") + id).c_str());
     }
 }
+void compact_new_component_layout() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; test::FakeMeasure measure; ScrollState scroll;
+        test::check(bool(demo.nav.select({"items"})), "open items for density sweep");
+        auto frame = [&] { return arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll); };
+        auto standard = frame();
+        auto settings = demo.ui.presentation(); settings.density = Density::compact;
+        test::check(bool(demo.ui.set_presentation(settings)), "compact accepted");
+        auto compact = frame();
+        auto* nav = compact.find(demo.nav);
+        test::check(nav && nav->options[0].h >= 24 && nav->options[0].h < standard.find(demo.nav)->options[0].h, "compact navigation rows shrink and remain clickable");
+        test::check(compact.find(demo.items_search)->bounds.h < standard.find(demo.items_search)->bounds.h, "compact items field shrinks");
+        test::check(bool(demo.items_add.invoke()), "open compact item dialog");
+        auto dialog = frame();
+        test::check(dialog.modal && dialog.find(demo.item_name) && dialog.find(demo.item_ok), "compact item dialog is arranged");
+        test::check(dialog.find(demo.item_ok)->bounds.h >= 24, "compact dialog action is clickable");
+        test::check(bool(demo.item_dialog.settle(false)), "close compact item dialog");
+        test::check(bool(demo.items_list.select({"T001"})) && bool(demo.items_delete.invoke()), "open compact delete dialog");
+        auto deletion = frame();
+        auto confirm = std::find_if(deletion.overlays.begin(), deletion.overlays.end(), [](const auto& p) { return p.id == "items.delete_dialog.confirm"; });
+        test::check(deletion.modal && confirm != deletion.overlays.end() && confirm->bounds.h >= 24, "compact delete action is clickable");
+    }
+}
 void semantic_navigation_pages() {
     settings_demo::Demo demo;
     auto& tree = demo.ui.semantics();
@@ -294,5 +317,5 @@ void item_search_count_and_empty_state() {
     }
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"dark newer components", dark_new_component_sweep}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
 
