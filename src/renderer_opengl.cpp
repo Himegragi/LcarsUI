@@ -303,6 +303,11 @@ struct Renderer::Impl {
 };
 Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug):impl_(std::make_unique<Impl>(window,hooks,debug)){}
 Renderer::~Renderer()=default;
+RenderDiagnostic frame_diagnostic(unsigned code) {
+    RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
+    diagnostic.category=DiagnosticCategory::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
+    return diagnostic;
+}
 void Renderer::restore_atlas(const std::vector<const AtlasPage*>& pages) {
     require(wglMakeCurrent(impl_->dc,impl_->context)!=FALSE,"WGL activation failed");
     auto& gl=impl_->gl;

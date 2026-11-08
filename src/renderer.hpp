@@ -15,6 +15,7 @@ struct RendererTestHooks {
 };
 struct StartupError { StartupFailure failure; };
 struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
+RenderDiagnostic frame_diagnostic(unsigned code);
 class Renderer {
 public:
     explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::build_default);

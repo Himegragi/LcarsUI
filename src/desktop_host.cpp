@@ -317,11 +317,7 @@ void DesktopHost::paint() {
     double gpu=0;
     try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented); }
     catch (const FrameError& e) {
-        for (auto code : e.codes) {
-            RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
-            diagnostic.category=DiagnosticCategory::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
-            diagnostics_.push(diagnostic);
-        }
+        for (auto code : e.codes) diagnostics_.push(frame_diagnostic(code));
         if (!e.codes.empty()) PostMessageW(window_,WM_APP+43,0,0);
         fail_renderer(e.failure); return;
     }
