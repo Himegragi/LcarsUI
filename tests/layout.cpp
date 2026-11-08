@@ -558,6 +558,15 @@ void long_dropdown_viewport() {
         state.key_down({.key=Key::home});
         frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
         auto popup=frame.overlays[0];
+        for (std::size_t i=0; i<popup.options.size(); ++i) {
+            const auto& row=popup.options[i];
+            if (i) test::check(popup.options[i-1].y+popup.options[i-1].h<=row.y, "dropdown rows do not overlap");
+            int x=row.x+2, y=row.y+row.h/2;
+            if (!popup.clip.contains(x,y)) continue;
+            auto logical=frame.option_at(popup,x,y);
+            auto semantic=logical ? ui.semantics().get({"long",OptionValue{std::to_string(*logical)}}) : Query<SemanticNode>{};
+            test::check(semantic && semantic->name==popup.lines[i].text, "each visible row hit matches its painted label");
+        }
         test::check(frame.wheel(ui,popup.bounds.x+2,popup.bounds.y+2,-100), "wheel scrolls popup");
         frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(dropdown.describe()->expanded && dropdown.draft()->value().id=="149", "wheel preserves popup and value");
