@@ -84,7 +84,7 @@ struct Scene {
 out vec2 uv;
 void main(){
     vec2 p[3]=vec2[3](vec2(-1,-1),vec2(3,-1),vec2(-1,3));
-    gl_Position=vec4(p[gl_VertexID],0,1); uv=(p[gl_VertexID]+1)*0.5;
+    gl_Position=vec4(p[gl_VertexID],0,1); uv=(p[gl_VertexID]+1)*0.5; uv.y=1.0-uv.y;
 })";
         const char* fragment = R"(#version 330 core
 in vec2 uv; out vec4 color; uniform sampler2D image;
@@ -135,7 +135,7 @@ struct Renderer::Impl {
     }
     void release(){scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
     ~Impl(){release();}
-    void upload(const Canvas& canvas){
+    void upload(const Image& canvas){
         auto& g=gl;g.Viewport(0,0,canvas.width,canvas.height);g.Disable(GL_SCISSOR_TEST);g.Disable(GL_BLEND);g.Disable(GL_FRAMEBUFFER_SRGB);g.Disable(GL_DITHER);
         g.BindTexture(GL_TEXTURE_2D,scene->texture);g.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,canvas.width,canvas.height,0,GL_RGBA,GL_UNSIGNED_BYTE,canvas.pixels.data());
         g.UseProgram(scene->program);g.BindVertexArray(scene->vao);g.DrawArrays(GL_TRIANGLES,0,3);
@@ -144,12 +144,12 @@ struct Renderer::Impl {
 };
 Renderer::Renderer(HWND window):impl_(std::make_unique<Impl>(window)){}
 Renderer::~Renderer()=default;
-void Renderer::draw(const Canvas& canvas){impl_->upload(canvas);require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");}
-void Renderer::capture(const Canvas& canvas,const std::filesystem::path& path){
+void Renderer::draw(const Image& canvas){impl_->upload(canvas);require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");}
+void Renderer::capture(const Image& canvas,const std::filesystem::path& path){
     impl_->upload(canvas);auto& gl=impl_->gl;gl.Finish();
     std::vector<unsigned char> actual(canvas.pixels.size());
     gl.ReadPixels(0,0,canvas.width,canvas.height,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
-    for(std::size_t i=0;i<actual.size();++i)if(i%4!=3)require(std::abs(int(actual[i])-int(canvas.pixels[i]))<=1,"GPU readback does not match rasterized frame");
+    for(std::size_t i=0;i<actual.size();++i)if(i%4!=3)require(std::abs(int(actual[i])-int(canvas.pixels[((canvas.height-1-static_cast<int>(i/(canvas.width*4)))*canvas.width*4)+(i%(canvas.width*4))]))<=1,"GPU readback does not match rasterized frame");
     for(std::size_t i=0;i<actual.size();i+=4)std::swap(actual[i],actual[i+2]);
     BITMAPFILEHEADER file{};BITMAPINFOHEADER info{};file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+static_cast<DWORD>(actual.size());
     info.biSize=sizeof(info);info.biWidth=canvas.width;info.biHeight=canvas.height;info.biPlanes=1;info.biBitCount=32;info.biSizeImage=static_cast<DWORD>(actual.size());

@@ -1,7 +1,8 @@
 #pragma once
 // Internal host type shared by run_desktop and the native verification driver.
 #include "lcars/desktop.hpp"
-#include "renderer_opengl.hpp"
+#include "renderer.hpp"
+#include "text.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -43,7 +44,8 @@ public:
     void force_scale(float scale) { forced_scale_ = scale; }  // 0 follows the window DPI
     void paint();                           // arrange, draw and present one frame
     // Arrange and raster offscreen at an arbitrary physical size; saves a 32-bit BMP.
-    Frame render(int width, int height, float scale, const std::filesystem::path& bmp, Canvas* pixels = nullptr);
+    Frame render(int width, int height, float scale, const std::filesystem::path& bmp, Image* pixels = nullptr);
+    bool compare_legacy(int width, int height, float scale);
     // Arrange only, with the host's real text measurement and an independent scroll state.
     Frame layout(int width, int height, float scale, ScrollState& scroll, std::string_view reveal);
     const Frame& frame() const { return frame_; }
@@ -84,7 +86,7 @@ private:
 
     Frame arrange(int width, int height, float scale);
     void release();
-    void draw(Canvas& canvas, const Frame& frame, float scale, bool window_focused);
+    template<class Target> void draw(Target& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
     void schedule_tooltip();
