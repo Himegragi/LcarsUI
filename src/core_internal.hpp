@@ -182,6 +182,7 @@ public:
     void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
+    Result creation_access() const;
     void renderer_failed(bool failed) { renderer_failed_ = failed; }
 private:
     friend class ::lcars::TabsHandle;

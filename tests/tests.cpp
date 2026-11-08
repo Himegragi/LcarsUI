@@ -68,6 +68,7 @@ void renderer_failure_admission() {
     check(name.enable(false).status == Status::renderer_failed, "Failure rejects disabling focused control");
     check(name.reset_to_source().status == Status::renderer_failed, "Failure rejects resetting draft");
     check(detail::access(ui).focused() == "name", "Failure freezes focus");
+    check(ui.add_button({.id="new",.kind=Kind::button}).status == Status::renderer_failed, "Failure rejects adding controls");
     Status background=Status::ok;
     std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
     check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
