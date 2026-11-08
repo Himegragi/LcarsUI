@@ -120,6 +120,12 @@ int main() {
         if(!tested) { std::cerr << "No variable weight axis available for the transfer test\n"; return 41; }
     }
     lcars::detail::Text text;
+    if (catalog.contains(u"Microsoft JhengHei")) {
+        text.set_primary_family(u"Microsoft JhengHei");
+        auto chosen=text.shape(u"A",18);
+        if(chosen.glyphs.empty() || chosen.glyphs[0].font!=10) return 43;
+        text.set_primary_family({});
+    }
     auto layout = text.shape(u"笑😀心❤️", 18);
     if (layout.missing != 0) return 2;
     if (std::none_of(layout.glyphs.begin(), layout.glyphs.end(), [](const auto& glyph) { return glyph.cluster == 1 && glyph.font == 9 && glyph.id; }) ||

@@ -69,6 +69,8 @@ private:
     bool ime_associated_ = true;
     DiagnosticQueue diagnostics_;
     Text text_;
+    std::u16string requested_font_;
+    bool font_configured_ = false;
     ShapedMeasure measure_{text_};
     std::unique_ptr<Renderer> renderer_;
     std::unique_ptr<WindowsClipboard> clipboard_;
@@ -87,6 +89,7 @@ private:
     std::vector<PaintObservation> paint_observations_;
 
     Frame arrange(int width, int height, float scale);
+    void configure_font(std::u16string_view family);
     void release();
     template<class Target> void draw(Target& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves

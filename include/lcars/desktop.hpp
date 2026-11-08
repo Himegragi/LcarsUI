@@ -12,7 +12,6 @@ struct DesktopOptions {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
     std::function<void(const RenderDiagnostic&)> on_diagnostic;
-    std::u16string font_family; // Empty selects the system default.
 };
 int run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                 DesktopOptions options = {});

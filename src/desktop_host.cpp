@@ -117,10 +117,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
                          const DesktopOptions& options, bool trace, bool background)
     : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
-    PresentationSettings font_settings; font_settings.font_family=options.font_family;
-    auto resolution=system_font_catalog().resolve(font_settings);
-    enqueue_font_diagnostics(diagnostics_,system_font_catalog_error(),resolution);
-    if(!options.font_family.empty() && resolution.requested_available) text_.set_primary_family(resolution.primary);
+    configure_font(ui.presentation().font_family);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW wc{};
@@ -145,6 +142,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         detail::access(ui_).on_presentation([this] {
+            configure_font(ui_.presentation().font_family);
             if (!window_) return;
             RECT client{}; GetClientRect(window_, &client);
             if (client.right <= 0 || client.bottom <= 0) return;
@@ -161,6 +159,15 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         release();  // the destructor will not run for a half-built host
         throw;
     }
+}
+void DesktopHost::configure_font(std::u16string_view family) {
+    if(font_configured_ && requested_font_==family) return;
+    PresentationSettings settings; settings.font_family=family;
+    auto resolution=system_font_catalog().resolve(settings);
+    enqueue_font_diagnostics(diagnostics_,font_configured_?0:system_font_catalog_error(),resolution);
+    requested_font_=family; font_configured_=true;
+    text_.set_primary_family(!family.empty() && resolution.requested_available ? resolution.primary : std::u16string{});
+    if(window_) PostMessageW(window_,WM_APP+43,0,0);
 }
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
