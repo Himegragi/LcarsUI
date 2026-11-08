@@ -277,7 +277,7 @@ void semantic_notifications() {
 }
 
 void semantic_focus_driver() {
-    for (int scenario = 0; scenario < 5; ++scenario) {
+    for (int scenario = 0; scenario < 6; ++scenario) {
     edit_form::Form form(ids, true); auto& state = detail::access(form.ui);
     auto entries = x04::inventory(form);
     if (scenario == 1) for (const auto& entry : entries) std::visit([](const auto& h) {
@@ -288,12 +288,14 @@ void semantic_focus_driver() {
     }, entry.handle);
     if (scenario == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
     if (scenario == 4) form.handles.tabs.activate({"v03"});
+    if (scenario == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
     for (const auto& entry : entries) {
         auto id = state.layout_id(entry.handle); if (!id) continue;
         auto typed = std::visit([](const auto& handle) -> Status {
             if constexpr (requires { handle.focus(); }) return handle.focus().status;
             else return Status::not_supported;
         }, entry.handle);
+        if (scenario == 5 && typed == Status::not_supported) continue;
         auto semantic = form.ui.semantics().perform({*id}, Verb::focus).status;
         check(typed == semantic, "semantic focus matches typed handle");
     }
@@ -321,7 +323,7 @@ void semantic_removal_notification() {
 }
 
 void semantic_verb_drivers() {
-    for (int state = 0; state < 5; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
+    for (int state = 0; state < 6; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
                       Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
         edit_form::Form a(ids, true), b(ids, true);
         auto typed_entries = x04::inventory(a); auto semantic_entries = x04::inventory(b);
@@ -334,6 +336,7 @@ void semantic_verb_drivers() {
             }, entry.handle);
             if (state == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
             if (state == 4) form.handles.tabs.activate({"v03"});
+            if (state == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
         };
         prepare(a, typed_entries); prepare(b, semantic_entries);
         check(typed_entries.size() == semantic_entries.size(), "same inventory for verb driver");
@@ -361,6 +364,7 @@ void semantic_verb_drivers() {
                 }
                 return Status::not_supported;
             }, typed_entries[i].handle);
+            if (state == 5 && expected == Status::not_supported) continue;
             auto ref = detail::access(b.ui).layout_id(semantic_entries[i].handle);
             if (!ref) { check(expected == Status::not_found, "removed handle is unavailable"); continue; }
             auto snapshot = b.ui.semantics().get({*ref});
@@ -396,6 +400,70 @@ void semantic_verb_drivers() {
             }
         }
     }
+}
+
+void semantic_wrong_thread_drivers() {
+    edit_form::Form form(ids, true); auto entries = x04::inventory(form);
+    std::vector<std::pair<NodeRef, ComponentHandle>> targets;
+    for (const auto& entry : entries) {
+        auto id = detail::access(form.ui).layout_id(entry.handle); if (!id) continue;
+        targets.emplace_back(NodeRef{*id}, entry.handle);
+        auto children = form.ui.semantics().children({*id});
+        if (children) for (const auto& child : *children) if (child.item) targets.emplace_back(child, entry.handle);
+    }
+    std::vector<bool> results;
+    std::thread worker([&] {
+        for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel, Verb::focus,
+                          Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
+            for (const auto& [ref, handle] : targets) {
+                auto status = std::visit([&](const auto& h) -> std::optional<Status> {
+                    using T = std::decay_t<decltype(h)>;
+                    if (ref.item) {
+                        if (verb != Verb::select) return {};
+                        if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
+                                      std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>) return h.select(*ref.item).status;
+                        else if constexpr (std::is_same_v<T, TabsHandle>) return h.activate(*ref.item).status;
+                        return {};
+                    }
+                    if (verb == Verb::focus) { if constexpr (requires { h.focus(); }) return h.focus().status; }
+                    if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
+                    if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
+                    if constexpr (std::is_same_v<T, TextHandle>) switch (verb) {
+                        case Verb::set_value: return h.set_value(u"x").status; case Verb::select: return h.select(0, 0).status;
+                        case Verb::undo: return h.undo().status; case Verb::redo: return h.redo().status;
+                        case Verb::copy: return h.copy().status; case Verb::cut: return h.cut().status;
+                        case Verb::paste: return h.paste(u"x").status; default: break;
+                    }
+                    if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::set_value) return h.set_value(50).status; }
+                    if constexpr (std::is_same_v<T, DropdownHandle>) {
+                        if (verb == Verb::open) return h.open().status; if (verb == Verb::cancel) return h.cancel().status;
+                    }
+                    if (verb == Verb::confirm) { if constexpr (requires { h.confirm(); }) return h.confirm().status; }
+                    return {};
+                }, handle);
+                if (status) results.push_back(*status == Status::wrong_thread && form.ui.semantics().perform(ref, verb).status == *status);
+            }
+        }
+    });
+    worker.join();
+    check(!results.empty() && std::all_of(results.begin(), results.end(), [](bool ok) { return ok; }), "all applicable verbs reject a non-UI thread");
+}
+
+void semantic_busy_and_removed_drivers() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3);
+    for (auto verb : {Verb::set_value, Verb::select, Verb::paste, Verb::cut, Verb::undo, Verb::redo}) {
+        Argument arg;
+        if (verb == Verb::set_value || verb == Verb::paste) arg = std::u16string(u"x");
+        if (verb == Verb::select) arg = Selection{0, 0};
+        check(tree.perform({ids.name}, verb, arg).status == Status::busy, "text mutation is busy during composition");
+    }
+    detail::access(form.ui).composition_cancel();
+    form.handles.tabs.activate({"v03"}); auto removed = form.handles.dialog_temporary;
+    auto id = ids.title + ".pages.v03.temporary"; check(bool(removed.remove()), "remove temporary button");
+    check(removed.invoke().status == Status::not_found && tree.perform({id}, Verb::invoke).status == Status::not_found &&
+          removed.focus().status == Status::not_found && tree.perform({id}, Verb::focus).status == Status::not_found,
+          "removed component rejects both typed and semantic operations");
 }
 
 void write_semantic_tsv(edit_form::Form& form, const char* state) {
@@ -2790,6 +2858,8 @@ int main() {
         {"Semantic subscriber exception boundary", semantic_subscriber_exception_boundary},
         {"Semantic removal notification", semantic_removal_notification},
         {"Semantic verb drivers", semantic_verb_drivers},
+        {"Semantic wrong-thread drivers", semantic_wrong_thread_drivers},
+        {"Semantic busy and removed drivers", semantic_busy_and_removed_drivers},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},
