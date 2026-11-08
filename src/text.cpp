@@ -7,40 +7,61 @@
 #include <hb-ft.h>
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <stdexcept>
+#include <array>
+#include <set>
 namespace lcars::detail {
 namespace {
-void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
+void diagnostic(const wchar_t* message) {
+#ifndef NDEBUG
+    OutputDebugStringW(message); OutputDebugStringW(L"\n");
+#else
+    (void)message;
+#endif
+}
 struct Font {
-    std::vector<unsigned char> bytes;
+    HANDLE file=INVALID_HANDLE_VALUE, mapping=nullptr;
+    void* data=nullptr;
     FT_Face face=nullptr;
     hb_font_t* hb=nullptr;
-    Font(FT_Library library,const FontFile& file) {
-        std::ifstream stream(file.path,std::ios::binary);
-        require(bool(stream),"Required Windows font unavailable (Segoe UI / Microsoft JhengHei / MingLiU)");
-        bytes.assign(std::istreambuf_iterator<char>(stream),{});
-        require(FT_New_Memory_Face(library,bytes.data(),static_cast<FT_Long>(bytes.size()),file.face_index,&face)==0,"Font load failed");
+    Font(FT_Library library,const FontFile& source) {
+        if (!library || source.path.empty()) return;
+        file=CreateFileW(source.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
+        LARGE_INTEGER length{};
+        if(file==INVALID_HANDLE_VALUE || !GetFileSizeEx(file,&length) || length.QuadPart<=0 || length.QuadPart>LONG_MAX ||
+           !(mapping=CreateFileMappingW(file,nullptr,PAGE_READONLY,0,0,nullptr)) || !(data=MapViewOfFile(mapping,FILE_MAP_READ,0,0,0)) ||
+           FT_New_Memory_Face(library,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(length.QuadPart),source.face_index,&face)) {
+            return;
+        }
         hb=hb_ft_font_create_referenced(face);
     }
-    ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);}
-    void size(int pixels){require(FT_Set_Pixel_Sizes(face,0,pixels)==0,"Font size failed");hb_ft_font_changed(hb);}
+    ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);if(data)UnmapViewOfFile(data);if(mapping)CloseHandle(mapping);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);}
+    bool size(int pixels){if(!face || FT_Set_Pixel_Sizes(face,0,pixels))return false;hb_ft_font_changed(hb);return true;}
 };
 }
 struct Text::Impl {
+    static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
     FT_Library library=nullptr;
-    std::unique_ptr<Font> latin,traditional,emoji;
-    Impl() {
-        require(FT_Init_FreeType(&library)==0,"FreeType initialization failed");
-        try {latin=std::make_unique<Font>(library,system_font_file(u"Segoe UI"));traditional=std::make_unique<Font>(library,system_font_file(u"Microsoft JhengHei"));
-            try { emoji=std::make_unique<Font>(library,system_font_file(u"Segoe UI Emoji")); } catch (...) {} }
-        catch(...){traditional.reset();latin.reset();FT_Done_FreeType(library);throw;}
+    std::array<std::unique_ptr<Font>,10> fonts;
+    std::array<bool,10> attempted{};
+    std::set<unsigned> missing;
+    std::function<FontFile(std::u16string_view)> lookup;
+    std::function<void(std::string_view)> report;
+    Impl(std::function<FontFile(std::u16string_view)> find, std::function<void(std::string_view)> emit)
+        : lookup(std::move(find)), report(std::move(emit)) {
+        if(FT_Init_FreeType(&library)) library=nullptr;
+        if(lookup(u"Segoe UI").path.empty()) report("font.default_missing");
+        if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing");
     }
-    ~Impl(){emoji.reset();traditional.reset();latin.reset();FT_Done_FreeType(library);}
-    Font& font(unsigned id){return id==2?*emoji:id?*traditional:*latin;}
+    ~Impl(){for(auto& font:fonts)font.reset();if(library)FT_Done_FreeType(library);}
+    Font* font(unsigned id) {
+        if(id>=fonts.size()) return nullptr;
+        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face) report("font.file_unreadable"); } }
+        return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
+    }
 };
-Text::Text():impl_(std::make_unique<Impl>()){}
+Text::Text():Text(system_font_file,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){}
+Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
+    :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 float TextLayout::at(unsigned offset) const {
     auto it=carets.upper_bound(offset);return it==carets.begin()?0:std::prev(it)->second;
@@ -51,28 +72,39 @@ unsigned TextLayout::hit(float x) const {
     return best;
 }
 TextLayout Text::shape(std::u16string_view text,int size){
-    auto& e=*impl_;e.latin->size(size);e.traditional->size(size);if(e.emoji)e.emoji->size(size);
+    auto& e=*impl_;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
+    constexpr unsigned no_font=10;
     for(unsigned i=0;i<text.size();){
         unsigned begin=i,cp=text[i++];
         if(cp>=0xd800&&cp<=0xdbff&&i<text.size()&&text[i]>=0xdc00&&text[i]<=0xdfff)cp=0x10000+((cp-0xd800)<<10)+(text[i++]-0xdc00);
-        if(cp==0xfe0f) continue;
         auto script=hb_unicode_script(unicode,cp);
-        unsigned selected=FT_Get_Char_Index(e.latin->face,cp)?0:1;
-        if(e.emoji && (cp==0x2764 || cp>=0x1f000) && FT_Get_Char_Index(e.emoji->face,cp)) selected=2;
-        if(script==HB_SCRIPT_INHERITED&&!runs.empty()&&FT_Get_Char_Index(e.font(runs.back().font).face,cp))selected=runs.back().font;
+        bool follows=script==HB_SCRIPT_INHERITED || (cp>=0xfe00&&cp<=0xfe0f) || (cp>=0xe0100&&cp<=0xe01ef) || cp==0x200c || cp==0x200d;
+        if(follows && !runs.empty()) {runs.back().end=i;continue;}
+        if(follows) continue;
+        unsigned selected=no_font;
+        bool emoji=(cp>=0x1f000&&cp<=0x1faff) || (i<text.size() && text[i]==0xfe0f);
+        auto supports=[&](unsigned n) {auto f=e.font(n);return f && f->size(size) && FT_Get_Char_Index(f->face,cp);};
+        if(emoji && supports(9)) selected=9;
+        else for(unsigned n=0;n<10;++n) if(supports(n)){selected=n;break;}
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
-        if(!runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
+        if(selected!=no_font && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
         else runs.push_back({begin,i,selected,script});
     }
     TextLayout result;result.size=size;result.carets[0]=0;
     for(auto& run:runs){
+        if(run.font==no_font) {
+            unsigned cp=text[run.begin]; if(cp>=0xd800&&cp<=0xdbff && run.begin+1<text.size()) cp=0x10000+((cp-0xd800)<<10)+(text[run.begin+1]-0xdc00);
+            if(e.missing.insert(cp).second)e.report("text.glyph_missing");
+            float advance=cp<128?size*.6f:static_cast<float>(size);
+            result.carets.try_emplace(run.begin,result.width); result.glyphs.push_back({no_font,0,run.begin,result.width,0,0,advance}); result.width+=advance; ++result.missing; continue;
+        }
         auto buffer=hb_buffer_create();
         hb_buffer_set_direction(buffer,HB_DIRECTION_LTR);hb_buffer_set_script(buffer,run.script);
         hb_buffer_set_language(buffer,hb_language_from_string("zh-TW",-1));
         hb_buffer_add_utf16(buffer,reinterpret_cast<const uint16_t*>(text.data()),static_cast<int>(text.size()),run.begin,run.end-run.begin);
-        hb_shape(e.font(run.font).hb,buffer,nullptr,0);
+        auto f=e.font(run.font); f->size(size); hb_shape(f->hb,buffer,nullptr,0);
         unsigned count=0;auto info=hb_buffer_get_glyph_infos(buffer,&count);auto pos=hb_buffer_get_glyph_positions(buffer,&count);
         for(unsigned i=0;i<count;++i){
             float advance=pos[i].x_advance/64.f;
@@ -110,31 +142,46 @@ void Canvas::rounded(Rect r,int radius,Color color){
         blend(r.x+x,r.y+r.h-1-y,color,alpha);blend(r.x+r.w-1-x,r.y+r.h-1-y,color,alpha);
     }
 }
+bool bitmap_coverage(unsigned mode,const unsigned char* row,unsigned width,std::vector<unsigned char>& coverage) {
+    if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA) return false;
+    coverage.resize(width);
+    for(unsigned col=0;col<width;++col) {
+        unsigned alpha=0;
+        if(mode==FT_PIXEL_MODE_GRAY)alpha=row[col];
+        else if(mode==FT_PIXEL_MODE_MONO)alpha=(row[col/8]&(0x80>>(col%8)))?255:0;
+        else if(mode==FT_PIXEL_MODE_GRAY2)alpha=((row[col/4]>>(6-2*(col%4)))&3)*85;
+        else if(mode==FT_PIXEL_MODE_GRAY4)alpha=((row[col/2]>>(4-4*(col%2)))&15)*17;
+        else alpha=row[col*4+3];
+        coverage[col]=static_cast<unsigned char>(alpha);
+    }
+    return true;
+}
 void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
     for(auto& glyph:layout.glyphs){
-        if (!glyph.id) {
+        auto box=[&] {
             int left=x+static_cast<int>(std::round(glyph.x));
             int width=std::max(1,static_cast<int>(std::round(layout.size*.6f)));
             int height=std::max(1,static_cast<int>(std::round(layout.size*.8f)));
             int line=std::max(1,static_cast<int>(std::round(layout.size/16.f)));
-            canvas.fill({left,baseline-height,width,line},color);
-            canvas.fill({left,baseline-line,width,line},color);
-            canvas.fill({left,baseline-height,line,height},color);
-            canvas.fill({left+width-line,baseline-height,line,height},color);
-            continue;
+            canvas.fill({left,baseline-height,width,line},color); canvas.fill({left,baseline-line,width,line},color);
+            canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
+        };
+        if (!glyph.id) {box();continue;}
+        auto font=impl_->font(glyph.font);
+        if(!font || !font->size(layout.size) || FT_Load_Glyph(font->face,glyph.id,FT_LOAD_DEFAULT) || FT_Render_Glyph(font->face->glyph,FT_RENDER_MODE_NORMAL)) {
+            impl_->report("text.glyph_load_failed");box();continue;
         }
-        auto& font=impl_->font(glyph.font);font.size(layout.size);
-        require(FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT)==0,"Glyph load failed");
-        require(FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)==0,"Glyph rasterization failed");
-        auto& bitmap=font.face->glyph->bitmap;
-        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font.face->glyph->bitmap_left;
-        int top=baseline-static_cast<int>(std::round(glyph.dy))-font.face->glyph->bitmap_top;
-        for(unsigned row=0;row<bitmap.rows;++row)for(unsigned col=0;col<bitmap.width;++col){
-            unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row,alpha=0;
-            if(bitmap.pixel_mode==FT_PIXEL_MODE_GRAY)alpha=bitmap.buffer[source*std::abs(bitmap.pitch)+col];
-            else if(bitmap.pixel_mode==FT_PIXEL_MODE_MONO)alpha=(bitmap.buffer[source*std::abs(bitmap.pitch)+col/8]&(0x80>>(col%8)))?255:0;
-            else throw std::runtime_error("Unsupported font bitmap format");
-            canvas.blend(left+col,top+row,glyph.id?color:Color{195,35,48},alpha);
+        auto& bitmap=font->face->glyph->bitmap;
+        if(bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY && bitmap.pixel_mode!=FT_PIXEL_MODE_MONO && bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY2 && bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY4 && bitmap.pixel_mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
+            impl_->report("text.glyph_format_unsupported");box();continue;
+        }
+        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font->face->glyph->bitmap_left;
+        int top=baseline-static_cast<int>(std::round(glyph.dy))-font->face->glyph->bitmap_top;
+        std::vector<unsigned char> coverage;
+        for(unsigned row=0;row<bitmap.rows;++row){
+            unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row; auto data=bitmap.buffer+source*std::abs(bitmap.pitch);
+            bitmap_coverage(bitmap.pixel_mode,data,bitmap.width,coverage);
+            for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col]);
         }
     }
 }
