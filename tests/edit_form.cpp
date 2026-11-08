@@ -28,6 +28,42 @@ edit_form::Ids alternate_ids() {
 }
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
 
+void theme_variants_have_accessible_palettes() {
+    auto luminance = [](Color c) {
+        auto channel = [](double v) { v /= 255.; return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+    };
+    auto contrast = [&](Color a, Color b) { auto x = luminance(a), y = luminance(b); return (std::max(x,y)+0.05)/(std::min(x,y)+0.05); };
+    for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+        check(appearance->supports(variant), "PV01 official variant supported");
+        auto p = appearance->palette(variant);
+        for (auto ink : {p.text, p.muted, p.error})
+            for (auto surface : {p.background, p.panel, p.surface})
+                check(contrast(ink, surface) >= 4.5, "PV01 text contrast");
+        check(contrast(p.text, p.selection) >= 4.5 && contrast(p.on_accent, p.accent) >= 4.5, "PV01 selection and accent contrast");
+        check(p.scrim_alpha == (variant == ThemeVariant::dark() ? 160 : 110), "Variant scrim opacity");
+    }
+    check(!appearance->supports(ThemeVariant::high_contrast()), "High contrast is unsupported");
+}
+
+void theme_switch_preserves_showcase_geometry() {
+    edit_form::Form form(ids, true); test::FakeMeasure measure;
+    for (const char* page : {"v01", "v02", "v03"}) {
+        form.handles.tabs.activate({page});
+        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::light(); form.ui.set_presentation(settings);
+        ScrollState a, b;
+        auto light = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, a);
+        settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark accepted");
+        auto dark = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, b);
+        check(light.items.size() == dark.items.size() && light.overlays.size() == dark.overlays.size(), "PV02 same placements");
+        for (size_t i = 0; i < light.items.size(); ++i)
+            check(light.items[i].id == dark.items[i].id && light.items[i].bounds == dark.items[i].bounds && light.items[i].clip == dark.items[i].clip, "PV02 geometry unchanged");
+    }
+    edit_form::Form controls(ids, true); controls.handles.tabs.activate({"v04"});
+    check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::dark(), "V04 switches to dark");
+    check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::light(), "V04 switches to light");
+}
+
 void presentation_settings_are_atomic() {
     Ui ui;
     int redraws = 0;
@@ -2110,6 +2146,8 @@ int main() {
         {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
         {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},
         {"PS08 large text", ps08_large_text_wraps_without_overlap},
+        {"PV02 theme geometry", theme_switch_preserves_showcase_geometry},
+        {"PV01 palette contrast", theme_variants_have_accessible_palettes},
         {"V04 size slider", v04_slider_updates_global_text_size},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},

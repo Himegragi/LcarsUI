@@ -8,6 +8,12 @@ class Material final : public Appearance {
         return {{247,244,251},{255,251,255},{235,229,242},{35,30,44},{105,94,118},
                 {202,193,213},{105,74,153},{255,255,255},{221,205,249},{174,40,51}};
     }
+    bool supports(const ThemeVariant& variant) const override { return variant == ThemeVariant::light() || variant == ThemeVariant::dark(); }
+    Palette palette(const ThemeVariant& variant) const override {
+        if (variant == ThemeVariant::dark()) return {{20,18,24},{29,27,33},{43,40,49},{232,225,234},{202,196,208},
+                {88,82,98},{208,188,255},{56,30,114},{79,55,139},{242,184,181},{0,0,0},160};
+        return palette();
+    }
     FieldParts field(Rect b, int size) const override {
         return {{b.x+14,b.y+9,b.w-28,size+4}, {b.x,b.y,b.w,size*2+34},
                 {b.x+14,b.y+size+21,b.w-28,size+4},true};

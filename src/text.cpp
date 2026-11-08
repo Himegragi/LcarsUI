@@ -129,7 +129,7 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
             if(bitmap.pixel_mode==FT_PIXEL_MODE_GRAY)alpha=bitmap.buffer[source*std::abs(bitmap.pitch)+col];
             else if(bitmap.pixel_mode==FT_PIXEL_MODE_MONO)alpha=(bitmap.buffer[source*std::abs(bitmap.pitch)+col/8]&(0x80>>(col%8)))?255:0;
             else throw std::runtime_error("Unsupported font bitmap format");
-            canvas.blend(left+col,top+row,glyph.id?color:Color{195,35,48},alpha);
+            canvas.blend(left+col,top+row,color,alpha);
         }
     }
 }
@@ -149,7 +149,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
             else throw std::runtime_error("Unsupported font bitmap format");
             coverage[static_cast<std::size_t>(row)*bitmap.width+col]=static_cast<unsigned char>(alpha);
         }
-        canvas.glyph({left,top,static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows)},glyph.id?color:Color{195,35,48},std::move(coverage));
+        canvas.glyph({left,top,static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows)},color,std::move(coverage));
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {

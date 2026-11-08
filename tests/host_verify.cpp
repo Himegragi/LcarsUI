@@ -2038,6 +2038,25 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
     auto sample = [&](std::string_view name, Image& pixels) {
         return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
     };
+    {
+        Fixture dark(appearance, true); auto& d = dark.form.handles;
+        auto settings = dark.form.ui.presentation(); settings.variant = ThemeVariant::dark();
+        bool applied = bool(dark.form.ui.set_presentation(settings));
+        d.error.invoke();
+        dark.host.layout(960, 720, 1.f, dark.form.scroll, d.name.describe()->id);
+        Image image{1, 1, {}};
+        auto dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-dark.bmp"), &image);
+        auto* field = dark_frame.find(d.name); auto colors = appearance.palette(ThemeVariant::dark());
+        bool error_ink = field && !field->error_lines.empty() && contains_color(image, intersect(field->error_lines.front().bounds, field->clip), colors.error);
+        bool invalid = d.name.describe()->invalid;
+        d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
+        dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
+        field = dark_frame.find(d.name);
+        bool selection = field && contains_color(image, intersect(field->field.editor, field->clip), colors.selection);
+        bool focus = field && contains_color(image, intersect(field->bounds, field->clip), colors.accent);
+        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid,
+                     "CPU image contains error, selection and focus colors with error semantics");
+    }
     h.error.invoke();
     f.host.layout(960, 720, 1.f, f.form.scroll, h.name.describe()->id);
     f.host.observe_paint(true);
