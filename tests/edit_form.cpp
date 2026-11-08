@@ -962,7 +962,8 @@ struct PaintRoleProbe : detail::ComponentPaint {
     void text(std::u16string_view value, int size, int x, int y, Color color) override {
         if(value.empty()) return;
         emitted.emplace_back(recording.current_role,Rect{x,y,1,size});
-        recording.glyph({x,y,1,1},color,{255});
+        auto page = std::make_shared<detail::AtlasPage>(); page->width = page->height = 1; page->pixels = {255};
+        recording.glyph({x,y,1,1},color,page,{0,0,1,1});
     }
     int count(detail::PaintRole role) const { return static_cast<int>(std::count_if(emitted.begin(),emitted.end(),[&](const auto& item){return (static_cast<unsigned>(item.first) & static_cast<unsigned>(role)) != 0;})); }
 };
