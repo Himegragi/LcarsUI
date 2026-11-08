@@ -2362,11 +2362,11 @@ const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
 namespace lcars {
 void detail::UiState::semantic_frame(const Frame& frame) {
-    semantic_bounds_.clear(); semantic_options_.clear(); semantic_order_.clear();
+    semantic_bounds_.clear(); semantic_options_.clear(); semantic_order_.clear(); semantic_positions_.clear();
     auto store = [&](const Placement& p) {
         auto rect = intersect(p.bounds, p.clip);
         if (!p.popup && rect.w > 0 && rect.h > 0) semantic_bounds_[p.id] = rect;
-        if (!p.popup) semantic_order_.push_back(p.id);
+        if (!p.popup) { semantic_order_.push_back(p.id); semantic_positions_[p.id] = p.bounds; }
         auto& options = semantic_options_[p.id];
         for (auto option : p.options) options.push_back(intersect(option, p.clip));
         for (const auto& control : controls_) {
@@ -2483,9 +2483,9 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
         for (const auto& c : u.controls_) if (c.page != "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
         for (const auto& [id, type] : u.overlay_ids_) result.push_back({id});
         std::stable_sort(result.begin(), result.end(), [&](const NodeRef& a, const NodeRef& b) {
-            auto ai = u.semantic_bounds_.find(a.id), bi = u.semantic_bounds_.find(b.id);
-            if (ai == u.semantic_bounds_.end()) return false;
-            if (bi == u.semantic_bounds_.end()) return true;
+            auto ai = u.semantic_positions_.find(a.id), bi = u.semantic_positions_.find(b.id);
+            if (ai == u.semantic_positions_.end()) return false;
+            if (bi == u.semantic_positions_.end()) return true;
             return ai->second.y != bi->second.y ? ai->second.y < bi->second.y : ai->second.x < bi->second.x;
         });
     } else {

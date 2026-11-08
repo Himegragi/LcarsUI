@@ -13,11 +13,9 @@ fixture.long		button	長說明		0	1	0	540,184,80,40
 fixture.offline_disabled		button	停用離線		0	1	0	669,184,96,40
 fixture.region_empty		button	清空／還原地區		0	1	0	798,184,121,64
 form.reset		button	重設		0	1	0	24,256,64,40
-form.name.label		label		顯示名稱	0	1	0	24,312,433,21
 form.name		text	顯示名稱	測試使用者	0	1	0	24,312,433,98
 result.draft		label		目前編輯值：測試使用者 / 提示：啟用 / 模式：一般 / 地區：北區 / 音量：40	0	1	0	489,312,433,48
 result.applied		label		上次套用結果：測試使用者 / 提示：啟用 / 模式：一般 / 地區：北區 / 音量：40	0	1	0	489,368,433,48
-form.name.help		label		單行文字，可輸入繁體中文或英文。	0	1	0	24,389,433,21
 form.notices		checkbox	啟用提示	true	0	1	0	24,422,120,40
 result.count		label		套用次數：0	0	1	0	489,424,433,24
 form.notices.latest		button	提示改用最新值		0	1	0	24,474,208,40
@@ -30,13 +28,15 @@ form.region		dropdown	地區	北區	0	1	0	24,714,433,6
 form.region	north	dropdown_option	北區		0	0	0	
 form.region	central	dropdown_option	中區		0	0	0	
 form.region	south	dropdown_option	南區		0	0	0	
-form.name.error		label			0	0	0	
+form.region.latest		button	地區改用最新值		0	0	0	
 form.volume		slider	音量	40	0	0	0	
 form.volume.latest		button	音量改用最新值		0	0	0	
-form.region.latest		button	地區改用最新值		0	0	0	
 form.apply		button	套用		0	0	0	
-result.state		label		狀態：正常	0	0	0	
 form.latest		button	改用最新值		0	0	0	
+result.state		label		狀態：正常	0	0	0	
+form.name.label		label		顯示名稱	0	1	0	24,312,433,21
+form.name.help		label		單行文字，可輸入繁體中文或英文。	0	1	0	24,389,433,21
+form.name.error		label			0	0	0	
 form.title.pages.v02.title		label		範本清單	1	0	0	
 form.title.pages.v02.zero		button	0 筆		1	0	0	
 form.title.pages.v02.one		button	1 筆		1	0	0	

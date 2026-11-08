@@ -18,6 +18,15 @@ int main() {
         check(probe.diagnostics().size() == 1);
 #endif
     }
+    {
+        Ui order;
+        auto second = order.add_button({.id = "second", .kind = Kind::button, .label = u"Second"}).value.value();
+        auto first = order.add_button({.id = "first", .kind = Kind::button, .label = u"First"}).value.value();
+        test::FakeMeasure measure; ScrollState scroll;
+        arrange(layout::column({layout::control(first), layout::control(second)}), order, web_appearance(), measure, 300, 0, 1.f, scroll);
+        auto children = order.semantics().children({});
+        check(children && children->size() == 2 && (*children)[0].id == "first" && (*children)[1].id == "second");
+    }
     Ui ui;
     auto first = ui.add_text({.id = "form.name", .kind = Kind::text});
     check(bool(first));

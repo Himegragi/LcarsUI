@@ -263,6 +263,7 @@ private:
     std::map<Id, Rect, std::less<>> semantic_bounds_;
     std::map<Id, std::vector<Rect>, std::less<>> semantic_options_;
     std::vector<Id> semantic_order_;
+    std::map<Id, Rect, std::less<>> semantic_positions_;
     std::set<Id, std::less<>> diagnosed_names_;
     struct DialogState {
         std::vector<Id> members;
