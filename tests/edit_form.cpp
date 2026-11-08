@@ -27,12 +27,12 @@ edit_form::Ids alternate_ids() {
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
 
 void long_field_label_and_error_keep_their_association() {
-    Ui ui({});
+    Ui ui;
     const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
-    auto label = ui.add_label({.id = "label", .kind = Kind::label, .value = title, .target = "field", .role = TextRole::name});
-    auto field = ui.add_text({.id = "field", .kind = Kind::text, .value = u"value"});
-    auto error = ui.add_label({.id = "error", .kind = Kind::label, .target = "field", .role = TextRole::error});
-    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"});
+    auto label = ui.add_label({.id = "label", .kind = Kind::label, .value = title, .target = "field", .role = TextRole::name}).value.value();
+    auto field = ui.add_text({.id = "field", .kind = Kind::text, .value = u"value"}).value.value();
+    auto error = ui.add_label({.id = "error", .kind = Kind::label, .target = "field", .role = TextRole::error}).value.value();
+    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"}).value.value();
     auto root = layout::column({layout::control(field), layout::control(next)}, 12);
     test::FakeMeasure measure; ScrollState scroll;
     auto before = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
@@ -51,10 +51,10 @@ void long_field_label_and_error_keep_their_association() {
 }
 
 void radio_boundaries_under_the_appearance() {
-    Ui ui({});
+    Ui ui;
     auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Mode"},
-        {{{"first"}, u"First", false}, {{"middle"}, u"Middle", true}, {{"last"}, u"Last", false}});
-    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"});
+        {{{"first"}, u"First", false}, {{"middle"}, u"Middle", true}, {{"last"}, u"Last", false}}).value.value();
+    auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"}).value.value();
     std::optional<OptionValue> selected;
     radio.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_immediate([&](const OptionChange& change) { selected = change.value; return Result{}; });
@@ -67,9 +67,9 @@ void radio_boundaries_under_the_appearance() {
     check(selected == OptionValue{"middle"}, "Navigation chooses only the enabled option");
     detail::access(ui).key_down({Key::tab});
     check(next.describe()->focused, "Tab exits the group");
-    Ui all_ui({});
-    auto all = all_ui.add_radio_group({.id = "all", .kind = Kind::radio_group}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}});
-    auto after = all_ui.add_button({.id = "after", .kind = Kind::button});
+    Ui all_ui;
+    auto all = all_ui.add_radio_group({.id = "all", .kind = Kind::radio_group}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
+    auto after = all_ui.add_button({.id = "after", .kind = Kind::button}).value.value();
     all.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     all.connect_immediate([](const OptionChange&) { return Result{}; });
     auto all_frame = arrange(layout::column({layout::control(all), layout::control(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
@@ -78,7 +78,7 @@ void radio_boundaries_under_the_appearance() {
 }
 
 void slider_non_divisible_under_the_appearance() {
-    Ui ui({});
+    Ui ui;
     auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
     slider.connect_confirmed([](const NumericChange&) { return Result{}; });
@@ -100,11 +100,11 @@ void slider_non_divisible_under_the_appearance() {
 }
 
 void disabled_tabs_under_the_appearance() {
-    Ui ui({});
-    auto first = ui.add_button({.id = "first", .kind = Kind::button});
-    auto hidden = ui.add_button({.id = "hidden", .kind = Kind::button});
+    Ui ui;
+    auto first = ui.add_button({.id = "first", .kind = Kind::button}).value.value();
+    auto hidden = ui.add_button({.id = "hidden", .kind = Kind::button}).value.value();
     auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
-        {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}}, {{"two"}, u"Two", true, {hidden}}});
+        {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}}, {{"two"}, u"Two", true, {hidden}}}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::column({layout::control(tabs), layout::control(first), layout::control(hidden)}), ui, *appearance, measure, 400, 300, 1.f, scroll);
     check(frame.find(tabs) && !frame.find(hidden) && hidden.invoke().status == Status::hidden &&
@@ -257,8 +257,8 @@ void volume_conflict_offers_latest() {
 
 void checkbox_conflict_is_visible_and_can_use_latest() {
     bool source = true; std::function<void()> changed;
-    Ui ui({});
-    auto box = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"});
+    Ui ui;
+    auto box = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"}).value.value();
     box.connect_source({[&] { return source; }, [&](std::function<void()> cb) { changed = std::move(cb); return [] {}; }});
     box.connect_confirmed([&](const BoolChange&) {
         box.toggle(); source = false; changed();
@@ -596,10 +596,10 @@ void pages_keep_independent_drafts_history_and_scroll() {
 }
 
 void tooltip_keyboard_delay_and_escape() {
-    Ui ui({});
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
-    auto other = ui.add_button({.id = "other", .kind = Kind::button, .label = u"Other"});
-    auto tip = ui.add_tooltip(source, u"Set progress to 50%", 100);
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"}).value.value();
+    auto other = ui.add_button({.id = "other", .kind = Kind::button, .label = u"Other"}).value.value();
+    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
     check(source.describe()->description == u"Set progress to 50%", "The source exposes the tooltip as its semantic description");
     auto& host = detail::access(ui);
     host.tooltip_time(1000);
@@ -618,9 +618,9 @@ void tooltip_keyboard_delay_and_escape() {
 }
 
 void tooltip_pointer_visit_can_restart_after_escape() {
-    Ui ui({});
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
-    auto tip = ui.add_tooltip(source, u"Set progress to 50%", 100);
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"}).value.value();
+    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);
     host.tooltip_hover("source"); host.tooltip_time(100);
@@ -636,9 +636,9 @@ void tooltip_pointer_visit_can_restart_after_escape() {
 }
 
 void tooltip_pointer_focus_ends_on_leave() {
-    Ui ui({});
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"});
-    auto tip = ui.add_tooltip(source, u"Help", 100);
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"50%"}).value.value();
+    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);
     host.tooltip_hover("source");
@@ -653,9 +653,9 @@ void tooltip_pointer_focus_ends_on_leave() {
 }
 
 void tooltip_window_modal_and_source_lifetime() {
-    Ui ui({});
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"});
-    auto tip = ui.add_tooltip(source, u"Help", 100);
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true); source.focus(); host.tooltip_time(100);
     check(*tip.visible(), "Tooltip becomes visible");
@@ -676,9 +676,9 @@ void tooltip_window_modal_and_source_lifetime() {
 }
 
 void tooltip_layout_is_readable_and_pointer_transparent() {
-    Ui ui({});
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"});
-    auto tip = ui.add_tooltip(source, u"An explanation that wraps near a window edge", 0);
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"An explanation that wraps near a window edge", 0).value.value();
     auto& host = detail::access(ui);
     host.window_active(true); source.focus();
     test::FakeMeasure measure; ScrollState scroll;
@@ -1537,7 +1537,7 @@ void popup_and_scroll_matrix() {
         h.region.focus(); auto visible_frame = draw(dropdown_id);
         std::uint64_t tip_now = 0;
         host.tooltip_clock([&] { return tip_now; }); host.window_active(true);
-        auto region_tip = form.ui.add_tooltip(h.region, u"Region help", 100);
+        auto region_tip = form.ui.add_tooltip("region.tip", h.region, u"Region help", 100).value.value();
         tip_now = 100; host.tooltip_time(tip_now);
         auto* tip_anchor = visible_frame.find(h.region);
         int top_cutoff = tip_anchor->bounds.y + form.scroll.offset + tip_anchor->bounds.h - tip_anchor->clip.y;

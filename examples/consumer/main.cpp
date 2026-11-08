@@ -10,7 +10,7 @@ static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
-// An application sees only typed handles; string IDs cannot operate or look up components.
+// Applications use typed handles; string operations belong to the semantic layer, not Ui.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);
 template <class T> concept HasText = requires(T& ui, std::string_view id) { ui.text(id); };
@@ -88,12 +88,12 @@ int main() {
     using namespace lcars;
     Profile profile;
     std::function<void()> changed;
-    Ui ui({});
-    ui.add_label({.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name});
-    auto alias = ui.add_text({.id = "profile.alias", .kind = Kind::text, .max_length = 12});
-    ui.add_label({.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error});
-    auto save = ui.add_button({.id = "profile.save", .kind = Kind::button, .label = u"Save alias"});
-    auto summary = ui.add_label({.id = "profile.summary", .kind = Kind::label});
+    Ui ui;
+    ui.add_label({.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name}).value.value();
+    auto alias = ui.add_text({.id = "profile.alias", .kind = Kind::text, .max_length = 12}).value.value();
+    ui.add_label({.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error}).value.value();
+    auto save = ui.add_button({.id = "profile.save", .kind = Kind::button, .label = u"Save alias"}).value.value();
+    auto summary = ui.add_label({.id = "profile.summary", .kind = Kind::label}).value.value();
     alias.connect_source({[&] { return profile.alias; }, [&](std::function<void()> callback) {
         changed = std::move(callback);
         return [&] { changed = {}; };
