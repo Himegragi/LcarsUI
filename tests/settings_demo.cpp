@@ -35,9 +35,12 @@ void exercise() {
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(detail::access(demo.ui).focused() == "app.undo", "editing enables undo in tab order");
     test::check(bool(demo.nav.select({"about"})), "navigate to about");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()})
+    for (int size : {12, 16, 28})
+    for (auto viewport : {std::pair{960,720}, std::pair{640,480}}) {
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
+        auto root = layout::row({layout::control(demo.nav, size), layout::column({})});
+        auto frame = arrange(root, demo.ui, *appearance, measure, viewport.first, viewport.second, 1, scroll);
         auto* item = frame.find(demo.nav);
         test::check(item && item->options.size() == 4 && item->bounds.w >= 160, "four navigation rows retain natural width");
         demo.nav.focus();

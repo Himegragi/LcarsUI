@@ -953,7 +953,7 @@ NavigationListHandle detail::UiState::add_navigation_list(Control control, std::
     std::set<std::string> values;
     std::set<Id> members;
     for (const auto& page : pages) {
-        if (page.value.id.empty() || !values.insert(page.value.id).second) throw std::invalid_argument("Invalid page identity");
+        if (page.value.id.empty() || page.value.id.find_first_not_of(" \t\r\n") == std::string::npos || !values.insert(page.value.id).second) throw std::invalid_argument("Invalid page identity");
         for (const auto& handle : page.members) {
             auto member = layout_id(handle);
             if (!member || !find(*member) || removal_pending(*member) || page_members_.contains(*member) ||

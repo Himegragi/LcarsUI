@@ -11,8 +11,9 @@ void exercise() {
     auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
     check(bool(nav->add_member({"one"}, field)), "attach member");
     check(nav->selected()->id == "one", "initial page is selected");
+    int invalidations = 0; detail::access(ui).on_invalidate([&] { ++invalidations; });
     int changes = 0; nav->on_page_change([&](auto, auto) { ++changes; });
-    check(bool(nav->select({"one"})) && changes == 0, "reselect does not notify");
+    check(bool(nav->select({"one"})) && changes == 0 && invalidations == 0, "reselect does not notify or redraw");
     check(bool(nav->focus()), "focus navigation");
     check(bool(detail::access(ui).key_down({.key=Key::down})) && nav->selected()->id == "two", "down selects next page");
     check(field.set_value(u"other").status == Status::hidden, "inactive page refuses edits");
@@ -32,6 +33,10 @@ void exercise() {
     detail::access(ui).pointer_down("nav", 2);
     detail::access(ui).pointer_up("nav", 2);
     check(detail::access(ui).focused() == "field" && nav->selected()->id == "one", "disabled pointer row does nothing");
+    check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"   "},u"X",true,{}}}, {"   "}).status == Status::invalid_value, "blank page identity rejected");
+    detail::access(ui).pointer_down("nav", 1);
+    detail::access(ui).pointer_up("nav", 1);
+    check(nav->selected()->id == "two" && detail::access(ui).focused() == "nav", "enabled pointer row selects and focuses navigation");
     Ui modal_ui;
     auto first = modal_ui.add_button({.id="first",.kind=Kind::button}).value.value();
     auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();
