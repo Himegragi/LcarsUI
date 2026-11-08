@@ -141,8 +141,16 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        atlas_text_size_ = ui_.presentation().text_size;
+        atlas_font_family_ = ui_.presentation().font_family;
         detail::access(ui_).on_presentation([this] {
-            configure_font(ui_.presentation().font_family);
+            const auto& settings = ui_.presentation();
+            const auto clears = text_.atlas_clears();
+            configure_font(settings.font_family);
+            if ((settings.text_size != atlas_text_size_ || settings.font_family != atlas_font_family_) && text_.atlas_clears() == clears)
+                text_.clear_atlas();
+            atlas_text_size_ = settings.text_size;
+            atlas_font_family_ = settings.font_family;
             if (!window_) return;
             RECT client{}; GetClientRect(window_, &client);
             if (client.right <= 0 || client.bottom <= 0) return;
@@ -243,6 +251,8 @@ void DesktopHost::pump() {
 }
 
 Frame DesktopHost::arrange(int width, int height, float scale) {
+    if (atlas_scale_ && atlas_scale_ != scale) text_.clear_atlas();
+    atlas_scale_ = scale;
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
