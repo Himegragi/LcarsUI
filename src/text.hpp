@@ -35,7 +35,6 @@ public:
     ~Text();
     Text(const Text&)=delete;
     Text& operator=(const Text&)=delete;
-    void set_ming(bool ming);
     TextLayout shape(std::u16string_view text,int pixels);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);

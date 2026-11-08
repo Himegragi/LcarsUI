@@ -1,4 +1,5 @@
 #include "text.hpp"
+#include "font_files.hpp"
 #include <windows.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -16,11 +17,11 @@ struct Font {
     std::vector<unsigned char> bytes;
     FT_Face face=nullptr;
     hb_font_t* hb=nullptr;
-    Font(FT_Library library,const std::filesystem::path& path) {
-        std::ifstream stream(path,std::ios::binary);
+    Font(FT_Library library,const FontFile& file) {
+        std::ifstream stream(file.path,std::ios::binary);
         require(bool(stream),"Required Windows font unavailable (Segoe UI / Microsoft JhengHei / MingLiU)");
         bytes.assign(std::istreambuf_iterator<char>(stream),{});
-        require(FT_New_Memory_Face(library,bytes.data(),static_cast<FT_Long>(bytes.size()),0,&face)==0,"Font load failed");
+        require(FT_New_Memory_Face(library,bytes.data(),static_cast<FT_Long>(bytes.size()),file.face_index,&face)==0,"Font load failed");
         hb=hb_ft_font_create_referenced(face);
     }
     ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);}
@@ -30,15 +31,10 @@ struct Font {
 struct Text::Impl {
     FT_Library library=nullptr;
     std::unique_ptr<Font> latin,traditional,emoji;
-    std::filesystem::path fonts;
-    bool ming=false;
     Impl() {
-        wchar_t path[MAX_PATH]{};
-        require(GetWindowsDirectoryW(path,MAX_PATH)>0,"Windows font directory unavailable");
-        fonts=std::filesystem::path(path)/"Fonts";
         require(FT_Init_FreeType(&library)==0,"FreeType initialization failed");
-        try {latin=std::make_unique<Font>(library,fonts/"segoeui.ttf");traditional=std::make_unique<Font>(library,fonts/"msjh.ttc");
-            try { emoji=std::make_unique<Font>(library,fonts/"seguiemj.ttf"); } catch (...) {} }
+        try {latin=std::make_unique<Font>(library,system_font_file(u"Segoe UI"));traditional=std::make_unique<Font>(library,system_font_file(u"Microsoft JhengHei"));
+            try { emoji=std::make_unique<Font>(library,system_font_file(u"Segoe UI Emoji")); } catch (...) {} }
         catch(...){traditional.reset();latin.reset();FT_Done_FreeType(library);throw;}
     }
     ~Impl(){emoji.reset();traditional.reset();latin.reset();FT_Done_FreeType(library);}
@@ -46,11 +42,6 @@ struct Text::Impl {
 };
 Text::Text():impl_(std::make_unique<Impl>()){}
 Text::~Text()=default;
-void Text::set_ming(bool ming){
-    if(impl_->ming==ming)return;
-    auto replacement=std::make_unique<Font>(impl_->library,impl_->fonts/(ming?"mingliu.ttc":"msjh.ttc"));
-    impl_->traditional=std::move(replacement);impl_->ming=ming;
-}
 float TextLayout::at(unsigned offset) const {
     auto it=carets.upper_bound(offset);return it==carets.begin()?0:std::prev(it)->second;
 }
