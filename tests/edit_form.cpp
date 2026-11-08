@@ -81,6 +81,101 @@ void theme_switch_preserves_showcase_geometry() {
     check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::light(), "V04 switches to light");
 }
 
+void semantic_tree_reads_registered_components() {
+    Ui ui;
+    ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"});
+    auto children = ui.semantics().children({});
+    auto node = ui.semantics().get({"save"});
+    check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
+          "Semantic tree enumerates and reads a registered button");
+}
+
+void write_semantic_tsv(edit_form::Form& form, const char* state) {
+    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
+    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
+    std::ofstream out(filename, std::ios::binary);
+    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
+    out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = form.ui.semantics().children(parent);
+        check(bool(children), "Tree traversal succeeds while writing TSV");
+        for (const auto& ref : *children) {
+            auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
+            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
+                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
+            if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
+            else out << '-';
+            out << '\n'; self(self, ref);
+        }
+    };
+    visit(visit, {}); out.flush(); check(bool(out), "Semantic TSV was written");
+}
+
+void semantic_showcase_states_and_identity() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    test::FakeMeasure measure;
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v01");
+    auto inventory = x04::inventory(form);
+    std::set<std::string> unique;
+    for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
+    std::set<std::string> tree_components;
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = tree.children(parent); check(bool(children), "Semantic children are readable");
+        for (const auto& ref : *children) {
+            auto node = tree.get(ref); check(bool(node), "Enumerated semantic node is readable");
+            if (!ref.item && node->role != Role::dialog && node->role != Role::tooltip) tree_components.insert(ref.id);
+            if (node->role == Role::dialog) self(self, ref);
+        }
+    };
+    visit(visit, {});
+    check(inventory.size() == tree_components.size() && unique == tree_components,
+          "X04 includes every tree component exactly once");
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.preview}})
+        check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
+    auto mode = form.handles.mode.describe()->id;
+    auto options = tree.children({mode});
+    check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
+          (*options)[1].item == OptionValue{"focus"} && (*options)[2].item == OptionValue{"offline"}, "SEM02 radio options are tree children");
+    auto name = tree.get({ids.name});
+    check(name && !name->hidden && name->name == form.handles.name.describe()->name && name->bounds,
+          "SEM02 active field has its current name and clipped bounds");
+    auto list_id = form.list->handles.list.describe()->id;
+    check(tree.get({list_id})->hidden, "SEM02 inactive list remains readable and hidden");
+    form.handles.tabs.activate({"v02"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v02");
+    auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
+    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
+    form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
+    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
+          "SEM03 selected identity survives sorting and unknown item is absent");
+    form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
+    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
+    form.handles.tabs.activate({"v04"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v04");
+    form.handles.tabs.activate({"v03"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
+    auto hidden = tree.get({ids.name});
+    check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
+          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
+    form.handles.dialog_open.invoke(); draw();
+    auto background = tree.get({form.handles.progress_half.describe()->id});
+    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
+}
+
+void semantic_unnamed_diagnostic() {
+    Ui ui; auto button = ui.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
+#ifndef NDEBUG
+    check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
+#endif
+}
+
 void presentation_settings_are_atomic() {
     Ui ui;
     int redraws = 0;
@@ -202,86 +297,7 @@ void ps08_large_text_wraps_without_overlap() {
     for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
     for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
     check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
-}
 
-void semantic_tree_reads_registered_components() {
-    Ui ui;
-    ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"});
-    auto children = ui.semantics().children({});
-    auto node = ui.semantics().get({"save"});
-    check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
-          "Semantic tree enumerates and reads a registered button");
-}
-
-void write_semantic_tsv(edit_form::Form& form, const char* state) {
-    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
-    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
-    std::ofstream out(filename, std::ios::binary);
-    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
-    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
-    out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
-    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
-        auto children = form.ui.semantics().children(parent);
-        check(bool(children), "Tree traversal succeeds while writing TSV");
-        for (const auto& ref : *children) {
-            auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
-            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
-                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
-            if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
-            else out << '-';
-            out << '\n'; self(self, ref);
-        }
-    };
-    visit(visit, {}); out.flush(); check(bool(out), "Semantic TSV was written");
-}
-
-void semantic_showcase_states_and_identity() {
-    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
-    test::FakeMeasure measure;
-    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
-    draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v01");
-    auto inventory = x04::inventory(form);
-    std::set<std::string> unique;
-    for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
-    check(inventory.size() == 57 && unique.size() == 57, "Tree enumerates exactly the 57 formerly inventoried showcase components");
-    auto mode = form.handles.mode.describe()->id;
-    auto options = tree.children({mode});
-    check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
-          (*options)[1].item == OptionValue{"focus"} && (*options)[2].item == OptionValue{"offline"}, "SEM02 radio options are tree children");
-    auto name = tree.get({ids.name});
-    check(name && !name->hidden && name->name == form.handles.name.describe()->name && name->bounds,
-          "SEM02 active field has its current name and clipped bounds");
-    auto list_id = form.list->handles.list.describe()->id;
-    check(tree.get({list_id})->hidden, "SEM02 inactive list remains readable and hidden");
-    form.handles.tabs.activate({"v02"}); draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v02");
-    auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
-    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
-    form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
-    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
-          "SEM03 selected identity survives sorting and unknown item is absent");
-    form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
-    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
-    form.handles.tabs.activate({"v03"}); draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
-    auto hidden = tree.get({ids.name});
-    check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
-          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
-    form.handles.dialog_open.invoke(); draw();
-    auto background = tree.get({form.handles.progress_half.describe()->id});
-    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
-}
-
-void semantic_unnamed_diagnostic() {
-    Ui ui; auto button = ui.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
-    test::FakeMeasure measure; ScrollState scroll;
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
-    check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
-#ifndef NDEBUG
-    check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
-#endif
 }
 
 void long_field_label_and_error_keep_their_association() {
@@ -1223,7 +1239,7 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
           "X04 V01 and V02 are absent and reject actions on V03");
     auto& state = detail::access(form.ui);
     std::vector<std::vector<Id>> page_items;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         h.tabs.activate({page});
         auto current = frame();
         std::vector<Id> ids_on_page;
@@ -1231,10 +1247,10 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
         page_items.push_back(std::move(ids_on_page));
     }
     int page_index = 0;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         h.tabs.activate({page});
         auto current = frame();
-        for (int other = 0; other < 3; ++other) if (other != page_index) for (const auto& id : page_items[other]) {
+        for (int other = 0; other < static_cast<int>(page_items.size()); ++other) if (other != page_index) for (const auto& id : page_items[other]) {
             check(!detail::find_placement(current, id) && state.available(id).status == Status::hidden,
                   "X04 each other-page placement is absent and not admitted");
         }
@@ -1583,7 +1599,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto semantic = x04::describe(entry.handle);
             if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
-                !x04::group_conflict_supported(*semantic)) continue;
+                !x04::group_conflict_supported(form, *semantic)) continue;
             auto message = std::string("X04 conflict ") + semantic->id;
             check(x04::drive_group_conflict(form, entry), (message + " drive").c_str());
             auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
@@ -1661,7 +1677,7 @@ void x04_hidden_inventory_at_each_size_and_scale() {
                   detail::access(form.ui).pointer_down(semantic->id).status == Status::hidden &&
                   x04::hidden_retry(entry.handle), message.c_str());
         }
-        for (auto page : {"v01", "v02", "v03"}) {
+        for (const auto& page : x04::pages(form)) {
             check(bool(form.handles.tabs.activate({page})), "X04 activate page");
             auto frame = arrange(form.page(), form.ui, *appearance, measure,
                                  int(size.first * scale), int(size.second * scale), scale, form.scroll);
@@ -1681,7 +1697,7 @@ void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {

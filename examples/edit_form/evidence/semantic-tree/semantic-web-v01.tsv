@@ -1,8 +1,9 @@
 id	item	role	name	value	hidden	visible	blocked_by_modal	bounds
 form.title.pages.tabs		tabs	Showcase	Edit form	0	1	0	0,0,960,68
-form.title.pages.tabs	v01	tab_item	Edit form		0	1	0	0,28,320,40
-form.title.pages.tabs	v02	tab_item	List		0	1	0	320,28,320,40
-form.title.pages.tabs	v03	tab_item	Confirm		0	1	0	640,28,320,40
+form.title.pages.tabs	v01	tab_item	Edit form		0	1	0	0,28,240,40
+form.title.pages.tabs	v02	tab_item	List		0	1	0	240,28,240,40
+form.title.pages.tabs	v03	tab_item	Confirm		0	1	0	480,28,240,40
+form.title.pages.tabs	v04	tab_item	呈現設定		0	1	0	720,28,240,40
 form.title		label		編輯表單	0	1	0	24,92,898,36
 form.intro		label		改名稱只改草稿；按「套用」且名稱有效，才更新上次套用結果並計數一次。資料只在記憶體。	0	1	0	24,144,898,24
 fixture.normal		button	正常		0	1	0	24,184,64,40
@@ -81,6 +82,9 @@ form.title.pages.v03.reset		button	Reset page		1	0	0	-
 form.title.pages.v03.open		button	Reset progress...		1	0	0	-
 form.title.pages.v03.temporary		button	Temporary opener...		1	0	0	-
 form.title.pages.v03.result		label		Result: No result; confirmations: 0	1	0	0	-
+form.title.pages.v04.title		label		呈現設定	1	0	0	-
+form.title.pages.v04.text_size		slider	文字大小	16	1	0	0	-
+form.title.pages.v04.preview		text	預覽	繁中 English 😀 𠀀 ❤️	1	0	0	-
 form.title.pages.dialog		dialog			1	0	0	-
 form.title.pages.dialog.title		label		重設示範進度	1	0	0	-
 form.title.pages.dialog.body		label		將進度改為 0%。其他頁面資料會保留。	1	0	0	-

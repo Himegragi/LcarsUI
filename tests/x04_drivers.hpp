@@ -18,8 +18,7 @@ inline std::vector<Entry> inventory(edit_form::Form& form) {
             auto node = form.ui.semantics().get(ref);
             if (!node) continue;
             const auto page = state.semantic_page(ref.id);
-            // X04 covers the original V01?V03 fixtures; V04 has its own presentation tests.
-            if (!ref.item && page != "v04" && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
+            if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
                 result.push_back({page, state.layout_handle(ref.id)});
             if (node->role == lcars::Role::dialog) self(self, ref);
         }
@@ -33,6 +32,13 @@ inline std::vector<Entry> inventory(edit_form::Form& form) {
         return std::find_if(controls.begin(), controls.end(), [&](const auto& c) { return id && c.id == *id; }) - controls.begin();
     };
     std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) { return ordinal(a) < ordinal(b); });
+    return result;
+}
+inline std::vector<std::string> pages(edit_form::Form& form) {
+    std::vector<std::string> result;
+    auto tabs = form.handles.tabs.describe();
+    auto children = form.ui.semantics().children({tabs->id});
+    if (children) for (const auto& ref : *children) if (ref.item) result.push_back(ref.item->id);
     return result;
 }
 inline std::optional<lcars::Semantics> describe(const lcars::ComponentHandle& value) {
@@ -200,11 +206,15 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
 // Applicability follows the application-owned connection, not component IDs.
 inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
     auto field = std::get_if<lcars::TextHandle>(&entry.handle);
-    return field && form.list && form.list->search_connection().owns(*field);
+    if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
+    auto semantic = describe(entry.handle);
+    return semantic && semantic->kind == lcars::Kind::slider &&
+        !lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, semantic->id);
 }
-inline bool group_conflict_supported(const lcars::Semantics& s) {
+inline bool group_conflict_supported(edit_form::Form& form, const lcars::Semantics& s) {
     using lcars::Kind;
-    return s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
+    bool type_supported = s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
+    return type_supported && lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, s.id);
 }
 inline bool drive_group_conflict(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
@@ -274,11 +284,12 @@ inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
     if (entry.page == "shared" || entry.page == "modal" || !form.handles.tabs.activate({std::string(entry.page)})) return false;
     auto target = describe(entry.handle);
     std::u16string padding;
-    for (int i = 0; i < 60; ++i) padding += u"\n";
+    for (int i = 0; i < 60; ++i) padding += u"X04 padding\n";
     lcars::LabelHandle filler;
     if (entry.page == "v01") filler = target->id == form.handles.intro.describe()->id ? form.handles.title : form.handles.intro;
     else if (entry.page == "v02") filler = target->id == form.list->handles.title.describe()->id ? form.list->handles.detail : form.list->handles.title;
-    else filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
+    else if (entry.page == "v03") filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
+    else filler = form.handles.v04_title;
     if (!form.set_clip_padding(filler, std::move(padding))) return false;
     if (target->kind == lcars::Kind::label && target->role == lcars::TextRole::error && !target->target.empty())
         return bool(form.handles.name.set_error(u"X04 clipped error"));
@@ -340,8 +351,7 @@ inline bool drive_error(edit_form::Form& form, const Entry& entry) {
         else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(error_message));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) {
-            form.reject_next_apply_for(ConfirmField{h}, error_message);
-            return form.handles.apply.invoke().status == Status::invalid_value;
+            return bool(detail::access(form.ui).set_error(h.describe()->id, error_message));
         } else return false;
     }, entry.handle);
 }
@@ -367,7 +377,7 @@ inline bool restore_error(edit_form::Form& form, const Entry& entry) {
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(u""));
         else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(u""));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
-                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(form.handles.reset.invoke());
+                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(detail::access(form.ui).set_error(h.describe()->id, u""));
         else return false;
     }, entry.handle);
     return restored && baseline_context(form);

@@ -141,6 +141,35 @@ void semantic_navigation_pages() {
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
+    auto navigation = demo.ui.semantics().get({"app.nav"});
+    auto pages = demo.ui.semantics().children({"app.nav"});
+    test::check(navigation && navigation->role == Role::list && pages && pages->size() == 4,
+                "semantic navigation exposes the four demo pages");
+    for (const auto& page : *pages) {
+        auto node = demo.ui.semantics().get(page);
+        test::check(node && node->role == Role::list_item && node->selected == (page.item->id == "general"),
+                    "semantic page items identify the selected page");
+    }
+    auto items_probe = demo.ui.add_label({.id="probe.items", .kind=Kind::label}).value.value();
+    auto appearance_probe = demo.ui.add_label({.id="probe.appearance", .kind=Kind::label}).value.value();
+    auto about_probe = demo.ui.add_label({.id="probe.about", .kind=Kind::label}).value.value();
+    test::check(bool(demo.nav.add_member({"items"}, items_probe)) && bool(demo.nav.add_member({"appearance"}, appearance_probe)) &&
+                bool(demo.nav.add_member({"about"}, about_probe)), "attach page-specific semantic probes");
+    for (const char* page : {"general", "items", "appearance", "about"}) {
+        test::check(bool(demo.nav.select({page})), "semantic page test switches page");
+        auto field = demo.ui.semantics().get({"general.name"});
+        auto items_field = demo.ui.semantics().get({"items.search"});
+        auto item = demo.ui.semantics().get({"app.nav", OptionValue{page}});
+        test::check(field && field->hidden == (std::string_view(page) != "general") && item && item->selected,
+                    "semantic tree reflects navigation and hidden general members");
+        test::check(items_field && items_field->hidden == (std::string_view(page) != "items"),
+                    "semantic tree hides the Items field outside its page");
+        for (const auto& [id, member_page] : {std::pair{"probe.items", "items"}, std::pair{"probe.appearance", "appearance"}, std::pair{"probe.about", "about"}}) {
+            auto member = demo.ui.semantics().get({id});
+            test::check(member && member->hidden == (std::string_view(page) != member_page), "non-current page member is hidden");
+        }
+    }
+    test::check(bool(demo.nav.select({"general"})), "restore general page");
     test::check(demo.name.draft().value.value() == u"測試使用者", "initial name");
     test::check(demo.volume.draft().value.value() == 40, "initial volume");
     test::check(detail::access(demo.ui).focused() == "app.nav", "navigation initially focused");
