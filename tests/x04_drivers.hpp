@@ -18,8 +18,7 @@ inline std::vector<Entry> inventory(edit_form::Form& form) {
             auto node = form.ui.semantics().get(ref);
             if (!node) continue;
             const auto page = state.semantic_page(ref.id);
-            // X04 covers the original V01?V03 fixtures; V04 has its own presentation tests.
-            if (!ref.item && page != "v04" && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
+            if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
                 result.push_back({page, state.layout_handle(ref.id)});
             if (node->role == lcars::Role::dialog) self(self, ref);
         }
