@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 #include <functional>
+#include <optional>
 #include "font_files.hpp"
 namespace lcars::detail {
 struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; };
@@ -52,6 +53,8 @@ public:
     void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
     void test_bitmap_mode(int mode); // -1 uses the rasterizer's pixel mode
+    void set_primary_family(std::u16string family);
+    std::optional<float> test_axis_coordinate(unsigned font, std::uint32_t dwrite_tag);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

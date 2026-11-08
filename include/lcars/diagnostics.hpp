@@ -20,5 +20,6 @@ struct RenderDiagnostic {
     std::string component_id;
     std::string operation_id;
     std::string backend_detail;
+    std::size_t omitted_before = 0;
 };
 }

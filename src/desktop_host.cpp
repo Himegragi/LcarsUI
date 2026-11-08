@@ -115,14 +115,12 @@ Query<std::u16string> WindowsClipboard::read() {
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                          const DesktopOptions& options, bool trace, bool background)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll),
-      text_(system_font_file, [callback=options.on_diagnostic, environment=&ui](const RenderDiagnostic& source) {
-          auto event=source; event.ui_environment=environment;
-          if(callback) { try { callback(event); } catch (...) {} }
-#ifndef NDEBUG
-          else { std::wstring message(event.code.begin(),event.code.end()); message+=L"\n"; OutputDebugStringW(message.c_str()); }
-#endif
-      }) {
+    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
+      text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
+    PresentationSettings font_settings; font_settings.font_family=options.font_family;
+    auto resolution=system_font_catalog().resolve(font_settings);
+    enqueue_font_diagnostics(diagnostics_,system_font_catalog_error(),resolution);
+    if(!options.font_family.empty() && resolution.requested_available) text_.set_primary_family(resolution.primary);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW wc{};
@@ -149,6 +147,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).before_focus([this] { finish_composition(); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
+        PostMessageW(window_,WM_APP+43,0,0);
     } catch (...) {
         release();  // the destructor will not run for a half-built host
         throw;
@@ -223,6 +222,7 @@ void DesktopHost::pump() {
         if (msg.message == WM_QUIT) { failed_ = true; break; }
         dispatch(msg);
     }
+    diagnostics_.drain();
 }
 
 Frame DesktopHost::arrange(int width, int height, float scale) {
@@ -249,9 +249,11 @@ void DesktopHost::paint() {
     renderer_->draw(image);
     ++frames_;
     sync_ime();
+    diagnostics_.drain();
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
-    return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
+    auto frame=lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
+    diagnostics_.drain(); return frame;
 }
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
@@ -274,7 +276,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
     out.write(reinterpret_cast<const char*>(&info), sizeof(info));
     out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
     if (!out) throw std::runtime_error("Screenshot write failed");
-    return frame;
+    diagnostics_.drain(); return frame;
 }
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
@@ -468,6 +470,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
     }
     switch (msg) {
+    case WM_APP+43:
+        diagnostics_.drain(); return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         BeginPaint(window_, &ps);

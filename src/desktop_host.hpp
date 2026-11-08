@@ -3,6 +3,7 @@
 #include "lcars/desktop.hpp"
 #include "renderer.hpp"
 #include "text.hpp"
+#include "diagnostic_queue.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -66,6 +67,7 @@ private:
     HWND window_ = nullptr;
     HIMC input_context_ = nullptr;
     bool ime_associated_ = true;
+    DiagnosticQueue diagnostics_;
     Text text_;
     ShapedMeasure measure_{text_};
     std::unique_ptr<Renderer> renderer_;

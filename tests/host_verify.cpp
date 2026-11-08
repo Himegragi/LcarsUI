@@ -331,14 +331,22 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
     Ui ui;
     auto label=ui.add_label({.id="missing-font-glyph",.kind=Kind::label,.value=u"\U0010ffff"});
     std::vector<RenderDiagnostic> events;
-    DesktopOptions options; options.on_diagnostic=[&](const RenderDiagnostic& event) { events.push_back(event); };
+    DesktopHost* active=nullptr; int depth=0, maximum_depth=0;
+    DesktopOptions options; options.font_family=u"LcarsUI definitely absent";
+    options.on_diagnostic=[&](const RenderDiagnostic& event) {
+        ++depth; maximum_depth=std::max(maximum_depth,depth); events.push_back(event);
+        if(active && event.code=="font.family_unavailable") active->paint();
+        --depth;
+    };
     ScrollState scroll;
     DesktopHost host(ui,appearance,[&] { return layout::control(*label); },scroll,options,false,true);
+    active=&host;
     host.client_size(200,100); host.paint(); host.paint();
     auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {
         return e.code=="text.glyph_missing" && e.native_code==0x10ffff && e.ui_environment==&ui && e.severity==DiagnosticSeverity::info;
     });
-    report.check("font-diagnostic",count==1,"missing font glyph reaches the desktop diagnostic callback once");
+    bool family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.native_message.find("LcarsUI definitely absent")!=std::string::npos;})==1;
+    report.check("font-diagnostic",count==1 && family && maximum_depth==1,"font diagnostics reach the application once without recursive callbacks");
 }
 
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {

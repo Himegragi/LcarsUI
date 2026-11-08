@@ -1,12 +1,17 @@
 #include "lcars/fonts.hpp"
 #include "text.hpp"
+#include "diagnostic_queue.hpp"
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <dwrite_3.h>
 #include <wrl/client.h>
 #include <set>
+#include <cmath>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -51,6 +56,33 @@ bool catalog_faces_are_local(const lcars::FontCatalog& catalog) {
 }
 
 int main() {
+    {
+        std::vector<std::string> delivered;
+        int depth=0, max_depth=0;
+        lcars::detail::DiagnosticQueue* queue_ptr=nullptr;
+        lcars::detail::DiagnosticQueue queue([&](const lcars::RenderDiagnostic& event) {
+            ++depth; max_depth=std::max(max_depth,depth); delivered.push_back(event.code);
+            if(event.code=="first") { lcars::RenderDiagnostic nested; nested.code="second"; queue_ptr->push(nested); queue_ptr->drain(); }
+            --depth;
+        },nullptr);
+        queue_ptr=&queue;
+        lcars::RenderDiagnostic first; first.code="first";
+        queue.push(first);
+        if(!delivered.empty()) return 36;
+        queue.drain(); queue.drain();
+        if(max_depth!=1 || delivered!=std::vector<std::string>{"first","second"}) return 37;
+        delivered.clear();
+        lcars::FontResolution unavailable{u"missing",u"Segoe UI",false,{}};
+        lcars::detail::enqueue_font_diagnostics(queue,static_cast<long>(0x80004005u),unavailable);
+        if(!delivered.empty()) return 38;
+        queue.drain();
+        if(delivered!=std::vector<std::string>{"font.catalog_unavailable","font.family_unavailable"}) return 39;
+        std::size_t omitted=0, count=0;
+        lcars::detail::DiagnosticQueue bounded([&](const lcars::RenderDiagnostic& event) { omitted+=event.omitted_before; ++count; },nullptr);
+        for(int i=0;i<300;++i) bounded.push(first);
+        bounded.drain();
+        if(count!=256 || omitted!=44) return 42;
+    }
     const auto& catalog = lcars::system_font_catalog();
     std::cout << "Font families: " << catalog.families().size() << '\n';
     if (catalog.families().empty()) return 1;
@@ -68,6 +100,25 @@ int main() {
     FT_Done_FreeType(library);
     std::cout << "Segoe UI " << catalog.contains(u"Segoe UI") << ", JhengHei " << catalog.contains(u"Microsoft JhengHei")
               << ", Emoji " << catalog.contains(u"Segoe UI Emoji") << '\n';
+    {
+        constexpr std::uint32_t weight_tag=0x74686777u; // DirectWrite's little-endian 'wght'
+        bool tested=false;
+        for(const auto& family:catalog.families()) {
+            auto file=lcars::detail::system_font_file(family.key);
+            auto axis=std::find_if(file.axes.begin(),file.axes.end(),[](const auto& a) {return a.tag==weight_tag;});
+            if(axis==file.axes.end()) continue;
+            lcars::detail::Text probe([&](std::u16string_view name) { return name==u"Segoe UI"?file:lcars::detail::FontFile{}; },[](std::string_view) {});
+            if(!probe.test_axis_coordinate(0,weight_tag)) continue;
+            axis->value=axis->value>500.f?axis->value-1.f:axis->value+1.f;
+            const float expected=axis->value;
+            lcars::detail::Text variable([&](std::u16string_view name) { return name==u"Segoe UI"?file:lcars::detail::FontFile{}; },[](std::string_view) {});
+            variable.shape(u"A",18);
+            auto actual=variable.test_axis_coordinate(0,weight_tag);
+            if(!actual || std::abs(*actual-expected)>.01f) { std::cerr << "axis expected " << expected << " got " << (actual?*actual:-1) << '\n'; return 40; }
+            tested=true; break;
+        }
+        if(!tested) { std::cerr << "No variable weight axis available for the transfer test\n"; return 41; }
+    }
     lcars::detail::Text text;
     auto layout = text.shape(u"笑😀心❤️", 18);
     if (layout.missing != 0) return 2;

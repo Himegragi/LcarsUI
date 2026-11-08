@@ -75,8 +75,9 @@ struct Font {
 struct Text::Impl {
     static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
     FT_Library library=nullptr;
-    std::array<std::unique_ptr<Font>,10> fonts;
-    std::array<bool,10> attempted{};
+    std::array<std::unique_ptr<Font>,11> fonts;
+    std::array<bool,11> attempted{};
+    std::u16string primary;
     std::set<unsigned> missing;
     int bitmap_mode=-1;
     std::function<FontFile(std::u16string_view)> lookup;
@@ -96,7 +97,7 @@ struct Text::Impl {
     ~Impl(){for(auto& font:fonts)font.reset();if(library)FT_Done_FreeType(library);}
     Font* font(unsigned id) {
         if(id>=fonts.size()) return nullptr;
-        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
+        if(!attempted[id]) { attempted[id]=true; auto file=lookup(id==10?std::u16string_view(primary):names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
         return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
     }
 };
@@ -107,6 +108,18 @@ Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<voi
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 void Text::test_bitmap_mode(int mode) { impl_->bitmap_mode=mode; }
+void Text::set_primary_family(std::u16string family) { impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
+std::optional<float> Text::test_axis_coordinate(unsigned id,std::uint32_t t) {
+    auto font=impl_->font(id); if(!font) return {};
+    FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};
+    std::vector<FT_Fixed> coords(variations->num_axis);
+    std::optional<float> result;
+    if(!FT_Get_Var_Design_Coordinates(font->face,static_cast<FT_UInt>(coords.size()),coords.data())) {
+        auto tag=((t&255)<<24)|((t&0xff00)<<8)|((t&0xff0000)>>8)|((t>>24)&255);
+        for(unsigned i=0;i<variations->num_axis;++i) if(variations->axis[i].tag==tag) result=coords[i]/65536.f;
+    }
+    FT_Done_MM_Var(impl_->library,variations); return result;
+}
 float TextLayout::at(unsigned offset) const {
     auto it=carets.upper_bound(offset);return it==carets.begin()?0:std::prev(it)->second;
 }
@@ -119,7 +132,7 @@ TextLayout Text::shape(std::u16string_view text,int size){
     auto& e=*impl_;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
-    constexpr unsigned no_font=10;
+    constexpr unsigned no_font=11;
     for(unsigned i=0;i<text.size();){
         unsigned begin=i,cp=text[i++];
         if(cp>=0xd800&&cp<=0xdbff&&i<text.size()&&text[i]>=0xdc00&&text[i]<=0xdfff)cp=0x10000+((cp-0xd800)<<10)+(text[i++]-0xdc00);
@@ -131,6 +144,7 @@ TextLayout Text::shape(std::u16string_view text,int size){
         bool emoji=(cp>=0x1f000&&cp<=0x1faff) || (i<text.size() && text[i]==0xfe0f);
         auto supports=[&](unsigned n) {auto f=e.font(n);return f && f->size(size) && FT_Get_Char_Index(f->face,cp);};
         if(emoji && supports(9)) selected=9;
+        else if(!e.primary.empty() && supports(10)) selected=10;
         else for(unsigned n=0;n<10;++n) if(supports(n)){selected=n;break;}
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
         if(selected!=no_font && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;

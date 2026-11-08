@@ -57,11 +57,13 @@ bool usable(const detail::FontFile& file, bool& eligible) {
     if(face) FT_Done_Face(face); if(lib) FT_Done_FreeType(lib); if(data) UnmapViewOfFile(data); if(mapping) CloseHandle(mapping); CloseHandle(f);
     return ok;
 }
-struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; std::set<std::u16string> valid; bool available=false; };
+struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; std::set<std::u16string> valid; bool available=false; HRESULT error=S_OK; };
 const Snapshot& snapshot() {
  static const Snapshot value=[] {
     Snapshot out; ComPtr<IDWriteFactory6> factory; ComPtr<IDWriteFontSet1> set;
-    if(FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory6),reinterpret_cast<IUnknown**>(factory.GetAddressOf()))) || FAILED(factory->GetSystemFontSet(FALSE,&set))) {
+    out.error=DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory6),reinterpret_cast<IUnknown**>(factory.GetAddressOf()));
+    if(SUCCEEDED(out.error)) out.error=factory->GetSystemFontSet(FALSE,&set);
+    if(FAILED(out.error)) {
 #ifndef NDEBUG
         OutputDebugStringW(L"font.catalog_unavailable\n");
 #endif
@@ -117,6 +119,7 @@ FontResolution FontCatalog::resolve(const PresentationSettings& settings) const 
     return result;
 }
 namespace detail {
+long system_font_catalog_error() { return snapshot().error; }
 FontFile system_font_file(std::u16string_view family) {
  const auto& state=snapshot(); auto it=state.files.find(std::u16string(family));
  if(it!=state.files.end()) return it->second;
