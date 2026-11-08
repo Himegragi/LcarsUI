@@ -12,6 +12,7 @@
 #include <array>
 #include <set>
 #include <mutex>
+#include <atomic>
 namespace lcars::detail {
 namespace {
 std::string utf8(std::wstring_view value) {
@@ -87,6 +88,8 @@ struct Text::Impl {
     unsigned rasterizations=0;
     std::array<std::unique_ptr<Font>,11> fonts;
     std::array<bool,11> attempted{};
+    std::array<std::uint64_t,11> face_ids{};
+    static std::uint64_t next_face_id() { static std::atomic<std::uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }
     std::u16string primary;
     std::set<unsigned> missing;
     int bitmap_mode=-1;
@@ -108,6 +111,7 @@ struct Text::Impl {
     Font* font(unsigned id) {
         if(id>=fonts.size()) return nullptr;
         if(!attempted[id]) { attempted[id]=true; auto file=lookup(id==10?std::u16string_view(primary):names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
+        if (fonts[id] && fonts[id]->face && !face_ids[id]) face_ids[id] = next_face_id();
         return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
     }
 };
@@ -118,7 +122,7 @@ Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<voi
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 void Text::test_bitmap_mode(int mode) { if (impl_->bitmap_mode!=mode) { impl_->bitmap_mode=mode; impl_->atlas.clear(); } }
-void Text::set_primary_family(std::u16string family) { if (impl_->primary==family) return; impl_->atlas.clear(); impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
+void Text::set_primary_family(std::u16string family, bool new_generation) { if (impl_->primary==family && !new_generation) return; impl_->atlas.clear(); impl_->face_ids.fill(0); impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
 std::optional<float> Text::test_axis_coordinate(unsigned id,std::uint32_t t) {
     auto font=impl_->font(id); if(!font) return {};
     FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};
@@ -177,7 +181,7 @@ TextLayout Text::shape(std::u16string_view text,int size){
         for(unsigned i=0;i<count;++i){
             float advance=pos[i].x_advance/64.f;
             result.carets.try_emplace(info[i].cluster,result.width);
-            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance});
+            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.face_ids[run.font]});
             result.width+=advance;result.missing+=info[i].codepoint==0;
         }
         hb_buffer_destroy(buffer);
@@ -236,6 +240,7 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         };
         if (!glyph.id) {box();continue;}
         auto font=impl_->font(glyph.font);
+        if (glyph.face_id && impl_->face_ids[glyph.font] != glyph.face_id) font = nullptr;
         auto error=font?font->rasterize(glyph.id,layout.size):FT_Err_Invalid_Face_Handle;
         if(error) {
             impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
@@ -275,7 +280,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
         }
         canvas.glyph_deferred(color,[this,glyph,size,x,baseline] {
             const auto before=impl_->atlas.batches();
-            auto entry=impl_->atlas.get({glyph.font,glyph.id,size},[&] {
+            auto entry=impl_->atlas.get({glyph.face_id,glyph.id,size},[&] {
                 ++impl_->rasterizations;
                 auto box=[&] {
                     int w=std::max(1,static_cast<int>(std::round(size*.6f)));
@@ -288,6 +293,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                     return result;
                 };
                 auto font=impl_->font(glyph.font);
+                if (glyph.face_id && impl_->face_ids[glyph.font] != glyph.face_id) font = nullptr;
                 auto error=font?font->rasterize(glyph.id,size):FT_Err_Invalid_Face_Handle;
                 if(error) {
                     impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);
