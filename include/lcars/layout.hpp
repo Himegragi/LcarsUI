@@ -96,6 +96,7 @@ struct Frame {
     const Placement* find(const ProgressHandle& handle) const;
     const Placement* find(const DropdownHandle& handle) const;
     const Placement* find(const TabsHandle& handle) const;
+    const Placement* find(const NavigationListHandle& handle) const;
     const Placement* find(const ListHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
     const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
