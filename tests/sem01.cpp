@@ -1,9 +1,23 @@
 #include "lcars/core.hpp"
+#include "lcars/semantics.hpp"
+#include "lcars/layout.hpp"
+#include "fake_measure.hpp"
 #include <stdexcept>
 #include <string>
 using namespace lcars;
 static void check(bool ok) { if (!ok) throw std::runtime_error("SEM01 failed"); }
 int main() {
+    {
+        Ui probe;
+        auto unnamed = probe.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
+        test::FakeMeasure measure; ScrollState scroll;
+        arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
+        arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
+        check(probe.semantics().get({"probe.unnamed"})->name.empty());
+#ifndef NDEBUG
+        check(probe.diagnostics().size() == 1);
+#endif
+    }
     Ui ui;
     auto first = ui.add_text({.id = "form.name", .kind = Kind::text});
     check(bool(first));
