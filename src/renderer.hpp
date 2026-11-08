@@ -8,8 +8,9 @@ class Renderer {
 public:
     explicit Renderer(HWND window);
     ~Renderer();
-    void draw(const Image& canvas);
-    void capture(const Image& canvas,const std::filesystem::path& path);
+    void draw(const DrawList& list, int width, int height);
+    Image read_back(const DrawList& list, int width, int height);
+    std::string name() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

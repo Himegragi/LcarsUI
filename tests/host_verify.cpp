@@ -214,7 +214,55 @@ void presentation_before_input(const Appearance& appearance, Report& report) {
                  "IME query and pointer use updated layout before paint");
 }
 
-void draw_list_initial(const Appearance& appearance, Report& report) {
+void write_comparison_bmp(const std::filesystem::path& path, const Image& image) {
+    auto pixels=image.pixels;
+    for(std::size_t i=0;i<pixels.size();i+=4)std::swap(pixels[i],pixels[i+2]);
+    BITMAPFILEHEADER file{}; BITMAPINFOHEADER info{};
+    file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+static_cast<DWORD>(pixels.size());
+    info.biSize=sizeof(info);info.biWidth=image.width;info.biHeight=-image.height;info.biPlanes=1;info.biBitCount=32;info.biSizeImage=static_cast<DWORD>(pixels.size());
+    std::ofstream out(path,std::ios::binary);out.write(reinterpret_cast<const char*>(&file),sizeof(file));out.write(reinterpret_cast<const char*>(&info),sizeof(info));out.write(reinterpret_cast<const char*>(pixels.data()),static_cast<std::streamsize>(pixels.size()));
+    if(!out)throw std::runtime_error("comparison image write failed");
+}
+void write_comparison_failure(const std::filesystem::path& folder, const std::string& name, const detail::GpuComparison& result) {
+    std::filesystem::create_directories(folder);
+    write_comparison_bmp(folder/(name+"-cpu.bmp"),result.reference);
+    write_comparison_bmp(folder/(name+"-gpu.bmp"),result.actual);
+    Image diff{result.reference.width,result.reference.height,std::vector<unsigned char>(result.reference.pixels.size(),255)};
+    for(std::size_t i=0;i<diff.pixels.size();i+=4){
+        int delta=0;for(int c=0;c<3;++c)delta=std::max(delta,std::abs(int(result.reference.pixels[i+c])-int(result.actual.pixels[i+c])));
+        diff.pixels[i]=static_cast<unsigned char>(delta);diff.pixels[i+1]=0;diff.pixels[i+2]=0;
+    }
+    write_comparison_bmp(folder/(name+"-diff.bmp"),diff);
+}
+
+// The same recorded frame must be executed by the graphics backend offscreen.
+void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std::filesystem::path& evidence) {
+    Fixture f(appearance, true);
+    f.host.force_scale(1.f);
+    f.settle();
+    f.form.handles.name.focus();
+    report.check("GPU-draw-list", bool(f.host.compare_gpu(960, 720, 1.f)),
+                 "offscreen GPU execution agrees with the CPU reference");
+    auto shifted=f.host.compare_gpu(960,720,1.f,1);
+    auto missing=f.host.compare_gpu(960,720,1.f,2);
+    report.check("GC03-caret", !shifted && (shifted.failed_roles & 2), "one-pixel caret shift is detected in the caret region");
+    report.check("GC03-focus", !missing && (missing.failed_roles & 1), "missing focus indicator is detected in the focus region");
+    auto key=report.appearance+"-injected";
+    write_comparison_failure(evidence,key,shifted);
+    bool images=std::filesystem::exists(evidence/(key+"-cpu.bmp")) && std::filesystem::exists(evidence/(key+"-gpu.bmp")) && std::filesystem::exists(evidence/(key+"-diff.bmp"));
+    report.check("GC05-images", images, "failed comparison writes reference, GPU and difference images");
+    f.host.configure_atlas(64,1);
+    report.check("GA03-GPU", bool(f.host.compare_gpu(960,720,1.f)) && f.host.atlas_peak_pages()<=1,
+                 "bounded atlas segmentation preserves GPU output");
+}
+
+std::string windows_build() {
+    using QueryVersion=LONG (WINAPI*)(OSVERSIONINFOW*);
+    auto proc=reinterpret_cast<QueryVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
+    OSVERSIONINFOW version{};version.dwOSVersionInfoSize=sizeof(version);
+    return proc && proc(&version)==0 ? std::to_string(version.dwBuildNumber) : "unknown";
+}
+void draw_list_initial(const Appearance& appearance, Report& report, std::ofstream* gpu_tsv = nullptr, const std::filesystem::path& evidence = {}) {
     const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
     for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
         Fixture f(appearance, true);
@@ -247,6 +295,27 @@ void draw_list_initial(const Appearance& appearance, Report& report) {
         }
         bool matched=setup && f.host.compare_legacy(width,height,scale);
         report.check("DL01", matched, std::string(names[scenario])+" scale="+std::to_string(scale)+" setup="+std::to_string(setup));
+        auto comparison=f.host.compare_gpu(width,height,scale);
+        const unsigned required = scenario==0 ? 3u : scenario==1 ? 4u : scenario==2 ? 10u : scenario==3 ? 48u : scenario==4 ? 5u : scenario==5 || scenario==6 ? 5u : scenario==9 ? 1u : 0u;
+        bool role_presence=(comparison.roles & required)==required;
+        bool pass=setup && bool(comparison) && role_presence;
+        report.check("GC01", pass, std::string(names[scenario])+" scale="+std::to_string(scale)+" roles="+std::to_string(comparison.roles));
+        if(gpu_tsv){
+            auto key=report.appearance+"-"+names[scenario]+"-"+(scale==1.f?"100":"150");
+            *gpu_tsv << names[scenario] << '\t' << report.appearance << '\t' << width << 'x' << height << '\t' << scale << '\t' << f.host.renderer_name() << '\t' << windows_build() << '\t' <<
+#ifdef NDEBUG
+            "Release"
+#else
+            "Debug"
+#endif
+            << '\t' << double(comparison.comparison.different_pixels)/(width*height) << '\t' << comparison.comparison.maximum_difference << '\t' << comparison.roles << '\t' << comparison.failed_roles << '\t';
+            for(std::size_t i=0;i<comparison.region_roles.size();++i) {
+                if(i)*gpu_tsv << ',';
+                *gpu_tsv << comparison.region_roles[i] << ':' << (comparison.comparison.region_pass[i]?"PASS":"FAIL");
+            }
+            *gpu_tsv << '\t' << comparison.comparison.regions_ok << '\t' << (pass?"PASS":"FAIL") << '\n';
+            if(!pass)write_comparison_failure(evidence,key,comparison);
+        }
     }
 }
 
@@ -2925,7 +2994,7 @@ int wmain(int argc, wchar_t** argv) {
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
-            else if (arg == L"--dl01-only") dl01_only = true;
+            else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -2938,7 +3007,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report); } return report.failures ? 1 : 0; }
+        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);

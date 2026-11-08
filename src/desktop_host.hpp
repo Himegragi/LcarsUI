@@ -27,6 +27,14 @@ private:
     HWND window_;
 };
 
+struct GpuComparison {
+    Image reference, actual;
+    ImageComparison comparison;
+    unsigned roles = 0, failed_roles = 0;
+    std::vector<unsigned> region_roles;
+    bool passed = false;
+    explicit operator bool() const { return passed; }
+};
 class DesktopHost {
 public:
     DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
@@ -47,6 +55,8 @@ public:
     // Arrange and raster offscreen at an arbitrary physical size; saves a 32-bit BMP.
     Frame render(int width, int height, float scale, const std::filesystem::path& bmp, Image* pixels = nullptr);
     bool compare_legacy(int width, int height, float scale);
+    GpuComparison compare_gpu(int width, int height, float scale, int fault = 0);
+    std::string renderer_name() const;
     // Arrange only, with the host's real text measurement and an independent scroll state.
     Frame layout(int width, int height, float scale, ScrollState& scroll, std::string_view reveal);
     const Frame& frame() const { return frame_; }

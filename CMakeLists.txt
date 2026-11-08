@@ -139,6 +139,7 @@ if(LCARS_BUILD_DESKTOP)
     target_link_libraries(lcars_text_tests PRIVATE lcars_desktop freetype)
     add_test(NAME text COMMAND lcars_text_tests)
     add_test(NAME host_native COMMAND lcars_host_verify --evidence "${CMAKE_BINARY_DIR}/evidence/host")
+    add_test(NAME render_compare COMMAND lcars_host_verify --render-compare --evidence "${CMAKE_BINARY_DIR}/evidence/render")
   endif()
 endif()
 

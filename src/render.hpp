@@ -50,6 +50,8 @@ struct RecordingCanvas {
     void end_group();
 };
 struct Image { int width,height; std::vector<unsigned char> pixels; };
+struct ImageComparison { std::size_t different_pixels = 0; int maximum_difference = 0; bool regions_ok = true; std::vector<bool> region_pass; };
+ImageComparison compare_images(const Image& expected, const Image& actual, const std::vector<Rect>& regions);
 Image render_cpu(const DrawList&,int width,int height);
 bool command_ink(const DrawList&, std::size_t begin, std::size_t end, Rect clip, int width, int height);
 }

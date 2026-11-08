@@ -88,6 +88,11 @@ int main() {
     require(bitmap_coverage(BitmapMode::bgra, 2, 1, 8, bgra) == std::vector<unsigned char>{55,200}, "color glyph uses alpha");
     require(bitmap_coverage(BitmapMode::unsupported, 2, 1, 8, bgra).empty(), "unsupported glyph is empty");
 
+    Image expected_image{4, 1, {0,0,0,255, 255,0,0,255, 0,0,0,255, 0,0,0,255}};
+    Image shifted_image{4, 1, {0,0,0,255, 0,0,0,255, 255,0,0,255, 0,0,0,255}};
+    auto comparison = compare_images(expected_image, shifted_image, {{1,0,1,1}});
+    require(!comparison.regions_ok && comparison.different_pixels == 2, "role region detects a one-pixel shift");
+
     DrawList rounded;
     rounded.clear({0, 0, 0, 255});
     rounded.rounded_rect({0, 0, 4, 4}, 2, {255, 255, 255, 255});
