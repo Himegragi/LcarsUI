@@ -60,6 +60,7 @@ struct DialogLayout { DialogHandle dialog; Node content; };
 Node modal(Node background, std::vector<DialogLayout> dialogs);
 Node modal(Node background, Node content, DialogHandle dialog);
 }
+using DialogLayout = layout::DialogLayout;
 
 struct Line { Rect bounds; std::u16string text; };
 struct Placement {

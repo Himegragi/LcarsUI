@@ -493,7 +493,8 @@ void multiple_dialog_layout() {
     auto two = ui.add_button({.id="two",.kind=Kind::button}).value.value();
     auto first = ui.add_dialog("first", {one}, one, background, [](bool) {}).value.value();
     auto second = ui.add_dialog("second", {two}, two, background, [](bool) {}).value.value();
-    auto root = layout::modal(layout::control(background), {{first, layout::control(one)}, {second, layout::control(two)}});
+    std::vector<DialogLayout> dialogs{{first, layout::control(one)}, {second, layout::control(two)}};
+    auto root = layout::modal(layout::control(background), std::move(dialogs));
     FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(root, ui, *appearances[0], measure, 640, 480, 1, scroll);
     check(!frame.modal && frame.overlays.empty(), "closed dialogs leave background alone");
