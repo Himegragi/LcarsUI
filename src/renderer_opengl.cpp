@@ -153,7 +153,25 @@ struct Renderer::Impl {
     int frames = 0;
     PFNGLGETGRAPHICSRESETSTATUSPROC reset_status = nullptr;
     RendererCapabilities caps;
-    explicit Impl(HWND handle, RendererTestHooks* test, DebugContext debug):window(handle), hooks(test) {
+    std::function<void(RenderDiagnostic)> sink;
+    PFNGLDEBUGMESSAGECALLBACKPROC debug_callback = nullptr;
+    PFNGLPUSHDEBUGGROUPPROC push_group = nullptr;
+    PFNGLPOPDEBUGGROUPPROC pop_group = nullptr;
+    std::string current_group;
+    static void APIENTRY receive(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* user) {
+        auto& self=*static_cast<const Impl*>(user);
+        if (!self.sink) return;
+        try {
+            RenderDiagnostic event; event.backend=u"OpenGL"; event.native_code=id;
+            event.native_message.assign(message, length > 0 ? static_cast<std::size_t>(length) : 0);
+            event.severity=severity==GL_DEBUG_SEVERITY_HIGH ? DiagnosticSeverity::error : severity==GL_DEBUG_SEVERITY_MEDIUM ? DiagnosticSeverity::warning : DiagnosticSeverity::info;
+            event.category=type==GL_DEBUG_TYPE_ERROR ? DiagnosticCategory::api_misuse : type==GL_DEBUG_TYPE_PERFORMANCE ? DiagnosticCategory::performance : DiagnosticCategory::other;
+            event.component_id=self.current_group;
+            event.backend_detail="OpenGL:"+std::to_string(source)+":"+std::to_string(type)+":"+std::to_string(id);
+            self.sink(std::move(event));
+        } catch (...) {}
+    }
+    explicit Impl(HWND handle, RendererTestHooks* test, DebugContext debug, std::function<void(RenderDiagnostic)> callback):window(handle), hooks(test), sink(std::move(callback)) {
         try {
             dc=GetDC(window);require(dc!=nullptr,"GetDC failed");
             PIXELFORMATDESCRIPTOR pfd{};pfd.nSize=sizeof(pfd);pfd.nVersion=1;
@@ -202,6 +220,22 @@ struct Renderer::Impl {
             auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.GetString(key)); return to16(p ? p : ""); };
             caps.version=string16(GL_VERSION); caps.vendor=string16(GL_VENDOR); caps.renderer=string16(GL_RENDERER);
             caps.debug_context=debug_enabled;
+            if (debug_enabled && !(hooks && hooks->hide_khr_debug)) {
+                using GetStringi=PFNGLGETSTRINGIPROC;
+                auto get_string_i=reinterpret_cast<GetStringi>(symbol("glGetStringi"));
+                GLint count=0; gl.GetIntegerv(GL_NUM_EXTENSIONS,&count);
+                bool supported=major>4 || (major==4 && minor>=3);
+                for (GLint i=0;i<count;++i) { auto extname=reinterpret_cast<const char*>(get_string_i(GL_EXTENSIONS,static_cast<GLuint>(i))); if (extname && std::string(extname)=="GL_KHR_debug") supported=true; }
+                if (supported) {
+                    try {
+                        debug_callback=reinterpret_cast<PFNGLDEBUGMESSAGECALLBACKPROC>(symbol("glDebugMessageCallback"));
+                        push_group=reinterpret_cast<PFNGLPUSHDEBUGGROUPPROC>(symbol("glPushDebugGroup"));
+                        pop_group=reinterpret_cast<PFNGLPOPDEBUGGROUPPROC>(symbol("glPopDebugGroup"));
+                        gl.Enable(GL_DEBUG_OUTPUT); gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+                        debug_callback(receive,this); caps.debug_messages=true;
+                    } catch (...) { debug_callback=nullptr; push_group=nullptr; pop_group=nullptr; }
+                }
+            }
             if (robust) {
                 auto proc=wglGetProcAddress("glGetGraphicsResetStatusARB");
                 if (proc && proc != reinterpret_cast<PROC>(1) && proc != reinterpret_cast<PROC>(2) && proc != reinterpret_cast<PROC>(3) && proc != reinterpret_cast<PROC>(-1)) reset_status=reinterpret_cast<PFNGLGETGRAPHICSRESETSTATUSPROC>(proc);
@@ -216,7 +250,7 @@ struct Renderer::Impl {
             throw StartupError{{StartupFailureKind::context_creation,{}, {},std::u16string(message.begin(),message.end())}};
         } catch (...) { release(); throw; }
     }
-    void release(){if(context && dc)wglMakeCurrent(dc,context);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
+    void release(){if(context && dc)wglMakeCurrent(dc,context);if(debug_callback)debug_callback(nullptr,nullptr);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
     ~Impl(){release();}
     void execute(const DrawList& list,int width,int height,bool offscreen) {
         require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");
@@ -261,6 +295,19 @@ struct Renderer::Impl {
         if(!segmented){sc.atlas_width=0;sc.atlas_height=0;}
         for(std::size_t index=0;index<list.commands.size();++index){
             const auto& command=list.commands[index];
+            if(command.type==DrawCommand::Type::begin_group) {
+                current_group=command.owner;
+#ifndef NDEBUG
+                if(push_group) push_group(GL_DEBUG_SOURCE_APPLICATION,0,static_cast<GLsizei>(current_group.size()),current_group.c_str());
+#endif
+                continue;
+            }
+            if(command.type==DrawCommand::Type::end_group) {
+#ifndef NDEBUG
+                if(pop_group) pop_group();
+#endif
+                current_group.clear(); continue;
+            }
             if(command.type==DrawCommand::Type::clear){
                 g.Disable(GL_SCISSOR_TEST);g.ClearColor(command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);g.Clear(GL_COLOR_BUFFER_BIT);continue;
             }
@@ -291,6 +338,7 @@ struct Renderer::Impl {
             g.Uniform1f(uniform("radius"),float(command.radius));g.Uniform1i(uniform("kind"),kind);
             g.DrawArrays(GL_TRIANGLES,0,6);
         }
+        if (hooks && hooks->misuse_once) { hooks->misuse_once=false; g.Enable(0xffffffffu); (void)g.GetError(); }
         GLenum error=GL_NO_ERROR, first=GL_NO_ERROR;
         std::vector<unsigned> errors;
         while ((error=g.GetError())!=GL_NO_ERROR) { if (first==GL_NO_ERROR) first=error; errors.push_back(error); }
@@ -301,7 +349,7 @@ struct Renderer::Impl {
         if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
-Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug):impl_(std::make_unique<Impl>(window,hooks,debug)){}
+Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
 Renderer::~Renderer()=default;
 RenderDiagnostic frame_diagnostic(unsigned code) {
     RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
