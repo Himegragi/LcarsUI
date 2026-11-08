@@ -11,14 +11,40 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
 if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count) {
-    throw '-Only must contain clipboard, ime, dpi, perf, and/or presentation'
+if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress') }).Count) {
+    throw '-Only contains an unknown verification selection'
 }
 if (@($selected | Select-Object -Unique).Count -ne $selected.Count) { throw '-Only must not contain duplicates' }
 Write-Host 'Precondition: stop using the computer; set the displays to the required scales before running.'
 $exe = Join-Path $PSScriptRoot 'build/Release/lcars_host_verify.exe'
-if (-not $DryRun -and -not (Test-Path -LiteralPath $exe)) { throw "Verifier not found: $exe" }
+if (-not $DryRun -and @($selected | Where-Object { $_ -in @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count -and -not (Test-Path -LiteralPath $exe)) { throw "Verifier not found: $exe" }
 $failed = $false
+foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress')) {
+    if ($name -notin $selected) { continue }
+    $runs = if ($name -eq 'uia-stress') { 20 } else { 1 }
+    for ($i = 1; $i -le $runs; $i++) {
+        foreach ($skin in @('web', 'material')) {
+            $relative = if ($name -eq 'uia-stress') { "$name/run-$i/$skin" } else { "$name/$skin" }
+            $folder = Join-Path $OutDir $relative
+            $tsv = Join-Path $(if ($DryRun) { Join-Path $EvidenceDir $relative } else { $folder }) "$name.tsv"
+            $runFailure = $false
+            if (-not $DryRun) {
+                New-Item -ItemType Directory -Force -Path $folder | Out-Null
+                if (Test-Path -LiteralPath $tsv) { Remove-Item -LiteralPath $tsv }
+                & (Join-Path $PSScriptRoot 'tests/uia/verify.ps1') -Mode $name -Skin $skin -OutDir $folder
+                if ($LASTEXITCODE -ne 0) { $runFailure = $true }
+            }
+            if (-not (Test-Path -LiteralPath $tsv)) { Write-Warning "Missing TSV: $tsv"; $runFailure = $true }
+            else {
+                $rows = @(Import-Csv -Delimiter "`t" -LiteralPath $tsv)
+                if (-not $rows.Count -or @($rows | Where-Object { $_.status -eq 'PASS' }).Count -eq 0 -or @($rows | Where-Object { $_.status -notin @('PASS', 'N/A') }).Count) { $runFailure = $true }
+            }
+            if ($runFailure) { $failed = $true }
+            $state = if ($runFailure) { 'FAIL' } else { 'PASS' }
+            Write-Host "${relative}: $state"
+        }
+    }
+}
 if ('perf' -in $selected) {
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'perf') | Out-Null
