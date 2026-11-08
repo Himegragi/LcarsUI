@@ -160,7 +160,11 @@ struct Fixture {
 void draw_list_initial(const Appearance& appearance, Report& report) {
     const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
     for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
-        Fixture f(appearance, true); auto& h=f.form.handles; auto& state=detail::access(f.form.ui);
+        Fixture f(appearance, true);
+        f.host.force_scale(scale);
+        f.host.client_size(scale == 1.f ? 960 : 640, scale == 1.f ? 720 : 480);
+        f.settle();
+        auto& h=f.form.handles; auto& state=detail::access(f.form.ui);
         bool setup=true;
         if(scenario<5) {
             setup=bool(h.name.focus());
