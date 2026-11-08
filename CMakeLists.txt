@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
-project(LcarsUI VERSION 0.1.0 LANGUAGES C CXX)
+cmake_policy(SET CMP0091 NEW)
+cmake_policy(SET CMP0141 NEW)
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+project(LcarsUI VERSION 0.2.0 LANGUAGES C CXX)
+option(LCARS_INSTALL "Install LcarsUI" ${PROJECT_IS_TOP_LEVEL})
+include(CMakePackageConfigHelpers)
+configure_file(cmake/version.hpp.in "${PROJECT_BINARY_DIR}/generated/include/lcars/version.hpp" @ONLY)
 option(LCARS_BUILD_DESKTOP "Build the Windows/OpenGL desktop host" ON)
 option(LCARS_BUILD_TESTS "Build behavior tests" ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -7,7 +13,7 @@ function(lcars_target target)
   # C++20 is the framework floor: required, never silently decayed, no vendor extensions.
   set_target_properties(${target} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   target_compile_features(${target} PUBLIC cxx_std_20)
-  target_include_directories(${target} PUBLIC "${PROJECT_SOURCE_DIR}/include")
+  target_include_directories(${target} PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>")
   if(MSVC)
     target_compile_options(${target} PRIVATE /utf-8 /W4)
   else()
@@ -57,14 +63,23 @@ if(LCARS_BUILD_TESTS)
   target_include_directories(lcars_list_page_tests PRIVATE examples/list_page src)
   target_link_libraries(lcars_list_page_tests PRIVATE lcars_list_page)
   add_test(NAME list_page COMMAND lcars_list_page_tests)
-  # AC02: configure, build and run a separate project that only sees public targets/headers.
-  add_test(NAME consumer_example COMMAND "${CMAKE_CTEST_COMMAND}"
-    --build-and-test "${PROJECT_SOURCE_DIR}/examples/consumer" "${CMAKE_BINARY_DIR}/consumer"
-    --build-generator "${CMAKE_GENERATOR}"
-    --build-options "-DLCARS_SOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
-      "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
-      "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
-    --test-command "${CMAKE_CTEST_COMMAND}" --output-on-failure)
+  if(LCARS_INSTALL)
+    add_test(NAME package_install COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DCONFIG=$<CONFIG>" -P "${PROJECT_SOURCE_DIR}/tests/package/install.cmake")
+    set_tests_properties(package_install PROPERTIES FIXTURES_SETUP package)
+    add_test(NAME consumer_example COMMAND "${CMAKE_CTEST_COMMAND}"
+      --build-and-test "${PROJECT_SOURCE_DIR}/examples/consumer" "${CMAKE_BINARY_DIR}/consumer"
+      --build-generator "${CMAKE_GENERATOR}"
+      --build-options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/package-prefix" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF" "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+        "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+      --test-command "${CMAKE_CTEST_COMMAND}" --output-on-failure)
+    set_tests_properties(consumer_example PROPERTIES FIXTURES_REQUIRED package)
+    add_test(NAME package_contract COMMAND "${CMAKE_COMMAND}"
+      "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+      "-DGENERATOR=${CMAKE_GENERATOR}" "-DCOMPILER=${CMAKE_CXX_COMPILER}"
+      "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DBUILD_TYPE=${CMAKE_BUILD_TYPE}"
+      -P "${PROJECT_SOURCE_DIR}/tests/package/contract.cmake")
+    set_tests_properties(package_contract PROPERTIES FIXTURES_REQUIRED package)
+  endif()
 endif()
 if(LCARS_BUILD_DESKTOP)
   if(NOT WIN32)
@@ -96,4 +111,22 @@ if(LCARS_BUILD_DESKTOP)
   if(LCARS_BUILD_TESTS)
     add_test(NAME host_native COMMAND lcars_host_verify --evidence "${CMAKE_BINARY_DIR}/evidence/host")
   endif()
+endif()
+
+if(LCARS_INSTALL)
+  foreach(pair IN ITEMS "Core;lcars_core" "AppearanceWeb;lcars_appearance_web" "AppearanceMaterial;lcars_appearance_material")
+    list(GET pair 0 component)
+    list(GET pair 1 target)
+    set_target_properties(${target} PROPERTIES EXPORT_NAME ${component} DEBUG_POSTFIX d)
+    install(TARGETS ${target} EXPORT LcarsUI${component}Targets ARCHIVE DESTINATION lib)
+    install(EXPORT LcarsUI${component}Targets NAMESPACE LcarsUI:: DESTINATION lib/cmake/LcarsUI)
+  endforeach()
+  install(FILES include/lcars/core.hpp include/lcars/layout.hpp include/lcars/appearance.hpp "${PROJECT_BINARY_DIR}/generated/include/lcars/version.hpp" DESTINATION include/lcars)
+  install(FILES LICENSE DESTINATION share/doc/LcarsUI)
+  if(NOT CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+  endif()
+  configure_package_config_file(cmake/LcarsUIConfig.cmake.in "${PROJECT_BINARY_DIR}/LcarsUIConfig.cmake" INSTALL_DESTINATION lib/cmake/LcarsUI)
+  write_basic_package_version_file("${PROJECT_BINARY_DIR}/LcarsUIConfigVersion.cmake" VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
+  install(FILES "${PROJECT_BINARY_DIR}/LcarsUIConfig.cmake" "${PROJECT_BINARY_DIR}/LcarsUIConfigVersion.cmake" DESTINATION lib/cmake/LcarsUI)
 endif()
