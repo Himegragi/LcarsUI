@@ -131,6 +131,7 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void on_semantic_pending(std::function<void()> callback) { semantic_schedule_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // Native input methods must finalize before core changes the focused editing target.
@@ -318,6 +319,15 @@ private:
     Id retiring_;
     bool removal_pending(std::string_view id) const;
     unsigned operation_depth_ = 0;
+    std::map<std::size_t, std::function<void(const SemanticEvent&)>> semantic_subscribers_;
+    std::size_t next_semantic_subscriber_ = 0;
+    std::vector<SemanticEvent> semantic_pending_;
+    std::vector<SemanticNode> semantic_before_;
+    bool semantic_dispatching_ = false;
+    bool semantic_inspecting_ = false;
+    std::function<void()> semantic_schedule_;
+    std::vector<SemanticNode> semantic_snapshot();
+    void semantic_diff();
     bool committing_removals_ = false;
     void commit_removals();
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels

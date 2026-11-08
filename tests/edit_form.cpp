@@ -95,6 +95,8 @@ void semantic_form_operations() {
     edit_form::Form form(ids, true);
     auto& tree = form.ui.semantics();
     check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"Workstation A"))), "semantic name draft");
+    auto name_node = tree.get({ids.name});
+    check(name_node && std::find(name_node->verbs.begin(), name_node->verbs.end(), Verb::undo) != name_node->verbs.end(), "semantic verbs expose available undo");
     check(bool(tree.perform({ids.notices}, Verb::toggle)), "semantic checkbox");
     check(bool(tree.perform({ids.mode, OptionValue{"focus"}}, Verb::select)), "semantic radio selection");
     check(bool(tree.perform({ids.region}, Verb::open)), "semantic dropdown open");
@@ -118,6 +120,59 @@ void semantic_modal_operations() {
     check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
     check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
           "semantic cancel dialog");
+}
+
+void semantic_list_operations() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    auto prefix = ids.title + ".pages.";
+    check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "select list page");
+    check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "load list sample");
+    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "select duplicate-name item");
+    check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)) &&
+          form.list->selection() == OptionValue{"T006"}, "list selection survives sorting");
+}
+
+void semantic_text_and_thread() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"A\U0001f600B"))), "semantic UTF-16 value");
+    check(tree.perform({ids.name}, Verb::select, Selection{1, 2}).status == Status::invalid_value, "semantic selection rejects surrogate split");
+    check(bool(tree.perform({ids.name}, Verb::select, Selection{1, 3})), "semantic selection accepts code point");
+    check(bool(tree.perform({ids.name}, Verb::paste, std::u16string(u"x"))) && tree.text(ids.name).value == u"AxB", "semantic paste uses selected range");
+    check(bool(tree.perform({ids.name}, Verb::select, Selection{1, 1})) && bool(tree.perform({ids.name}, Verb::copy)), "semantic copy of empty selection succeeds");
+    check(bool(tree.perform({ids.apply}, Verb::focus)) && tree.get({ids.apply})->focused, "semantic focus uses handle behavior");
+    check(bool(tree.perform({ids.disabled}, Verb::invoke)) && tree.perform({ids.name}, Verb::focus).status == Status::disabled,
+          "semantic focus reports disabled before rejecting operation");
+    Status read = Status::ok, write = Status::ok;
+    std::thread worker([&] { read = tree.get({ids.name}).status; write = tree.perform({ids.name}, Verb::undo).status; });
+    worker.join();
+    check(read == Status::wrong_thread && write == Status::wrong_thread, "semantic access requires UI thread");
+}
+
+void semantic_notifications() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    std::vector<SemanticEvent> events; bool inside = false, recursed = false, changed = false;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        recursed |= inside; inside = true; events.push_back(event);
+        if (!changed && event.kind == SemanticEventKind::text_changed) { changed = true; tree.perform({ids.apply}, Verb::focus); }
+        inside = false;
+    });
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"new name"))), "semantic change accepted");
+    check(events.empty(), "notifications wait until operation returns");
+    tree.dispatch_events();
+    check(std::count_if(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::text_changed && e.ref.id == ids.name;
+    }) == 1, "semantic text change delivered once");
+    check(!recursed && std::any_of(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::focus_changed && e.ref.id == ids.apply;
+    }), "nested semantic operation emits focus in a later notification round");
+    check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::property_changed && e.ref.id == ids.name && e.property == "value";
+    }), "value property notification delivered");
+    events.clear(); auto prefix = ids.title + ".pages.";
+    check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "switch for structure notification");
+    tree.dispatch_events();
+    check(std::any_of(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::structure_changed && e.ref.id.empty(); }),
+          "page switch changes root structure");
 }
 
 void write_semantic_tsv(edit_form::Form& form, const char* state) {
@@ -2457,6 +2512,9 @@ int main() {
         {"Semantic tree reads registered components", semantic_tree_reads_registered_components},
         {"Semantic form operations", semantic_form_operations},
         {"Semantic modal operations", semantic_modal_operations},
+        {"Semantic list operations", semantic_list_operations},
+        {"Semantic text and thread", semantic_text_and_thread},
+        {"Semantic notifications", semantic_notifications},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},

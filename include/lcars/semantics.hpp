@@ -7,6 +7,20 @@ struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool oper
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm };
 using Argument = std::variant<std::monostate, std::u16string, int, Selection>;
+enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
+struct SemanticEvent { SemanticEventKind kind; NodeRef ref; std::string property; };
+class Subscription {
+public:
+    explicit Subscription(std::function<void()> disconnect = {}) : disconnect_(std::move(disconnect)) {}
+    Subscription(const Subscription&) = delete;
+    Subscription& operator=(const Subscription&) = delete;
+    Subscription(Subscription&& other) noexcept : disconnect_(std::exchange(other.disconnect_, {})) {}
+    Subscription& operator=(Subscription&& other) noexcept { if (this != &other) { reset(); disconnect_ = std::exchange(other.disconnect_, {}); } return *this; }
+    ~Subscription() { reset(); }
+    void reset() { if (auto f = std::exchange(disconnect_, {})) f(); }
+private:
+    std::function<void()> disconnect_;
+};
 struct SemanticNode {
     NodeRef ref; Role role = Role::label;
     std::u16string name, value, description, error;
@@ -16,6 +30,7 @@ struct SemanticNode {
     std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;
     std::vector<NodeRef> labelled_by, described_by;
+    std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
 };
 // UI-thread-only live queries; the tree does not own its Ui.
@@ -26,6 +41,8 @@ public:
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
+    Subscription subscribe(std::function<void(const SemanticEvent&)> callback);
+    void dispatch_events();
 private:
     detail::UiState* state_;
 };

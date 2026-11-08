@@ -179,7 +179,7 @@ void caret_moves_by_code_point_and_extends_with_shift() {
     check(detail::access(ui).text("t").empty(), "Backspace removes a selection");
     detail::access(ui).undo("t"); detail::access(ui).undo("t"); detail::access(ui).undo("t");
     check(detail::access(ui).text("t") == u"A\U00020000B中", "Each deletion was one undo entry");
-    check(detail::access(ui).select("t", 2, 2) && at(ui, 1, 1), "Semantic selection inside a surrogate pair snaps to its start");
+    check(detail::access(ui).select("t", 2, 2).status == Status::invalid_value, "Selection inside a surrogate pair is rejected");
 }
 
 struct MemoryClipboard final : Clipboard {
@@ -729,7 +729,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
         return Result{};
     });
     check(bool(field.set_value(u"draft")) && model == u"before", "Confirmed mode retains the draft without an immediate write");
-    check(bool(field.confirm()) && model == u"draft" && origin == u"before", "Confirm submits the draft and its origin");
+    check(bool(ui.semantics().perform({"single.field"}, Verb::confirm)) && model == u"draft" && origin == u"before", "Semantic confirm submits the draft and its origin");
 }
 
 void checkbox_toggles_a_connected_boolean() {
