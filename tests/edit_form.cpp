@@ -56,6 +56,7 @@ void write_semantic_tsv(edit_form::Form& form, const char* state) {
             out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
                 << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
             if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
+            else out << '-';
             out << '\n'; self(self, ref);
         }
     };
