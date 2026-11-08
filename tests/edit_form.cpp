@@ -123,7 +123,8 @@ void semantic_modal_operations() {
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v03"}}, Verb::select)), "semantic switch page");
     check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)), "semantic open dialog");
     auto dialog = tree.get({prefix + "dialog"});
-    check(dialog && std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog advertises cancel");
+    check(dialog && dialog->name == u"重設示範進度" &&
+          std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog exposes its name and cancel action");
     auto half = tree.get({prefix + "v03.half"});
     check(half && half->blocked_by_modal && half->enabled, "modal background readable");
     auto progress = tree.get({prefix + "v03.progress"});

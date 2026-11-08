@@ -1112,7 +1112,7 @@ bool detail::UiState::dialog_member(std::string_view id) const {
         if (std::find(dialog.members.begin(), dialog.members.end(), id) != dialog.members.end()) return true;
     return false;
 }
-DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name) {
     OperationScope operation(this);
     auto first = layout_id(initial), backup = layout_id(fallback);
     if (!first || !backup || !find(*first) || !find(*backup) || removal_pending(*first) || removal_pending(*backup) || !result || members.empty() || !component_type(find(*first)->kind).can_focus()) throw std::invalid_argument("Invalid dialog");
@@ -1123,9 +1123,12 @@ DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHa
             throw std::invalid_argument("Invalid dialog member");
     }
     if (!unique.contains(*first) || unique.contains(*backup)) throw std::invalid_argument("Invalid dialog focus targets");
+    auto name_id = name ? layout_id(*name) : std::optional<Id>{};
+    if (name && (!name_id || !unique.contains(*name_id))) throw std::invalid_argument("Dialog name must be a member label");
     DialogState dialog;
     dialog.members.assign(unique.begin(), unique.end());
     dialog.initial = *first; dialog.fallback = *backup; dialog.result = std::move(result); dialog.configured = true;
+    if (name_id) dialog.name_label = *name_id;
     for (const auto& member : dialog.members) const_cast<Control*>(find(member))->page = "dialog";
     dialogs_.emplace(id, std::move(dialog));
     return DialogHandle(this, lifetime_, std::move(id));
@@ -2588,11 +2591,11 @@ Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid tooltip", std::nullopt}; }
 }
-Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try {
-        auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result));
+        auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result), std::move(name));
         state_->overlay_ids_.emplace(std::move(id), "dialog");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid dialog", std::nullopt}; }
@@ -2694,7 +2697,11 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
         SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
-        if (n.role == Role::dialog) n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
+        if (n.role == Role::dialog) {
+            n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
+            const auto& label = u.dialogs_.at(ref.id).name_label;
+            if (!label.empty() && u.find(label)) { n.name = u.text(label); n.labelled_by.push_back({label}); }
+        }
         else for (const auto& [source, id] : u.tooltip_ids_) if (id == ref.id) {
             auto tip = u.tooltips_.find(source);
             if (tip != u.tooltips_.end()) { n.name = tip->second.text; n.hidden = !tip->second.visible; }

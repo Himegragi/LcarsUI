@@ -57,7 +57,7 @@ public:
     void window_active(bool active);
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
-    DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
+    DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
     Result open_dialog(const Id& id, const ComponentHandle* opener);
     Result settle_dialog(const Id& id, bool confirmed);
     ComponentHandle list_layout_handle(const Control& control);
@@ -290,7 +290,7 @@ private:
     std::set<Id, std::less<>> diagnosed_names_;
     struct DialogState {
         std::vector<Id> members;
-        Id initial, fallback, opener;
+        Id initial, fallback, opener, name_label;
         std::function<void(bool)> result;
         bool configured = false, transitioning = false;
     };
