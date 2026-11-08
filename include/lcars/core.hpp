@@ -12,7 +12,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress };
+enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
@@ -329,7 +329,8 @@ private:
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
 class ListHandle;
 class TabsHandle;
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
+class NavigationListHandle;
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
 class TabsHandle {
 public:
     TabsHandle() = default;
@@ -345,6 +346,26 @@ private:
     friend class detail::UiState;
     friend struct Frame;
     TabsHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+class NavigationListHandle {
+public:
+    NavigationListHandle() = default;
+    Result select(OptionValue page) const;
+    Result enable_page(OptionValue page, bool enabled) const;
+    // Owner configuration: attach an existing component to a page.
+    Result add_member(OptionValue page, ComponentHandle member) const;
+    Result focus() const;
+    Query<OptionValue> selected() const;
+    Query<Semantics> describe() const;
+    Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    NavigationListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
         : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
@@ -398,6 +419,7 @@ private:
 };
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
+using NavigationPage = TabPage;
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
@@ -428,6 +450,7 @@ public:
     Query<ProgressHandle> add_progress(Control control);
     Query<DropdownHandle> add_dropdown(Control control, std::vector<RadioOption> options);
     Query<TabsHandle> add_tabs(Control control, std::vector<TabPage> pages);
+    Query<NavigationListHandle> add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
     Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
