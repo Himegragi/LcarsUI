@@ -10,6 +10,7 @@
 namespace lcars::detail {
 struct Rgba { unsigned char r,g,b,a; };
 struct AtlasPage { int width = 0, height = 0; std::vector<unsigned char> pixels; };
+// Borrowed atlas pages are valid only until the next glyph request can evict them.
 struct AtlasRegion { const AtlasPage* page = nullptr; Rect rect{}; };
 struct ResolvedGlyph { Rect rect{}; AtlasRegion region{}; unsigned generation = 0; bool reset = false; };
 struct DrawCommand {
@@ -18,6 +19,7 @@ struct DrawCommand {
     AtlasRegion coverage;
     PaintRole role=PaintRole::content;
     std::string owner; bool popup=false, tooltip=false;
+    // Resolve and consume one glyph before resolving another; eviction invalidates its page.
     std::function<ResolvedGlyph()> resolve;
     std::shared_ptr<const AtlasPage> page_owner;
 };
