@@ -1110,7 +1110,7 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
     auto& dialog = it->second;
-    if (modal_ || dialog.transitioning) return {Status::busy, u"Dialog already open or transitioning"};
+    if (modal_ || dialog_transitioning_) return {Status::busy, u"Dialog already open or transitioning"};
     Id source = focus_;
     if (opener) {
         auto selected = layout_id(*opener);
@@ -1121,8 +1121,8 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
     if (source.empty()) source = dialog.fallback;
     const auto* initial = find(dialog.initial);
     if (!initial || !initial->enabled) return {Status::disabled, u"Initial focus is unavailable"};
-    dialog.transitioning = true;
-    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog.transitioning};
+    dialog.transitioning = true; dialog_transitioning_ = true;
+    struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     dialog.opener = source;
     if (auto r = move_focus(dialog.initial); !r) return r;
     active_dialog_ = id;
@@ -1136,10 +1136,10 @@ Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
     auto& dialog = it->second;
-    if (dialog.transitioning) return {Status::busy, u"Dialog is transitioning"};
+    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
-    dialog.transitioning = true;
-    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog.transitioning};
+    dialog.transitioning = true; dialog_transitioning_ = true;
+    struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     modal(false); active_dialog_.clear();
     auto source = std::exchange(dialog.opener, {});
     auto target = find(source);
@@ -2177,6 +2177,8 @@ Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, Compon
     if (!target_id || !find(*target_id) || (!std::holds_alternative<std::monostate>(scope) && (!scope_id || !find(*scope_id))) ||
         chord.key == Key::tab || chord.key == Key::escape || (chord.key == Key::other && !chord.letter))
         return {Status::invalid_value, u"Invalid shortcut"};
+    if (auto r = configuration_access(*target_id); !r) return r;
+    if (chord.letter && !chord.ctrl) return {Status::invalid_value, u"Letter shortcuts require Ctrl"};
     Id scope_name = scope_id.value_or(Id{});
     for (const auto& entry : shortcuts_)
         if (entry.scope == scope_name && entry.chord.key == chord.key && entry.chord.letter == chord.letter && entry.chord.ctrl == chord.ctrl && entry.chord.shift == chord.shift)

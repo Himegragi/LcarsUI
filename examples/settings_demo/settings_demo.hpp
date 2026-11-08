@@ -20,7 +20,7 @@ class Demo {
     bool editing_ = false;
     int next_item_id_ = 21;
     lcars::ButtonHandle item_cancel_, delete_cancel_, delete_confirm_;
-    void refresh_items();
+    lcars::Result refresh_items();
     void dirty();
 public:
     lcars::Ui ui;

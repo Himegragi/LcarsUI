@@ -274,6 +274,7 @@ private:
     };
     std::map<Id, DialogState, std::less<>> dialogs_;
     Id active_dialog_;
+    bool dialog_transitioning_ = false;
     bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);

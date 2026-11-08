@@ -3,6 +3,12 @@
 #include <cstdio>
 using namespace lcars;
 namespace settings_demo {
+namespace {
+std::u16string fold_ascii(std::u16string value) {
+    for (auto& c : value) if (c >= u'A' && c <= u'Z') c += u'a' - u'A';
+    return value;
+}
+}
 Demo::Demo() {
     nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
@@ -18,15 +24,15 @@ Demo::Demo() {
     items_search = ui.add_text({.id="items.search",.kind=Kind::text,.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
     items_list = ui.add_list({.id="items.list",.kind=Kind::list,.label=u"\u9805\u76ee"}, {}).value.value();
     items_count_ = ui.add_label({.id="items.count",.kind=Kind::label}).value.value();
-    items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e?"}).value.value();
-    items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f?",.enabled=false}).value.value();
-    items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664?",.enabled=false}).value.value();
+    items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
+    items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
+    items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
     for (int n=1; n<=20; ++n) {
         char id[8], number[8]; std::snprintf(id,sizeof(id),"T%03d",n); std::snprintf(number,sizeof(number),"%02d",n);
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
     items_search.connect_source({[this] { return search_value_; }, [this](auto changed) { search_changed_=std::move(changed); return [this] { search_changed_={}; }; }});
-    items_search.connect_immediate([this](const TextChange& c) { search_value_=c.value; if (search_changed_) search_changed_(); refresh_items(); return Result{}; });
+    items_search.connect_immediate([this](const TextChange& c) { search_value_=c.value; if (search_changed_) search_changed_(); return refresh_items(); });
     items_list.connect_source({[this] { return selection_; }, [this](auto changed) { selection_changed_=std::move(changed); return [this] { selection_changed_={}; }; }});
     items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
@@ -68,8 +74,6 @@ Demo::Demo() {
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
     item_name.connect_source({[this] { return item_name_source_; }, [this](auto changed) { item_name_changed_=std::move(changed); return [this] { item_name_changed_={}; }; }});
     item_note.connect_source({[this] { return item_note_source_; }, [this](auto changed) { item_note_changed_=std::move(changed); return [this] { item_note_changed_={}; }; }});
-    item_name.connect_confirmed([](const TextChange&) { return Result{}; });
-    item_note.connect_confirmed([](const TextChange&) { return Result{}; });
     auto open_item = [this](bool edit) -> Result {
         editing_=edit;
         auto found=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
@@ -78,30 +82,34 @@ Demo::Demo() {
         auto result=item_dialog.open(); if (!result) return result;
         item_name_source_=edit ? found->name : u""; item_note_source_=edit ? found->note : u"";
         if (item_name_changed_) item_name_changed_(); if (item_note_changed_) item_note_changed_();
-        item_name.reset_to_source(); item_note.reset_to_source(); item_name.set_error(u"");
-        return {};
+        if (auto r = item_name.reset_to_source(); !r) return r;
+        if (auto r = item_note.reset_to_source(); !r) return r;
+        return item_name.set_error(u"");
     };
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    item_ok.bind([this] {
-        auto value=item_name.draft().value.value(); auto note=item_note.draft().value.value();
+    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<TextChange>& changes) -> ConfirmationResult {
+        const auto& value=changes[0].value; const auto& note=changes[1].value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
-            item_name.set_error(u"\u8acb\u586b\u5beb\u540d\u7a31"); item_name.focus(); return Result{Status::invalid_value,u"Name required"};
+            return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
         OptionValue id;
         bool changed=false;
         if (editing_) {
             auto it=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
-            if (it==items_.end()) return Result{Status::not_found,u"Item not found"};
+            if (it==items_.end()) return {{Status::not_found,u"Item not found"}, {}};
             id=it->id; changed=it->name!=value || it->note!=note; it->name=value; it->note=note;
         } else {
             char buffer[16]; std::snprintf(buffer,sizeof(buffer),"T%03d",next_item_id_++); id={buffer}; items_.push_back({id,value,note}); changed=true;
         }
-        auto result=item_dialog.settle(true); if (!result) return result;
-        auto lower=[](std::u16string x) { for(auto& c:x) if(c>=u'A' && c<=u'Z') c+=u'a'-u'A'; return x; };
-        if (lower(value).find(lower(search_value_))==std::u16string::npos) items_search.set_value(u"");
-        refresh_items(); items_list.select(id); if (changed) dirty(); return Result{};
+        auto result=item_dialog.settle(true); if (!result) return {result, {}};
+        if (fold_ascii(value).find(fold_ascii(search_value_))==std::u16string::npos) {
+            if (auto r=items_search.set_value(u""); !r) return {r, {}};
+        }
+        if (auto r=refresh_items(); !r) return {r, {}};
+        if (auto r=items_list.select(id); !r) return {r, {}};
+        if (changed) dirty(); return {Result{}, {}};
     });
     items_delete.bind([this] {
         auto it=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
@@ -112,7 +120,9 @@ Demo::Demo() {
     delete_cancel_.bind([this] { return delete_dialog.settle(false); });
     delete_confirm_.bind([this] {
         auto selected=selection_; auto result=delete_dialog.settle(true); if (!result) return result;
-        std::erase_if(items_,[&](const Item& item) { return selected && item.id==*selected; }); refresh_items(); dirty(); return Result{};
+        std::erase_if(items_,[&](const Item& item) { return selected && item.id==*selected; });
+        if (auto r=refresh_items(); !r) return r;
+        dirty(); return Result{};
     });
     ui.add_shortcut({.key=Key::enter},items_edit,items_list);
     ui.add_shortcut({.key=Key::del},items_delete,items_list);
@@ -122,17 +132,17 @@ Demo::Demo() {
     ui.add_shortcut({.letter=u'Z',.ctrl=true,.shift=true},redo_);
     nav.focus();
 }
-void Demo::refresh_items() {
-    auto fold = [](std::u16string value) { for (auto& c : value) if (c>=u'A' && c<=u'Z') c += u'a'-u'A'; return value; };
-    auto query = fold(search_value_);
+Result Demo::refresh_items() {
+    auto query = fold_ascii(search_value_);
     std::vector<RadioOption> visible;
-    for (const auto& item : items_) if (fold(item.name).find(query) != std::u16string::npos) visible.push_back({item.id,item.name});
+    for (const auto& item : items_) if (fold_ascii(item.name).find(query) != std::u16string::npos) visible.push_back({item.id,item.name});
     auto count = visible.size();
-    items_list.set_items(std::move(visible));
+    if (auto r=items_list.set_items(std::move(visible)); !r) return r;
     auto number = [](std::size_t n) { auto str=std::to_string(n); return std::u16string(str.begin(),str.end()); };
     auto text = u"\u5171 " + number(items_.size()) + u" \u7b46\uff0c\u986f\u793a " + number(count) + u" \u7b46";
-    items_count_.connect_source([text] { return text; });
-    items_add.enable(items_.size()<1000);
+    if (items_.size() >= 1000) text += u"\uff08\u5df2\u9054\u4e0a\u9650\uff09";
+    if (auto r=items_count_.connect_source([text] { return text; }); !r) return r;
+    return items_add.enable(items_.size()<1000);
 }
 void Demo::dirty() { undo_.enable(true); }
 layout::Node Demo::page() const {

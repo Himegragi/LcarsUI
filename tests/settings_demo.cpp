@@ -86,12 +86,22 @@ void exercise() {
     demo.nav.select({"about"});
     demo.nav.select({"items"});
     test::check(demo.items_list.describe()->options.size() == 20, "items page starts with twenty entries");
+    demo.items_search.set_value(u"\u7bc4\u672c 0");
+    test::check(demo.items_list.describe()->options.size()==7, "search matches seven numbered templates");
+    demo.items_search.set_value(u"XYZ");
+    test::check(demo.items_list.describe()->options.empty(), "unmatched search is empty");
     demo.items_search.set_value(u"\u5171\u7528");
     test::check(demo.items_list.describe()->options.size() == 2, "search filters duplicate names");
     demo.items_search.set_value(u"");
     test::check(bool(demo.items_add.invoke()), "open add item");
     test::check(bool(*demo.item_dialog.is_open()), "item dialog opens");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        test::FakeMeasure measure; ScrollState scroll;
+        auto frame=arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
+        test::check(frame.modal && frame.find(demo.item_name), "both appearances arrange the same item dialog");
+    }
     test::check(!demo.item_ok.invoke() && *demo.item_dialog.is_open(), "empty name keeps dialog open");
+    test::check(detail::access(demo.ui).focused()=="items.dialog.name" && !demo.item_name.describe()->error.empty(), "invalid name is focused with an error");
     demo.item_name.set_value(u"Workstation A");
     test::check(bool(demo.item_ok.invoke()), "valid item is added");
     test::check(!*demo.item_dialog.is_open() && demo.items_list.describe()->options.size()==21, "new item visible");
@@ -111,6 +121,11 @@ void exercise() {
     detail::access(demo.ui).key_up(Key::space);
     test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->options.size()==20, "keyboard confirms deletion");
     test::check(!demo.items_edit.describe()->enabled && !demo.items_delete.describe()->enabled, "actions disabled with no selection");
+    demo.items_search.set_value(u"\u5171\u7528");
+    test::check(bool(demo.items_add.invoke()), "add from filtered list");
+    demo.item_name.set_value(u"Outside filter");
+    test::check(bool(demo.item_ok.invoke()), "filtered add succeeds");
+    test::check(demo.items_search.draft().value.value().empty() && demo.items_list.describe()->options.size()==21, "filtered add clears search and reveals item");
     demo.nav.select({"about"});
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
