@@ -1486,6 +1486,37 @@ struct PaintRoleProbe : detail::ComponentPaint {
     }
     int count(detail::PaintRole role) const { return static_cast<int>(std::count_if(emitted.begin(),emitted.end(),[&](const auto& item){return (static_cast<unsigned>(item.first) & static_cast<unsigned>(role)) != 0;})); }
 };
+void x04_scrollable_text_inventory() {
+    Ui ui;
+    auto long_text = ui.add_label({.id="long", .kind=Kind::label, .value=std::u16string(4000, u'x')}).value.value();
+    auto short_text = ui.add_label({.id="short", .kind=Kind::label, .value=u"short"}).value.value();
+    auto action = ui.add_button({.id="action", .kind=Kind::button, .label=u"Action"}).value.value();
+    ScrollState outer, long_scroll, short_scroll;
+    auto page = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 120),
+        layout::scroll_text(short_text, short_scroll, 120), layout::control(action)}));
+    test::FakeMeasure measure;
+    auto frame = arrange(page, ui, *appearance, measure, 640, 480, 1.f, outer);
+    auto fits = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 10000)}));
+    arrange(fits, ui, *appearance, measure, 640, 480, 1.f, outer);
+    check(!x04::focus_applicable(*long_text.describe()), "X04 excludes the same text when it fits");
+    frame = arrange(page, ui, *appearance, measure, 640, 480, 1.f, outer);
+    std::vector<std::string> visited;
+    for (const auto& entry : x04::inventory(ui)) {
+        auto semantic = x04::describe(entry.handle);
+        if (!semantic || !x04::focus_applicable(*semantic)) continue;
+        check(x04::focus(ui, entry.handle), "X04 generic focus driver accepts focusable component");
+        semantic = x04::describe(entry.handle);
+        auto item = x04::placement(frame, entry.handle);
+        check(item && semantic->focused, "X04 focus sweep finds the focused placement");
+        PaintRoleProbe paint(detail::access(ui), *item, *semantic, *appearance, 1.f, true);
+        detail::component_type(item->kind).paint(paint);
+        check(paint.count(detail::PaintRole::focus_indicator) > 0, "X04 focus sweep observes the focus cue");
+        visited.push_back(semantic->id);
+    }
+    check(std::find(visited.begin(), visited.end(), "long") != visited.end(), "X04 includes overflowing text");
+    check(std::find(visited.begin(), visited.end(), "short") == visited.end(), "X04 excludes fitting text");
+    check(std::find(visited.begin(), visited.end(), "action") != visited.end(), "X04 includes ordinary focusable controls");
+}
 void draw_command_state_matrix() {
     edit_form::Form inventory_form(ids,true);
     const auto count=x04::inventory(inventory_form).size();
@@ -1493,6 +1524,8 @@ void draw_command_state_matrix() {
         edit_form::Form form(ids,true); auto entry=x04::inventory(form)[index]; auto& ui=detail::access(form.ui);
         if(entry.page=="modal") { if(!form.handles.tabs.activate({"v03"}) || !form.handles.dialog_open.invoke()) continue; }
         else if(entry.page!="shared" && !form.handles.tabs.activate({std::string(entry.page)})) continue;
+        test::FakeMeasure measure;
+        arrange(form.page(),form.ui,*appearance,measure,960,4000,1.f,form.scroll);
         auto semantic=x04::describe(entry.handle); if(!semantic) continue;
         bool applicable=true;
         if(state_index==1) {
@@ -1500,8 +1533,8 @@ void draw_command_state_matrix() {
             if(applicable) check(x04::set_enabled(entry.handle,false), "Supported disable setup succeeds");
         }
         if(state_index==2) {
-            applicable=semantic->enabled && semantic->focusable;
-            if(applicable) check(x04::focus(entry.handle), "Supported focus setup succeeds");
+            applicable=x04::focus_applicable(*semantic);
+            if(applicable) check(x04::focus(form.ui, entry.handle), "Supported focus setup succeeds");
         }
         if(state_index==3) {
             applicable=entry.page!="modal" && x04::error_supported(*semantic);
@@ -1514,12 +1547,12 @@ void draw_command_state_matrix() {
         if(state_index==5) {
             applicable=semantic->kind==Kind::text && semantic->enabled && !semantic->read_only;
             if(applicable) {
-                check(x04::focus(entry.handle), "Composition target can focus");
+                check(x04::focus(form.ui, entry.handle), "Composition target can focus");
                 check(bool(ui.composition_update(u"preedit",3)), "Composition setup succeeds");
             }
         }
         if(!applicable) continue;
-        test::FakeMeasure measure; auto frame=arrange(form.page(),form.ui,*appearance,measure,960,4000,1.f,form.scroll);
+        auto frame=arrange(form.page(),form.ui,*appearance,measure,960,4000,1.f,form.scroll);
         auto item=x04::placement(frame,entry.handle); semantic=x04::describe(entry.handle);
         if(!item || !semantic) continue;
         PaintRoleProbe probe(ui,*item,*semantic,*appearance,1.f,true); detail::component_type(item->kind).paint(probe);
@@ -1548,16 +1581,17 @@ void dark_focus_inventory() {
     for (std::size_t index = 0; index < entries.size(); ++index) {
         edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
         auto semantic = x04::describe(entry.handle);
-        const auto& type = detail::component_type(semantic->kind);
-        if (!type.can_focus()) continue;
         auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark();
         check(bool(form.ui.set_presentation(settings)), "Dark theme accepted");
         if (entry.page == "modal") {
             check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "Focus modal opened");
         } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "Focus page activated");
         if (!semantic->enabled) check(x04::set_enabled(entry.handle, true), "Focus target enabled");
-        check(x04::focus(entry.handle), ("Dark focus setup " + semantic->id).c_str());
         test::FakeMeasure measure;
+        arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
+        semantic = x04::describe(entry.handle);
+        if (!semantic || !x04::focus_applicable(*semantic)) continue;
+        check(x04::focus(form.ui, entry.handle), ("Dark focus setup " + semantic->id).c_str());
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll, semantic->id);
         semantic = x04::describe(entry.handle); auto* item = x04::placement(frame, entry.handle);
         check(item && semantic->focused && semantic->visible, ("Dark focus visible " + semantic->id).c_str());
@@ -2044,7 +2078,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                 check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "X04 open modal");
             } else check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 activate page");
             auto message = std::string("X04 disabled ") + initial->id;
-            check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle), (message + " prepare").c_str());
+            check(x04::set_enabled(entry.handle, true) && x04::focus(form.ui, entry.handle), (message + " prepare").c_str());
             check(x04::set_enabled(entry.handle, false), (message + " drive").c_str());
             auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                  int(size.second * scale), scale, form.scroll, initial->id);
@@ -2062,7 +2096,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
             state.key_down({Key::space}); state.key_up(Key::space);
             auto after = x04::describe(entry.handle);
             check(after->value == semantic->value && x04::same_model(snapshot, x04::snapshot(form)), (message + " keyboard").c_str());
-            check(x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
+            check(x04::set_enabled(entry.handle, true) && x04::focus(form.ui, entry.handle) &&
                   x04::set_enabled(entry.handle, initial->enabled), (message + " restore").c_str());
             if (semantic->kind == Kind::radio_group && initial->enabled) {
                 auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
@@ -2831,6 +2865,7 @@ int main() {
         {"X04 fixed placements fit each client", x04_fixed_placements_fit_each_client},
         {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
         {"X04 error inventory at each size and scale", [] { x04_error_inventory_at_each_size_and_scale(); }},
+        {"X04 scrollable text inventory", x04_scrollable_text_inventory},
         {"Dark focus inventory", dark_focus_inventory},
         {"Dark error inventory", [] { x04_error_inventory_at_each_size_and_scale(true); }},
         {"Dark disabled inventory", [] { x04_disabled_inventory_at_each_size_and_scale(true); }},

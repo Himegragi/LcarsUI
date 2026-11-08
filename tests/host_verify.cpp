@@ -2040,7 +2040,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 }
                 bool page = entry.page == "modal" ? bool(f.form.handles.tabs.activate({"v03"})) && bool(f.form.handles.dialog_open.invoke()) :
                     bool(f.form.handles.tabs.activate({std::string(entry.page)}));
-                bool driven = baseline && page && x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) && x04::set_enabled(entry.handle, false);
+                bool driven = baseline && page && x04::set_enabled(entry.handle, true) && x04::focus(f.form.ui, entry.handle) && x04::set_enabled(entry.handle, false);
                 reveal(initial->id); auto sem = x04::describe(entry.handle);
                 auto* placed = x04::placement(f.host.frame(), entry.handle); std::u16string visible_text;
                 for (const auto& draw : f.host.paint_observations()) {
@@ -2065,7 +2065,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 SendMessageW(f.host.window(), WM_KEYUP, VK_SPACE, key_lparam(VK_SPACE, false, true));
                 auto after = x04::describe(entry.handle);
                 bool unchanged = after && !after->focused && x04::same_model(snapshot, x04::snapshot(f.form));
-                bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(entry.handle) &&
+                bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(f.form.ui, entry.handle) &&
                     x04::set_enabled(entry.handle, initial->enabled);
                 bool option_checks = true;
                 if (sem->kind == Kind::radio_group && initial->enabled) {
