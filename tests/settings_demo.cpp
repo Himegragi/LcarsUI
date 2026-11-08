@@ -45,9 +45,12 @@ void exercise() {
     for (const char* page : {"general", "items", "appearance", "about"}) {
         test::check(bool(demo.nav.select({page})), "semantic page test switches page");
         auto field = demo.ui.semantics().get({"general.name"});
+        auto items_field = demo.ui.semantics().get({"items.search"});
         auto item = demo.ui.semantics().get({"app.nav", OptionValue{page}});
         test::check(field && field->hidden == (std::string_view(page) != "general") && item && item->selected,
                     "semantic tree reflects navigation and hidden general members");
+        test::check(items_field && items_field->hidden == (std::string_view(page) != "items"),
+                    "semantic tree hides the Items field outside its page");
         for (const auto& [id, member_page] : {std::pair{"probe.items", "items"}, std::pair{"probe.appearance", "appearance"}, std::pair{"probe.about", "about"}}) {
             auto member = demo.ui.semantics().get({id});
             test::check(member && member->hidden == (std::string_view(page) != member_page), "non-current page member is hidden");
