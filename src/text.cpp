@@ -40,7 +40,9 @@ struct Font {
     FT_Face face=nullptr;
     hb_font_t* hb=nullptr;
     long error=0;
+    std::filesystem::path path;
     Font(FT_Library library,const FontFile& source) {
+        path=source.path;
         if (!library || source.path.empty()) return;
         file=CreateFileW(source.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
         LARGE_INTEGER length{};
@@ -70,6 +72,11 @@ struct Font {
     }
     ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);if(data)UnmapViewOfFile(data);if(mapping)CloseHandle(mapping);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);}
     bool size(int pixels){if(!face || FT_Set_Pixel_Sizes(face,0,pixels))return false;hb_ft_font_changed(hb);return true;}
+    FT_Error rasterize(unsigned glyph,int pixels) {
+        if(!size(pixels)) return FT_Err_Invalid_Pixel_Size;
+        FT_Error result=FT_Load_Glyph(face,glyph,FT_LOAD_DEFAULT);
+        return result?result:FT_Render_Glyph(face->glyph,FT_RENDER_MODE_NORMAL);
+    }
 };
 }
 struct Text::Impl {
@@ -226,8 +233,9 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         };
         if (!glyph.id) {box();continue;}
         auto font=impl_->font(glyph.font);
-        if(!font || !font->size(layout.size) || FT_Load_Glyph(font->face,glyph.id,FT_LOAD_DEFAULT) || FT_Render_Glyph(font->face->glyph,FT_RENDER_MODE_NORMAL)) {
-            impl_->report("text.glyph_load_failed", "glyph " + std::to_string(glyph.id),glyph.id);box();continue;
+        auto error=font?font->rasterize(glyph.id,layout.size):FT_Err_Invalid_Face_Handle;
+        if(error) {
+            impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
         }
         auto& bitmap=font->face->glyph->bitmap;
         unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);
@@ -256,8 +264,9 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
         };
         if(!glyph.id) {box();continue;}
         auto font=impl_->font(glyph.font);
-        if(!font || !font->size(layout.size) || FT_Load_Glyph(font->face,glyph.id,FT_LOAD_DEFAULT) || FT_Render_Glyph(font->face->glyph,FT_RENDER_MODE_NORMAL)) {
-            impl_->report("text.glyph_load_failed", "glyph " + std::to_string(glyph.id),glyph.id); box();continue;
+        auto error=font?font->rasterize(glyph.id,layout.size):FT_Err_Invalid_Face_Handle;
+        if(error) {
+            impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error); box();continue;
         }
         const auto& bitmap=font->face->glyph->bitmap;
         unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);

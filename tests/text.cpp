@@ -227,6 +227,12 @@ int main() {
     invalid.glyphs[0].id = 0xffffffffu;
     failed_load.draw(canvas, invalid, 0, 30, {0,0,0});
     if (std::count(events.begin(), events.end(), "text.glyph_load_failed") != 1) return 17;
+    std::vector<lcars::RenderDiagnostic> detailed;
+    Text diagnostic_text(system_font_file,std::function<void(const lcars::RenderDiagnostic&)>([&](const auto& event) {detailed.push_back(event);}));
+    auto bad=diagnostic_text.shape(u"A",18); bad.glyphs[0].id=0xffffffffu;
+    diagnostic_text.draw(canvas,bad,0,30,{0,0,0});
+    auto failure=std::find_if(detailed.begin(),detailed.end(),[](const auto& event) {return event.code=="text.glyph_load_failed";});
+    if(failure==detailed.end() || failure->native_code==0 || failure->native_message.find("glyph 4294967295")==std::string::npos || failure->native_message.find("face ")==std::string::npos) return 44;
     events.clear();
     auto valid = failed_load.shape(u"A", 18);
     failed_load.test_bitmap_mode(99);
