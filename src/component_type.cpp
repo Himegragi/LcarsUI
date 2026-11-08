@@ -336,7 +336,7 @@ public:
     void paint(ComponentPaint& c) const override {
         auto palette = c.appearance.palette(c.ui.presentation().variant);
         auto bounds = c.placement.bounds;
-        if (c.placement.popup) {
+        if (c.placement.dropdown_panel) {
             c.clip(bounds);
             c.fill(bounds, palette.surface);
             if (c.semantics.options.empty()) {
@@ -344,7 +344,7 @@ public:
                 return;
             }
             for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
-                const auto& o = c.semantics.options[i];
+                const auto& o = c.semantics.options[c.placement.option_start + i];
                 const auto& r = c.placement.options[i];
                 if (c.semantics.candidate && *c.semantics.candidate == o.value) marked(c, PaintRole::selection, [&] { c.fill(r, palette.selection); });
                 const auto& line = c.placement.lines[i];

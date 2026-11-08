@@ -503,8 +503,89 @@ void multiple_dialog_layout() {
     check(frame.modal && frame.find(two) && !frame.find(one), "only active dialog is arranged");
 }
 
+void modal_long_dropdown() {
+    Ui ui; auto background=ui.add_button({.id="background",.kind=Kind::button}).value.value();
+    std::vector<RadioOption> choices;
+    for (int i=0; i<150; ++i) choices.push_back({{std::to_string(i)}, u"item"});
+    auto dropdown=ui.add_dropdown({.id="modal.dropdown",.kind=Kind::dropdown},choices).value.value();
+    dropdown.connect_source({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
+    dropdown.connect_immediate([](const DropdownChange&) { return Result{}; });
+    auto dialog=ui.add_dialog("dialog",{dropdown},dropdown,background,[](bool) {}).value.value();
+    auto root=layout::modal(layout::control(background),layout::control(dropdown),dialog);
+    dialog.open(); dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
+    auto frame=arrange(root,ui,web_appearance(),measure,640,480,1,scroll);
+    auto popup=std::find_if(frame.overlays.begin(),frame.overlays.end(),[](const auto& p) { return p.dropdown_panel; });
+    test::check(popup!=frame.overlays.end(), "dialog dropdown has panel");
+    test::check(frame.wheel(ui,popup->bounds.x+2,popup->bounds.y+2,-80), "dialog panel scrolls");
+    detail::access(ui).key_down({.key=Key::escape});
+    test::check(*dialog.is_open() && !dropdown.describe()->expanded, "Escape closes panel before dialog");
+}
+void long_dropdown_viewport() {
+    for (const auto* look : {&web_appearance(), &material_appearance()}) for (int size : {16, 28}) {
+        Ui ui;
+        if (size == 28) { PresentationSettings settings; settings.text_size=28; settings.density=Density::compact; ui.set_presentation(settings); }
+        std::vector<RadioOption> choices;
+        for (int i=0; i<150; ++i) { auto value=std::to_string(i); choices.push_back({{value}, std::u16string(value.begin(),value.end())}); }
+        auto dropdown=ui.add_dropdown({.id="long",.kind=Kind::dropdown}, choices).value.value();
+        dropdown.connect_source({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});
+        dropdown.connect_immediate([](const DropdownChange&) { return Result{}; });
+        dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
+        auto frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        test::check(frame.overlays.size()==1 && frame.overlays[0].options.size()<=12, "long popup lays out only visible rows");
+        auto& state=detail::access(ui);
+        auto nodes=ui.semantics().children({"long"});
+        test::check(nodes && nodes->size()==150, "all options remain in semantic tree");
+        for (const auto& ref : *nodes) test::check(bool(ui.semantics().get(ref)), "each logical option remains queryable");
+        auto last=ui.semantics().get({"long", OptionValue{"149"}});
+        test::check(last && last->visible, "initial selection is visible");
+        test::check(bool(state.key_down({.key=Key::home})), "Home moves candidate");
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        auto first=ui.semantics().get({"long", OptionValue{"0"}});
+        last=ui.semantics().get({"long", OptionValue{"149"}});
+        test::check(first && first->visible && last && !last->visible, "Home reveals first, last is offscreen");
+        test::check(bool(state.key_down({.key=Key::end})), "End moves candidate");
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        last=ui.semantics().get({"long", OptionValue{"149"}});
+        test::check(last && last->visible && dropdown.describe()->candidate->id=="149", "End reveals last candidate");
+        state.key_down({.key=Key::home});
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        for (int i=1; i<150; ++i) {
+            state.key_down({.key=Key::down, .repeat=true});
+            frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+            auto candidate=ui.semantics().get({"long",OptionValue{std::to_string(i)}});
+            test::check(candidate && candidate->visible && candidate->bounds && candidate->bounds->h==frame.overlays[0].options.back().h, "repeated Down keeps candidate fully visible");
+        }
+        state.key_down({.key=Key::home});
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        auto popup=frame.overlays[0];
+        for (std::size_t i=0; i<popup.options.size(); ++i) {
+            const auto& row=popup.options[i];
+            if (i) test::check(popup.options[i-1].y+popup.options[i-1].h<=row.y, "dropdown rows do not overlap");
+            int x=row.x+2, y=row.y+row.h/2;
+            if (!popup.clip.contains(x,y)) continue;
+            auto logical=frame.option_at(popup,x,y);
+            auto semantic=logical ? ui.semantics().get({"long",OptionValue{std::to_string(*logical)}}) : Query<SemanticNode>{};
+            test::check(semantic && semantic->name==popup.lines[i].text, "each visible row hit matches its painted label");
+        }
+        test::check(frame.wheel(ui,popup.bounds.x+2,popup.bounds.y+2,-100), "wheel scrolls popup");
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        test::check(dropdown.describe()->expanded && dropdown.draft()->value().id=="149", "wheel preserves popup and value");
+        auto region=frame.regions.back();
+        test::check(frame.scroll_to(ui,*region.state,region.offset_for_thumb(region.track.y+region.track.h-region.thumb.h)), "drag scrollbar to end");
+        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        test::check(ui.semantics().get({"long",OptionValue{"149"}})->visible && dropdown.describe()->expanded, "drag reveals last without closing");
+        auto row=frame.overlays[0].options[2];
+        auto painted_label=frame.overlays[0].lines[2].text;
+        int x=row.x+2,y=row.y+row.h/2;
+        auto index=frame.option_at(frame.overlays[0],x,y);
+        test::check(index && *index>0, "scrolled hit uses logical option index");
+        test::check(bool(state.pointer_down("long",index)) && bool(state.pointer_up("long",index)), "select scrolled option");
+        auto selected=dropdown.draft()->value().id;
+        test::check(std::u16string(selected.begin(),selected.end())==painted_label, "selected option matches the painted row label");
+    }
+}
 int main() {
-    const test::Case cases[] = {
+    const test::Case cases[] = {{"modal long dropdown", modal_long_dropdown}, {"long dropdown viewport", long_dropdown_viewport},
         {"multiple dialog layout", multiple_dialog_layout},
         {"Appearance controls component words and geometry", appearance_controls_component_words_and_geometry},
         {"G11 reveal cross-page error", cross_page_error_is_revealed_in_first_frame},

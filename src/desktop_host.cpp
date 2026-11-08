@@ -531,6 +531,11 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
         if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
+        if (item.dropdown_panel) for (const auto& region : frame.regions) {
+            if (region.state != &detail::access(ui_).dropdown_scroll(item.id) || !region.thumb.h) continue;
+            canvas.rounded(region.track, region.track.w / 2, p.panel);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+        }
     }
     canvas.clip = whole;
 }
@@ -690,7 +695,6 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
         return 0;
     case WM_MOUSEWHEEL: {
-        if (frame_.modal) return 0;
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
@@ -704,10 +708,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
-        if (!hit || !hit->popup) detail::access(ui_).close_popup();
-        if (!frame_.modal && (!hit || !hit->popup)) {
+        if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
+        if (!frame_.modal || (hit && hit->kind == Kind::dropdown && hit->popup)) {
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
+                if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
                 drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
                 drag_scroll_ = it->state;
