@@ -61,8 +61,20 @@ void theme_switch_preserves_showcase_geometry() {
         settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark accepted");
         auto dark = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, b);
         check(light.items.size() == dark.items.size() && light.overlays.size() == dark.overlays.size(), "PV02 same placements");
-        for (size_t i = 0; i < light.items.size(); ++i)
-            check(light.items[i].id == dark.items[i].id && light.items[i].bounds == dark.items[i].bounds && light.items[i].clip == dark.items[i].clip, "PV02 geometry unchanged");
+        for (size_t i = 0; i < light.items.size(); ++i) {
+            const auto& x = light.items[i]; const auto& y = dark.items[i];
+            auto lines_equal = [](const auto& a, const auto& b) {
+                if (a.size() != b.size()) return false;
+                for (size_t j = 0; j < a.size(); ++j) if (a[j].bounds != b[j].bounds) return false;
+                return true;
+            };
+            check(x.id == y.id && x.bounds == y.bounds && x.clip == y.clip && x.text_size == y.text_size &&
+                  x.field.label == y.field.label && x.field.surface == y.field.surface && x.field.editor == y.field.editor &&
+                  x.field.description == y.field.description && x.field.error == y.field.error && x.options == y.options &&
+                  x.slider_track == y.slider_track && x.progress_track == y.progress_track && x.progress_fill == y.progress_fill &&
+                  lines_equal(x.lines, y.lines) && lines_equal(x.label_lines, y.label_lines) &&
+                  lines_equal(x.description_lines, y.description_lines) && lines_equal(x.error_lines, y.error_lines), "PV02 geometry unchanged");
+        }
     }
     edit_form::Form controls(ids, true); controls.handles.tabs.activate({"v04"});
     check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::dark(), "V04 switches to dark");
