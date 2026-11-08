@@ -11,3 +11,5 @@
 - CI-only verification and idle-desktop clipboard, IME, DPI, rendering, performance, presentation and UIA checks are not claimed by this record; they require their respective CI or coordinator runs.
 - Core-only prefix matrix: 27 PASS, zero FAIL; `../core/results.tsv` and its logs.zip record both configurations, both generators, and the expected missing-Desktop rejection.
 - CTest: full Release 34/34; core-only Release and Debug 19/19 each. Full Debug `host_native` timed out after 900 s on the shared desktop; coordinator must rerun on an idle desktop. The other 33 Debug cases passed, including UIA, presentation and render comparison.
+- After merging integration/v1 5f54d29 (merge db56e392), both full configurations were rebuilt and installed to the same prefix. The full matrix was rerun: 32 PASS, one N/A, zero FAIL; see ../merged/results.tsv and logs.zip. Debug was rebuilt after the merge, but its full CTest run above predates it. Release core CTest after merge: 19/19 PASS.
+- Post-merge full Release CTest: 34/34 PASS, including host_native in 372 s and both appearance UIA cases.
