@@ -11,7 +11,7 @@ inline std::vector<unsigned char> bitmap_coverage(BitmapMode mode, unsigned widt
     if (mode == BitmapMode::unsupported || !width || !height || !buffer) return {};
     std::vector<unsigned char> pixels(static_cast<std::size_t>(width)*height);
     for (unsigned y=0; y<height; ++y) {
-        auto* line=buffer+(pitch>=0?y:height-1-y)*std::abs(pitch);
+        auto* line=buffer+(pitch>=0?y:height-(y+1))*std::abs(pitch);
         for (unsigned x=0; x<width; ++x)
             pixels[static_cast<std::size_t>(y)*width+x]=mode==BitmapMode::gray?line[x]:mode==BitmapMode::mono?
                 ((line[x/8]&(0x80>>(x%8)))?255:0):line[x*4+3];
