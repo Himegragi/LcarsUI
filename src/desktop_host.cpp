@@ -1,8 +1,11 @@
 ﻿#include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
+#include "uia_provider.hpp"
 #include <windowsx.h>
 #include <imm.h>
+#include <objbase.h>
+#include <UIAutomation.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -136,6 +139,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         throw std::runtime_error("Window creation failed");
     }
     try {
+        uia_ = std::make_unique<UiaBridge>(ui_, window_);
         input_context_ = ImmGetContext(window_);
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
@@ -216,6 +220,7 @@ void DesktopHost::configure_font(std::u16string_view family) {
 }
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
+    if (uia_) { uia_->close(); uia_.reset(); }
     // A host may be destroyed while its Ui remains alive. Discard an unfinished
     // preedit on both sides before detaching the window; closing must not leave
     // an orphaned composition in the retained text session.
@@ -615,6 +620,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
     }
     switch (msg) {
+    case WM_GETOBJECT:
+        if (uia_ && static_cast<LONG>(l) == UiaRootObjectId) return uia_->get_object(w, l);
+        break;
+    case uia_dispatch_message:
+        if (uia_) uia_->dispatch();
+        return 0;
     case WM_APP+44:
         if (renderer_failure_) {
             if (failure_callback_) { auto failure = *renderer_failure_; failure_callback_(failure); }

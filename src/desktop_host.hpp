@@ -13,6 +13,7 @@
 #include <vector>
 
 namespace lcars::detail {
+class UiaBridge;
 struct PaintObservation {
     enum class Type { text, fill, rounded } type;
     std::string owner;
@@ -100,6 +101,7 @@ public:
 
 private:
     Ui& ui_;
+    std::unique_ptr<UiaBridge> uia_;
     const Appearance& appearance_;
     std::function<layout::Node()> page_;
     ScrollState& scroll_;

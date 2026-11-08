@@ -107,6 +107,7 @@ void detail::UiState::commit_removals() {
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
         blur_callbacks_.erase(id); providers_.erase(id);
         std::erase_if(controls_, [&](const Control& control) { return control.id == id; });
+        semantic_instances_.erase(id);
         button_lifetimes_.erase(id);
         retiring_.clear();
     }
@@ -2733,6 +2734,9 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
         SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
+        auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
+        if (inserted) instance->second = ++u.next_semantic_instance_;
+        n.instance = instance->second;
         if (n.role == Role::dialog) {
             n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
             const auto& label = u.dialogs_.at(ref.id).name_label;
@@ -2749,7 +2753,11 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
     auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = semantic_role(c->kind);
+    auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
+    if (inserted) instance->second = ++u.next_semantic_instance_;
+    n.instance = instance->second;
     n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
+    if (n.role == Role::label) n.name = s.value;
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
