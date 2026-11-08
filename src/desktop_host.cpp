@@ -778,6 +778,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         after_input(before);
         return 0;
     }
+    case WM_SYSKEYDOWN:
+        if (w == VK_F4 && (l & (1LL << 29))) { SendMessageW(window_, WM_CLOSE, 0, 0); return 0; }
+        break;
     case WM_KEYDOWN: {
         if (w == VK_PROCESSKEY || w == VK_PACKET) break;  // owned by the IME / injected text
         bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0, shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
