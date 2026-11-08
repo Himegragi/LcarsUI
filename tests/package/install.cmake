@@ -24,10 +24,10 @@ set(expected
   lib/cmake/LcarsUI/LcarsUIAppearanceMaterialTargets.cmake lib/cmake/LcarsUI/LcarsUIAppearanceMaterialTargets-${config_lower}.cmake
   share/doc/LcarsUI/LICENSE share/doc/LcarsUI/THIRD_PARTY_NOTICES.txt)
 if(DESKTOP)
-  list(APPEND expected include/lcars/desktop.hpp include/lcars/diagnostics.hpp include/lcars/fonts.hpp include/lcars/third_party_notices.hpp lib/lcars_desktop.lib lib/lcars_render.lib lib/lcars_freetype.lib lib/lcars_harfbuzz.lib lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake lib/cmake/LcarsUI/LcarsUIDesktopTargets-${config_lower}.cmake)
+  list(APPEND expected include/lcars/desktop.hpp include/lcars/diagnostics.hpp include/lcars/fonts.hpp include/lcars/third_party_notices.hpp lib/lcars_desktop.lib lib/lcars_diagnostics.lib lib/lcars_render.lib lib/lcars_freetype.lib lib/lcars_harfbuzz.lib lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake lib/cmake/LcarsUI/LcarsUIDesktopTargets-${config_lower}.cmake lib/cmake/LcarsUI/LcarsUIDiagnosticsTargets.cmake lib/cmake/LcarsUI/LcarsUIDiagnosticsTargets-${config_lower}.cmake)
 endif()
 if(CONFIG STREQUAL "Debug")
-  list(TRANSFORM expected REPLACE "(lcars_(core|appearance_web|appearance_material))\\.lib$" "\\1d.lib")
+  list(TRANSFORM expected REPLACE "(lcars_(core|appearance_web|appearance_material|desktop|diagnostics|render|freetype|harfbuzz))\\.lib$" "\\1d.lib")
 endif()
 list(SORT actual)
 list(SORT expected)
