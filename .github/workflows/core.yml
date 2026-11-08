@@ -13,7 +13,7 @@ jobs:
         run: ./build.ps1 -Configuration Debug -CoreOnly -Install "$env:RUNNER_TEMP/lcars-prefix"
       - name: Verify installed package
         shell: pwsh
-        run: ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP/lcars-prefix" -Configurations Debug,Release -Generators Ninja,VS2022 -Evidence build/evidence/package
+        run: ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP/lcars-prefix" -Configurations Debug,Release -Generators Ninja,VS -Toolchain build/Release-core/lcars-visual-studio.json -Evidence build/evidence/package
       - name: Record package prefix on failure
         if: failure()
         shell: pwsh

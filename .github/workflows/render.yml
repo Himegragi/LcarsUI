@@ -26,7 +26,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --install build/Release --prefix "$env:RUNNER_TEMP\lcars-full"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP\lcars-full" -Configurations Release -Generators Ninja,VS2022 -Evidence build/evidence/render-package
+          ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP\lcars-full" -Configurations Release -Generators Ninja,VS -Toolchain build/Release/lcars-visual-studio.json -Evidence build/evidence/render-package
       - name: Record package prefix on failure
         if: failure()
         shell: pwsh
