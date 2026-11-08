@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_MULTIPLE_MASTERS_H
 #include <hb.h>
 #include <hb-ft.h>
 #include <algorithm>
@@ -11,6 +12,12 @@
 #include <set>
 namespace lcars::detail {
 namespace {
+std::string utf8(std::wstring_view value) {
+    if(value.empty()) return {};
+    int size=WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
+    if(size<=0) return {};
+    std::string result(size,'\0'); WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr); return result;
+}
 void diagnostic(const wchar_t* message) {
 #ifndef NDEBUG
     OutputDebugStringW(message); OutputDebugStringW(L"\n");
@@ -23,14 +30,32 @@ struct Font {
     void* data=nullptr;
     FT_Face face=nullptr;
     hb_font_t* hb=nullptr;
+    long error=0;
     Font(FT_Library library,const FontFile& source) {
         if (!library || source.path.empty()) return;
         file=CreateFileW(source.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
         LARGE_INTEGER length{};
         if(file==INVALID_HANDLE_VALUE || !GetFileSizeEx(file,&length) || length.QuadPart<=0 || length.QuadPart>LONG_MAX ||
            !(mapping=CreateFileMappingW(file,nullptr,PAGE_READONLY,0,0,nullptr)) || !(data=MapViewOfFile(mapping,FILE_MAP_READ,0,0,0)) ||
-           FT_New_Memory_Face(library,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(length.QuadPart),source.face_index,&face)) {
+           (error=FT_New_Memory_Face(library,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(length.QuadPart),source.face_index,&face))) {
+            if(!error) error=static_cast<long>(GetLastError());
             return;
+        }
+        if(!source.axes.empty() && FT_HAS_MULTIPLE_MASTERS(face)) {
+            FT_MM_Var* variations=nullptr;
+            if(!FT_Get_MM_Var(face,&variations) && variations) {
+                std::vector<FT_Fixed> coords(variations->num_axis);
+                for(unsigned i=0;i<variations->num_axis;++i) {
+                    coords[i]=variations->axis[i].def;
+                    for(const auto& axis:source.axes) {
+                        auto t=axis.tag;
+                        std::uint32_t tag=((t&255)<<24)|((t&0xff00)<<8)|((t&0xff0000)>>8)|((t>>24)&255);
+                        if(tag==variations->axis[i].tag) coords[i]=static_cast<FT_Fixed>(std::lround(axis.value*65536.0));
+                    }
+                }
+                FT_Set_Var_Design_Coordinates(face,static_cast<FT_UInt>(coords.size()),coords.data());
+                FT_Done_MM_Var(library,variations);
+            }
         }
         hb=hb_ft_font_create_referenced(face);
     }
@@ -44,25 +69,35 @@ struct Text::Impl {
     std::array<std::unique_ptr<Font>,10> fonts;
     std::array<bool,10> attempted{};
     std::set<unsigned> missing;
+    int bitmap_mode=-1;
     std::function<FontFile(std::u16string_view)> lookup;
-    std::function<void(std::string_view)> report;
-    Impl(std::function<FontFile(std::u16string_view)> find, std::function<void(std::string_view)> emit)
-        : lookup(std::move(find)), report(std::move(emit)) {
+    std::function<void(const RenderDiagnostic&)> receiver;
+    void report(std::string_view code,std::string message={},std::int64_t native=0) {
+        RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.native_code=native;
+        event.native_message=std::move(message); event.category=DiagnosticCategory::resource;
+        event.severity=code=="text.glyph_missing"?DiagnosticSeverity::info:DiagnosticSeverity::warning;
+        receiver(event);
+    }
+    Impl(std::function<FontFile(std::u16string_view)> find, std::function<void(const RenderDiagnostic&)> emit)
+        : lookup(std::move(find)), receiver(std::move(emit)) {
         if(FT_Init_FreeType(&library)) library=nullptr;
-        if(lookup(u"Segoe UI").path.empty()) report("font.default_missing");
-        if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing");
+        if(lookup(u"Segoe UI").path.empty()) report("font.default_missing","Segoe UI");
+        if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing","Microsoft JhengHei");
     }
     ~Impl(){for(auto& font:fonts)font.reset();if(library)FT_Done_FreeType(library);}
     Font* font(unsigned id) {
         if(id>=fonts.size()) return nullptr;
-        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face) report("font.file_unreadable"); } }
+        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
         return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
     }
 };
 Text::Text():Text(system_font_file,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
+    :Text(std::move(lookup),std::function<void(const RenderDiagnostic&)>([report=std::move(report)](const auto& event) { report(event.code); })){}
+Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(const RenderDiagnostic&)> report)
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
+void Text::test_bitmap_mode(int mode) { impl_->bitmap_mode=mode; }
 float TextLayout::at(unsigned offset) const {
     auto it=carets.upper_bound(offset);return it==carets.begin()?0:std::prev(it)->second;
 }
@@ -96,7 +131,7 @@ TextLayout Text::shape(std::u16string_view text,int size){
     for(auto& run:runs){
         if(run.font==no_font) {
             unsigned cp=text[run.begin]; if(cp>=0xd800&&cp<=0xdbff && run.begin+1<text.size()) cp=0x10000+((cp-0xd800)<<10)+(text[run.begin+1]-0xdc00);
-            if(e.missing.insert(cp).second)e.report("text.glyph_missing");
+            if(e.missing.insert(cp).second)e.report("text.glyph_missing", "Unicode code point " + std::to_string(cp), cp);
             float advance=cp<128?size*.6f:static_cast<float>(size);
             result.carets.try_emplace(run.begin,result.width); result.glyphs.push_back({no_font,0,run.begin,result.width,0,0,advance}); result.width+=advance; ++result.missing; continue;
         }
@@ -169,18 +204,19 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         if (!glyph.id) {box();continue;}
         auto font=impl_->font(glyph.font);
         if(!font || !font->size(layout.size) || FT_Load_Glyph(font->face,glyph.id,FT_LOAD_DEFAULT) || FT_Render_Glyph(font->face->glyph,FT_RENDER_MODE_NORMAL)) {
-            impl_->report("text.glyph_load_failed");box();continue;
+            impl_->report("text.glyph_load_failed", "glyph " + std::to_string(glyph.id),glyph.id);box();continue;
         }
         auto& bitmap=font->face->glyph->bitmap;
-        if(bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY && bitmap.pixel_mode!=FT_PIXEL_MODE_MONO && bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY2 && bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY4 && bitmap.pixel_mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
-            impl_->report("text.glyph_format_unsupported");box();continue;
+        unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);
+        if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
+            impl_->report("text.glyph_format_unsupported", "pixel mode " + std::to_string(mode),mode);box();continue;
         }
         int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font->face->glyph->bitmap_left;
         int top=baseline-static_cast<int>(std::round(glyph.dy))-font->face->glyph->bitmap_top;
         std::vector<unsigned char> coverage;
         for(unsigned row=0;row<bitmap.rows;++row){
             unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row; auto data=bitmap.buffer+source*std::abs(bitmap.pitch);
-            bitmap_coverage(bitmap.pixel_mode,data,bitmap.width,coverage);
+            bitmap_coverage(mode,data,bitmap.width,coverage);
             for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col]);
         }
     }

@@ -4,6 +4,9 @@
 #include <fstream>
 #include <algorithm>
 #include <windows.h>
+#include <dwrite_3.h>
+#include <wrl/client.h>
+#include <set>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -23,14 +26,45 @@ bool loadable(const lcars::detail::FontFile& source, FT_Library library) {
     return ok;
 }
 
+bool catalog_faces_are_local(const lcars::FontCatalog& catalog) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDWriteFactory6> factory; ComPtr<IDWriteFontSet1> all;
+    if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory6), reinterpret_cast<IUnknown**>(factory.GetAddressOf()))) ||
+        FAILED(factory->GetSystemFontSet(TRUE, &all))) return false;
+    std::set<std::pair<std::wstring,unsigned>> local;
+    for (UINT32 i=0;i<all->GetFontCount();++i) {
+        ComPtr<IDWriteFontFaceReference> ref; ComPtr<IDWriteFontFile> file; ComPtr<IDWriteFontFileLoader> loader; ComPtr<IDWriteLocalFontFileLoader> disk;
+        const void* key=nullptr; UINT32 bytes=0, length=0;
+        if (FAILED(all->GetFontFaceReference(i,&ref)) || ref->GetLocality()!=DWRITE_LOCALITY_LOCAL || FAILED(ref->GetFontFile(&file)) ||
+            FAILED(file->GetLoader(&loader)) || FAILED(loader.As(&disk)) || FAILED(file->GetReferenceKey(&key,&bytes)) ||
+            FAILED(disk->GetFilePathLengthFromKey(key,bytes,&length))) continue;
+        std::wstring path(length+1,L'\0'); if (FAILED(disk->GetFilePathFromKey(key,bytes,path.data(),length+1))) continue;
+        path.resize(length); std::transform(path.begin(),path.end(),path.begin(),::towlower);
+        local.emplace(path,ref->GetFontFaceIndex());
+    }
+    for (const auto& family:catalog.families()) {
+        auto source=lcars::detail::system_font_file(family.key); auto path=source.path.wstring();
+        std::transform(path.begin(),path.end(),path.begin(),::towlower);
+        if (!local.count({path,source.face_index})) return false;
+    }
+    return true;
+}
+
 int main() {
     const auto& catalog = lcars::system_font_catalog();
     std::cout << "Font families: " << catalog.families().size() << '\n';
     if (catalog.families().empty()) return 1;
     if (catalog.contains(u"Wingdings") || catalog.contains(u"Marlett")) return 6;
+    lcars::PresentationSettings settings;
+    auto resolved = catalog.resolve(settings);
+    if (resolved.requested != u"" || !resolved.requested_available || resolved.primary != u"Segoe UI") return 27;
+    settings.font_family = u"LcarsUI nonexistent font family";
+    resolved = catalog.resolve(settings);
+    if (resolved.requested_available || resolved.requested != settings.font_family || resolved.primary != u"Segoe UI") return 28;
     FT_Library library = nullptr;
     if (FT_Init_FreeType(&library)) return 23;
     for (const auto& family : catalog.families()) if (!loadable(lcars::detail::system_font_file(family.key), library)) return 24;
+    if (!catalog_faces_are_local(catalog)) return 30;
     FT_Done_FreeType(library);
     std::cout << "Segoe UI " << catalog.contains(u"Segoe UI") << ", JhengHei " << catalog.contains(u"Microsoft JhengHei")
               << ", Emoji " << catalog.contains(u"Segoe UI Emoji") << '\n';
@@ -70,8 +104,11 @@ int main() {
     auto without_jhenghei = [](std::u16string_view name) { return name == u"Microsoft JhengHei" ? FontFile{} : system_font_file(name); };
     Text fallback(without_jhenghei, emit);
     if (fallback.shape(u"測試使用者", 18).missing || std::count(events.begin(), events.end(), "font.default_missing") != 1) return 20;
-    auto extb = text.shape(u"\U00020000", 18);
-    if (!system_font_file(u"MingLiU-ExtB").path.empty() && (extb.missing || extb.glyphs[0].font != 3 || extb.carets.count(1))) return 21;
+    auto extb_file=system_font_file(u"MingLiU-ExtB");
+    if(extb_file.path.empty()) { std::cerr << "FN06 requires an installed MingLiU-ExtB face\n"; return 21; }
+    Text isolated_extb([&](std::u16string_view family) { return family==u"MingLiU-ExtB" ? extb_file : FontFile{}; },emit);
+    auto extb = isolated_extb.shape(u"\U00020000", 18);
+    if (extb.missing || extb.glyphs[0].font != 3 || extb.carets.count(1)) return 21;
     events.clear();
     auto none = [](std::u16string_view) { return FontFile{}; };
     Text without_fonts(none, emit);
@@ -80,6 +117,17 @@ int main() {
     for (unsigned i = 1; i <= 5; ++i) if (boxes.at(i) <= boxes.at(i-1)) return 8;
     without_fonts.shape(u"測試使用者", 18);
     if (std::count(events.begin(), events.end(), "text.glyph_missing") != 5) return 9;
+    lcars::Ui ui;
+    auto field=ui.add_text({.id="font-test",.kind=lcars::Kind::text,.value=u"測試使用者"});
+    if(!field) return 31;
+    if(!field->connect_source({[]{return std::u16string(u"測試使用者");}, [](std::function<void()>) { return std::function<void()>([]{}); }}) ||
+       !field->connect_confirmed([](const lcars::TextChange&) {return lcars::Result{};})) return 31;
+    auto selection=field->select(5,5); auto insert=field->paste(u"字");
+    if(!selection || !insert || field->describe()->value!=u"測試使用者字") {
+        std::cerr << "editing status " << static_cast<int>(selection.status) << ' ' << static_cast<int>(insert.status) << "\n"; return 31;
+    }
+    if(without_fonts.shape(field->describe()->value,18).missing!=6 || !field->select(5,6) || !field->paste(u"") || field->describe()->value!=u"測試使用者") return 32;
+    if(!field->undo() || field->describe()->value!=u"測試使用者字") return 33;
     events.clear();
     auto private_glyph = without_fonts.shape(u"\ue000", 18);
     without_fonts.shape(u"\ue000", 18);
@@ -122,5 +170,11 @@ int main() {
     invalid.glyphs[0].id = 0xffffffffu;
     failed_load.draw(canvas, invalid, 0, 30, {0,0,0});
     if (std::count(events.begin(), events.end(), "text.glyph_load_failed") != 1) return 17;
+    events.clear();
+    auto valid = failed_load.shape(u"A", 18);
+    failed_load.test_bitmap_mode(99);
+    lcars::detail::Canvas unsupported(64,64,{255,255,255});
+    failed_load.draw(unsupported,valid,0,30,{0,0,0});
+    if (std::count(events.begin(), events.end(), "text.glyph_format_unsupported") != 1 || unsupported.pixels == lcars::detail::Canvas(64,64,{255,255,255}).pixels) return 29;
     return 0;
 }

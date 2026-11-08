@@ -30,7 +30,16 @@ detail::FontFile file_of(IDWriteFontFaceReference* face) {
         FAILED(local->GetFilePathLengthFromKey(key,key_size,&length))) return {};
     std::wstring path(length+1,L'\0');
     if (FAILED(local->GetFilePathFromKey(key,key_size,path.data(),length+1))) return {};
-    path.resize(length); return {path,face->GetFontFaceIndex()};
+    path.resize(length);
+    detail::FontFile result{path,face->GetFontFaceIndex()};
+    ComPtr<IDWriteFontFaceReference1> variable;
+    if(SUCCEEDED(face->QueryInterface(IID_PPV_ARGS(&variable)))) {
+        UINT32 count=variable->GetFontAxisValueCount();
+        std::vector<DWRITE_FONT_AXIS_VALUE> values(count);
+        if(count && SUCCEEDED(variable->GetFontAxisValues(values.data(),count)))
+            for(const auto& axis:values) result.axes.push_back({static_cast<std::uint32_t>(axis.axisTag),axis.value});
+    }
+    return result;
 }
 bool usable(const detail::FontFile& file, bool& eligible) {
     eligible=false;
@@ -48,7 +57,7 @@ bool usable(const detail::FontFile& file, bool& eligible) {
     if(face) FT_Done_Face(face); if(lib) FT_Done_FreeType(lib); if(data) UnmapViewOfFile(data); if(mapping) CloseHandle(mapping); CloseHandle(f);
     return ok;
 }
-struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; bool available=false; };
+struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; std::set<std::u16string> valid; bool available=false; };
 const Snapshot& snapshot() {
  static const Snapshot value=[] {
     Snapshot out; ComPtr<IDWriteFactory6> factory; ComPtr<IDWriteFontSet1> set;
@@ -79,6 +88,7 @@ const Snapshot& snapshot() {
         auto prior=scores.find(key);
         if(prior!=scores.end() && score>=prior->second && listed.count(key)) continue;
         bool eligible=false; if(!usable(file,eligible)) continue;
+        out.valid.insert(key);
         if(prior==scores.end() || score<prior->second) { out.files[key]=file; scores[key]=score; }
         if(eligible && !dwface->IsSymbolFont() && listed.insert(key).second) { auto display=name_of(names.Get(),L"zh-tw",false); out.families.push_back({key,display.empty()?key:display}); }
     }
@@ -91,6 +101,20 @@ const Snapshot& snapshot() {
 }
 bool FontCatalog::contains(std::u16string_view key) const noexcept {
  return std::any_of(families_.begin(),families_.end(),[&](const auto& f){return f.key==key;});
+}
+FontResolution FontCatalog::resolve(const PresentationSettings& settings) const {
+    FontResolution result;
+    result.requested=settings.font_family;
+    result.requested_available=settings.font_family.empty() || contains(settings.font_family);
+    const auto& valid=snapshot().valid;
+    auto append=[&](std::u16string_view name) {
+        if(valid.count(std::u16string(name)) && std::find(result.fallback.begin(),result.fallback.end(),name)==result.fallback.end())
+            result.fallback.emplace_back(name);
+    };
+    if(result.requested_available && !settings.font_family.empty()) append(settings.font_family);
+    for(auto name:{u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"}) append(name);
+    if(!result.fallback.empty()) { result.primary=result.fallback.front(); result.fallback.erase(result.fallback.begin()); }
+    return result;
 }
 namespace detail {
 FontFile system_font_file(std::u16string_view family) {

@@ -291,6 +291,20 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
         "Escape cancels and returns focus without changing progress");
 }
 
+void font_diagnostic_reaches_application(const Appearance& appearance, Report& report) {
+    Ui ui;
+    auto label=ui.add_label({.id="missing-font-glyph",.kind=Kind::label,.value=u"\U0010ffff"});
+    std::vector<RenderDiagnostic> events;
+    DesktopOptions options; options.on_diagnostic=[&](const RenderDiagnostic& event) { events.push_back(event); };
+    ScrollState scroll;
+    DesktopHost host(ui,appearance,[&] { return layout::control(*label); },scroll,options,false,true);
+    host.client_size(200,100); host.paint(); host.paint();
+    auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {
+        return e.code=="text.glyph_missing" && e.native_code==0x10ffff && e.ui_environment==&ui && e.severity==DiagnosticSeverity::info;
+    });
+    report.check("font-diagnostic",count==1,"missing font glyph reaches the desktop diagnostic callback once");
+}
+
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     constexpr auto test_kind = static_cast<Kind>(100);
     TestComponent component;
@@ -2646,6 +2660,7 @@ int run(const std::filesystem::path& folder) {
         tooltip_native(*appearance, report, folder);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
+        font_diagnostic_reaches_application(*appearance, report);
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);

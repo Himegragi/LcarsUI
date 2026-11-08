@@ -1,6 +1,7 @@
 #pragma once
 #include "lcars/appearance.hpp"
 #include "lcars/layout.hpp"
+#include "lcars/diagnostics.hpp"
 #include <map>
 #include <cstdint>
 #include <memory>
@@ -40,12 +41,15 @@ public:
     Text();
     Text(std::function<FontFile(std::u16string_view)> lookup,
          std::function<void(std::string_view)> diagnostic);
+    Text(std::function<FontFile(std::u16string_view)> lookup,
+         std::function<void(const RenderDiagnostic&)> diagnostic);
     ~Text();
     Text(const Text&)=delete;
     Text& operator=(const Text&)=delete;
     TextLayout shape(std::u16string_view text,int pixels);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
+    void test_bitmap_mode(int mode); // -1 uses the rasterizer's pixel mode
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

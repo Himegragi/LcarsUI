@@ -114,7 +114,14 @@ Query<std::u16string> WindowsClipboard::read() {
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                          const DesktopOptions& options, bool trace, bool background)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll) {
+    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll),
+      text_(system_font_file, [callback=options.on_diagnostic, environment=&ui](const RenderDiagnostic& source) {
+          auto event=source; event.ui_environment=environment;
+          if(callback) { try { callback(event); } catch (...) {} }
+#ifndef NDEBUG
+          else { std::wstring message(event.code.begin(),event.code.end()); message+=L"\n"; OutputDebugStringW(message.c_str()); }
+#endif
+      }) {
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW wc{};
