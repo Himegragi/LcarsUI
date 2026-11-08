@@ -331,7 +331,7 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     constexpr auto test_kind = static_cast<Kind>(100);
     TestComponent component;
     detail::ScopedComponentType registration(test_kind, component);
-    Ui ui({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
+    Ui ui; detail::access(ui).seed_test_controls({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
     auto& state = detail::access(ui);
     int activations = 0;
     state.bind("probe", [&] { ++activations; return Result{}; });

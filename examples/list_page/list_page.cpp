@@ -31,25 +31,25 @@ Result ImmediateSearchConnection::reset() {
 }
 
 Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
-    : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>(std::vector<Control>{})),
+    : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>()),
       ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
-    handles.title = ui.add_label({.id = prefix + "title", .kind = Kind::label, .value = u"範本清單"});
+    handles.title = ui.add_label({.id = prefix + "title", .kind = Kind::label, .value = u"範本清單"}).value.value();
     auto title_id = handles.title.describe()->id;
     auto title_text = handles.title.describe()->value;
     handles.title.connect_source([this, title_id, title_text] {
         return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
     });
-    handles.zero = ui.add_button({.id = prefix + "zero", .kind = Kind::button, .label = u"0 筆"});
-    handles.one = ui.add_button({.id = prefix + "one", .kind = Kind::button, .label = u"1 筆"});
-    handles.twenty = ui.add_button({.id = prefix + "twenty", .kind = Kind::button, .label = u"20 筆"});
-    handles.hundred = ui.add_button({.id = prefix + "hundred", .kind = Kind::button, .label = u"100 筆"});
-    handles.sort = ui.add_button({.id = prefix + "sort", .kind = Kind::button, .label = u"反轉排序"});
-    handles.disable_eight = ui.add_button({.id = prefix + "disable", .kind = Kind::button, .label = u"停用／啟用 T008"});
-    handles.reset = ui.add_button({.id = prefix + "reset", .kind = Kind::button, .label = u"重設"});
-    handles.search = ui.add_text({.id = prefix + "search", .kind = Kind::text, .label = u"搜尋名稱"});
-    handles.list = ui.add_list({.id = prefix + "list", .kind = Kind::list, .label = u"範本"}, {});
-    handles.erase = ui.add_button({.id = prefix + "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false});
-    handles.detail = ui.add_label({.id = prefix + "detail", .kind = Kind::label});
+    handles.zero = ui.add_button({.id = prefix + "zero", .kind = Kind::button, .label = u"0 筆"}).value.value();
+    handles.one = ui.add_button({.id = prefix + "one", .kind = Kind::button, .label = u"1 筆"}).value.value();
+    handles.twenty = ui.add_button({.id = prefix + "twenty", .kind = Kind::button, .label = u"20 筆"}).value.value();
+    handles.hundred = ui.add_button({.id = prefix + "hundred", .kind = Kind::button, .label = u"100 筆"}).value.value();
+    handles.sort = ui.add_button({.id = prefix + "sort", .kind = Kind::button, .label = u"反轉排序"}).value.value();
+    handles.disable_eight = ui.add_button({.id = prefix + "disable", .kind = Kind::button, .label = u"停用／啟用 T008"}).value.value();
+    handles.reset = ui.add_button({.id = prefix + "reset", .kind = Kind::button, .label = u"重設"}).value.value();
+    handles.search = ui.add_text({.id = prefix + "search", .kind = Kind::text, .label = u"搜尋名稱"}).value.value();
+    handles.list = ui.add_list({.id = prefix + "list", .kind = Kind::list, .label = u"範本"}, {}).value.value();
+    handles.erase = ui.add_button({.id = prefix + "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false}).value.value();
+    handles.detail = ui.add_label({.id = prefix + "detail", .kind = Kind::label}).value.value();
     search_.connect(handles.search, [this] { return refresh(); });
     handles.list.connect_source({[this] { return selection_; }, [this](auto changed) {
         selection_changed_ = std::move(changed); return [this] { selection_changed_ = {}; };

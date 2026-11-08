@@ -2,6 +2,11 @@
 #include "component_type.hpp"
 #include <stdexcept>
 #include <cmath>
+#include <cstdio>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 namespace lcars {
 namespace {
 // Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
@@ -87,6 +92,7 @@ void detail::UiState::commit_removals() {
             }
             confirmation_members_.erase(group);
         }
+        if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id);
         blur_callbacks_.erase(id); providers_.erase(id);
         std::erase_if(controls_, [&](const Control& control) { return control.id == id; });
@@ -2240,27 +2246,104 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0;
 }
-Ui::Ui(std::vector<Control> controls) : state_(std::make_unique<detail::UiState>(std::move(controls))) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})) {}
 Ui::~Ui() = default;
-TextHandle Ui::add_text(Control control) { return state_->add_text(std::move(control)); }
-ButtonHandle Ui::add_button(Control control) { return state_->add_button(std::move(control)); }
-LabelHandle Ui::add_label(Control control) { return state_->add_label(std::move(control)); }
-CheckboxHandle Ui::add_checkbox(Control control) { return state_->add_checkbox(std::move(control)); }
-RadioGroupHandle Ui::add_radio_group(Control control, std::vector<RadioOption> options) { return state_->add_radio_group(std::move(control), std::move(options)); }
+void detail::UiState::seed_test_controls(std::vector<Control> controls) {
+    for (auto& control : controls) {
+        if (control.kind == Kind::text) add_text(std::move(control));
+        else if (control.kind == Kind::button) add_button(std::move(control));
+        else if (control.kind == Kind::label) add_label(std::move(control));
+        else { (void)detail::component_type(control.kind); button_lifetimes_.emplace(control.id, std::make_shared<int>(0)); controls_.push_back(std::move(control)); }
+    }
+}
+bool detail::UiState::registerable(std::string_view id) {
+    const auto* existing = find(id);
+    auto overlay = overlay_ids_.find(id);
+    if (!id.empty() && !existing && overlay == overlay_ids_.end()) return true;
+#ifndef NDEBUG
+    const char* names[] = {"text", "button", "label", "checkbox", "radio_group", "slider", "dropdown", "list", "tabs", "progress"};
+    auto kind = existing ? static_cast<unsigned>(existing->kind) : 0;
+    std::string type = existing ? (kind < std::size(names) ? names[kind] : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
+    std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
+    diagnostics_.push_back(message);
+#ifdef _WIN32
+    int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
+    if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
+#else
+    std::fputs(message.c_str(), stderr);
+#endif
+#endif
+    return false;
+}
+const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnostics_; }
+Query<TextHandle> Ui::add_text(Control control) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<ButtonHandle> Ui::add_button(Control control) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<LabelHandle> Ui::add_label(Control control) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<CheckboxHandle> Ui::add_checkbox(Control control) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
 Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
-    if (range.minimum >= range.maximum || range.step <= 0)
-        return {Status::invalid_value, u"Invalid slider range or step", std::nullopt};
-    return {Status::ok, {}, state_->add_slider(std::move(control), range)};
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
+    try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-ProgressHandle Ui::add_progress(Control control) { return state_->add_progress(std::move(control)); }
-TabsHandle Ui::add_tabs(Control control, std::vector<TabPage> pages) { return state_->add_tabs(std::move(control), std::move(pages)); }
-DropdownHandle Ui::add_dropdown(Control control, std::vector<RadioOption> options) { return state_->add_dropdown(std::move(control), std::move(options)); }
-ListHandle Ui::add_list(Control control, std::vector<RadioOption> items) { return state_->add_list(std::move(control), std::move(items)); }
-TooltipHandle Ui::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
-    return state_->add_tooltip(std::move(source), std::move(text), delay_ms);
+Query<ProgressHandle> Ui::add_progress(Control control) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-DialogHandle Ui::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
-    return state_->add_dialog(std::move(members), initial, fallback, std::move(result));
+Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
+    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
+    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+}
+Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms) {
+    if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try {
+        auto source_id = state_->layout_id(source);
+        auto handle = state_->add_tooltip(std::move(source), std::move(text), delay_ms);
+        state_->tooltip_ids_.emplace(*source_id, id);
+        state_->overlay_ids_.emplace(std::move(id), "tooltip");
+        return {Status::ok, {}, std::move(handle)};
+    } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid tooltip", std::nullopt}; }
+}
+Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+    if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    try {
+        auto handle = state_->add_dialog(std::move(members), initial, fallback, std::move(result));
+        state_->overlay_ids_.emplace(std::move(id), "dialog");
+        return {Status::ok, {}, std::move(handle)};
+    } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid dialog", std::nullopt}; }
 }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
