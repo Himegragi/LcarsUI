@@ -253,7 +253,7 @@ int DesktopHost::run() {
     MSG msg{};
     BOOL result = 0;
     while (!quit_ && (result = GetMessageW(&msg, nullptr, 0, 0)) > 0) dispatch(msg);
-    return result < 0 || failed_ ? 1 : static_cast<int>(msg.wParam);
+    return result < 0 || failed_ ? 1 : quit_ ? 0 : static_cast<int>(msg.wParam);
 }
 void DesktopHost::dispatch(MSG& message) {
     TranslateMessage(&message);

@@ -1,5 +1,5 @@
 #include "settings_demo.hpp"
-#include "failure_flow.hpp"
+#include "close_controller.hpp"
 #include "lcars/desktop.hpp"
 #include "about_desktop.hpp"
 #include "settings_store.hpp"
@@ -58,22 +58,14 @@ int wmain(int argc, wchar_t** argv) {
         demo.on_save([&store](const auto& document) { return store.save(document); },path_text);
         lcars::DesktopOptions options;
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
-        bool failure_prompt_active = false;
+        settings_demo::CloseController close_controller(demo);
         options.on_close_requested = [&](lcars::Desktop& desktop) {
-            if (!desktop.renderer_failed()) return demo.request_close() ? lcars::CloseDecision::close : lcars::CloseDecision::keep_open;
-            if (failure_prompt_active) return lcars::CloseDecision::keep_open;
-            failure_prompt_active = true;
             WindowsPrompt prompt(desktop.native_window());
-            bool close = settings_demo::failure_close(prompt, demo.is_dirty(), demo.blank_name_draft(), [&] { return demo.save_failed_renderer(); });
-            failure_prompt_active = false;
-            return close ? lcars::CloseDecision::close : lcars::CloseDecision::keep_open;
+            return close_controller.request(desktop, prompt);
         };
         options.on_renderer_failed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
-            if (failure_prompt_active) return;
-            failure_prompt_active = true;
             WindowsPrompt prompt(desktop.native_window());
-            settings_demo::failure_flow(prompt, failure.message, [&] { return demo.is_dirty(); }, [&] { return bool(desktop.rebuild_renderer()); }, [&] { return demo.save_failed_renderer(); }, [&] { desktop.close(); }, [&] { return demo.blank_name_draft(); });
-            failure_prompt_active = false;
+            close_controller.failure(desktop, failure, prompt);
         };
         auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) return 1;
