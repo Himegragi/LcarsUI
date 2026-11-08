@@ -940,7 +940,16 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
                      (visible ? "yes" : "NO") + ", unfocused reset ring is not=" + (distinct ? "yes" : "NO") + " (" + tag + "-focus-apply.bmp)");
 }
 
-void resize_first_frame_matches_next(const Appearance& appearance, Report& report, float scale) {
+WNDPROC r06_original_proc = nullptr;
+LRESULT CALLBACK r06_clamped_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
+    if (message == WM_WINDOWPOSCHANGING) {
+        auto* pos = reinterpret_cast<WINDOWPOS*>(l);
+        if (!(pos->flags & SWP_NOSIZE)) { pos->cx = std::min(pos->cx, 1024); pos->cy = std::min(pos->cy, 768); }
+    }
+    return CallWindowProcW(r06_original_proc, window, message, w, l);
+}
+
+void resize_first_frame_matches_next(const Appearance& appearance, Report& report, float scale, bool force_clamp = false) {
     Fixture f(appearance);
     f.host.force_scale(scale);
     detail::access(f.form.ui).invoke(f.ids.long_text);
@@ -952,23 +961,38 @@ void resize_first_frame_matches_next(const Appearance& appearance, Report& repor
     f.host.pump();
     UpdateWindow(f.host.window());
     int deep = f.host.frame().offset, deep_max = f.host.frame().maximum;
+    RECT initial_client{};
+    GetClientRect(f.host.window(), &initial_client);
+    if (force_clamp) r06_original_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(f.host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&r06_clamped_proc)));
     int before = f.host.frames();
     f.host.client_size(720, 540);
     f.host.pump();
     UpdateWindow(f.host.window());
+    if (force_clamp) SetWindowLongPtrW(f.host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(r06_original_proc));
     Frame first = f.host.frame();
+    RECT client{};
+    GetClientRect(f.host.window(), &client);
+    const int width = client.right - client.left, height = client.bottom - client.top;
+    const int requested_width = static_cast<int>(720 * scale), requested_height = static_cast<int>(540 * scale);
+    const bool clamped = width != requested_width || height != requested_height;
     int painted = f.host.frames() - before;
     InvalidateRect(f.host.window(), nullptr, FALSE);
     UpdateWindow(f.host.window());
     const Frame& second = f.host.frame();
-    bool same = first.items.size() == second.items.size() && first.offset == second.offset;
-    for (std::size_t i = 0; same && i < first.items.size(); ++i) same = first.items[i].bounds == second.items[i].bounds;
+    bool same = first.items.size() == second.items.size() && first.offset == second.offset &&
+                first.maximum == second.maximum && first.viewport == second.viewport;
+    for (std::size_t i = 0; same && i < first.items.size(); ++i)
+        same = first.items[i].id == second.items[i].id && first.items[i].bounds == second.items[i].bounds &&
+               first.items[i].clip == second.items[i].clip;
     auto target = detail::find_placement(first, f.ids.apply)->bounds;
     const auto* hit = second.hit(target.x + target.w / 2, target.y + target.h / 2);
-    bool visible = target.y >= 0 && target.y + target.h <= static_cast<int>(540 * scale);
-    report.check(scale > 1 ? "R06-native-150" : "R06-native-100", deep > 0 && deep == deep_max && painted == 1 && first.viewport.w == static_cast<int>(720 * scale) && first.maximum > 0 && first.offset == first.maximum && first.offset < deep && same && visible && hit && hit->id == f.ids.apply,
+    const auto* first_hit = first.hit(target.x + target.w / 2, target.y + target.h / 2);
+    bool visible = target.x >= 0 && target.y >= 0 && target.x + target.w <= width && target.y + target.h <= height;
+    bool scroll_ok = clamped ? first.offset == std::min(deep, first.maximum) : first.offset == first.maximum && first.offset < deep;
+    report.check(force_clamp ? "R06-native-150-clamped" : scale > 1 ? "R06-native-150" : "R06-native-100", deep > 0 && deep == deep_max && painted == 1 && width > 0 && height > 0 && (width != initial_client.right || height != initial_client.bottom) && first.viewport.w == width && first.maximum > 0 && scroll_ok && (!force_clamp || clamped) && same && visible && first_hit && first_hit->id == f.ids.apply && hit && hit->id == f.ids.apply,
                  "640x480 wheel to offset " + std::to_string(deep) + "/" + std::to_string(deep_max) + "; SetWindowPos 720x540 -> " +
-                     std::to_string(painted) + " WM_PAINT, first frame offset " + std::to_string(first.offset) + " max " +
+                     std::to_string(painted) + " WM_PAINT, requested client " + std::to_string(requested_width) + "x" + std::to_string(requested_height) +
+                     ", actual " + std::to_string(width) + "x" + std::to_string(height) + (clamped ? " (clamped)" : " (unclamped)") + ", first frame offset " + std::to_string(first.offset) + " max " +
                      std::to_string(first.maximum) + ", identical to the next frame=" + (same ? "yes" : "NO") + ", apply at " + str(target) +
                      " hit=" + (hit ? hit->id : std::string("none")));
 }
@@ -2933,6 +2957,7 @@ int run(const std::filesystem::path& folder) {
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
         resize_first_frame_matches_next(*appearance, report, 1.5f);
+        resize_first_frame_matches_next(*appearance, report, 1.5f, true);
         layout_matrix(*appearance, report, folder, tag);
         page_size_scale_matrix(*appearance, report);
         popup_dismissal_matrix(*appearance, report);
@@ -3241,7 +3266,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_skin=L"web";
@@ -3258,6 +3283,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--presentation-matrix") matrix = true;
             else if (arg == L"--presentation-idle") presentation = true;
             else if (arg == L"--backend-check") backend_check = true;
+            else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3273,6 +3299,17 @@ int wmain(int argc, wchar_t** argv) {
         if (presentation) return run_presentation_idle(evidence);
         if (trial) return trial_screenshots(evidence);
         if (matrix) return native_presentation_matrix(evidence);
+        if (r06_only) {
+            std::filesystem::create_directories(evidence);
+            Report report(evidence / "r06.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                resize_first_frame_matches_next(*appearance, report, 1.f);
+                resize_first_frame_matches_next(*appearance, report, 1.5f);
+                resize_first_frame_matches_next(*appearance, report, 1.5f, true);
+            }
+            return report.failures ? 1 : 0;
+        }
         if (backend_check) {
             Fixture fixture(web_appearance(), true);
             const auto renderer = fixture.host.renderer_name();
