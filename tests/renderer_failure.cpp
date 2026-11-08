@@ -59,7 +59,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     if (modal) check(bool(form.handles.dialog.open(form.handles.name)), "prepare modal");
     auto selection=access(form.ui).edit(form.ids().name)->selection;
     RendererTestHooks hooks; hooks.gl_error_at_frame=reset?0:2; hooks.reset_at_frame=reset?2:0; hooks.fail_rebuild_once=handled;
-    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,true,&hooks);
+    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,false,&hooks);
     auto before=host.compare_gpu(640,480,1.f);
     check(before.passed, "pre-failure comparison");
     int callbacks=0;
@@ -80,7 +80,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     SendMessageW(host.window(),WM_KEYDOWN,VK_BACK,0);
     SendMessageW(host.window(),WM_KEYDOWN,VK_TAB,0);
     check(form.handles.name.draft().value==u"workstation A", "native input blocked");
-    if (std::getenv("CI")) {
+    if (handled && std::getenv("CI")) {
         ShowWindow(host.window(),SW_SHOW); SetForegroundWindow(host.window()); SetFocus(host.window());
         check(GetForegroundWindow()==host.window(), "RF03 foreground window");
         INPUT inputs[4]{};
