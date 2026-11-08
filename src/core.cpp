@@ -107,6 +107,8 @@ void detail::UiState::commit_removals() {
 }
 Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact))
         return {Status::invalid_value, u"Invalid presentation setting"};
@@ -176,7 +178,7 @@ Result ProgressHandle::connect_source(NumericSource source) const {
 Query<Semantics> ProgressHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 TextHandle detail::UiState::add_text(Control control) {
@@ -318,7 +320,7 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
 Query<Semantics> CheckboxHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<bool> CheckboxHandle::draft() const {
@@ -437,7 +439,7 @@ Result ListHandle::enable(bool enabled) const {
 Query<Semantics> ListHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Result RadioGroupHandle::use_latest() const {
@@ -559,7 +561,7 @@ Result detail::UiState::radio_key_down(KeyPress key) {
 Query<Semantics> RadioGroupHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
@@ -738,7 +740,7 @@ Result detail::UiState::dropdown_key_down(KeyPress key) {
 Query<Semantics> DropdownHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
@@ -902,7 +904,7 @@ Result detail::UiState::slider_key_down(KeyPress key) {
 Query<Semantics> SliderHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<int> SliderHandle::draft() const {
@@ -1075,7 +1077,7 @@ void detail::UiState::window_active(bool active) {
 Query<bool> TooltipHandle::visible() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(source_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(source_, true); !r) return {r.status, r.message, std::nullopt};
     auto it = ui_->tooltips_.find(source_);
     if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
     return {Status::ok, {}, it->second.visible};
@@ -1109,6 +1111,7 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
     if (modal_ || dialog_transitioning_) return {Status::busy, u"Dialog already open or transitioning"};
     Id source = focus_;
@@ -1133,8 +1136,10 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
 Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     OperationScope operation(this);
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
     if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
@@ -1167,7 +1172,7 @@ Query<bool> DialogHandle::is_open() const {
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
     auto it = ui_->dialogs_.find(id_);
     if (it == ui_->dialogs_.end()) return {Status::not_found, u"Dialog not found", std::nullopt};
-    if (auto r = ui_->configuration_access(it->second.initial); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(it->second.initial, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->modal_ && ui_->active_dialog_ == id_};
 }
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
@@ -1259,7 +1264,7 @@ Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> 
 Query<Semantics> TabsHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<OptionValue> TabsHandle::active() const {
@@ -1305,7 +1310,7 @@ Result NavigationListHandle::on_page_change(std::function<void(OptionValue, Opti
 Query<Semantics> NavigationListHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_); !r) return {r.status, r.message, std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<OptionValue> NavigationListHandle::selected() const {
@@ -1469,10 +1474,11 @@ Result TextHandle::cut() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->cut(id_);
 }
-Result detail::UiState::configuration_access(std::string_view id) const {
+Result detail::UiState::configuration_access(std::string_view id, bool read_only) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (!find(id) || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
+    if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
 Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
@@ -1721,7 +1727,7 @@ Result TextHandle::set_value(std::u16string value) const {
 Query<Semantics> TextHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<std::u16string> TextHandle::draft() const {
@@ -1733,13 +1739,13 @@ Query<std::u16string> TextHandle::draft() const {
 Query<Semantics> ButtonHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 Query<Semantics> LabelHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_); !result) return {result.status, result.message, std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
 std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
@@ -1749,8 +1755,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
-        s.visible = it->second && available(id).status != Status::hidden;
-    s.focusable = bool(focusable(*control));
+        s.visible = it->second && available(id, true).status != Status::hidden;
+    s.focusable = bool(available(id, true)) && component_type(control->kind).can_focus();
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
@@ -1831,7 +1837,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         const auto& field = it->second;
         s.source_conflict = field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
     }
-    if (!s.focusable) return s;
+    if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
     bool admits_activation = component_type(control->kind).has_activate_operation() && !s.executing;
     if (auto it = bools_.find(id); it != bools_.end()) {
@@ -1896,11 +1902,12 @@ EditSession* detail::UiState::edit(std::string_view id) {
     OperationScope operation(this);
     auto it = edits_.find(id); return it == edits_.end() ? nullptr : &it->second.session;
 }
-Result detail::UiState::available(std::string_view id) const {
+Result detail::UiState::available(std::string_view id, bool ignore_renderer_failure) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
     if (!control || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
+    if (renderer_failed_ && !ignore_renderer_failure) return {Status::renderer_failed, u"Renderer failed"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
     if (control->page == "dialog" && (!modal_ || (dialog_member(id) && (active_dialog_.empty() || std::find(dialogs_.at(active_dialog_).members.begin(), dialogs_.at(active_dialog_).members.end(), id) == dialogs_.at(active_dialog_).members.end())))) return {Status::hidden, u"對話框尚未開啟"};
@@ -2135,6 +2142,7 @@ Result detail::UiState::move_focus(Id next) {
 }
 Result detail::UiState::composition_update(std::u16string preedit, unsigned caret) {
     OperationScope operation(this);
+    if (!composing_.empty()) if (auto result = available(composing_); !result) return result;
     if (composing_.empty()) {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
@@ -2146,6 +2154,7 @@ Result detail::UiState::composition_update(std::u16string preedit, unsigned care
 Result detail::UiState::composition_commit(std::u16string_view text) {
     OperationScope operation(this);
     auto target = composing_.empty() ? focus_ : composing_;
+    if (auto result = available(target); !result) return result;
     composition_cancel();
     if (!edits_.contains(target)) return {Status::invalid_value, u"沒有接收組字的文字欄位"};
     auto committed = without_controls(text);
@@ -2163,11 +2172,11 @@ Result detail::UiState::composition_cancel() {
 }
 Result detail::UiState::focus(std::string_view id) {
     OperationScope operation(this);
+    const auto* control = find(id);
+    if (auto result = available(id); !result) return result;
+    if (auto result = focusable(*control); !result) return result;
     pointer_focus_ = false;
     refresh_tooltips();
-    const auto* control = find(id);
-    if (!control) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
 Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
@@ -2188,6 +2197,9 @@ Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, Compon
 }
 Result detail::UiState::key_down(KeyPress key) {
     OperationScope operation(this);
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
@@ -2319,10 +2331,10 @@ Result detail::UiState::key_up(Key key) {
 }
 Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
-    if (!popup_source_.empty() && popup_source_ != id) close_popup();
+    if (auto result = available(id); !result) return result;
     const auto* control = find(id);
-    if (!control) return {Status::not_found, u"Component no longer exists"};
     if (auto result = focusable(*control); !result) return result;
+    if (!popup_source_.empty() && popup_source_ != id) close_popup();
     if (control->kind == Kind::navigation_list && option) {
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
@@ -2351,6 +2363,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 }
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
     auto armed = std::exchange(pointer_armed_, {});
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
@@ -2448,64 +2461,82 @@ bool detail::UiState::registerable(std::string_view id) {
 #endif
     return false;
 }
+Result detail::UiState::creation_access() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
+    return {};
+}
 const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnostics_; }
 Query<TextHandle> Ui::add_text(Control control) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ButtonHandle> Ui::add_button(Control control) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<LabelHandle> Ui::add_label(Control control) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<CheckboxHandle> Ui::add_checkbox(Control control) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
     try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ProgressHandle> Ui::add_progress(Control control) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<NavigationListHandle> Ui::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try {
         auto source_id = state_->layout_id(source);
@@ -2516,6 +2547,7 @@ Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid tooltip", std::nullopt}; }
 }
 Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try {
         auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result));
@@ -2634,7 +2666,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
-    n.hidden = u.available(ref.id).status == Status::hidden;
+    n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();

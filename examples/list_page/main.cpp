@@ -11,6 +11,8 @@ int wmain() {
         const auto& appearance = lcars::web_appearance();
 #endif
         lcars::DesktopOptions options; options.title = u"LcarsUI 範本清單";
-        return lcars::run_desktop(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);
+        auto creation = lcars::Desktop::create(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);
+        if (!creation.desktop) return 1;
+        return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) { std::cerr << "LcarsUI: " << e.what() << '\n'; return 1; }
 }
