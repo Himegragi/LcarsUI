@@ -247,6 +247,13 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
     f.form.handles.name.focus();
     report.check("GPU-draw-list", bool(f.host.compare_gpu(960, 720, 1.f)),
                  "offscreen GPU execution agrees with the CPU reference");
+    auto dark = f.form.ui.presentation(); dark.variant = ThemeVariant::dark();
+    bool accepted = bool(f.form.ui.set_presentation(dark));
+    auto dark_image = f.host.compare_gpu(960, 720, 1.f);
+    auto background = appearance.palette(dark.variant).background;
+    report.check("GPU-dark-background", accepted && bool(dark_image) &&
+        dark_image.reference.pixels[0] == background.r && dark_image.reference.pixels[1] == background.g &&
+        dark_image.reference.pixels[2] == background.b, "comparison uses the selected dark background");
     auto shifted=f.host.compare_gpu(960,720,1.f,1);
     auto missing=f.host.compare_gpu(960,720,1.f,2);
     report.check("GC03-caret", !shifted && (shifted.failed_roles & 2), "one-pixel caret shift is detected in the caret region");
@@ -3029,6 +3036,28 @@ int run_clipboard(const std::filesystem::path& folder, int repeat) {
     return report.failures ? 1 : 0;
 }
 
+int trial_screenshots(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    std::ofstream manifest(folder / "trial.tsv");
+    manifest << "appearance\tvariant\tdensity\ttext_size\tfile\n";
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        const std::string name = appearance == &web_appearance() ? "web" : "material";
+        Fixture f(*appearance, true);
+        for (bool dark : {false, true}) for (bool compact : {false, true}) for (int size : {16, 28}) {
+            auto settings = f.form.ui.presentation();
+            settings.variant = dark ? ThemeVariant::dark() : ThemeVariant::light();
+            settings.density = compact ? Density::compact : Density::standard;
+            settings.text_size = size;
+            if (!f.form.ui.set_presentation(settings) || !f.form.handles.tabs.activate({"v01"})) return 1;
+            f.form.scroll.offset = 0;
+            auto file = name + "-" + (dark ? "dark" : "light") + "-" + (compact ? "compact" : "standard") + "-" + std::to_string(size) + ".bmp";
+            f.host.render(960, 720, 1.f, folder / file);
+            manifest << name << '\t' << (dark ? "dark" : "light") << '\t' << (compact ? "compact" : "standard") << '\t' << size << '\t' << file << '\n';
+        }
+    }
+    return manifest ? 0 : 1;
+}
+
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     auto address = reinterpret_cast<std::uintptr_t>(info->ExceptionRecord->ExceptionAddress);
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -3041,13 +3070,14 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false;
+        bool dl01_only = false, trial = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
+            else if (arg == L"--trial-screenshots") trial = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3060,6 +3090,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
+        if (trial) return trial_screenshots(evidence);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");

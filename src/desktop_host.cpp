@@ -307,7 +307,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 
 GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
     auto frame = arrange(width, height, s);
-    RecordingCanvas recording(width, height, appearance_.palette().background);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
     draw(recording, frame, s, true);
     auto reference = render_cpu(recording.list, width, height);
     std::vector<Rect> regions;
