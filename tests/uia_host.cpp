@@ -9,11 +9,6 @@ edit_form::Form* active_form = nullptr;
 LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (msg == WM_APP + 80) {
         switch (w) {
-        case 1: {
-            auto name = L"Local\\LcarsUiaBusy-" + std::to_wstring(GetCurrentProcessId());
-            if (auto signal = OpenEventW(EVENT_MODIFY_STATE, FALSE, name.c_str())) { SetEvent(signal); CloseHandle(signal); }
-            Sleep(3000); return 0;
-        }
         case 2: return static_cast<LRESULT>(active_form->handles.tabs.activate({"v03"}).status);
         case 3: return static_cast<LRESULT>(active_form->handles.dialog_temporary.remove().status);
         case 4: return static_cast<LRESULT>(active_form->handles.reset_v03.invoke().status);

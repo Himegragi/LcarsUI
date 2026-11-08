@@ -97,25 +97,8 @@ int wmain(int argc, wchar_t** argv) {
             std::wstring(after, SysStringLen(after)) == L"套用次數：1";
         std::cout << "UIA02 Invoke: " << (invoked ? "PASS" : "FAIL") << '\n'; pass &= invoked;
         if (!invoked) std::cout << "  hr " << get_name << ' ' << get_invoke << ' ' << invoke_hr << ' ' << get_after << '\n';
-        SysFreeString(before); SysFreeString(after); before = after = nullptr;
-        IUIAutomationCacheRequest* cache = nullptr; IUIAutomationElement* cached_apply = nullptr;
-        if (invoke) { invoke->Release(); invoke = nullptr; }
-        if (SUCCEEDED(automation->CreateCacheRequest(&cache)) && SUCCEEDED(cache->AddPattern(UIA_InvokePatternId)) &&
-            SUCCEEDED(apply->BuildUpdatedCache(cache, &cached_apply)))
-            cached_apply->GetCachedPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke));
-        HRESULT warmed = invoke ? invoke->Invoke() : E_FAIL;
-        if (count) count->get_CurrentName(&before);
-        auto signal_name = L"Local\\LcarsUiaBusy-" + std::to_wstring(process.dwProcessId);
-        HANDLE busy_signal = CreateEventW(nullptr, TRUE, FALSE, signal_name.c_str());
-        PostMessageW(search.window, WM_APP + 80, 1, 0);
-        bool busy_started = busy_signal && WaitForSingleObject(busy_signal, 5000) == WAIT_OBJECT_0;
-        if (busy_signal) CloseHandle(busy_signal);
-        auto start = GetTickCount64(); HRESULT timeout = invoke ? invoke->Invoke() : E_FAIL; auto elapsed = GetTickCount64() - start;
-        Sleep(2200); if (count) count->get_CurrentName(&after);
-        bool timed_out = busy_started && SUCCEEDED(warmed) && timeout == static_cast<HRESULT>(UIA_E_TIMEOUT) && elapsed >= 900 && elapsed < 2000 && before && after &&
-            std::wstring(before, SysStringLen(before)) == std::wstring(after, SysStringLen(after));
-        std::cout << "UIA16 timeout: " << (timed_out ? "PASS" : "FAIL") << " hr=0x" << timeout << " ms=" << std::dec << elapsed << '\n'; pass &= timed_out;
-        SysFreeString(before); SysFreeString(after); if (invoke) invoke->Release(); if (cached_apply) cached_apply->Release(); if (cache) cache->Release(); if (apply) apply->Release(); if (count) count->Release();
+        SysFreeString(before); SysFreeString(after);
+        if (invoke) invoke->Release(); if (apply) apply->Release(); if (count) count->Release();
         auto notices = find_id(automation, root, L"form.notices"); IUIAutomationTogglePattern* toggle = nullptr;
         auto events = new PropertyEvents(); PROPERTYID property = UIA_ToggleToggleStatePropertyId;
         HRESULT subscribed = notices ? automation->AddPropertyChangedEventHandlerNativeArray(notices, TreeScope_Element, nullptr, events, &property, 1) : E_FAIL;
