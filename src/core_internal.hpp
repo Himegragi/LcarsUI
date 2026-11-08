@@ -132,6 +132,7 @@ public:
     // Input routed to the focused control. Hosts call these after translating native messages.
     // Buttons: Enter activates on press, Space on release, pointer on release over the pressed
     // control. A press belongs to the control that received it and dies with focus moves.
+    Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope);
     Result key_down(KeyPress key);
     Result key_up(Key key);
     // The host hit-tests and passes the control under the pointer (empty when none).
@@ -300,6 +301,8 @@ private:
     bool committing_removals_ = false;
     void commit_removals();
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
+    struct ShortcutBinding { Shortcut chord; Id target, scope; };
+    std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;

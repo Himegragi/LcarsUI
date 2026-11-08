@@ -2157,8 +2157,23 @@ Result detail::UiState::focus(std::string_view id) {
     if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
+Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    OperationScope operation(this);
+    auto target_id = layout_id(target);
+    auto scope_id = layout_id(scope);
+    if (!target_id || !find(*target_id) || (!std::holds_alternative<std::monostate>(scope) && (!scope_id || !find(*scope_id))) ||
+        chord.key == Key::tab || chord.key == Key::escape || (chord.key == Key::other && !chord.letter))
+        return {Status::invalid_value, u"Invalid shortcut"};
+    Id scope_name = scope_id.value_or(Id{});
+    for (const auto& entry : shortcuts_)
+        if (entry.scope == scope_name && entry.chord.key == chord.key && entry.chord.letter == chord.letter && entry.chord.ctrl == chord.ctrl && entry.chord.shift == chord.shift)
+            return {Status::invalid_value, u"Duplicate shortcut"};
+    shortcuts_.push_back({chord, *target_id, std::move(scope_name)});
+    return {};
+}
 Result detail::UiState::key_down(KeyPress key) {
     OperationScope operation(this);
+    if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
             if (tip.visible) {
@@ -2184,9 +2199,36 @@ Result detail::UiState::key_down(KeyPress key) {
         return move_focus(order[static_cast<std::size_t>(index)]);
     }
     const auto* control = find(focus_);
-    if (!control) return {};
-    if (auto result = available(focus_); !result) return result;
-    return component_type(control->kind).key_down(*this, key);
+    if (control) {
+        if (auto result = available(focus_); !result) return result;
+        bool handled = false;
+        if (control->kind == Kind::text) {
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
+                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del);
+        } else if (!key.ctrl) {
+            switch (control->kind) {
+            case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
+            case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
+            case Kind::radio_group: case Kind::slider: handled = key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
+            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::escape)); break;
+            case Kind::button: case Kind::checkbox: case Kind::tabs: handled = key.key == Key::enter || key.key == Key::space || (control->kind == Kind::tabs && (key.key == Key::left || key.key == Key::right)); break;
+            case Kind::label: case Kind::progress: break;
+            default: handled = true; break;
+            }
+        }
+        if (handled) return component_type(control->kind).key_down(*this, key);
+    }
+    for (int scoped = 1; scoped >= 0; --scoped) for (const auto& entry : shortcuts_) {
+        if ((scoped ? entry.scope == focus_ && !entry.scope.empty() : entry.scope.empty()) && entry.chord.key == key.key && entry.chord.letter == key.letter && entry.chord.ctrl == key.ctrl && entry.chord.shift == key.shift) {
+            if (key.repeat) return {};
+            if (modal_) {
+                const auto* target = find(entry.target);
+                if (target && target->page != "dialog") return {Status::blocked_by_modal, u"Dialog is open"};
+            }
+            return invoke(entry.target);
+        }
+    }
+    return {};
 }
 Result detail::UiState::text_key_down(KeyPress key) {
     OperationScope operation(this); return edit_key(key); }
@@ -2464,6 +2506,9 @@ Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> 
         state_->overlay_ids_.emplace(std::move(id), "dialog");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid dialog", std::nullopt}; }
+}
+Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    return state_->add_shortcut(chord, std::move(target), std::move(scope));
 }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {

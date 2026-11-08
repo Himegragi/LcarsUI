@@ -486,8 +486,25 @@ void assembled_layout_handles_long_text_and_larger_type() {
     }
 }
 
+void multiple_dialog_layout() {
+    Ui ui;
+    auto background = ui.add_button({.id="background",.kind=Kind::button}).value.value();
+    auto one = ui.add_button({.id="one",.kind=Kind::button}).value.value();
+    auto two = ui.add_button({.id="two",.kind=Kind::button}).value.value();
+    auto first = ui.add_dialog("first", {one}, one, background, [](bool) {}).value.value();
+    auto second = ui.add_dialog("second", {two}, two, background, [](bool) {}).value.value();
+    auto root = layout::modal(layout::control(background), {{first, layout::control(one)}, {second, layout::control(two)}});
+    FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(root, ui, *appearances[0], measure, 640, 480, 1, scroll);
+    check(!frame.modal && frame.overlays.empty(), "closed dialogs leave background alone");
+    check(bool(second.open(background)), "second opens");
+    frame = arrange(root, ui, *appearances[0], measure, 640, 480, 1, scroll);
+    check(frame.modal && frame.find(two) && !frame.find(one), "only active dialog is arranged");
+}
+
 int main() {
     const test::Case cases[] = {
+        {"multiple dialog layout", multiple_dialog_layout},
         {"Appearance controls component words and geometry", appearance_controls_component_words_and_geometry},
         {"G11 reveal cross-page error", cross_page_error_is_revealed_in_first_frame},
         {"C09 only active page is drawn", inactive_page_members_do_not_paint_or_hit},

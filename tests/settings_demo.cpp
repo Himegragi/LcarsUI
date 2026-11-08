@@ -63,6 +63,33 @@ void exercise() {
             if (i) test::check(item->options[i-1].y+item->options[i-1].h <= r.y, "rows do not overlap");
         }
     }
+    demo.nav.select({"items"});
+    test::check(demo.items_list.describe()->options.size() == 20, "items page starts with twenty entries");
+    demo.items_search.set_value(u"\u5171\u7528");
+    test::check(demo.items_list.describe()->options.size() == 2, "search filters duplicate names");
+    demo.items_search.set_value(u"");
+    test::check(bool(demo.items_add.invoke()), "open add item");
+    test::check(bool(*demo.item_dialog.is_open()), "item dialog opens");
+    test::check(!demo.item_ok.invoke() && *demo.item_dialog.is_open(), "empty name keeps dialog open");
+    demo.item_name.set_value(u"Workstation A");
+    test::check(bool(demo.item_ok.invoke()), "valid item is added");
+    test::check(!*demo.item_dialog.is_open() && demo.items_list.describe()->options.size()==21, "new item visible");
+    test::check(bool(demo.items_list.select({"T006"})), "select item for edit");
+    demo.items_list.focus();
+    test::check(bool(detail::access(demo.ui).key_down({.key=Key::enter})) && *demo.item_dialog.is_open(), "Enter opens edit");
+    test::check(demo.item_name.draft().value.value()==u"\u5171\u7528\u7bc4\u672c", "edit loads selected name");
+    demo.item_name.set_value(u"Changed");
+    test::check(bool(demo.item_ok.invoke()), "edit item");
+    demo.items_list.focus();
+    test::check(bool(detail::access(demo.ui).key_down({.key=Key::del})) && *demo.delete_dialog.is_open(), "Delete opens confirmation");
+    detail::access(demo.ui).key_down({.key=Key::escape});
+    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->options.size()==21, "Escape cancels deletion");
+    detail::access(demo.ui).key_down({.key=Key::del});
+    detail::access(demo.ui).key_down({.key=Key::tab});
+    detail::access(demo.ui).key_down({.key=Key::space});
+    detail::access(demo.ui).key_up(Key::space);
+    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->options.size()==20, "keyboard confirms deletion");
+    test::check(!demo.items_edit.describe()->enabled && !demo.items_delete.describe()->enabled, "actions disabled with no selection");
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
 

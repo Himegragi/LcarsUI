@@ -34,6 +34,7 @@ struct Node {
     enum class Type { control, column, row, grid, scroll, stack, pinned, modal } type = Type::column;
     ComponentHandle component;   // control: non-owning typed reference
     DialogHandle dialog;
+    std::vector<DialogHandle> dialogs;
     int text_size = 0;   // control: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
@@ -50,6 +51,8 @@ Node scroll(Node child);  // fills available space, using arrange's scroll state
 Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
+struct DialogLayout { DialogHandle dialog; Node content; };
+Node modal(Node background, std::vector<DialogLayout> dialogs);
 Node modal(Node background, Node content, DialogHandle dialog);
 }
 

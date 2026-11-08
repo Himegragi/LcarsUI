@@ -71,9 +71,13 @@ Node scroll(Node child, ScrollState& state, int height) {
 }
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
+Node modal(Node background, std::vector<DialogLayout> dialogs) {
+    Node n; n.type = Node::Type::modal; n.children.push_back(std::move(background));
+    for (auto& entry : dialogs) { n.dialogs.push_back(std::move(entry.dialog)); n.children.push_back(std::move(entry.content)); }
+    return n;
+}
 Node modal(Node background, Node content, DialogHandle dialog) {
-    Node n; n.type = Node::Type::modal; n.dialog = std::move(dialog);
-    n.children.push_back(std::move(background)); n.children.push_back(std::move(content)); return n;
+    return modal(std::move(background), {{std::move(dialog), std::move(content)}});
 }
 }
 
@@ -321,16 +325,21 @@ struct Arranger {
         }
         case Node::Type::modal: {
             place(node.children[0], r, out);
-            auto open = node.dialog.is_open();
-            if (!open || !*open) return r.h;
+            std::size_t selected = node.dialogs.size();
+            for (std::size_t i = 0; i < node.dialogs.size(); ++i) {
+                auto open = node.dialogs[i].is_open();
+                if (open && *open) { selected = i; break; }
+            }
+            if (selected == node.dialogs.size()) return r.h;
+            const auto& content = node.children[selected + 1];
             int margin = d(20), padding = d(20);
             int w = std::max(0, std::min(d(480), r.w - 2 * margin));
             int content_width = std::max(0, w - 2 * padding);
-            int h = std::min(std::max(0, r.h - 2 * margin), height(node.children[1], content_width) + 2 * padding);
+            int h = std::min(std::max(0, r.h - 2 * margin), height(content, content_width) + 2 * padding);
             Rect panel{r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h};
             frame.modal = true; frame.modal_panel = panel;
             std::vector<Placement> modal_items;
-            place(node.children[1], {panel.x + padding, panel.y + padding, content_width, std::max(0, h - 2 * padding)}, modal_items);
+            place(content, {panel.x + padding, panel.y + padding, content_width, std::max(0, h - 2 * padding)}, modal_items);
             for (auto& p : modal_items) {
                 p.popup = true;
                 p.clip = p.clipped ? intersect(p.clip, panel) : panel;
