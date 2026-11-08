@@ -84,6 +84,7 @@ form.title.pages.v03.temporary		button	Temporary opener...		1	0	0	-
 form.title.pages.v03.result		label		Result: No result; confirmations: 0	1	0	0	-
 form.title.pages.v04.title		label		呈現設定	1	0	0	-
 form.title.pages.v04.text_size		slider	文字大小	16	1	0	0	-
+form.title.pages.v04.dark		checkbox	深色	false	1	0	0	-
 form.title.pages.v04.preview		text	預覽	繁中 English 😀 𠀀 ❤️	1	0	0	-
 form.title.pages.dialog		dialog			1	0	0	-
 form.title.pages.dialog.title		label		重設示範進度	1	0	0	-
