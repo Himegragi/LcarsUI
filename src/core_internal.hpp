@@ -111,6 +111,11 @@ public:
     std::optional<Semantics> describe(std::string_view id) const;
     void semantic_frame(const Frame& frame);
     std::string semantic_page(std::string_view id) const;
+    bool confirmation_group_contains(std::string_view button, std::string_view field) const {
+        auto group = confirmation_members_.find(button);
+        return group != confirmation_members_.end() &&
+            std::find(group->second.begin(), group->second.end(), field) != group->second.end();
+    }
     void frame_visibility(std::map<Id, bool, std::less<>> visibility);
     // Current display text: field content, or label text (bound provider wins over static value).
     std::u16string text(std::string_view id) const;
@@ -122,6 +127,9 @@ public:
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
     // Host requests a new frame when a source notification changes the view.
+    Result set_presentation(const PresentationSettings& settings);
+    const PresentationSettings& presentation() const { return presentation_; }
+    void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
@@ -192,6 +200,8 @@ private:
     Result connect_source(const Id& id, TextSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
+    PresentationSettings presentation_;
+    std::function<void()> presentation_changed_;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
     struct Snapshot { std::u16string text; Selection selection; };

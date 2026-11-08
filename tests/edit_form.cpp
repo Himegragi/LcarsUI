@@ -14,6 +14,7 @@
 #include <fstream>
 #include <codecvt>
 #include <locale>
+#include <thread>
 using namespace lcars;
 using test::check;
 
@@ -72,7 +73,20 @@ void semantic_showcase_states_and_identity() {
     auto inventory = x04::inventory(form);
     std::set<std::string> unique;
     for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
-    check(inventory.size() == 57 && unique.size() == 57, "Tree enumerates exactly the 57 formerly inventoried showcase components");
+    std::set<std::string> tree_components;
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = tree.children(parent); check(bool(children), "Semantic children are readable");
+        for (const auto& ref : *children) {
+            auto node = tree.get(ref); check(bool(node), "Enumerated semantic node is readable");
+            if (!ref.item && node->role != Role::dialog && node->role != Role::tooltip) tree_components.insert(ref.id);
+            if (node->role == Role::dialog) self(self, ref);
+        }
+    };
+    visit(visit, {});
+    check(inventory.size() == tree_components.size() && unique == tree_components,
+          "X04 includes every tree component exactly once");
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.preview}})
+        check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
     auto mode = form.handles.mode.describe()->id;
     auto options = tree.children({mode});
     check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
@@ -91,6 +105,8 @@ void semantic_showcase_states_and_identity() {
           "SEM03 selected identity survives sorting and unknown item is absent");
     form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
     check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
+    form.handles.tabs.activate({"v04"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v04");
     form.handles.tabs.activate({"v03"}); draw();
     if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
     auto hidden = tree.get({ids.name});
@@ -110,6 +126,129 @@ void semantic_unnamed_diagnostic() {
 #ifndef NDEBUG
     check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
 #endif
+}
+
+void presentation_settings_are_atomic() {
+    Ui ui;
+    int redraws = 0;
+    detail::access(ui).on_invalidate([&] { ++redraws; });
+    auto initial = ui.presentation();
+    check(initial.text_size == 16, "Default text size is 16 DIP");
+    check(bool(ui.set_presentation(initial)) && redraws == 0, "Identical settings do not invalidate");
+    auto changed = initial; changed.text_size = 28;
+    check(bool(ui.set_presentation(changed)) && ui.presentation() == changed && redraws == 1, "Valid settings apply once");
+    auto invalid = changed; invalid.text_size = 29;
+    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == changed && redraws == 1, "Invalid size is atomic");
+    invalid = changed; invalid.density = static_cast<Density>(99);
+    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == changed, "Invalid density is atomic");
+    invalid = changed; invalid.variant = ThemeVariant::high_contrast();
+    check(ui.set_presentation(invalid).status == Status::not_supported && ui.presentation() == changed, "High contrast is reserved");
+    Status thread_result = Status::ok;
+    std::thread worker([&] { thread_result = ui.set_presentation(initial).status; }); worker.join();
+    check(thread_result == Status::wrong_thread && ui.presentation() == changed, "Wrong-thread call is rejected");
+    invalid.variant.name = "sepia";
+    check(ui.set_presentation(invalid).status == Status::not_found && ui.presentation() == changed, "Unknown variant is rejected");
+}
+
+void presentation_size_scales_explicit_and_default_text() {
+    Ui ui;
+    auto body = ui.add_label({.id = "body", .kind = Kind::label, .value = u"Body"}).value.value();
+    auto title = ui.add_label({.id = "title", .kind = Kind::label, .value = u"Title"}).value.value();
+    auto root = layout::column({layout::control(body), layout::control(title, 24)});
+    test::FakeMeasure measure; ScrollState scroll;
+    auto settings = ui.presentation(); settings.text_size = 28;
+    check(bool(ui.set_presentation(settings)), "Size accepted");
+    auto frame = arrange(root, ui, *appearance, measure, 640, 480, 1.f, scroll);
+    check(frame.find(body)->text_size == 28 && frame.find(title)->text_size == 42, "Body and explicit title scale proportionally");
+}
+
+void v04_slider_updates_global_text_size() {
+    edit_form::Form form(ids, true);
+    check(bool(form.handles.tabs.activate({"v04"})), "V04 available");
+    check(bool(form.handles.text_size.set_value(28)), "Slider accepts 28");
+    check(form.ui.presentation().text_size == 28, "Slider applies size globally");
+    test::FakeMeasure measure;
+    for (const char* page : {"v01", "v02", "v03"}) {
+        check(bool(form.handles.tabs.activate({page})), "Showcase page activates");
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
+        const Placement* title = std::string_view(page) == "v01" ? frame.find(form.handles.title) :
+            std::string_view(page) == "v02" ? frame.find(form.list->handles.title) : frame.find(form.handles.v03_title);
+        check(title && title->text_size == 42, "V04 slider reflows each page title");
+    }
+    form.handles.tabs.activate({"v04"});
+    check(form.handles.preview.describe()->value == u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f", "Preview contains sample text");
+}
+
+void presentation_reflow_preserves_edit_and_popup() {
+    edit_form::Form form(ids, true); auto& h = form.handles; auto& state = detail::access(form.ui);
+    test::FakeMeasure measure;
+    auto draw = [&](std::string_view reveal) { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, reveal); };
+    h.name.set_value(u"ABCDE"); h.name.focus(); h.name.select(1, 3); draw(ids.name);
+    for (int size : {28, 12}) {
+        auto settings = form.ui.presentation(); settings.text_size = size; check(bool(form.ui.set_presentation(settings)), "PS02 size accepted");
+        auto frame = draw(ids.name); auto* field = frame.find(h.name); auto* session = state.edit(ids.name);
+        check(field && session && session->text == u"ABCDE" && session->selection.anchor == 1 && session->selection.caret == 3 && h.name.describe()->focused, "PS02 selection and focus survive");
+        check(frame.text_offset(h.name, field->caret_x(2)) == 2, "PS02 new caret hit");
+    }
+    check(bool(state.composition_update(u"xy", 1)), "PS03 composition starts");
+    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto frame = draw(ids.name); auto* session = state.edit(ids.name); auto* field = frame.find(h.name);
+    check(field && session->composing && session->preedit == u"xy" && session->preedit_caret == 1 && frame.text_offset(h.name, field->caret_x(session->visible_caret())) == 2, "PS03 composition preserved");
+    state.composition_cancel(); h.region.focus(); draw(ids.region); h.region.open(); state.key_down({Key::down}); state.key_down({Key::down});
+    settings.text_size = 12; form.ui.set_presentation(settings); draw(ids.region); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(ids.region);
+    check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"} && bool(test::popup_in_client(frame, {0,0,640,480}, ids.region)), "PS04 popup follows reflow");
+}
+
+void presentation_reflow_keeps_tooltip_and_modal() {
+    edit_form::Form form(ids, true); auto& h = form.handles; auto& state = detail::access(form.ui);
+    test::FakeMeasure measure; h.tabs.activate({"v03"}); state.window_active(true);
+    h.progress_half.focus(); state.tooltip_time(100000);
+    arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.progress_half.describe()->id);
+    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.progress_half.describe()->id);
+    check(*h.progress_tip.visible(), "PS05 tooltip remains visible");
+    auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [](const Placement& p) { return p.tooltip; });
+    check(it != frame.overlays.end() && test::inside(it->bounds, {0,0,640,480}), "PS05 tooltip fits client");
+    for (const auto& line : it->lines) check(test::inside(line.bounds, it->bounds), "PS05 tooltip line fits");
+    check(frame.hit(it->bounds.x + 1, it->bounds.y + 1) != &*it, "PS05 tooltip is pointer transparent");
+    h.dialog_open.invoke(); settings.text_size = 12; settings.density = Density::compact; form.ui.set_presentation(settings);
+    frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
+    check(*h.dialog.is_open() && h.dialog_cancel.describe()->focused && h.progress_full.invoke().status == Status::blocked_by_modal, "PS06 modal and focus survive");
+    state.key_down({Key::tab, true}); check(h.dialog_confirm.describe()->focused, "PS06 reverse tab stays inside");
+    state.key_down({Key::tab}); check(h.dialog_cancel.describe()->focused, "PS06 tab stays inside");
+}
+
+void ps07_list_anchor_survives_size_change() {
+    edit_form::Form form(ids, true); form.handles.tabs.activate({"v02"});
+    auto& page = *form.list; auto& h = page.handles; test::FakeMeasure measure;
+    auto settings = form.ui.presentation(); settings.text_size = 12; form.ui.set_presentation(settings);
+    h.hundred.invoke(); h.list.focus(); h.list.select({"T050"});
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll); };
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw();
+    auto* list = frame.find(h.list);
+    check(list && test::inside(list->options[49], list->clip) && page.selection() == OptionValue{"T050"}, "PS07 focused item remains visible");
+    settings.text_size = 12; form.ui.set_presentation(settings); frame = draw();
+    h.list.enable(false); h.list.enable(true);
+    list = frame.find(h.list); auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& r) { return r.state == &page.list_scroll; });
+    page.list_scroll.offset += list->options[29].y - region->viewport.y;
+    frame = draw(); list = frame.find(h.list);
+    check(list->options[29].y == list->clip.y, "PS07 T030 starts at viewport top");
+    settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(); list = frame.find(h.list);
+    check(list && list->options[29].y == list->clip.y, "PS07 unfocused top item stays anchored");
+}
+
+void ps08_large_text_wraps_without_overlap() {
+    edit_form::Form form(ids, true); test::FakeMeasure measure;
+    form.handles.name.set_error(u"A long error message that must wrap onto multiple lines at the larger text size without overlapping the next control.");
+    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name);
+    auto* field = frame.find(form.handles.name); auto* next = frame.find(form.handles.notices);
+    check(field && next && field->error_lines.size() > 1, "PS08 large error wraps");
+    auto editor = field->field.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
+    for (const auto& line : field->label_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 label fits without editor overlap");
+    for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
+    for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
+    check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
 }
 
 void long_field_label_and_error_keep_their_association() {
@@ -1020,7 +1159,7 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
           "X04 V01 and V02 are absent and reject actions on V03");
     auto& state = detail::access(form.ui);
     std::vector<std::vector<Id>> page_items;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         h.tabs.activate({page});
         auto current = frame();
         std::vector<Id> ids_on_page;
@@ -1028,10 +1167,10 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
         page_items.push_back(std::move(ids_on_page));
     }
     int page_index = 0;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         h.tabs.activate({page});
         auto current = frame();
-        for (int other = 0; other < 3; ++other) if (other != page_index) for (const auto& id : page_items[other]) {
+        for (int other = 0; other < static_cast<int>(page_items.size()); ++other) if (other != page_index) for (const auto& id : page_items[other]) {
             check(!detail::find_placement(current, id) && state.available(id).status == Status::hidden,
                   "X04 each other-page placement is absent and not admitted");
         }
@@ -1378,7 +1517,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto semantic = x04::describe(entry.handle);
             if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
-                !x04::group_conflict_supported(*semantic)) continue;
+                !x04::group_conflict_supported(form, *semantic)) continue;
             auto message = std::string("X04 conflict ") + semantic->id;
             check(x04::drive_group_conflict(form, entry), (message + " drive").c_str());
             auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
@@ -1456,7 +1595,7 @@ void x04_hidden_inventory_at_each_size_and_scale() {
                   detail::access(form.ui).pointer_down(semantic->id).status == Status::hidden &&
                   x04::hidden_retry(entry.handle), message.c_str());
         }
-        for (auto page : {"v01", "v02", "v03"}) {
+        for (const auto& page : x04::pages(form)) {
             check(bool(form.handles.tabs.activate({page})), "X04 activate page");
             auto frame = arrange(form.page(), form.ui, *appearance, measure,
                                  int(size.first * scale), int(size.second * scale), scale, form.scroll);
@@ -1476,7 +1615,7 @@ void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
-    for (auto page : {"v01", "v02", "v03"}) {
+    for (const auto& page : x04::pages(form)) {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {
@@ -2065,6 +2204,13 @@ void both_appearances_give_same_results() {
 
 int main() {
     const test::Case cases[] = {
+        {"PS01 presentation settings", presentation_settings_are_atomic},
+        {"PS size scaling", presentation_size_scales_explicit_and_default_text},
+        {"PS02-04 reflow", presentation_reflow_preserves_edit_and_popup},
+        {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
+        {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},
+        {"PS08 large text", ps08_large_text_wraps_without_overlap},
+        {"V04 size slider", v04_slider_updates_global_text_size},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
         {"N04 slider boundaries in each appearance", slider_non_divisible_under_the_appearance},

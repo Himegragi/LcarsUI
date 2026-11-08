@@ -139,6 +139,15 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        detail::access(ui_).on_presentation([this] {
+            if (!window_) return;
+            RECT client{}; GetClientRect(window_, &client);
+            if (client.right <= 0 || client.bottom <= 0) return;
+            reveal_ = detail::access(ui_).focused();
+            frame_ = arrange(client.right, client.bottom, scale());
+            reveal_.clear();
+            sync_ime();
+        });
         detail::access(ui_).before_focus([this] { finish_composition(); });
         renderer_ = std::make_unique<Renderer>(window_);
         client_size(options.width, options.height);
@@ -160,6 +169,7 @@ void DesktopHost::release() {
         }
         detail::access(ui_).composition_cancel();
     }
+    detail::access(ui_).on_presentation({});
     detail::access(ui_).on_invalidate({});
     detail::access(ui_).tooltip_clock({});
     if (window_) KillTimer(window_, tooltip_timer);

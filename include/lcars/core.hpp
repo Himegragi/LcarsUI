@@ -1,4 +1,5 @@
 #pragma once
+#include "lcars/presentation.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -461,6 +462,8 @@ public:
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     void on_change(std::function<void()> callback);
+    Result set_presentation(const PresentationSettings& settings);
+    const PresentationSettings& presentation() const;
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:

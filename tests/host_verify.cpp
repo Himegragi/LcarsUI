@@ -157,6 +157,27 @@ struct Fixture {
     }
 };
 
+void presentation_before_input(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.name.focus(); h.name.select(1, 1); f.settle();
+    auto settings = f.form.ui.presentation(); settings.text_size = 28;
+    auto result = f.form.ui.set_presentation(settings);
+    auto* field = f.host.frame().find(h.name);
+    IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+    bool query = SendMessageW(f.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
+    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+    ClientToScreen(f.host.window(), &expected);
+    bool geometry = field && field->text_size == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
+    int x = field ? field->caret_x(2) : 0;
+    int y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+    SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    auto* session = detail::access(f.form.ui).edit(f.ids.name);
+    report.check("PS09", bool(result) && geometry && session && session->selection.caret == 2,
+                 "IME query and pointer use updated layout before paint");
+}
+
 void draw_list_initial(const Appearance& appearance, Report& report) {
     const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
     for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
@@ -1316,7 +1337,7 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
         f.host.observe_paint(true);
         for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
             f.x04_size(size.first, size.second, scale);
-            for (const char* page : {"v01", "v02", "v03"}) {
+            for (const auto& page : x04::pages(f.form)) {
                 h.tabs.activate({page}); f.settle();
                 for (const auto& entry : entries) {
                     auto s = x04::describe(entry.handle); if (!s) continue;
@@ -1371,7 +1392,7 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
             auto entries = x04::inventory(f.form);
             struct Outcome { int pages = 0; bool passed = true; };
             std::map<std::string, Outcome> results;
-            for (auto page : {"v01", "v02", "v03"}) {
+            for (const auto& page : x04::pages(f.form)) {
                 bool switched = bool(f.form.handles.tabs.activate({page})); f.settle();
                 for (const auto& entry : entries) {
                     if (entry.page == "shared" || entry.page == "modal" || entry.page == page) continue;
@@ -1407,8 +1428,8 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + id;
-                report.check("X04-hidden-member", result.pages == 2 && result.passed,
-                    sample + ": both inactive pages; semantics, paint, placement and admission");
+                report.check("X04-hidden-member", result.pages == static_cast<int>(x04::pages(f.form).size()) - 1 && result.passed,
+                    sample + ": all inactive pages; semantics, paint, placement and admission");
             }
         }
 }
@@ -1905,7 +1926,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 bool baseline = x04::baseline_context(f.form);
                 auto semantic = x04::describe(entry.handle);
                 if (!semantic || !detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
-                    !x04::group_conflict_supported(*semantic)) continue;
+                    !x04::group_conflict_supported(f.form, *semantic)) continue;
                 bool driven = baseline && x04::drive_group_conflict(f.form, entry);
                 reveal(semantic->id); semantic = x04::describe(entry.handle);
                 std::u16string ink; bool checked_cue = false;
@@ -2676,6 +2697,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        presentation_before_input(*appearance, report);
         draw_list_initial(*appearance, report);
         tabs_native(*appearance, report, folder);
         progress_native(*appearance, report, folder);
