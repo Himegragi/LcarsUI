@@ -1109,6 +1109,7 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
     if (modal_ || dialog_transitioning_) return {Status::busy, u"Dialog already open or transitioning"};
     Id source = focus_;
@@ -1901,6 +1902,7 @@ Result detail::UiState::available(std::string_view id) const {
     if (stopped_) return {Status::failed, u"UI is stopped"};
     auto control = find(id);
     if (!control || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
     if (control->page == "dialog" && (!modal_ || (dialog_member(id) && (active_dialog_.empty() || std::find(dialogs_.at(active_dialog_).members.begin(), dialogs_.at(active_dialog_).members.end(), id) == dialogs_.at(active_dialog_).members.end())))) return {Status::hidden, u"對話框尚未開啟"};
@@ -2188,6 +2190,9 @@ Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, Compon
 }
 Result detail::UiState::key_down(KeyPress key) {
     OperationScope operation(this);
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {

@@ -182,6 +182,7 @@ public:
     void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
+    void renderer_failed(bool failed) { renderer_failed_ = failed; }
 private:
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
@@ -343,7 +344,7 @@ private:
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
-    bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false;
+    bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);
 unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);

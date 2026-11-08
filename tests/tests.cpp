@@ -54,6 +54,20 @@ void core_behavior(){
     Ui bad; bad.add_button({.id="x", .kind=Kind::button}); bool duplicate = bad.add_button({.id="x", .kind=Kind::button}).status == Status::invalid_value;
     check(duplicate,"Duplicate IDs must be rejected");
 }
+void renderer_failure_admission() {
+    Ui ui;
+    auto name = ui.add_text({.id="name", .kind=Kind::text, .value=u"draft"}).value.value();
+    name.connect_source({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
+    name.connect_confirmed([](const TextChange&) { return Result{}; });
+    check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
+    detail::access(ui).renderer_failed(true);
+    check(name.set_value(u"changed").status == Status::renderer_failed, "Failure rejects edits");
+    check(name.describe()->value == u"draft", "Failure preserves readable draft");
+    check(detail::access(ui).set_value("missing", u"x").status == Status::not_found, "Missing ID precedes failure");
+    check(detail::access(ui).key_down({.key=Key::tab}).status == Status::renderer_failed, "Failure rejects focus traversal");
+    detail::access(ui).renderer_failed(false);
+    check(bool(name.set_value(u"recovered")), "Recovery permits edits");
+}
 void appearances(){
     auto& a=web_appearance();auto& b=material_appearance();
     for(int size:{16,18,24,26,39}){
@@ -69,7 +83,7 @@ void appearances(){
 }
 int main(){
     try {
-        core_behavior(); appearances();
+        core_behavior(); renderer_failure_admission(); appearances();
         std::cout << "PASS " << checks << " checks: core admission and appearance geometry\n"; return 0;
     } catch (const std::exception& e) {
         std::cerr << "FAIL after " << checks << " checks: " << e.what() << '\n'; return 1;
