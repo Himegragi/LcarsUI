@@ -1,10 +1,13 @@
 #include <lcars/third_party_notices.hpp>
+#include <lcars/desktop.hpp>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <string>
 
 int main() {
+    auto* volatile desktop_entry = &lcars::run_desktop;
+    if (!desktop_entry) return 5;
     const auto notices = lcars::third_party_notices();
     if (notices.size() != 3) return 1;
     std::ifstream input(LCARS_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
