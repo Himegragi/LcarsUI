@@ -93,7 +93,8 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT get_after = count ? count->get_CurrentName(&after) : E_FAIL;
         bool invoked = apply && count && SUCCEEDED(get_name) && SUCCEEDED(get_invoke) && invoke &&
             SUCCEEDED(invoke_hr) && SUCCEEDED(get_after) && before && after &&
-            std::wstring(before, SysStringLen(before)) != std::wstring(after, SysStringLen(after));
+            std::wstring(before, SysStringLen(before)) == L"套用次數：0" &&
+            std::wstring(after, SysStringLen(after)) == L"套用次數：1";
         std::cout << "UIA02 Invoke: " << (invoked ? "PASS" : "FAIL") << '\n'; pass &= invoked;
         if (!invoked) std::cout << "  hr " << get_name << ' ' << get_invoke << ' ' << invoke_hr << ' ' << get_after << '\n';
         SysFreeString(before); SysFreeString(after); before = after = nullptr;
