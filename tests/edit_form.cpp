@@ -1338,7 +1338,7 @@ void x04_error_inventory_at_each_size_and_scale(bool dark = false) {
         for (std::size_t index = 0; index < entries.size(); ++index) {
             edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } auto entry = x04::inventory(form)[index];
             auto semantic = x04::describe(entry.handle);
-            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error) || !x04::error_supported(*semantic)) continue;
+            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error)) continue;
             auto message = std::string("X04 error ") + semantic->id;
             check(x04::drive_error(form, entry), (message + " drive").c_str());
             test::FakeMeasure measure;
