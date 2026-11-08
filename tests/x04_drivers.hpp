@@ -197,7 +197,7 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
-            if (h.describe()->id == form.handles.dark.describe()->id) return bool(h.toggle());
+            if (h.describe()->id == form.handles.dark.describe()->id || h.describe()->id == form.handles.compact.describe()->id) return bool(h.toggle());
             return bool(form.handles.reset.invoke());
         } else if constexpr (std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
