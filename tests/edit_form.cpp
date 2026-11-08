@@ -218,7 +218,7 @@ void semantic_showcase_states_and_identity() {
     visit(visit, {});
     check(inventory.size() == tree_components.size() && unique == tree_components,
           "X04 includes every tree component exactly once");
-    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.compact}, ComponentHandle{form.handles.preview}})
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.font}, ComponentHandle{form.handles.font_status}, ComponentHandle{form.handles.reset_v04}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.compact}, ComponentHandle{form.handles.preview}})
         check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
     auto mode = form.handles.mode.describe()->id;
     auto options = tree.children({mode});
@@ -367,6 +367,40 @@ void v04_slider_updates_global_text_size() {
     }
     form.handles.tabs.activate({"v04"});
     check(form.handles.preview.describe()->value == u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f", "Preview contains sample text");
+}
+
+void v04_font_choice_applies_and_reports_fallback() {
+    edit_form::Form form(ids, true, [](std::u16string_view family) {
+        lcars::FontResolution r; r.requested = family; r.requested_available = family != u"Missing test font";
+        r.primary = family.empty() || !r.requested_available ? u"Segoe UI" : std::u16string(family); return r;
+    });
+    auto& h = form.handles; h.tabs.activate({"v04"});
+    check(bool(h.font.select({"missing"})), "Select missing test font");
+    check(form.ui.presentation().font_family == u"Missing test font", "Requested font remains stored");
+    check(h.font_status.describe()->value.find(u"Segoe UI") != std::u16string::npos &&
+          h.font_status.describe()->value.find(u"\u9810\u8a2d") != std::u16string::npos, "Fallback is visible");
+    check(bool(h.font.select({"mingliu"})), "Select MingLiU");
+    check(form.ui.presentation().font_family == u"MingLiU" && h.font_status.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
+    check(bool(h.text_size.set_value(28)) && bool(h.dark.toggle()) && bool(h.reset_v04.invoke()), "Reset presentation");
+    check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.text_size.describe()->value == u"16" && h.dark.describe()->value != u"true", "Reset updates controls and settings");
+}
+
+void font_switch_reflows_active_composition() {
+    struct ChangingMeasure : TextMeasure {
+        test::FakeMeasure base; bool wider = false;
+        TextRun measure(std::u16string_view text, int pixels) override { return base.measure(text, wider ? pixels * 2 : pixels); }
+        int line_height(int pixels) override { return base.line_height(pixels); }
+    } measure;
+    edit_form::Form form(ids, true); auto& state = detail::access(form.ui);
+    form.handles.name.set_value(u"ABCDE"); form.handles.name.focus(); form.handles.name.select(1, 3);
+    check(bool(state.composition_update(u"\u6e2c", 1)), "PS03 composition starts");
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name); };
+    auto before = draw(); auto previous = before.find(form.handles.name)->caret_x(2);
+    auto settings = form.ui.presentation(); settings.font_family = u"MingLiU"; measure.wider = true;
+    check(bool(form.ui.set_presentation(settings)), "PS03 font change accepted");
+    auto after = draw(); auto* field = after.find(form.handles.name); auto* edit = state.edit(ids.name);
+    check(field && edit->composing && edit->preedit == u"\u6e2c" && edit->preedit_caret == 1 && form.handles.name.describe()->focused, "PS03 composition and focus survive font switch");
+    check(field->caret_x(2) != previous && after.text_offset(form.handles.name, field->caret_x(2)) == 2, "PS03 caret and hit testing use new font metrics");
 }
 
 void presentation_reflow_preserves_edit_and_popup() {
@@ -2438,6 +2472,7 @@ int main() {
         {"PS01 presentation settings", presentation_settings_are_atomic},
         {"PS size scaling", presentation_size_scales_explicit_and_default_text},
         {"PS02-04 reflow", presentation_reflow_preserves_edit_and_popup},
+        {"PS03 font reflow", font_switch_reflows_active_composition},
         {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
         {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},
         {"PS08 large text", ps08_large_text_wraps_without_overlap},
@@ -2449,6 +2484,7 @@ int main() {
         {"V04 compact checkbox", v04_compact_checkbox_applies_density},
 
         {"V04 size slider", v04_slider_updates_global_text_size},
+        {"V04 font selection", v04_font_choice_applies_and_reports_fallback},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
         {"N04 slider boundaries in each appearance", slider_non_divisible_under_the_appearance},

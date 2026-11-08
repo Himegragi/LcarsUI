@@ -3,6 +3,7 @@
 // apply action, and assembles C01-C03 only through public LcarsUI headers. Logical IDs come
 // from the caller so the framework never depends on these names.
 #include "lcars/core.hpp"
+#include "lcars/fonts.hpp"
 #include "lcars/layout.hpp"
 #include "list_page.hpp"
 #include <array>
@@ -42,17 +43,21 @@ private:
     std::u16string clip_padding_text_;
     std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
     std::function<void()> next_apply_observer_;
+    std::function<lcars::FontResolution(std::u16string_view)> resolve_font_;
     bool pages_ = false;
     std::array<int, 4> page_offsets_{};
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
+    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_, font_changed_, text_size_changed_, dark_changed_;
 public:
-    explicit Form(Ids ids = default_ids(), bool pages = false);
+    explicit Form(Ids ids = default_ids(), bool pages = false,
+                  std::function<lcars::FontResolution(std::u16string_view)> resolve_font = {});
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
         lcars::TextHandle name, preview;
         lcars::SliderHandle text_size;
-        lcars::LabelHandle v04_title;
+        lcars::LabelHandle v04_title, font_status;
+        lcars::DropdownHandle font;
+        lcars::ButtonHandle reset_v04;
         lcars::CheckboxHandle dark;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
