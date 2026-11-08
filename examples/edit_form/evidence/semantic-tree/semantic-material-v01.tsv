@@ -1,0 +1,89 @@
+id	item	role	name	value	hidden	visible	blocked_by_modal	bounds
+form.title.pages.tabs		tabs	Showcase	Edit form	0	1	0	0,0,960,72
+form.title.pages.tabs	v01	tab_item	Edit form		0	1	0	0,28,320,44
+form.title.pages.tabs	v02	tab_item	List		0	1	0	320,28,320,44
+form.title.pages.tabs	v03	tab_item	Confirm		0	1	0	640,28,320,44
+form.title		label		編輯表單	0	1	0	24,96,898,36
+form.intro		label		改名稱只改草稿；按「套用」且名稱有效，才更新上次套用結果並計數一次。資料只在記憶體。	0	1	0	24,148,898,24
+fixture.normal		button	正常		0	1	0	24,188,80,44
+fixture.read_only		button	名稱唯讀		0	1	0	153,188,112,44
+fixture.disabled		button	資料區停用		0	1	0	282,188,121,68
+fixture.error		button	名稱錯誤		0	1	0	411,188,112,44
+fixture.long		button	長說明		0	1	0	540,188,96,44
+fixture.offline_disabled		button	停用離線		0	1	0	669,188,112,44
+fixture.region_empty		button	清空／還原地區		0	1	0	798,188,121,68
+form.reset		button	重設		0	1	0	24,264,80,44
+form.name		text	顯示名稱	測試使用者	0	1	0	24,324,433,92
+result.draft		label		目前編輯值：測試使用者 / 提示：啟用 / 模式：一般 / 地區：北區 / 音量：40	0	1	0	489,324,433,48
+form.name.label		label		顯示名稱	0	1	0	38,332,405,21
+result.applied		label		上次套用結果：測試使用者 / 提示：啟用 / 模式：一般 / 地區：北區 / 音量：40	0	1	0	489,380,433,48
+form.name.help		label		單行文字，可輸入繁體中文或英文。	0	1	0	38,395,405,21
+form.notices		checkbox	啟用提示	true	0	1	0	24,428,136,44
+result.count		label		套用次數：0	0	1	0	489,436,433,24
+form.notices.latest		button	提示改用最新值		0	1	0	24,484,224,44
+form.mode		radio_group	模式	一般	0	1	0	24,540,433,124
+form.mode	normal	radio_option	一般		0	1	0	24,568,433,32
+form.mode	focus	radio_option	專注		0	1	0	24,600,433,32
+form.mode	offline	radio_option	離線		0	1	0	24,632,433,32
+form.mode.latest		button	模式改用最新值		0	1	0	24,676,224,44
+form.name.error		label			0	0	0	
+form.region		dropdown	地區	北區	0	0	0	
+form.region	north	dropdown_option	北區		0	0	0	
+form.region	central	dropdown_option	中區		0	0	0	
+form.region	south	dropdown_option	南區		0	0	0	
+form.volume		slider	音量	40	0	0	0	
+form.volume.latest		button	音量改用最新值		0	0	0	
+form.region.latest		button	地區改用最新值		0	0	0	
+form.apply		button	套用		0	0	0	
+result.state		label		狀態：正常	0	0	0	
+form.latest		button	改用最新值		0	0	0	
+form.title.pages.v02.title		label		範本清單	1	0	0	
+form.title.pages.v02.zero		button	0 筆		1	0	0	
+form.title.pages.v02.one		button	1 筆		1	0	0	
+form.title.pages.v02.twenty		button	20 筆		1	0	0	
+form.title.pages.v02.hundred		button	100 筆		1	0	0	
+form.title.pages.v02.sort		button	反轉排序		1	0	0	
+form.title.pages.v02.disable		button	停用／啟用 T008		1	0	0	
+form.title.pages.v02.reset		button	重設		1	0	0	
+form.title.pages.v02.search		text	搜尋名稱		1	0	0	
+form.title.pages.v02.list		list	範本		1	0	0	
+form.title.pages.v02.list	T001	list_item	範本 01		1	0	0	
+form.title.pages.v02.list	T002	list_item	範本 02		1	0	0	
+form.title.pages.v02.list	T003	list_item	範本 03		1	0	0	
+form.title.pages.v02.list	T004	list_item	範本 04		1	0	0	
+form.title.pages.v02.list	T005	list_item	共用範本		1	0	0	
+form.title.pages.v02.list	T006	list_item	共用範本		1	0	0	
+form.title.pages.v02.list	T007	list_item	範本 07		1	0	0	
+form.title.pages.v02.list	T008	list_item	範本 08		1	0	0	
+form.title.pages.v02.list	T009	list_item	範本 09		1	0	0	
+form.title.pages.v02.list	T010	list_item	範本 10		1	0	0	
+form.title.pages.v02.list	T011	list_item	範本 11		1	0	0	
+form.title.pages.v02.list	T012	list_item	範本 12		1	0	0	
+form.title.pages.v02.list	T013	list_item	範本 13		1	0	0	
+form.title.pages.v02.list	T014	list_item	範本 14		1	0	0	
+form.title.pages.v02.list	T015	list_item	範本 15		1	0	0	
+form.title.pages.v02.list	T016	list_item	範本 16		1	0	0	
+form.title.pages.v02.list	T017	list_item	範本 17		1	0	0	
+form.title.pages.v02.list	T018	list_item	範本 18		1	0	0	
+form.title.pages.v02.list	T019	list_item	範本 19		1	0	0	
+form.title.pages.v02.list	T020	list_item	範本 20		1	0	0	
+form.title.pages.v02.erase		button	刪除選中項		1	0	0	
+form.title.pages.v02.detail		label		尚未選取範本	1	0	0	
+form.title.pages.v03.title		label		確認與說明	1	0	0	
+form.title.pages.v03.progress		progress	示範進度	50%	1	0	0	
+form.title.pages.v03.source		label		來源值：50	1	0	0	
+form.title.pages.v03.zero		button	0%		1	0	0	
+form.title.pages.v03.half		button	50%		1	0	0	
+form.title.pages.v03.full		button	100%		1	0	0	
+form.title.pages.v03.below		button	-10		1	0	0	
+form.title.pages.v03.above		button	110		1	0	0	
+form.title.pages.v03.reset		button	Reset page		1	0	0	
+form.title.pages.v03.open		button	Reset progress...		1	0	0	
+form.title.pages.v03.temporary		button	Temporary opener...		1	0	0	
+form.title.pages.v03.result		label		Result: No result; confirmations: 0	1	0	0	
+form.title.pages.dialog		dialog			1	0	0	
+form.title.pages.dialog.title		label		重設示範進度	1	0	0	
+form.title.pages.dialog.body		label		將進度改為 0%。其他頁面資料會保留。	1	0	0	
+form.title.pages.dialog.cancel		button	取消		1	0	0	
+form.title.pages.dialog.confirm		button	重設進度		1	0	0	
+form.title.pages.v03.half.tip		tooltip	只調整示範進度，不會啟動背景工作。		1	0	0	

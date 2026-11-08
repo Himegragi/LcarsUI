@@ -136,6 +136,7 @@ struct OptionSource {
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
+class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
@@ -438,9 +439,11 @@ public:
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     void on_change(std::function<void()> callback);
     const std::vector<std::string>& diagnostics() const;
+    SemanticTree& semantics();
 private:
     friend detail::UiState& detail::access(Ui&);
     friend const detail::UiState& detail::access(const Ui&);
     std::unique_ptr<detail::UiState> state_;
+    std::unique_ptr<SemanticTree> semantics_;
 };
 }
