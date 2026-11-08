@@ -4,6 +4,8 @@
 #include "renderer.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
+#include "perf.hpp"
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -75,6 +77,12 @@ public:
     unsigned atlas_batches() const { return text_.atlas_batches(); }
     unsigned atlas_peak_pages() const { return text_.atlas_peak_pages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
+    void perf_enable(int delay_ms=0, bool offscreen=false) { perf_enabled_=true; perf_delay_=delay_ms; perf_offscreen_=offscreen; }
+    void perf_reset() { perf_samples_.clear(); }
+    const PerfSamples& perf_samples() const { return perf_samples_; }
+    int paint_messages() const { return paint_messages_; }
+    double first_present_ms() const { return first_present_ms_; }
+    double input_present_ms() const { return input_present_ms_; }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }
     std::vector<std::wstring>& ime_log() { return ime_log_; }
@@ -101,6 +109,11 @@ private:
     float atlas_scale_ = 0;
     int atlas_text_size_ = 0;
     std::u16string atlas_font_family_;
+    bool perf_enabled_=false, perf_offscreen_=false;
+    int perf_delay_=0, paint_messages_=0;
+    double first_present_ms_=-1, input_present_ms_=0;
+    std::chrono::steady_clock::time_point input_time_{};
+    PerfSamples perf_samples_;
     int frames_ = 0;
     bool failed_ = false;
     std::string reveal_;                        // focus target to scroll into view on the next arrange
