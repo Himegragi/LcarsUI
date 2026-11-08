@@ -82,6 +82,22 @@ int wmain(int argc, wchar_t** argv) {
         pass = field && items;
         std::cout << "UIA01 details field=" << field << " items=" << items << '\n';
     }
+    if (pass) {
+        IUIAutomationValuePattern* value_pattern = nullptr;
+        HRESULT pattern_hr = element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value_pattern));
+        BSTR input = SysAllocString(L"\u5de5\u4f5c\u7ad9 A"), actual = nullptr;
+        HRESULT set_hr = value_pattern ? value_pattern->SetValue(input) : E_FAIL;
+        HRESULT read_hr = value_pattern ? value_pattern->get_CurrentValue(&actual) : E_FAIL;
+        SendMessageW(search.window, WM_APP + 80, 9, 0);
+        BOOL read_only = FALSE;
+        HRESULT readonly_hr = value_pattern ? value_pattern->get_CurrentIsReadOnly(&read_only) : E_FAIL;
+        HRESULT rejected = value_pattern ? value_pattern->SetValue(input) : E_FAIL;
+        SendMessageW(search.window, WM_APP + 80, 10, 0);
+        bool value_ok = SUCCEEDED(pattern_hr) && SUCCEEDED(set_hr) && SUCCEEDED(read_hr) && actual &&
+            std::wstring(actual, SysStringLen(actual)) == L"\u5de5\u4f5c\u7ad9 A" && SUCCEEDED(readonly_hr) && read_only && rejected == UIA_E_INVALIDOPERATION;
+        std::cout << "UIA07 Value: " << (value_ok ? "PASS" : "FAIL") << '\n';
+        pass &= value_ok; SysFreeString(input); SysFreeString(actual); if (value_pattern) value_pattern->Release();
+    }
     std::cout << "UIA01 tree and identity: " << (pass ? "PASS" : "FAIL") << " hr=0x" << std::hex << hr << '\n';
     if (pass) {
         auto apply = find_id(automation, root, L"form.apply");

@@ -101,7 +101,7 @@ BSTR bstr_id(const std::string& s) {
     if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
     return result;
 }
-class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider {
+class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public IValueProvider {
     std::atomic<ULONG> refs_{1};
 public:
     std::shared_ptr<UiaBridge::Impl> ctx; NodeRef ref; int serial; std::uint64_t instance; std::atomic<bool> valid = true, disconnecting = false;
@@ -114,6 +114,7 @@ public:
         else if (iid == __uuidof(IRawElementProviderFragmentRoot) && root()) *out = static_cast<IRawElementProviderFragmentRoot*>(this);
         else if (iid == __uuidof(IInvokeProvider)) *out = static_cast<IInvokeProvider*>(this);
         else if (iid == __uuidof(IToggleProvider)) *out = static_cast<IToggleProvider*>(this);
+        else if (iid == __uuidof(IValueProvider)) *out = static_cast<IValueProvider*>(this);
         if (!*out) return E_NOINTERFACE; AddRef(); return S_OK;
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
@@ -136,6 +137,7 @@ public:
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
             auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && n->role == Role::button) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
+            if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -238,6 +240,26 @@ public:
             visit(visit, {}); if (*result) (*result)->AddRef(); return S_OK;
         });
         Release(); if (SUCCEEDED(hr) && *result) *out = static_cast<IRawElementProviderFragment*>(*result); return hr;
+    }
+    HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
+        if (!value) return E_INVALIDARG;
+        std::u16string copy(reinterpret_cast<const char16_t*>(value));
+        AddRef(); auto hr = ctx->call([this, copy = std::move(copy)] {
+            auto h = check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref, Verb::set_value, copy).status);
+        }); Release(); return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(BSTR* out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        auto result = std::make_shared<std::u16string>(); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h;
+            auto n = ctx->ui->semantics().get(ref); *result = n->value; return S_OK; }); Release();
+        if (SUCCEEDED(hr)) { *out = bstr(*result); if (!*out) return E_OUTOFMEMORY; } return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
+        if (!out) return E_POINTER; *out = FALSE; auto result = std::make_shared<bool>(); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h;
+            auto n = ctx->ui->semantics().get(ref); *result = n->read_only; return S_OK; }); Release();
+        if (SUCCEEDED(hr)) *out = *result; return hr;
     }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
