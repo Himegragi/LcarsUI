@@ -525,6 +525,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     for (const auto& item : a.frame.items) record(item);
     for (const auto& item : a.frame.overlays) if (!item.tooltip) record(item);
     a.ui.frame_visibility(std::move(visibility));
+    a.ui.semantic_frame(a.frame);
     return std::move(a.frame);
 }
 }
