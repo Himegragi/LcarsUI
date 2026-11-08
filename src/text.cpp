@@ -122,7 +122,7 @@ Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<voi
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 void Text::test_bitmap_mode(int mode) { if (impl_->bitmap_mode!=mode) { impl_->bitmap_mode=mode; impl_->atlas.clear(); } }
-void Text::set_primary_family(std::u16string family) { if (impl_->primary==family) return; impl_->atlas.clear(); impl_->face_ids.fill(0); impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
+void Text::set_primary_family(std::u16string family, bool new_generation) { if (impl_->primary==family && !new_generation) return; impl_->atlas.clear(); impl_->face_ids.fill(0); impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
 std::optional<float> Text::test_axis_coordinate(unsigned id,std::uint32_t t) {
     auto font=impl_->font(id); if(!font) return {};
     FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};

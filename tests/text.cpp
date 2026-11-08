@@ -134,6 +134,12 @@ int main() {
         text.set_primary_family({});
         if (text.atlas_clears()!=clears+1) return 46;
     }
+    {
+        auto before = text.shape(u"A", 18);
+        text.set_primary_family({}, true);
+        auto after = text.shape(u"A", 18);
+        if (before.glyphs.empty() || after.glyphs.empty() || before.glyphs[0].face_id == after.glyphs[0].face_id) return 51;
+    }
     if (catalog.contains(u"MingLiU")) {
         text.set_primary_family(u"MingLiU");
         auto ming = text.shape(u"?A", 24);
