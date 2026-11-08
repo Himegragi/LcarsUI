@@ -27,11 +27,17 @@ private:
     HWND window_;
 };
 
+struct GpuRegion {
+    Rect bounds{};
+    std::string owner;
+    unsigned role = 0;
+    bool popup = false, ink = false, passed = false;
+};
 struct GpuComparison {
     Image reference, actual;
     ImageComparison comparison;
     unsigned roles = 0, failed_roles = 0;
-    std::vector<unsigned> region_roles;
+    std::vector<GpuRegion> regions;
     bool passed = false;
     explicit operator bool() const { return passed; }
 };

@@ -229,10 +229,14 @@ void write_comparison_failure(const std::filesystem::path& folder, const std::st
     write_comparison_bmp(folder/(name+"-gpu.bmp"),result.actual);
     Image diff{result.reference.width,result.reference.height,std::vector<unsigned char>(result.reference.pixels.size(),255)};
     for(std::size_t i=0;i<diff.pixels.size();i+=4){
-        int delta=0;for(int c=0;c<3;++c)delta=std::max(delta,std::abs(int(result.reference.pixels[i+c])-int(result.actual.pixels[i+c])));
+        int delta=0;for(int c=0;c<4;++c)delta=std::max(delta,std::abs(int(result.reference.pixels[i+c])-int(result.actual.pixels[i+c])));
         diff.pixels[i]=static_cast<unsigned char>(delta);diff.pixels[i+1]=0;diff.pixels[i+2]=0;
     }
     write_comparison_bmp(folder/(name+"-diff.bmp"),diff);
+}
+
+void emit_failure_if_needed(const std::filesystem::path& folder, const std::string& name, const detail::GpuComparison& result, bool passed) {
+    if(!passed)write_comparison_failure(folder,name,result);
 }
 
 // The same recorded frame must be executed by the graphics backend offscreen.
@@ -248,7 +252,7 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
     report.check("GC03-caret", !shifted && (shifted.failed_roles & 2), "one-pixel caret shift is detected in the caret region");
     report.check("GC03-focus", !missing && (missing.failed_roles & 1), "missing focus indicator is detected in the focus region");
     auto key=report.appearance+"-injected";
-    write_comparison_failure(evidence,key,shifted);
+    emit_failure_if_needed(evidence,key,shifted,bool(shifted));
     bool images=std::filesystem::exists(evidence/(key+"-cpu.bmp")) && std::filesystem::exists(evidence/(key+"-gpu.bmp")) && std::filesystem::exists(evidence/(key+"-diff.bmp"));
     report.check("GC05-images", images, "failed comparison writes reference, GPU and difference images");
     f.host.configure_atlas(64,1);
@@ -297,7 +301,19 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
         report.check("DL01", matched, std::string(names[scenario])+" scale="+std::to_string(scale)+" setup="+std::to_string(setup));
         auto comparison=f.host.compare_gpu(width,height,scale);
         const unsigned required = scenario==0 ? 3u : scenario==1 ? 4u : scenario==2 ? 10u : scenario==3 ? 48u : scenario==4 ? 5u : scenario==5 || scenario==6 ? 5u : scenario==9 ? 1u : 0u;
+        auto has_role=[&](std::string_view owner, unsigned role, bool require_popup=false){
+            return std::any_of(comparison.regions.begin(),comparison.regions.end(),[&](const auto& region){
+                return region.owner==owner && (region.role & role) && region.passed && (!require_popup || region.popup);
+            });
+        };
         bool role_presence=(comparison.roles & required)==required;
+        if(scenario==0)role_presence &= has_role(f.ids.name,1) && has_role(f.ids.name,2);
+        if(scenario==1)role_presence &= has_role(f.ids.name,4);
+        if(scenario==2)role_presence &= has_role(f.ids.name,8) && has_role(f.ids.name,2);
+        if(scenario==3)role_presence &= has_role(f.ids.name,32) && (has_role(f.ids.name,16) || has_role(f.ids.name_error,16));
+        if(scenario==4)role_presence &= has_role(f.ids.region,1) && has_role(f.ids.region,4,true);
+        if(scenario==5 || scenario==6){auto id=f.form.list->handles.list.describe()->id;role_presence &= has_role(id,1) && has_role(id,4);}
+        if(scenario==9)role_presence &= has_role(h.dialog_cancel.describe()->id,1);
         bool pass=setup && bool(comparison) && role_presence;
         report.check("GC01", pass, std::string(names[scenario])+" scale="+std::to_string(scale)+" roles="+std::to_string(comparison.roles));
         if(gpu_tsv){
@@ -309,12 +325,13 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
             "Debug"
 #endif
             << '\t' << double(comparison.comparison.different_pixels)/(width*height) << '\t' << comparison.comparison.maximum_difference << '\t' << comparison.roles << '\t' << comparison.failed_roles << '\t';
-            for(std::size_t i=0;i<comparison.region_roles.size();++i) {
+            for(std::size_t i=0;i<comparison.regions.size();++i) {
                 if(i)*gpu_tsv << ',';
-                *gpu_tsv << comparison.region_roles[i] << ':' << (comparison.comparison.region_pass[i]?"PASS":"FAIL");
+                const auto& r=comparison.regions[i];
+                *gpu_tsv << r.owner << ':' << r.role << ':' << r.popup << ':' << r.bounds.x << ':' << r.bounds.y << ':' << r.bounds.w << ':' << r.bounds.h << ':' << (r.passed?"PASS":"FAIL");
             }
             *gpu_tsv << '\t' << comparison.comparison.regions_ok << '\t' << (pass?"PASS":"FAIL") << '\n';
-            if(!pass)write_comparison_failure(evidence,key,comparison);
+            emit_failure_if_needed(evidence,key,comparison,pass);
         }
     }
 }
@@ -3041,7 +3058,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } return report.failures ? 1 : 0; }
+        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);

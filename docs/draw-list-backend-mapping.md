@@ -1,4 +1,4 @@
-﻿# Draw-list backend mapping review
+# Draw-list backend mapping review
 
 Ticket #37 reviews the Vulkan mapping in spec #32. Coordinates remain physical pixels with a top-left origin, and commands retain their specified ordering and semantics.
 
@@ -19,3 +19,5 @@ Ticket #37 reviews the Vulkan mapping in spec #32. Coordinates remain physical p
 | Diagnostics | Debug context, labels and callbacks are S6 | Debug-utils callback copies messages to a bounded queue. |
 
 The spec's instanced-buffer batching was an engineering proposal. This slice uses one generated quad per command, uploads complete atlas pages once for a fitting frame, and segments overflow one glyph at a time. Command order and pixel semantics are unchanged. Performance work remains for S7.
+
+Host changes require idle-desktop clipboard, IME and DPI checks using `verify-idle.ps1`; the coordinator schedules those runs.
