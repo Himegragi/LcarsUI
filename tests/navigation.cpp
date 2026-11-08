@@ -37,6 +37,11 @@ void exercise() {
     check(locked_list.select({"x"}).status == Status::disabled &&
           ui.semantics().perform({"locked", OptionValue{"x"}}, Verb::select).status == Status::disabled,
           "disabled item precedes read-only list");
+    detail::access(ui).renderer_failed(true);
+    check(locked_list.focus({"missing"}).status == Status::not_found &&
+          ui.semantics().perform({"locked", OptionValue{"missing"}}, Verb::focus).status == Status::not_found,
+          "missing item precedes renderer failure");
+    detail::access(ui).renderer_failed(false);
     check(bool(field.focus()), "focus page member");
     bool blurred = false;
     field.on_blur([&] { blurred = true; });

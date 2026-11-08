@@ -402,10 +402,11 @@ Result ListHandle::select(OptionValue value) const {
 Result ListHandle::focus(OptionValue value) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, {}};
-    if (auto result = ui_->available_option(id_, value); !result) return result;
+    if (auto result = ui_->configuration_access(id_, true); !result) return result;
     auto& list = ui_->lists_.at(id_);
     auto item = std::find_if(list.items.begin(), list.items.end(), [&](const auto& row) { return row.value == value; });
     if (item == list.items.end()) return {Status::not_found, {}};
+    if (auto result = ui_->available_option(id_, value); !result) return result;
     if (!item->enabled) return {Status::disabled, {}};
     if (auto result = ui_->focus(id_); !result) return result;
     list.cursor = std::move(value);
