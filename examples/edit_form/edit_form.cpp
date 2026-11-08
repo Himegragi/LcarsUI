@@ -204,9 +204,9 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
         bind_action(handles.dialog_cancel, [this] { return handles.dialog.settle(false); });
         bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
-        handles.v04_title = ui.add_label({.id = prefix + "v04.title", .kind = Kind::label, .value = u"Presentation settings"}).value.value();
-        handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"Text size"}, {12, 28, 1}).value.value();
-        handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"Preview", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
+        handles.v04_title = ui.add_label({.id = prefix + "v04.title", .kind = Kind::label, .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
+        handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
+        handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
         handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [](std::function<void()>) { return [] {}; }});
@@ -225,7 +225,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"Presentation", true, {handles.v04_title, handles.text_size, handles.preview}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.preview}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
