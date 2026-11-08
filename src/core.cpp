@@ -119,7 +119,6 @@ void detail::UiState::commit_removals() {
 Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
-    if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact))
         return {Status::invalid_value, u"Invalid presentation setting"};
