@@ -116,6 +116,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
 }
 static void presentation_during_failure(const Appearance& appearance) {
     edit_form::Form form(edit_form::default_ids(), true);
+    check(bool(form.handles.name.set_value(u"Station W")), "PS10 prepare Latin text");
     RendererTestHooks hooks; hooks.gl_error_at_frame = 1;
     DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, false, true, &hooks);
     host.force_scale(1.f); host.client_size(960, 720);
@@ -145,6 +146,7 @@ static void presentation_during_failure(const Appearance& appearance) {
     check(host.frames() == frames + 1 && !host.renderer_failed() && field && field->text_size == 28 && dark_text && form.ui.presentation() == settings,
           "PS10 first recovered frame uses stored presentation");
     edit_form::Form reference(edit_form::default_ids(), true);
+    check(bool(reference.handles.name.set_value(u"Station W")), "PS10 reference Latin text");
     check(bool(reference.ui.set_presentation(settings)), "PS10 reference settings");
     DesktopHost reference_host(reference.ui, appearance, [&] { return reference.page(); }, reference.scroll, {}, false, true);
     reference_host.force_scale(1.f); reference_host.client_size(960, 720); reference_host.paint();
