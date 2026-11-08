@@ -35,7 +35,7 @@ Ids default_ids() {
     return i;
 }
 
-Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), pages_(pages), ui() {
+Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolve_font) : ids_(std::move(ids)), applied_(initial_name), resolve_font_(std::move(resolve_font)), pages_(pages), ui() {
     const auto& i = ids_;
     handles.title = ui.add_label({.id = i.title, .kind = Kind::label, .value = u"編輯表單"}).value.value();
     handles.intro = ui.add_label({.id = i.intro, .kind = Kind::label}).value.value();
@@ -205,6 +205,38 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         bind_action(handles.dialog_cancel, [this] { return handles.dialog.settle(false); });
         bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
         handles.v04_title = ui.add_label({.id = prefix + "v04.title", .kind = Kind::label, .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
+        auto resolve = [this](std::u16string_view family) {
+            if (resolve_font_) return resolve_font_(family);
+            FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
+        };
+        std::vector<RadioOption> fonts = {{{"default"}, u"??"}};
+        for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
+            bool available = resolve(family).requested_available;
+            fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"?????"), available});
+        }
+        fonts.push_back({{"missing"}, u"??????????"});
+        handles.font = ui.add_dropdown({.id = prefix + "v04.font", .kind = Kind::dropdown, .label = u"??"}, std::move(fonts)).value.value();
+        handles.font.connect_source({[this] {
+            const auto& f = ui.presentation().font_family;
+            return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
+        }, [](std::function<void()>) { return [] {}; }});
+        handles.font.connect_immediate([this](const DropdownChange& change) {
+            if (!change.value) return Result{Status::invalid_value};
+            const auto& id = change.value->id;
+            auto settings = ui.presentation();
+            settings.font_family = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
+            return ui.set_presentation(settings);
+        });
+        handles.font_status = ui.add_label({.id = prefix + "v04.status", .kind = Kind::label}).value.value();
+        handles.font_status.connect_source([this, resolve] {
+            auto result = resolve(ui.presentation().font_family);
+            auto size = std::to_string(ui.presentation().text_size);
+            return u"?????" + result.primary + (result.requested_available ? u"" : u"???????") + u"????? " + std::u16string(size.begin(), size.end()) +
+                (ui.presentation().variant == ThemeVariant::dark() ? u"???" : u"???") +
+                (ui.presentation().density == Density::compact ? u"???" : u"???");
+        });
+        handles.reset_v04 = ui.add_button({.id = prefix + "v04.reset", .kind = Kind::button, .label = u"?? V04"}).value.value();
+        bind_action(handles.reset_v04, [this] { return ui.set_presentation({}); });
         handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
@@ -225,7 +257,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.preview}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.preview, handles.font_status, handles.reset_v04}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
@@ -386,7 +418,7 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.text_size), control(handles.preview)}, 16, 24));
+    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.font), control(handles.text_size), control(handles.preview), control(handles.font_status), control(handles.reset_v04)}, 16, 24));
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));
