@@ -2701,7 +2701,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         }
         auto bounds = u.semantic_bounds_.find(ref.id);
         if (!n.hidden && bounds != u.semantic_bounds_.end()) { n.bounds = bounds->second; n.visible = true; }
-        if (n.role == Role::dialog && !n.hidden) n.verbs.push_back(Verb::cancel);
+        if (n.role == Role::dialog && !n.hidden && !u.renderer_failed_) n.verbs.push_back(Verb::cancel);
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};

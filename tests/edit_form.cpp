@@ -221,6 +221,12 @@ void semantic_renderer_failure() {
     check(tree.perform({ids.result}, Verb::invoke).status == Status::renderer_failed, "renderer failure precedes unsupported verb");
     detail::access(form.ui).renderer_failed(false);
     check(bool(tree.perform({ids.apply}, Verb::invoke)) && form.applies() == 1, "semantic invoke resumes after renderer recovery");
+    form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke();
+    detail::access(form.ui).renderer_failed(true);
+    auto dialog = tree.get({ids.title + ".pages.dialog"});
+    check(dialog && dialog->verbs.empty(), "failed renderer removes dialog actions");
+    detail::access(form.ui).renderer_failed(false);
+    form.handles.dialog.settle(false);
 }
 
 void semantic_notifications() {
