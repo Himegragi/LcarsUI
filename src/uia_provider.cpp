@@ -1,5 +1,7 @@
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
+#include "core_internal.hpp"
+#include "lcars/layout.hpp"
 #include <objbase.h>
 #include <UIAutomation.h>
 #include <atomic>
@@ -33,13 +35,13 @@ struct Request {
 };
 }
 struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
-    Ui* ui; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identity_available = true;
+    Ui* ui; std::function<const Frame&()> frame; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identity_available = true;
     std::deque<std::shared_ptr<Request>> queue;
     std::vector<Provider*> providers;
     Subscription subscription;
     bool observing = false;
     HRESULT com_init = E_FAIL;
-    explicit Impl(Ui& u, HWND w) : ui(&u), hwnd(w), thread(GetCurrentThreadId()) {}
+    explicit Impl(Ui& u, HWND w, std::function<const Frame&()> f) : ui(&u), frame(std::move(f)), hwnd(w), thread(GetCurrentThreadId()) {}
     HRESULT call(std::function<HRESULT()> action) {
         if (GetCurrentThreadId() == thread) {
             if (!alive) return UIA_E_ELEMENTNOTAVAILABLE;
@@ -101,7 +103,7 @@ BSTR bstr_id(const std::string& s) {
     if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
     return result;
 }
-class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public IValueProvider {
+class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public IValueProvider, public ITextProvider {
     std::atomic<ULONG> refs_{1};
 public:
     std::shared_ptr<UiaBridge::Impl> ctx; NodeRef ref; int serial; std::uint64_t instance; std::atomic<bool> valid = true, disconnecting = false;
@@ -115,6 +117,7 @@ public:
         else if (iid == __uuidof(IInvokeProvider)) *out = static_cast<IInvokeProvider*>(this);
         else if (iid == __uuidof(IToggleProvider)) *out = static_cast<IToggleProvider*>(this);
         else if (iid == __uuidof(IValueProvider)) *out = static_cast<IValueProvider*>(this);
+        else if (iid == __uuidof(ITextProvider)) *out = static_cast<ITextProvider*>(this);
         if (!*out) return E_NOINTERFACE; AddRef(); return S_OK;
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
@@ -138,6 +141,7 @@ public:
             auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && n->role == Role::button) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
             if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
+            if (id == UIA_TextPatternId && n->role == Role::text) *result = static_cast<ITextProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -241,6 +245,16 @@ public:
         });
         Release(); if (SUCCEEDED(hr) && *result) *out = static_cast<IRawElementProviderFragment*>(*result); return hr;
     }
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY**) override;
+    HRESULT STDMETHODCALLTYPE GetVisibleRanges(SAFEARRAY**) override;
+    HRESULT STDMETHODCALLTYPE RangeFromChild(IRawElementProviderSimple*, ITextRangeProvider**) override;
+    HRESULT STDMETHODCALLTYPE RangeFromPoint(UiaPoint, ITextRangeProvider**) override;
+    HRESULT STDMETHODCALLTYPE get_DocumentRange(ITextRangeProvider**) override;
+    HRESULT STDMETHODCALLTYPE get_SupportedTextSelection(SupportedTextSelection* out) override {
+        if (!out) return E_POINTER; *out = SupportedTextSelection_None;
+        AddRef(); auto hr = ctx->call([this] { return check(); }); Release();
+        if (SUCCEEDED(hr)) *out = SupportedTextSelection_Single; return hr;
+    }
     HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
         if (!value) return E_INVALIDARG;
         std::u16string copy(reinterpret_cast<const char16_t*>(value));
@@ -266,7 +280,468 @@ public:
     HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
     HRESULT STDMETHODCALLTYPE get_ToggleState(ToggleState* out) override { if (!out) return E_POINTER; auto result=std::make_shared<ToggleState>(ToggleState_Off); AddRef(); auto hr=ctx->call([this,result] { auto h=check(); if (FAILED(h)) return h; auto n=ctx->ui->semantics().get(ref); *result=n->checked.value_or(false) ? ToggleState_On : ToggleState_Off; return S_OK; }); Release(); if (SUCCEEDED(hr)) *out=*result; return hr; }
 };
+
+class TextRange final : public ITextRangeProvider {
+    std::atomic<ULONG> refs{1};
+    Provider *owner;
+    unsigned first, last;
+    std::u16string version;
+    std::uint64_t revision;
+    HRESULT call(std::function<HRESULT(const SemanticNode &)> action) {
+        AddRef();
+        auto hr = owner->ctx->call([this, action = std::move(action)] {
+            auto h = owner->check();
+            if (FAILED(h))
+                return h;
+            auto n = owner->ctx->ui->semantics().get(owner->ref);
+            if (!n || n->text_revision != revision)
+                return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
+            return action(*n);
+        });
+        Release();
+        return hr;
+    }
+    const Placement *placement() const {
+        return find_placement(owner->ctx->frame(), owner->ref.id);
+    }
+    std::vector<unsigned> stops() const {
+        std::vector<unsigned> out;
+        auto session = access(*owner->ctx->ui).edit(owner->ref.id);
+        if (auto p = placement())
+            for (auto [offset, x] : p->run.stops) {
+                if (session && session->composing && offset > session->begin()) {
+                    auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
+                    if (offset < end)
+                        continue;
+                    offset = offset - static_cast<unsigned>(session->preedit.size()) + session->end() -
+                             session->begin();
+                }
+                if (offset <= version.size())
+                    out.push_back(offset);
+            }
+        if (out.empty() || out.front() != 0)
+            out.insert(out.begin(), 0);
+        if (out.back() != version.size())
+            out.push_back(static_cast<unsigned>(version.size()));
+        return out;
+    }
+    static bool endpoint(TextPatternRangeEndpoint e) {
+        return e == TextPatternRangeEndpoint_Start || e == TextPatternRangeEndpoint_End;
+    }
+
+  public:
+    TextRange(Provider *p, unsigned a, unsigned b, std::u16string v)
+        : owner(p), first(a), last(b), version(std::move(v)),
+          revision(p->ctx->ui->semantics().get(p->ref)->text_revision) {
+        owner->AddRef();
+    }
+    ~TextRange() {
+        owner->Release();
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        if (id != __uuidof(IUnknown) && id != __uuidof(ITextRangeProvider))
+            return E_NOINTERFACE;
+        *out = static_cast<ITextRangeProvider *>(this);
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return ++refs;
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        auto n = --refs;
+        if (!n)
+            delete this;
+        return n;
+    }
+    HRESULT STDMETHODCALLTYPE Clone(ITextRangeProvider **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        return call([&](const auto &) {
+            *out = new TextRange(owner, first, last, version);
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE Compare(ITextRangeProvider *r, BOOL *out) override {
+        if (!out)
+            return E_POINTER;
+        *out = FALSE;
+        auto o = dynamic_cast<TextRange *>(r);
+        if (!o || o->owner != owner)
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            if (o->revision != revision)
+                return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
+            *out = first == o->first && last == o->last;
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE CompareEndpoints(TextPatternRangeEndpoint e, ITextRangeProvider *r,
+                                               TextPatternRangeEndpoint f, int *out) override {
+        if (!out)
+            return E_POINTER;
+        *out = 0;
+        auto o = dynamic_cast<TextRange *>(r);
+        if (!o || o->owner != owner || !endpoint(e) || !endpoint(f))
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            if (o->revision != revision)
+                return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
+            auto a = e == TextPatternRangeEndpoint_Start ? first : last,
+                 b = f == TextPatternRangeEndpoint_Start ? o->first : o->last;
+            *out = a < b ? -1 : a > b ? 1 : 0;
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE ExpandToEnclosingUnit(TextUnit unit) override {
+        if (unit < TextUnit_Character || unit > TextUnit_Document)
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            if (unit != TextUnit_Character) {
+                first = 0;
+                last = static_cast<unsigned>(version.size());
+            } else {
+                auto v = stops();
+                auto it = std::upper_bound(v.begin(), v.end(), first);
+                if (it == v.end()) {
+                    last = v.back();
+                    first = v.size() > 1 ? v[v.size() - 2] : last;
+                } else {
+                    last = *it;
+                    first = it == v.begin() ? 0 : *std::prev(it);
+                }
+            }
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE FindAttribute(TEXTATTRIBUTEID, VARIANT, BOOL,
+                                            ITextRangeProvider **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        return call([](const auto &) { return static_cast<HRESULT>(UIA_E_NOTSUPPORTED); });
+    }
+    HRESULT STDMETHODCALLTYPE FindText(BSTR text, BOOL backward, BOOL ignore,
+                                       ITextRangeProvider **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        if (!text || !SysStringLen(text))
+            return E_INVALIDARG;
+        std::wstring query(text, SysStringLen(text));
+        return call([&](const auto &) {
+            auto len = query.size();
+            if (len <= last - first)
+                for (unsigned i = 0; i <= last - first - len; ++i) {
+                    auto at = backward ? last - static_cast<unsigned>(len) - i : first + i;
+                    if (CompareStringOrdinal(reinterpret_cast<const wchar_t *>(version.data() + at),
+                                             static_cast<int>(len), query.data(), static_cast<int>(len),
+                                             ignore) == CSTR_EQUAL) {
+                        *out = new TextRange(owner, at, at + static_cast<unsigned>(len), version);
+                        break;
+                    }
+                }
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE GetAttributeValue(TEXTATTRIBUTEID id, VARIANT *out) override {
+        if (!out)
+            return E_POINTER;
+        VariantInit(out);
+        return call([&](const auto &n) {
+            if (id == UIA_IsReadOnlyAttributeId) {
+                out->vt = VT_BOOL;
+                out->boolVal = n.read_only ? VARIANT_TRUE : VARIANT_FALSE;
+                return S_OK;
+            }
+            out->vt = VT_UNKNOWN;
+            return UiaGetReservedNotSupportedValue(&out->punkVal);
+        });
+    }
+    HRESULT STDMETHODCALLTYPE GetBoundingRectangles(SAFEARRAY **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        return call([&](const auto &) {
+            std::vector<Rect> rectangles;
+            if (auto p = placement(); p && first != last) {
+                auto editor = p->field.editor;
+                editor.x += p->bounds.x; editor.y += p->bounds.y;
+                auto clip = intersect(editor, p->clip);
+                auto add = [&](unsigned a, unsigned b) {
+                    int left = p->caret_x(a), right = p->caret_x(b);
+                    auto r = intersect({left, editor.y, std::max(0, right-left), editor.h}, clip);
+                    if (r.w > 0 && r.h > 0) rectangles.push_back(r);
+                };
+                auto session = access(*owner->ctx->ui).edit(owner->ref.id);
+                if (session && session->composing) {
+                    auto begin = session->begin(), end = session->end();
+                    if (first < begin) add(first, std::min(last, begin));
+                    if (last > end) {
+                        auto offset = static_cast<unsigned>(session->preedit.size());
+                        add(std::max(first, end) - end + begin + offset, last - end + begin + offset);
+                    }
+                } else add(first, last);
+            }
+            *out = SafeArrayCreateVector(VT_R8, 0, static_cast<ULONG>(rectangles.size() * 4));
+            if (!*out) return E_OUTOFMEMORY;
+            LONG i = 0;
+            for (auto r : rectangles) {
+                POINT pt{r.x, r.y}; ClientToScreen(owner->ctx->hwnd, &pt);
+                double values[] = {double(pt.x), double(pt.y), double(r.w), double(r.h)};
+                for (double value : values) { SafeArrayPutElement(*out, &i, &value); ++i; }
+            }
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE GetEnclosingElement(IRawElementProviderSimple **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        return call([&](const auto &) {
+            *out = static_cast<IRawElementProviderSimple *>(owner);
+            owner->AddRef();
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE GetText(int max, BSTR *out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        if (max < -1)
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            auto n = last - first;
+            if (max >= 0)
+                n = std::min(n, static_cast<unsigned>(max));
+            *out = bstr(std::u16string_view(version).substr(first, n));
+            return *out ? S_OK : E_OUTOFMEMORY;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE MoveEndpointByUnit(TextPatternRangeEndpoint e, TextUnit unit, int count,
+                                                 int *moved) override {
+        if (!moved)
+            return E_POINTER;
+        *moved = 0;
+        if (!endpoint(e) || unit < TextUnit_Character || unit > TextUnit_Document)
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            auto v = unit == TextUnit_Character
+                         ? stops()
+                         : std::vector<unsigned>{0, static_cast<unsigned>(version.size())};
+            unsigned pos = e == TextPatternRangeEndpoint_Start ? first : last;
+            auto i = static_cast<long long>(std::lower_bound(v.begin(), v.end(), pos) - v.begin());
+            i = std::min(i, static_cast<long long>(v.size() - 1));
+            auto j = std::clamp(i + count, 0LL, static_cast<long long>(v.size() - 1));
+            *moved = static_cast<int>(j - i);
+            pos = v[static_cast<size_t>(j)];
+            if (e == TextPatternRangeEndpoint_Start) {
+                first = pos;
+                last = std::max(last, first);
+            } else {
+                last = pos;
+                first = std::min(first, last);
+            }
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE Move(TextUnit unit, int count, int *moved) override {
+        if (!moved)
+            return E_POINTER;
+        *moved = 0;
+        if (unit < TextUnit_Character || unit > TextUnit_Document)
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            if (!count)
+                return S_OK;
+            if (unit != TextUnit_Character) {
+                first = 0;
+                last = static_cast<unsigned>(version.size());
+                return S_OK;
+            }
+            auto v = stops();
+            bool empty = first == last;
+            auto it = std::upper_bound(v.begin(), v.end(), first);
+            long long i = it == v.begin() ? 0 : it - v.begin() - 1;
+            long long max = std::max(0LL, static_cast<long long>(v.size()) - (empty ? 1 : 2));
+            i = std::min(i, max);
+            auto j = std::clamp(i + count, 0LL, max);
+            first = v[static_cast<size_t>(j)];
+            last = empty ? first : v[static_cast<size_t>(j + 1)];
+            *moved = static_cast<int>(j - i);
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE MoveEndpointByRange(TextPatternRangeEndpoint e, ITextRangeProvider *r,
+                                                  TextPatternRangeEndpoint f) override {
+        auto o = dynamic_cast<TextRange *>(r);
+        if (!o || o->owner != owner || !endpoint(e) || !endpoint(f))
+            return E_INVALIDARG;
+        return call([&](const auto &) {
+            if (revision != o->revision)
+                return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
+            unsigned pos = f == TextPatternRangeEndpoint_Start ? o->first : o->last;
+            if (e == TextPatternRangeEndpoint_Start) {
+                first = pos;
+                last = std::max(last, first);
+            } else {
+                last = pos;
+                first = std::min(first, last);
+            }
+            return S_OK;
+        });
+    }
+    HRESULT STDMETHODCALLTYPE Select() override {
+        return call([&](const auto &) {
+            return status_hr(
+                owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
+        });
+    }
+    HRESULT STDMETHODCALLTYPE AddToSelection() override {
+        return call([&](const auto &n) {
+            auto s = n.text_selection.value_or(Selection{});
+            if (s.anchor != s.caret &&
+                (std::min(s.anchor, s.caret) != first || std::max(s.anchor, s.caret) != last))
+                return static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
+            return status_hr(
+                owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
+        });
+    }
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection() override {
+        return call([](const auto &) { return static_cast<HRESULT>(UIA_E_INVALIDOPERATION); });
+    }
+    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL) override {
+        return call([](const auto &) { return static_cast<HRESULT>(UIA_E_NOTSUPPORTED); });
+    }
+    HRESULT STDMETHODCALLTYPE GetChildren(SAFEARRAY **out) override {
+        if (!out)
+            return E_POINTER;
+        *out = nullptr;
+        return call([&](const auto &) {
+            *out = SafeArrayCreateVector(VT_UNKNOWN, 0, 0);
+            return *out ? S_OK : E_OUTOFMEMORY;
+        });
+    }
+};
+static HRESULT ranges(ITextRangeProvider *range, SAFEARRAY **out) {
+    *out = SafeArrayCreateVector(VT_UNKNOWN, 0, range ? 1 : 0);
+    if (!*out) {
+        if (range)
+            range->Release();
+        return E_OUTOFMEMORY;
+    }
+    if (range) {
+        LONG i = 0;
+        auto h = SafeArrayPutElement(*out, &i, range);
+        range->Release();
+        return h;
+    }
+    return S_OK;
 }
+HRESULT Provider::get_DocumentRange(ITextRangeProvider **out) {
+    if (!out)
+        return E_POINTER;
+    *out = nullptr;
+    AddRef();
+    auto h = ctx->call([&] {
+        auto hr = check();
+        if (FAILED(hr))
+            return hr;
+        auto n = ctx->ui->semantics().get(ref);
+        *out = new TextRange(this, 0, static_cast<unsigned>(n->value.size()), n->value);
+        return S_OK;
+    });
+    Release();
+    return h;
+}
+HRESULT Provider::GetSelection(SAFEARRAY **out) {
+    if (!out)
+        return E_POINTER;
+    *out = nullptr;
+    AddRef();
+    auto h = ctx->call([&] {
+        auto hr = check();
+        if (FAILED(hr))
+            return hr;
+        auto n = ctx->ui->semantics().get(ref);
+        auto s = n->text_selection.value_or(Selection{});
+        return ranges(new TextRange(this, std::min(s.anchor, s.caret), std::max(s.anchor, s.caret), n->value),
+                      out);
+    });
+    Release();
+    return h;
+}
+HRESULT Provider::GetVisibleRanges(SAFEARRAY **out) {
+    if (!out)
+        return E_POINTER;
+    *out = nullptr;
+    AddRef();
+    auto h = ctx->call([&] {
+        auto hr = check();
+        if (FAILED(hr))
+            return hr;
+        auto n = ctx->ui->semantics().get(ref);
+        const auto& frame = ctx->frame();
+        auto p = find_placement(frame, ref.id);
+        if (!p || n->hidden) return ranges(nullptr, out);
+        auto editor = p->field.editor; editor.x += p->bounds.x; editor.y += p->bounds.y;
+        auto clip = intersect(editor, p->clip);
+        if (clip.w <= 0 || clip.h <= 0) return ranges(nullptr, out);
+        auto first = placement_text_offset(frame, ref.id, clip.x);
+        auto last = placement_text_offset(frame, ref.id, clip.x + clip.w);
+        auto session = access(*ctx->ui).edit(ref.id);
+        auto committed = [&](unsigned pos) {
+            if (session && session->composing && pos > session->begin()) {
+                auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
+                pos = pos < end ? session->begin() : pos - static_cast<unsigned>(session->preedit.size()) + session->end() - session->begin();
+            }
+            return std::min(pos, static_cast<unsigned>(n->value.size()));
+        };
+        first = committed(first); last = committed(last);
+        return ranges(new TextRange(this, std::min(first,last), std::max(first,last), n->value), out);
+    });
+    Release();
+    return h;
+}
+HRESULT Provider::RangeFromChild(IRawElementProviderSimple *, ITextRangeProvider **out) {
+    if (!out)
+        return E_POINTER;
+    *out = nullptr;
+    AddRef(); auto hr = ctx->call([this] { return check(); }); Release();
+    return FAILED(hr) ? hr : E_INVALIDARG;
+}
+HRESULT Provider::RangeFromPoint(UiaPoint point, ITextRangeProvider **out) {
+    if (!out)
+        return E_POINTER;
+    *out = nullptr;
+    AddRef();
+    auto h = ctx->call([&] {
+        auto hr = check();
+        if (FAILED(hr))
+            return hr;
+        auto n = ctx->ui->semantics().get(ref);
+        POINT p{static_cast<LONG>(point.x), static_cast<LONG>(point.y)};
+        ScreenToClient(ctx->hwnd, &p);
+        unsigned offset = placement_text_offset(ctx->frame(), ref.id, p.x);
+        auto session = access(*ctx->ui).edit(ref.id);
+        if (session && session->composing && offset > session->begin()) {
+            auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
+            offset = offset < end ? session->begin()
+                                  : offset - static_cast<unsigned>(session->preedit.size()) +
+                                        (session->end() - session->begin());
+        }
+        offset = std::min(offset, static_cast<unsigned>(n->value.size()));
+        *out = new TextRange(this, offset, offset, n->value);
+        return S_OK;
+    });
+    Release();
+    return h;
+}
+} // namespace
 Provider* UiaBridge::Impl::provider(const NodeRef& ref) {
     auto n = ref.id.empty() ? Query<SemanticNode>{} : ui->semantics().get(ref);
     auto generation = n ? n->instance : 0;
@@ -287,6 +762,11 @@ void UiaBridge::Impl::observe() {
             }
         }
         if (!UiaClientsAreListening()) return;
+        if (event.kind == SemanticEventKind::text_changed || event.kind == SemanticEventKind::text_selection_changed || event.kind == SemanticEventKind::layout_changed) {
+            auto p = ctx->provider(event.kind == SemanticEventKind::layout_changed ? NodeRef{} : event.ref);
+            auto id = event.kind == SemanticEventKind::text_changed ? UIA_Text_TextChangedEventId : event.kind == SemanticEventKind::text_selection_changed ? UIA_Text_TextSelectionChangedEventId : UIA_LayoutInvalidatedEventId;
+            p->AddRef(); std::thread([p, id] { auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED); UiaRaiseAutomationEvent(p, id); p->Release(); if (SUCCEEDED(init)) CoUninitialize(); }).detach();
+        }
         if (event.kind == SemanticEventKind::property_changed && event.property == "checked") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->checked) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool checked = *n->checked;
@@ -302,7 +782,7 @@ void UiaBridge::Impl::observe() {
         }
     });
 }
-UiaBridge::UiaBridge(Ui& ui, HWND hwnd) : impl_(std::make_shared<Impl>(ui,hwnd)) {
+UiaBridge::UiaBridge(Ui& ui, HWND hwnd, std::function<const Frame&()> frame) : impl_(std::make_shared<Impl>(ui,hwnd,std::move(frame))) {
     impl_->com_init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 }
 UiaBridge::~UiaBridge() { close(); }
