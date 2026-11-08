@@ -1,3 +1,4 @@
+#include "presentation_matrix.hpp"
 #include "core_internal.hpp"
 // Native verification of the V01 form in a real Win32 window for both appearances.
 // Keyboard and mouse cases are posted to the window queue and pumped through the host's own
@@ -14,6 +15,7 @@
 #include <msctf.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -248,6 +250,13 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
     f.form.handles.name.focus();
     report.check("GPU-draw-list", bool(f.host.compare_gpu(960, 720, 1.f)),
                  "offscreen GPU execution agrees with the CPU reference");
+    auto dark = f.form.ui.presentation(); dark.variant = ThemeVariant::dark();
+    bool accepted = bool(f.form.ui.set_presentation(dark));
+    auto dark_image = f.host.compare_gpu(960, 720, 1.f);
+    auto background = appearance.palette(dark.variant).background;
+    report.check("GPU-dark-background", accepted && bool(dark_image) &&
+        dark_image.reference.pixels[0] == background.r && dark_image.reference.pixels[1] == background.g &&
+        dark_image.reference.pixels[2] == background.b, "comparison uses the selected dark background");
     auto shifted=f.host.compare_gpu(960,720,1.f,1);
     auto missing=f.host.compare_gpu(960,720,1.f,2);
     report.check("GC03-caret", !shifted && (shifted.failed_roles & 2), "one-pixel caret shift is detected in the caret region");
@@ -319,6 +328,7 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
         report.check("GC01", pass, std::string(names[scenario])+" scale="+std::to_string(scale)+" roles="+std::to_string(comparison.roles));
         if(gpu_tsv){
             auto key=report.appearance+"-"+names[scenario]+"-"+(scale==1.f?"100":"150");
+            write_comparison_bmp(evidence/(key+"-cpu.bmp"), comparison.reference);
             *gpu_tsv << names[scenario] << '\t' << report.appearance << '\t' << width << 'x' << height << '\t' << scale << '\t' << f.host.renderer_name() << '\t' << windows_build() << '\t' <<
 #ifdef NDEBUG
             "Release"
@@ -2205,18 +2215,27 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         auto* field = dark_frame.find(d.name); auto colors = appearance.palette(ThemeVariant::dark());
         bool error_ink = field && !field->error_lines.empty() && contains_color(image, intersect(field->error_lines.front().bounds, field->clip), colors.error);
         bool invalid = d.name.describe()->invalid;
+        auto error_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-error-cpu.bmp"), error_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-error", error_compare, bool(error_compare));
         d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
         dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
         field = dark_frame.find(d.name);
         bool selection = field && contains_color(image, intersect(field->bounds, field->clip), colors.selection);
         bool focus = field && contains_color(image, intersect(field->bounds, field->clip), colors.accent);
+        auto selection_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-selection-cpu.bmp"), selection_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-selection", selection_compare, bool(selection_compare));
         d.disabled.invoke();
         dark.host.observe_paint(true); dark.host.paint();
         bool disabled = !d.name.describe()->enabled && std::any_of(dark.host.paint_observations().begin(), dark.host.paint_observations().end(), [&](const auto& event) {
             return event.visible && event.text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
         });
         dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-disabled.bmp"));
-        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled,
+        auto disabled_compare = dark.host.compare_gpu(960, 720, 1.f);
+        write_comparison_bmp(folder / (report.appearance + "-pv03-disabled-cpu.bmp"), disabled_compare.reference);
+        emit_failure_if_needed(folder, report.appearance + "-pv03-disabled", disabled_compare, bool(disabled_compare));
+        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled && bool(error_compare) && bool(selection_compare) && bool(disabled_compare),
                      "CPU raster: applied=" + std::to_string(applied) + ", error=" + std::to_string(error_ink) + ", selection=" + std::to_string(selection) + ", focus=" + std::to_string(focus) + ", invalid=" + std::to_string(invalid) + ", disabled=" + std::to_string(disabled));
     }
     Fixture f(appearance, true);
@@ -2728,7 +2747,7 @@ BOOL CALLBACK collect_monitor(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
     return TRUE;
 }
 
-bool dpi_session(const Appearance& appearance, Report& report) {
+bool dpi_session(const Appearance& appearance, Report& report, bool presentation = false) {
     try {
         std::vector<MONITORINFOEXW> monitors;
         EnumDisplayMonitors(nullptr, nullptr, collect_monitor, reinterpret_cast<LPARAM>(&monitors));
@@ -2736,6 +2755,7 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         std::sort(monitors.begin(), monitors.end(), [](const auto& a, const auto& b) { return a.rcMonitor.left < b.rcMonitor.left; });
         Live live(appearance);
         DpiObserver observer(live.host.window());
+        if (presentation) { auto settings = live.form.ui.presentation(); settings.text_size = 28; if (!live.form.ui.set_presentation(settings)) throw Blocked("28 DIP setting rejected"); }
         auto& ui = live.form.ui;
         const auto& ids = live.ids;
         auto move = [&](const MONITORINFOEXW& monitor) {
@@ -2752,6 +2772,14 @@ bool dpi_session(const Appearance& appearance, Report& report) {
         live.host.paint();
         int before = dpi_messages;
         UINT second = move(monitors[1]);
+        if (presentation && !((first == 96 && second == 144) || (first == 144 && second == 96)))
+            throw Blocked("PR02 requires one 100% and one 150% monitor");
+        if (presentation && first == 96) {
+            std::swap(monitors[0], monitors[1]);
+            first = move(monitors[0]);
+            before = dpi_messages;
+            second = move(monitors[1]);
+        }
         auto* session = detail::access(ui).edit(ids.name);
         auto* field = live.host.frame().find(live.form.handles.name);
         bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
@@ -3030,6 +3058,112 @@ int run_clipboard(const std::filesystem::path& folder, int repeat) {
     return report.failures ? 1 : 0;
 }
 
+int run_presentation_idle(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "presentation.tsv");
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        try {
+            Live live(*appearance); Profiles profiles;
+            if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo unavailable");
+            if (!system_font_catalog().contains(u"Microsoft JhengHei") || !system_font_catalog().contains(u"MingLiU"))
+                throw Blocked("PR01 requires installed Microsoft JhengHei and MingLiU");
+            auto settings = live.form.ui.presentation(); settings.font_family = u"Microsoft JhengHei";
+            if (!live.form.ui.set_presentation(settings)) throw Blocked("initial font setting rejected");
+            live.start_in_name(); live.type("JI3");
+            auto* session = detail::access(live.form.ui).edit(live.ids.name);
+            bool composing = session && session->composing && !session->preedit.empty();
+            if (!composing) throw Blocked("Microsoft Bopomofo did not start composition");
+            bool positions = composing;
+            for (int step = 0; step < 4; ++step) {
+                if (step == 0) settings.text_size = 28;
+                if (step == 1) settings.font_family = u"MingLiU";
+                if (step == 2) settings.variant = ThemeVariant::dark();
+                if (step == 3) settings.density = Density::compact;
+                positions &= bool(live.form.ui.set_presentation(settings));
+                auto* field = live.host.frame().find(live.form.handles.name);
+                IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+                bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
+                POINT caret{field ? field->caret_x(session->begin()) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+                ClientToScreen(live.host.window(), &caret);
+                CANDIDATEFORM candidate{}; bool candidate_ok = false;
+                if (auto imc = ImmGetContext(live.host.window())) {
+                    candidate.dwIndex = 0;
+                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) && candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+                    ImmReleaseContext(live.host.window(), imc);
+                }
+                positions &= session->composing && query && position.pt.x == caret.x && position.pt.y == caret.y && candidate_ok;
+            }
+            live.tap(VK_RETURN); live.wait(250);
+            bool committed = session && !session->composing && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && live.history() == 1;
+            report.check("PR01", composing && positions && committed, profiles.active() + "; IMTCTIP " + file_version(LR"(C:\Windows\System32\IME\IMETC\IMTCTIP.DLL)") + "; candidates and caret=" + std::to_string(positions) + "; single commit and undo=" + std::to_string(committed));
+        } catch (const Blocked& error) { report.check("PR01", false, error.what()); }
+        dpi_session(*appearance, report, true);
+        report.open("PR03", "Install a font for the current user, confirm its catalog entry and local path, and inspect its display in V04; record the evidence manually.");
+        report.open("PR04", "Generate trial screenshots and record first-frame font-switch timing and user feedback.");
+    }
+    CoUninitialize();
+    return report.failures ? 1 : 0;
+}
+
+int native_presentation_matrix(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "presentation-matrix.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        try {
+            presentation_matrix::run(edit_form::default_ids(), *appearance, [&](edit_form::Form& form) {
+                DesktopOptions options; options.title = u"Presentation matrix";
+                auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
+                return presentation_matrix::Driver{[host, &form](int width, int height, float scale, std::string_view reveal) {
+                    return host->layout(width, height, scale, form.scroll, reveal);
+                }, [host, &folder, &report](int width, int height, float scale) {
+                    auto result = host->compare_gpu(width, height, scale);
+                    if (!result) write_comparison_failure(folder, report.appearance + "-matrix-failure", result);
+                    return bool(result);
+                }};
+            }, [](bool ok, const std::string& message) { if (!ok) throw std::runtime_error(message); });
+            report.check("MX01-shaped", true, "all presentation dimensions and focusable components");
+        } catch (const std::exception& error) { report.check("MX01-shaped", false, error.what()); }
+    }
+    return report.failures ? 1 : 0;
+}
+
+int trial_screenshots(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    std::ofstream manifest(folder / "trial.tsv");
+    std::ofstream timing(folder / "font-switch-timing.tsv");
+    timing << "appearance\tfont\tmilliseconds\tstatus\n";
+    manifest << "appearance\tvariant\tdensity\ttext_size\tfile\n";
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        const std::string name = appearance == &web_appearance() ? "web" : "material";
+        Fixture f(*appearance, true);
+        if (system_font_catalog().contains(u"MingLiU")) {
+            auto settings = f.form.ui.presentation(); settings.font_family = u"MingLiU";
+            auto start = std::chrono::steady_clock::now();
+            bool accepted = bool(f.form.ui.set_presentation(settings));
+            f.host.paint();
+            auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            timing << name << "\tMingLiU\t" << elapsed << '\t' << (accepted ? "recorded" : "FAIL") << '\n';
+            if (!accepted) return 1;
+            settings.font_family.clear(); if (!f.form.ui.set_presentation(settings)) return 1;
+        } else timing << name << "\tMingLiU\t\tN/A (font absent)\n";
+        for (bool dark : {false, true}) for (bool compact : {false, true}) for (int size : {16, 28}) {
+            auto settings = f.form.ui.presentation();
+            settings.variant = dark ? ThemeVariant::dark() : ThemeVariant::light();
+            settings.density = compact ? Density::compact : Density::standard;
+            settings.text_size = size;
+            if (!f.form.ui.set_presentation(settings) || !f.form.handles.tabs.activate({"v01"})) return 1;
+            f.form.scroll.offset = 0;
+            auto file = name + "-" + (dark ? "dark" : "light") + "-" + (compact ? "compact" : "standard") + "-" + std::to_string(size) + ".bmp";
+            f.host.render(960, 720, 1.f, folder / file);
+            manifest << name << '\t' << (dark ? "dark" : "light") << '\t' << (compact ? "compact" : "standard") << '\t' << size << '\t' << file << '\n';
+        }
+    }
+    return manifest && timing ? 0 : 1;
+}
+
 // A fresh process is used for each run so startup age and warmup share one origin.
 int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& skin,
              bool large, int delay, int duration_ms) {
@@ -3107,7 +3241,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_skin=L"web";
@@ -3120,6 +3254,10 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--perf-duration-ms" && i+1<argc) perf_duration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
+            else if (arg == L"--trial-screenshots") trial = true;
+            else if (arg == L"--presentation-matrix") matrix = true;
+            else if (arg == L"--presentation-idle") presentation = true;
+            else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3131,6 +3269,19 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x04-selection-only") x04_selection_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+        }
+        if (presentation) return run_presentation_idle(evidence);
+        if (trial) return trial_screenshots(evidence);
+        if (matrix) return native_presentation_matrix(evidence);
+        if (backend_check) {
+            Fixture fixture(web_appearance(), true);
+            const auto renderer = fixture.host.renderer_name();
+            std::cout << "OpenGL renderer: " << renderer << '\n';
+            if (renderer.find("llvmpipe") == std::string::npos) {
+                std::cerr << "Expected Mesa llvmpipe\n";
+                return 1;
+            }
+            return 0;
         }
         if (!perf.empty()) return run_perf(evidence,perf,perf_skin,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }

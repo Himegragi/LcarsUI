@@ -1,3 +1,4 @@
+#include "presentation_matrix.hpp"
 #include "x04_drivers.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
@@ -2641,10 +2642,21 @@ void both_appearances_give_same_results() {
               "Draft, result, errors, focus and history agree across appearances");
     }
 }
+
+void presentation_combination_matrix() {
+    presentation_matrix::run(ids, *appearance, [&](edit_form::Form& form) {
+        return presentation_matrix::Driver{[&](int width, int height, float scale, std::string_view reveal) {
+            test::FakeMeasure measure;
+            return arrange(form.page(), form.ui, *appearance, measure, width, height, scale, form.scroll, reveal);
+        }, {}};
+    }, [](bool ok, const std::string& message) { check(ok, message.c_str()); });
+}
+
 }
 
 int main() {
     const test::Case cases[] = {
+        {"MX01 presentation matrix", presentation_combination_matrix},
         {"PS01 presentation settings", presentation_settings_are_atomic},
         {"PS size scaling", presentation_size_scales_explicit_and_default_text},
         {"PS02-04 reflow", presentation_reflow_preserves_edit_and_popup},

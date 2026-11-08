@@ -11,8 +11,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
 if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf') }).Count) {
-    throw '-Only must contain clipboard, ime, dpi, and/or perf'
+if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count) {
+    throw '-Only must contain clipboard, ime, dpi, perf, and/or presentation'
 }
 if (@($selected | Select-Object -Unique).Count -ne $selected.Count) { throw '-Only must not contain duplicates' }
 Write-Host 'Precondition: stop using the computer; set the displays to the required scales before running.'
@@ -67,7 +67,7 @@ if ('perf' -in $selected) {
         }
     }
 }
-foreach ($name in @('clipboard', 'ime', 'dpi')) {
+foreach ($name in @('clipboard', 'ime', 'dpi', 'presentation')) {
     if ($name -notin $selected) { continue }
     $count = if ($name -eq 'dpi') { $DpiRuns } else { 1 }
     for ($i = 1; $i -le $count; $i++) {
@@ -87,6 +87,7 @@ foreach ($name in @('clipboard', 'ime', 'dpi')) {
                 'clipboard' { @('--clipboard-only', '--repeat', '100') }
                 'ime' { @('--ime') }
                 'dpi' { @('--dpi') }
+                'presentation' { @('--presentation-idle') }
             })
             $runArgs += @('--evidence', $folder)
             $previous = $ErrorActionPreference
@@ -94,6 +95,10 @@ foreach ($name in @('clipboard', 'ime', 'dpi')) {
                 $ErrorActionPreference = 'Continue'
                 & $exe @runArgs 2>&1 | ForEach-Object { "$_" } | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $folder 'console.log')
                 if ($LASTEXITCODE -ne 0) { $runFailure = $true }
+                if ($name -eq 'presentation') {
+                    & $exe '--trial-screenshots' '--evidence' (Join-Path $folder 'trial') 2>&1 | ForEach-Object { "$_" } | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $folder 'trial-console.log')
+                    if ($LASTEXITCODE -ne 0) { $runFailure = $true }
+                }
             } finally { $ErrorActionPreference = $previous }
         }
         if (-not (Test-Path -LiteralPath $tsv)) {

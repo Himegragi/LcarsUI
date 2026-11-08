@@ -12,13 +12,15 @@ $evidencePath = (Resolve-Path -LiteralPath $Evidence).Path
 $work = Join-Path ([IO.Path]::GetTempPath()) ('lcars-package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
-$vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vs) { throw 'Visual Studio C++ Build Tools not found' }
+$vs = & $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) { throw 'Visual Studio 2022 C++ Build Tools not found' }
 $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
 $devCmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
 $envLines = & cmd.exe /d /c "call `"$devCmd`" -no_logo -arch=x64 -host_arch=x64 >nul && set"
 if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
 foreach ($line in $envLines) { if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') } }
+if (-not $env:VCToolsVersion) { throw 'VsDevCmd did not select an MSVC toolset version' }
+$toolsetVersion = $env:VCToolsVersion.TrimEnd('\', '/')
 $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 if (-not (Test-Path $cmake)) { $cmake = (Get-Command cmake.exe).Source }
 $ctest = Join-Path (Split-Path $cmake) 'ctest.exe'
@@ -44,12 +46,16 @@ function Run-Case($name, $generator, $config, $source, $mode = 'build', $extra =
     $args = @('-S', $source, '-B', $dir, '-G', $genName, '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF', '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
     if ($name -ne 'reject/no-prefix') { $args += "-DCMAKE_PREFIX_PATH=$prefixPath" }
     if ($generator -eq 'Ninja') { $args += "-DCMAKE_CXX_COMPILER=$compiler"; if ($config) { $args += "-DCMAKE_BUILD_TYPE=$config" } }
+    else { $args += @('-A', 'x64', '-T', "version=$toolsetVersion", "-DCMAKE_GENERATOR_INSTANCE=$vs") }
     $args += $extra
     $result = Invoke-Logged $cmake $args $log
     $ok = $true; $message = ''
     if ($mode -eq 'reject') {
         $ok = $result.Code -ne 0 -and $result.Output -match $expected
         $message = if ($ok) { 'rejected with expected diagnostic' } else { 'missing rejection or diagnostic; see log' }
+    } elseif ($mode -eq 'warning') {
+        $ok = $result.Code -eq 0 -and $result.Output -match $expected
+        $message = if ($ok) { 'configured with expected warning' } else { 'missing warning or configure failed; see log' }
     } elseif ($result.Code -ne 0) { $ok = $false; $message = 'configure failed; see log' }
     elseif ($mode -ne 'configure') {
         $result = Invoke-Logged $cmake @('--build', $dir, '--config', $config, '--parallel', '4', '--verbose') $log
@@ -127,6 +133,19 @@ try {
         Run-Case "std/$std" $primary $cfg $src 'build' @("-DCMAKE_CXX_STANDARD=$std")
     }
     $req = Source 'required' 'find_package(LcarsUI REQUIRED COMPONENTS Core)'
+    # A copy with an intentionally newer recorded toolset exercises the real
+    # installed-package warning without requiring an obsolete compiler locally.
+    $warningPrefix = Join-Path $work 'newer-toolset-prefix'
+    Copy-Item -Recurse -LiteralPath $prefixPath -Destination $warningPrefix
+    $warningConfig = Join-Path $warningPrefix 'lib/cmake/LcarsUI/LcarsUIConfig.cmake'
+    $contents = Get-Content -Raw -LiteralPath $warningConfig
+    if ($contents -notmatch 'set\(LcarsUI_MSVC_TOOLSET_VERSION "[^"]+"\)') { throw 'Package did not record its MSVC toolset version' }
+    $contents = $contents -replace 'set\(LcarsUI_MSVC_TOOLSET_VERSION "[^"]*"\)', 'set(LcarsUI_MSVC_TOOLSET_VERSION "99.99.99999")'
+    Set-Content -LiteralPath $warningConfig -Value $contents -Encoding UTF8
+    $saved = $prefixPath; $prefixPath = $warningPrefix
+    $toolsetPattern = [regex]::Escape($toolsetVersion)
+    Run-Case 'warning/older-toolset' $primary $cfg $req 'warning' @() "(?s)consumer MSVC toolset $toolsetPattern.*older than.*99\.99\.99999"
+    $prefixPath = $saved
     $unknown = Source 'unknown' 'find_package(LcarsUI REQUIRED COMPONENTS Widgets)'
     Run-Case 'reject/unknown-component' $primary $cfg $unknown 'reject' @() '(?s)Widgets.*available'
     $optional = Source 'optional' "find_package(LcarsUI REQUIRED OPTIONAL_COMPONENTS Widgets)`nif(LcarsUI_Widgets_FOUND)`n message(FATAL_ERROR `"unexpected component`" )`nendif()"
