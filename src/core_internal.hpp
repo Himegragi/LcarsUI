@@ -213,6 +213,8 @@ private:
     std::function<void()> presentation_changed_;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
+    std::map<Id, std::uint64_t, std::less<>> semantic_instances_;
+    std::uint64_t next_semantic_instance_ = 0;
     struct Snapshot { std::u16string text; Selection selection; };
     struct Field {
         EditSession session;

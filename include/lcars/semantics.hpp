@@ -23,6 +23,7 @@ private:
 };
 struct SemanticNode {
     NodeRef ref; Role role = Role::label;
+    std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
     bool hidden = false, visible = false, blocked_by_modal = false;
