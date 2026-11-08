@@ -16,6 +16,10 @@ struct ComponentLayout {
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
 };
+enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32 };
+constexpr PaintRole operator|(PaintRole a, PaintRole b) {
+    return static_cast<PaintRole>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
+}
 class ComponentPaint {
 public:
     ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
@@ -28,6 +32,7 @@ public:
     const Appearance& appearance;
     float scale;
     bool window_focused;
+    virtual void role(PaintRole) {}
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;
     virtual void clip(Rect rect) = 0;
