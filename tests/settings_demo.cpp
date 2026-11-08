@@ -1,4 +1,6 @@
 #include "settings_demo.hpp"
+#include "lcars/semantics.hpp"
+#include <algorithm>
 #include "check.hpp"
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
@@ -15,6 +17,40 @@ struct RoleProbe : detail::ComponentPaint {
     void clip(Rect) override {}
     void text(std::u16string_view, int, int, int, Color) override { record(); }
 };
+void semantic_navigation_pages() {
+    settings_demo::Demo demo;
+    auto& tree = demo.ui.semantics();
+    const char* pages[] = {"general", "items", "appearance", "about"};
+    const char* members[] = {"general.name.label", "general.name", "general.name.help", "general.name.error",
+                             "general.notices", "general.mode", "general.region", "general.volume"};
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        for (const char* page : pages) {
+            test::check(bool(demo.nav.select({page})), "select settings page");
+            test::FakeMeasure measure; ScrollState scroll;
+            arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+            auto roots = tree.children({});
+            test::check(bool(roots), "settings semantic roots available");
+            auto has_root = [&](const char* id) {
+                return std::any_of(roots->begin(), roots->end(), [&](const auto& ref) { return ref.id == id; });
+            };
+            auto nav = tree.get({"app.nav"});
+            test::check(has_root("app.nav") && has_root("app.page_title") && nav && nav->role == Role::list,
+                        "navigation and page title are enumerated");
+            auto options = tree.children({"app.nav"});
+            test::check(options && options->size() == 4, "all four pages are enumerated");
+            for (const char* option : pages) {
+                auto item = tree.get({"app.nav", OptionValue{option}});
+                test::check(item && item->role == Role::list_item && item->selected == (std::string_view(page) == option),
+                            "navigation item exposes selection");
+            }
+            for (const char* id : members) {
+                auto node = tree.get({id});
+                test::check(has_root(id) && node && node->hidden == (std::string_view(page) != "general"),
+                            "general member is enumerated and hidden on other pages");
+            }
+        }
+    }
+}
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -87,4 +123,4 @@ void exercise() {
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"settings demo", exercise}, {"semantic navigation pages", semantic_navigation_pages}}; return test::run("settings demo", cases); }
