@@ -2770,6 +2770,12 @@ void detail::UiState::semantic_diff() {
     };
     for (const auto& old : semantic_before_) if (!find(after, old.ref))
         emit(SemanticEventKind::structure_changed, old.ref.item ? NodeRef{old.ref.id} : NodeRef{});
+    for (const auto& node : after) if (!node.ref.item) {
+        std::vector<NodeRef> before_items, after_items;
+        for (const auto& old : semantic_before_) if (old.ref.item && old.ref.id == node.ref.id) before_items.push_back(old.ref);
+        for (const auto& current : after) if (current.ref.item && current.ref.id == node.ref.id) after_items.push_back(current.ref);
+        if (before_items != after_items) emit(SemanticEventKind::structure_changed, node.ref);
+    }
     for (const auto& node : after) {
         auto old = find(semantic_before_, node.ref);
         if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }

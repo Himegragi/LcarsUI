@@ -242,6 +242,11 @@ void semantic_notifications() {
     events.clear();
     check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "populate list");
     tree.dispatch_events(); events.clear();
+    check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)), "reorder list"); tree.dispatch_events();
+    check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::structure_changed && e.ref.id == prefix + "v02.list";
+    }), "reordering notifies list structure");
+    events.clear();
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus)), "focus a logical item");
     tree.dispatch_events();
     check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::focus_changed; }) == 1 &&
