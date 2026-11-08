@@ -37,6 +37,7 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
     std::deque<std::shared_ptr<Request>> queue;
     std::vector<Provider*> providers;
     Subscription subscription;
+    bool observing = false;
     HRESULT com_init = E_FAIL;
     explicit Impl(Ui& u, HWND w) : ui(&u), hwnd(w), thread(GetCurrentThreadId()) {}
     HRESULT call(std::function<HRESULT()> action) {
@@ -70,6 +71,7 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
         }
     }
     Provider* provider(const NodeRef& ref);
+    void observe();
 };
 namespace {
 int control_type(Role r) {
@@ -249,10 +251,13 @@ Provider* UiaBridge::Impl::provider(const NodeRef& ref) {
     for (auto p : providers) if (p->valid && p->ref == ref && p->instance == generation) return p;
     static std::atomic<int> serial{1}; auto p=new Provider(shared_from_this(),ref,serial++,generation); providers.push_back(p); return p;
 }
-UiaBridge::UiaBridge(Ui& ui, HWND hwnd) : impl_(std::make_shared<Impl>(ui,hwnd)) {
-    impl_->com_init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    std::weak_ptr<Impl> weak = impl_;
-    impl_->subscription = ui.semantics().subscribe([weak](const SemanticEvent& event) {
+void UiaBridge::Impl::observe() {
+    if (observing) return;
+    // Each semantic observer snapshots the tree around operations, so install
+    // this one only once a client has requested the window's UIA root.
+    observing = true;
+    std::weak_ptr<Impl> weak = shared_from_this();
+    subscription = ui->semantics().subscribe([weak](const SemanticEvent& event) {
         auto ctx = weak.lock(); if (!ctx || !ctx->alive) return;
         if (event.kind == SemanticEventKind::structure_changed) {
             for (auto p : ctx->providers) if (!p->root() && p->valid && FAILED(p->check())) {
@@ -275,8 +280,15 @@ UiaBridge::UiaBridge(Ui& ui, HWND hwnd) : impl_(std::make_shared<Impl>(ui,hwnd))
         }
     });
 }
+UiaBridge::UiaBridge(Ui& ui, HWND hwnd) : impl_(std::make_shared<Impl>(ui,hwnd)) {
+    impl_->com_init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+}
 UiaBridge::~UiaBridge() { close(); }
-LRESULT UiaBridge::get_object(WPARAM w, LPARAM l) { if (static_cast<LONG>(l)!=UiaRootObjectId) return 0; return UiaReturnRawElementProvider(impl_->hwnd,w,l,impl_->provider({})); }
+LRESULT UiaBridge::get_object(WPARAM w, LPARAM l) {
+    if (static_cast<LONG>(l) != UiaRootObjectId) return 0;
+    impl_->observe();
+    return UiaReturnRawElementProvider(impl_->hwnd, w, l, impl_->provider({}));
+}
 void UiaBridge::dispatch() { impl_->dispatch(); }
 void UiaBridge::close() {
     if (!impl_) return; auto ctx=impl_; { std::lock_guard lock(ctx->mutex); if (!ctx->alive) return; ctx->alive=false; }
