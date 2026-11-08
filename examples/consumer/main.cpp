@@ -1,6 +1,7 @@
 // A consumer form unrelated to the shipped edit form: its own IDs, data model, validation
 // and callback, composed from C01-C03 and laid out with its own text measurement.
 #include "lcars/layout.hpp"
+#include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
 #include <cstdio>
@@ -113,9 +114,17 @@ int main() {
 
     alias.focus();
     alias.set_value(u"ab");
-    expect(save.invoke().status == Status::invalid_value && profile.saves == 0, "consumer validation rejects a short alias");
+    auto handle_status = save.invoke().status;
+    auto semantic_status = ui.semantics().perform({"profile.save"}, Verb::invoke).status;
+    expect(handle_status == Status::invalid_value && semantic_status == handle_status && profile.saves == 0, "consumer validation agrees through both interfaces");
     expect(alias.describe()->error == u"At least three characters", "consumer error is attached to its own field");
-    alias.set_value(u"abcdef");
+    expect(ui.semantics().perform({"profile.alias"}, Verb::set_value, std::u16string(u"abcdef")).status == Status::ok &&
+           ui.semantics().text("profile.alias").value == u"abcdef", "semantic editing updates the draft");
+    expect(ui.semantics().perform({"profile.alias"}, Verb::select, Selection{1, 3}).status == Status::ok &&
+           ui.semantics().perform({"profile.alias"}, Verb::undo).status == Status::ok &&
+           ui.semantics().text("profile.alias").value == u"ab" &&
+           ui.semantics().perform({"profile.alias"}, Verb::redo).status == Status::ok,
+           "semantic selection and history use the field behavior");
     save.focus();
     save.invoke();
     expect(profile.alias == u"abcdef" && profile.saves == 1, "consumer callback writes its existing data model once");
