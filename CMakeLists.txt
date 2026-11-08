@@ -9,6 +9,11 @@ configure_file(cmake/version.hpp.in "${PROJECT_BINARY_DIR}/generated/include/lca
 option(LCARS_BUILD_DESKTOP "Build the Windows/OpenGL desktop host" ON)
 option(LCARS_BUILD_TESTS "Build behavior tests" ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include(cmake/ThirdPartyManifest.cmake)
+verify_third_party("${PROJECT_SOURCE_DIR}")
+add_custom_target(update_third_party_notices
+  COMMAND "${CMAKE_COMMAND}" "-DROOT=${PROJECT_SOURCE_DIR}" "-DOUT=${CMAKE_BINARY_DIR}" -DMODE=update -P "${PROJECT_SOURCE_DIR}/cmake/ThirdPartyNotices.cmake"
+  VERBATIM)
 function(lcars_target target)
   # C++20 is the framework floor: required, never silently decayed, no vendor extensions.
   set_target_properties(${target} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
@@ -45,6 +50,7 @@ if(LCARS_BUILD_TESTS)
   lcars_target(lcars_sem01_tests)
   target_link_libraries(lcars_sem01_tests PRIVATE lcars_core)
   add_test(NAME sem01 COMMAND lcars_sem01_tests)
+  add_test(NAME third_party_notices COMMAND "${CMAKE_COMMAND}" "-DROOT=${PROJECT_SOURCE_DIR}" "-DOUT=${CMAKE_BINARY_DIR}" -DMODE=check -P "${PROJECT_SOURCE_DIR}/cmake/ThirdPartyNotices.cmake")
   add_executable(lcars_tests tests/tests.cpp)
   lcars_target(lcars_tests)
   target_include_directories(lcars_tests PRIVATE src)
