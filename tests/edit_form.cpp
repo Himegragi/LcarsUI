@@ -1022,6 +1022,36 @@ void draw_command_state_matrix() {
         if(state_index==5) check(probe.count(detail::PaintRole::composition)>0,"DL03 composition cue");
     }
 }
+void dark_focus_inventory() {
+    edit_form::Form inventory(ids, true);
+    auto entries = x04::inventory(inventory);
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
+        auto semantic = x04::describe(entry.handle);
+        const auto& type = detail::component_type(semantic->kind);
+        if (!type.can_focus()) continue;
+        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark();
+        check(bool(form.ui.set_presentation(settings)), "Dark theme accepted");
+        if (entry.page == "modal") {
+            check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "Focus modal opened");
+        } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "Focus page activated");
+        if (!semantic->enabled) check(x04::set_enabled(entry.handle, true), "Focus target enabled");
+        check(x04::focus(entry.handle), ("Dark focus setup " + semantic->id).c_str());
+        test::FakeMeasure measure;
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll, semantic->id);
+        semantic = x04::describe(entry.handle); auto* item = x04::placement(frame, entry.handle);
+        check(item && semantic->focused && semantic->visible, ("Dark focus visible " + semantic->id).c_str());
+        PaintRoleProbe paint(detail::access(form.ui), *item, *semantic, *appearance, 1.f, true);
+        detail::component_type(item->kind).paint(paint);
+        auto accent = appearance->palette(ThemeVariant::dark()).accent;
+        bool cue = std::any_of(paint.recording.list.commands.begin(), paint.recording.list.commands.end(), [&](const auto& c) {
+            auto r = intersect(c.rect, item->clip);
+            return (static_cast<unsigned>(c.role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) && r.w > 0 && r.h > 0 &&
+                c.color.r == accent.r && c.color.g == accent.g && c.color.b == accent.b;
+        });
+        check(cue, ("Dark focus indicator " + semantic->id).c_str());
+    }
+}
 // Record the text sent to the component paint adapter, independently of layout's line lists.
 struct PaintTextProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -1300,12 +1330,12 @@ void x04_clipped_inventory_at_each_size_and_scale() {
     }
 }
 
-void x04_error_inventory_at_each_size_and_scale() {
+void x04_error_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form inventory_form(ids, true);
         auto entries = x04::inventory(inventory_form);
         for (std::size_t index = 0; index < entries.size(); ++index) {
-            edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
+            edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } auto entry = x04::inventory(form)[index];
             auto semantic = x04::describe(entry.handle);
             if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error) || !x04::error_supported(*semantic)) continue;
             auto message = std::string("X04 error ") + semantic->id;
@@ -1320,10 +1350,11 @@ void x04_error_inventory_at_each_size_and_scale() {
             PaintTextProbe paint(detail::access(form.ui), *item, *owner_semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
             if (semantic->kind == Kind::tabs) {
-                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos,
+                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos &&
+                      std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto e = appearance->palette(form.ui.presentation().variant).text; return c.r == e.r && c.g == e.g && c.b == e.b; }),
                       (message + " tab cue").c_str());
             } else {
-                auto color = appearance->palette().error;
+                auto color = appearance->palette(form.ui.presentation().variant).error;
                 check(paint.drawn.find(x04::error_message) != std::u16string::npos &&
                       std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { return c.r == color.r && c.g == color.g && c.b == color.b; }),
                       (message + " error text and cue").c_str());
@@ -1458,9 +1489,9 @@ void x04_normal_inventory_at_each_size_and_scale() {
     }
 }
 
-void x04_disabled_inventory_at_each_size_and_scale() {
+void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto baseline = x04::snapshot(form);
@@ -1503,7 +1534,8 @@ void x04_disabled_inventory_at_each_size_and_scale() {
                   (message + " restriction").c_str());
             PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
-            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos &&
+                  std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto m = appearance->palette(form.ui.presentation().variant).muted; return c.r == m.r && c.g == m.g && c.b == m.b; }),
                   (message + " non-color cue").c_str());
             auto snapshot = x04::snapshot(form);
             check(state.pointer_down(semantic->id).status == Status::disabled, (message + " pointer").c_str());
@@ -1581,9 +1613,9 @@ void x04_group_conflicts_at_each_size_and_scale() {
     }
 }
 
-void x04_selected_inventory_at_each_size_and_scale() {
+void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true);
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); }
         test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
@@ -1602,7 +1634,7 @@ void x04_selected_inventory_at_each_size_and_scale() {
             PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
             const auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
-                ? appearance->palette().accent : appearance->palette().selection;
+                ? appearance->palette(form.ui.presentation().variant).accent : appearance->palette(form.ui.presentation().variant).selection;
             check(std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) {
                 return c.r == cue.r && c.g == cue.g && c.b == cue.b;
             }) && paint.drawn.find(semantic->kind == Kind::checkbox ? semantic->name : semantic->value) != std::u16string::npos,
@@ -2257,15 +2289,19 @@ int main() {
         {"X04 executing inventory at each size and scale", x04_executing_inventory_at_each_size_and_scale},
         {"X04 fixed placements fit each client", x04_fixed_placements_fit_each_client},
         {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
-        {"X04 error inventory at each size and scale", x04_error_inventory_at_each_size_and_scale},
+        {"X04 error inventory at each size and scale", [] { x04_error_inventory_at_each_size_and_scale(); }},
+        {"Dark focus inventory", dark_focus_inventory},
+        {"Dark error inventory", [] { x04_error_inventory_at_each_size_and_scale(true); }},
+        {"Dark disabled inventory", [] { x04_disabled_inventory_at_each_size_and_scale(true); }},
+        {"Dark selected inventory", [] { x04_selected_inventory_at_each_size_and_scale(true); }},
         {"X04 candidate inventory at each size and scale", x04_candidate_inventory_at_each_size_and_scale},
         {"X04 search read-only at each size and scale", x04_search_read_only_at_each_size_and_scale},
         {"X04 modal inventory at each size and scale", x04_modal_inventory_at_each_size_and_scale},
         {"X04 tooltip at each size and scale", x04_tooltip_at_each_size_and_scale},
         {"X04 normal inventory at each size and scale", x04_normal_inventory_at_each_size_and_scale},
-        {"X04 disabled inventory at each size and scale", x04_disabled_inventory_at_each_size_and_scale},
+        {"X04 disabled inventory at each size and scale", [] { x04_disabled_inventory_at_each_size_and_scale(); }},
         {"X04 group conflicts at each size and scale", x04_group_conflicts_at_each_size_and_scale},
-        {"X04 selected inventory at each size and scale", x04_selected_inventory_at_each_size_and_scale},
+        {"X04 selected inventory at each size and scale", [] { x04_selected_inventory_at_each_size_and_scale(); }},
         {"X04 hidden inventory at each size and scale", x04_hidden_inventory_at_each_size_and_scale},
         {"DL02 DL03 state matrix", draw_command_state_matrix},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
