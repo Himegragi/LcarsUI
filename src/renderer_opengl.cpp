@@ -1,6 +1,7 @@
 #include "renderer_opengl.hpp"
 #include "glcorearb.h"
 #include <stdexcept>
+#include <chrono>
 #include <cmath>
 #include <algorithm>
 #include <unordered_map>
@@ -20,6 +21,11 @@ static PROC symbol(const char* name) {
 
 // Context-local checked symbol table; no process-global GL function state.
 #define GL_FUNCTIONS(X) \
+ X(PFNGLGENQUERIESPROC, GenQueries) \
+ X(PFNGLDELETEQUERIESPROC, DeleteQueries) \
+ X(PFNGLBEGINQUERYPROC, BeginQuery) \
+ X(PFNGLENDQUERYPROC, EndQuery) \
+ X(PFNGLGETQUERYOBJECTUI64VPROC, GetQueryObjectui64v) \
  X(PFNGLGETSTRINGPROC, GetString) \
  X(PFNGLGETINTEGERVPROC, GetIntegerv) \
  X(PFNGLGETERRORPROC, GetError) \
@@ -246,7 +252,18 @@ struct Renderer::Impl {
 };
 Renderer::Renderer(HWND window):impl_(std::make_unique<Impl>(window)){}
 Renderer::~Renderer()=default;
-void Renderer::draw(const DrawList& list,int width,int height){impl_->execute(list,width,height,false);require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");}
+double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submission_ms,std::chrono::steady_clock::time_point* presented){
+    auto start=std::chrono::steady_clock::now();
+    auto& gl=impl_->gl; GLuint query=0; GLuint64 ns=0;
+    if(measure){gl.GenQueries(1,&query); gl.BeginQuery(GL_TIME_ELAPSED,query);}
+    impl_->execute(list,width,height,offscreen);
+    if(measure) gl.EndQuery(GL_TIME_ELAPSED);
+    if(submission_ms) *submission_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    if(!offscreen) require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");
+    if(presented) *presented=std::chrono::steady_clock::now();
+    if(measure){gl.GetQueryObjectui64v(query,GL_QUERY_RESULT,&ns); gl.DeleteQueries(1,&query);}
+    return double(ns)/1000000.0;
+}
 std::string Renderer::name() const {
     return std::string(reinterpret_cast<const char*>(impl_->gl.GetString(GL_RENDERER))) + " / " +
         reinterpret_cast<const char*>(impl_->gl.GetString(GL_VERSION));

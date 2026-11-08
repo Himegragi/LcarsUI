@@ -256,10 +256,12 @@ Frame DesktopHost::arrange(int width, int height, float scale) {
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
+    auto start=std::chrono::steady_clock::now();
     RECT r{};
     GetClientRect(window_, &r);
     if (!renderer_ || r.right <= 0 || r.bottom <= 0) return;
     float s = scale();
+    if(perf_enabled_ && perf_offscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
     RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
@@ -272,7 +274,20 @@ void DesktopHost::paint() {
             command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
             observation.popup, observation.tooltip});
     }
-    renderer_->draw(recording.list, r.right, r.bottom);
+    if(perf_enabled_ && perf_delay_) Sleep(static_cast<DWORD>(perf_delay_));
+    auto before_gpu=std::chrono::steady_clock::now();
+    double submission=0; std::chrono::steady_clock::time_point presented;
+    double gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented);
+    auto end=std::chrono::steady_clock::now();
+    if(perf_enabled_) {
+        FILETIME created{},exited{},kernel{},user{},now{}; GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user); GetSystemTimeAsFileTime(&now);
+        ULARGE_INTEGER c{},n{}; c.LowPart=created.dwLowDateTime; c.HighPart=created.dwHighDateTime; n.LowPart=now.dwLowDateTime; n.HighPart=now.dwHighDateTime;
+        double age=double(n.QuadPart-c.QuadPart)/10000. - std::chrono::duration<double,std::milli>(end-presented).count();
+        if(first_present_ms_<0) first_present_ms_=age;
+        double cpu=std::chrono::duration<double,std::milli>(before_gpu-start).count();
+        perf_samples_.add(age-std::chrono::duration<double,std::milli>(presented-start).count(),cpu+submission+gpu);
+        if(input_time_.time_since_epoch().count()) { input_present_ms_=std::chrono::duration<double,std::milli>(presented-input_time_).count(); input_time_={}; }
+    }
     ++frames_;
     sync_ime();
     diagnostics_.drain();
@@ -528,6 +543,7 @@ void DesktopHost::after_input(const Id& focus_before) {
 }
 
 LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
+    if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));
     if (tracing_) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
                             : msg == WM_LBUTTONDOWN ? L"WM_LBUTTONDOWN" : msg == WM_LBUTTONUP ? L"WM_LBUTTONUP" : nullptr;
@@ -541,6 +557,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_APP+43:
         diagnostics_.drain(); return 0;
     case WM_PAINT: {
+        ++paint_messages_;
         PAINTSTRUCT ps{};
         BeginPaint(window_, &ps);
         try { paint(); } catch (...) { EndPaint(window_, &ps); throw; }
