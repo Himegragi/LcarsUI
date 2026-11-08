@@ -23,6 +23,7 @@ private:
     enum class Mode { normal, read_only, disabled };
     Ids ids_;
     std::u16string applied_;
+    std::u16string preview_ = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f";
     int applies_ = 0;
     int volume_applied_ = 40;
     int progress_ = 50;
@@ -42,14 +43,16 @@ private:
     std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
     std::function<void()> next_apply_observer_;
     bool pages_ = false;
-    std::array<int, 3> page_offsets_{};
+    std::array<int, 4> page_offsets_{};
     std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
 public:
     explicit Form(Ids ids = default_ids(), bool pages = false);
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
-        lcars::TextHandle name;
+        lcars::TextHandle name, preview;
+        lcars::SliderHandle text_size;
+        lcars::LabelHandle v04_title;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
         lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;

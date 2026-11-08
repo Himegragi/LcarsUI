@@ -16,7 +16,7 @@ endforeach()
 file(GLOB_RECURSE actual RELATIVE "${BUILD_DIR}/package-prefix" "${BUILD_DIR}/package-prefix/*")
 string(TOLOWER "${CONFIG}" config_lower)
 set(expected
-  include/lcars/appearance.hpp include/lcars/core.hpp include/lcars/layout.hpp include/lcars/version.hpp
+  include/lcars/appearance.hpp include/lcars/core.hpp include/lcars/presentation.hpp include/lcars/layout.hpp include/lcars/version.hpp
   lib/lcars_core.lib lib/lcars_appearance_web.lib lib/lcars_appearance_material.lib
   lib/cmake/LcarsUI/LcarsUIConfig.cmake lib/cmake/LcarsUI/LcarsUIConfigVersion.cmake
   lib/cmake/LcarsUI/LcarsUICoreTargets.cmake lib/cmake/LcarsUI/LcarsUICoreTargets-${config_lower}.cmake
