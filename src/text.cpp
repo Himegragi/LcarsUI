@@ -1,4 +1,5 @@
 #include "text.hpp"
+#include "glyph_atlas.hpp"
 #include <windows.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -32,6 +33,8 @@ struct Text::Impl {
     std::unique_ptr<Font> latin,traditional;
     std::filesystem::path fonts;
     bool ming=false;
+    GlyphAtlas atlas;
+    unsigned rasterizations=0;
     Impl() {
         wchar_t path[MAX_PATH]{};
         require(GetWindowsDirectoryW(path,MAX_PATH)>0,"Windows font directory unavailable");
@@ -48,7 +51,7 @@ Text::~Text()=default;
 void Text::set_ming(bool ming){
     if(impl_->ming==ming)return;
     auto replacement=std::make_unique<Font>(impl_->library,impl_->fonts/(ming?"mingliu.ttc":"msjh.ttc"));
-    impl_->traditional=std::move(replacement);impl_->ming=ming;
+    impl_->traditional=std::move(replacement);impl_->ming=ming; impl_->atlas.clear();
 }
 float TextLayout::at(unsigned offset) const {
     auto it=carets.upper_bound(offset);return it==carets.begin()?0:std::prev(it)->second;
@@ -133,23 +136,36 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         }
     }
 }
+void Text::clear_atlas() { impl_->atlas.clear(); }
+void Text::configure_atlas(int size,int pages) { impl_->atlas=GlyphAtlas(size,pages); }
+unsigned Text::atlas_clears() const { return impl_->atlas.clears(); }
+unsigned Text::atlas_batches() const { return impl_->atlas.batches(); }
+unsigned Text::rasterizations() const { return impl_->rasterizations; }
 void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
-    for(auto& glyph:layout.glyphs){
-        auto& font=impl_->font(glyph.font); font.size(layout.size);
-        require(FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT)==0,"Glyph load failed");
-        require(FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)==0,"Glyph rasterization failed");
-        auto& bitmap=font.face->glyph->bitmap;
-        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font.face->glyph->bitmap_left;
-        int top=baseline-static_cast<int>(std::round(glyph.dy))-font.face->glyph->bitmap_top;
-        std::vector<unsigned char> coverage(static_cast<std::size_t>(bitmap.width)*bitmap.rows);
-        for(unsigned row=0;row<bitmap.rows;++row) for(unsigned col=0;col<bitmap.width;++col){
-            unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row,alpha=0;
-            if(bitmap.pixel_mode==FT_PIXEL_MODE_GRAY) alpha=bitmap.buffer[source*std::abs(bitmap.pitch)+col];
-            else if(bitmap.pixel_mode==FT_PIXEL_MODE_MONO) alpha=(bitmap.buffer[source*std::abs(bitmap.pitch)+col/8]&(0x80>>(col%8)))?255:0;
-            else throw std::runtime_error("Unsupported font bitmap format");
-            coverage[static_cast<std::size_t>(row)*bitmap.width+col]=static_cast<unsigned char>(alpha);
-        }
-        canvas.glyph({left,top,static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows)},glyph.id?color:Color{195,35,48},std::move(coverage));
+    for(const auto& glyph:layout.glyphs){
+        auto entry=impl_->atlas.get({glyph.font,glyph.id,layout.size},[&] {
+            ++impl_->rasterizations;
+            GlyphBitmap result{0,0,0,0,{}};
+            auto& font=impl_->font(glyph.font);
+            if(FT_Set_Pixel_Sizes(font.face,0,layout.size) || FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT) ||
+               FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)) {
+                OutputDebugStringA("LcarsUI: glyph rasterization failed\n"); return result;
+            }
+            const auto& bitmap=font.face->glyph->bitmap;
+            result.width=static_cast<int>(bitmap.width); result.height=static_cast<int>(bitmap.rows);
+            result.left=font.face->glyph->bitmap_left; result.top=font.face->glyph->bitmap_top;
+            if(bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY && bitmap.pixel_mode!=FT_PIXEL_MODE_MONO && bitmap.pixel_mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
+                OutputDebugStringA("LcarsUI: unsupported glyph bitmap format\n"); result.width=result.height=0; return result;
+            }
+            auto mode=bitmap.pixel_mode==FT_PIXEL_MODE_GRAY?BitmapMode::gray:
+                bitmap.pixel_mode==FT_PIXEL_MODE_MONO?BitmapMode::mono:BitmapMode::bgra;
+            result.pixels=bitmap_coverage(mode,bitmap.width,bitmap.rows,bitmap.pitch,bitmap.buffer);
+            return result;
+        });
+        if(!entry.region.page) continue;
+        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+entry.left;
+        int top=baseline-static_cast<int>(std::round(glyph.dy))-entry.top;
+        canvas.glyph({left,top,entry.region.rect.w,entry.region.rect.h},glyph.id?color:Color{195,35,48},entry.region.page,entry.region.rect);
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {

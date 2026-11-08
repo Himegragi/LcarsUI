@@ -4,13 +4,16 @@
 #include "lcars/appearance.hpp"
 #include <cstdint>
 #include <vector>
+#include <memory>
 #include <string>
 namespace lcars::detail {
 struct Rgba { unsigned char r,g,b,a; };
+struct AtlasPage { int width = 0, height = 0; std::vector<unsigned char> pixels; };
+struct AtlasRegion { std::shared_ptr<const AtlasPage> page; Rect rect{}; };
 struct DrawCommand {
     enum class Type { clear, clip, fill, rounded, glyph, begin_group, end_group } type;
     Rect rect{}; Rgba color{}; int radius = 0;
-    std::vector<unsigned char> coverage;
+    AtlasRegion coverage;
     PaintRole role=PaintRole::content;
     std::string owner; bool popup=false, tooltip=false;
 };
@@ -34,7 +37,7 @@ struct RecordingCanvas {
     RecordingCanvas(int w,int h,Color color);
     void fill(Rect,Color);
     void rounded(Rect,int,Color);
-    void glyph(Rect,Color,std::vector<unsigned char>);
+    void glyph(Rect,Color,std::shared_ptr<const AtlasPage>,Rect);
     void blend(int,int,Color,unsigned);
     void begin_group(std::string owner,bool popup,bool tooltip);
     void end_group();

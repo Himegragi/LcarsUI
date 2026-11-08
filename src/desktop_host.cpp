@@ -219,6 +219,8 @@ void DesktopHost::pump() {
 }
 
 Frame DesktopHost::arrange(int width, int height, float scale) {
+    if (atlas_scale_ && atlas_scale_ != scale) text_.clear_atlas();
+    atlas_scale_ = scale;
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {

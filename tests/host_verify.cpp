@@ -157,6 +157,36 @@ struct Fixture {
     }
 };
 
+void atlas_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    f.host.paint();
+    auto before = f.host.rasterizations();
+    for (int i=0; i<100; ++i) f.host.paint();
+    report.check("GA01", f.host.rasterizations()==before, "100 repeated frames reuse rasterized glyphs");
+    auto clears=f.host.atlas_clears();
+    f.host.force_scale(1.5f); f.host.paint();
+    bool forward=f.host.atlas_clears()==clears+1 && f.host.compare_legacy(960,720,1.5f);
+    f.host.force_scale(1.f); f.host.paint();
+    report.check("GA02", forward && f.host.atlas_clears()==clears+2 && f.host.compare_legacy(960,720,1.f), "scale changes clear once and retain S1 pixels");
+    f.host.configure_atlas(64,1);
+    bool same=f.host.compare_legacy(960,720,1.f);
+    report.check("GA03-CPU", same && f.host.atlas_batches()>0, "small atlas batches retain S1 pixels");
+    detail::Text text;
+    auto old_layout=text.shape(u"Station",18);
+    detail::RecordingCanvas old_canvas(300,80,{0,0,0});
+    text.draw(old_canvas,old_layout,0,40,{255,255,255});
+    auto count=text.atlas_clears(); text.clear_atlas();
+    auto new_layout=text.shape(u"Station",24);
+    detail::RecordingCanvas new_canvas(300,80,{0,0,0});
+    text.draw(new_canvas,new_layout,0,40,{255,255,255});
+    detail::Canvas reference(300,80,{0,0,0});
+    text.draw(reference,new_layout,0,40,{255,255,255});
+    report.check("GA04", text.atlas_clears()==count+1 &&
+        detail::render_cpu(new_canvas.list,300,80).pixels==reference.pixels &&
+        detail::render_cpu(old_canvas.list,300,80).pixels!=reference.pixels,
+        "font-size invalidation produces the 24 DIP reference");
+}
+
 void draw_list_initial(const Appearance& appearance, Report& report) {
     const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
     for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
@@ -2678,6 +2708,7 @@ int run(const std::filesystem::path& folder) {
         report.appearance = tag;
         draw_list_initial(*appearance, report);
         tabs_native(*appearance, report, folder);
+        atlas_native(*appearance, report);
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);
         tooltip_native(*appearance, report, folder);

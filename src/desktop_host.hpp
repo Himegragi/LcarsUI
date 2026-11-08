@@ -52,6 +52,11 @@ public:
     // Verification observer: records only the most recently painted actual frame.
     void observe_paint(bool enabled) { observe_paint_ = enabled; paint_observations_.clear(); }
     const std::vector<PaintObservation>& paint_observations() const { return paint_observations_; }
+    void configure_atlas(int size, int pages) { text_.configure_atlas(size, pages); }
+    void clear_atlas() { text_.clear_atlas(); }
+    unsigned atlas_clears() const { return text_.atlas_clears(); }
+    unsigned atlas_batches() const { return text_.atlas_batches(); }
+    unsigned rasterizations() const { return text_.rasterizations(); }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }
     std::vector<std::wstring>& ime_log() { return ime_log_; }
@@ -72,6 +77,7 @@ private:
     std::unique_ptr<WindowsClipboard> clipboard_;
     Frame frame_;
     float forced_scale_ = 0;
+    float atlas_scale_ = 0;
     int frames_ = 0;
     bool failed_ = false;
     std::string reveal_;                        // focus target to scroll into view on the next arrange

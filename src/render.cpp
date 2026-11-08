@@ -30,10 +30,10 @@ void RecordingCanvas::rounded(Rect rect, int radius, Color color) {
     list.commands.back().role = current_role;
 
 }
-void RecordingCanvas::glyph(Rect rect, Color color, std::vector<unsigned char> coverage) {
+void RecordingCanvas::glyph(Rect rect, Color color, std::shared_ptr<const AtlasPage> page, Rect region) {
     list.set_clip(clip);
     DrawCommand command{DrawCommand::Type::glyph, rect, {color.r, color.g, color.b, 255}, 0,
-                        std::move(coverage), current_role, {}, false, false};
+                        {std::move(page), region}, current_role, {}, false, false};
     list.commands.push_back(std::move(command));
 }
 void RecordingCanvas::blend(int x, int y, Color color, unsigned alpha) {
@@ -58,7 +58,7 @@ bool command_ink(const DrawList& list, std::size_t begin, std::size_t end, Rect 
         for (int y = bounds.y; y < bounds.y + bounds.h; ++y) for (int x = bounds.x; x < bounds.x + bounds.w; ++x) {
             if (command.type == DrawCommand::Type::fill) return true;
             if (command.type == DrawCommand::Type::rounded && rounded_coverage(command.rect, command.radius, x, y)) return true;
-            if (command.type == DrawCommand::Type::glyph && command.coverage[static_cast<std::size_t>(y - command.rect.y) * command.rect.w + x - command.rect.x]) return true;
+            if (command.type == DrawCommand::Type::glyph && command.coverage.page->pixels[static_cast<std::size_t>(command.coverage.rect.y + y - command.rect.y) * command.coverage.page->width + command.coverage.rect.x + x - command.rect.x]) return true;
         }
     }
     return false;
@@ -81,7 +81,7 @@ Image render_cpu(const DrawList& list, int width, int height) {
                 unsigned coverage = 255;
                 if (command.type == DrawCommand::Type::rounded) coverage = rounded_coverage(rect, command.radius, x, y);
                 if (command.type == DrawCommand::Type::glyph)
-                    coverage = command.coverage[static_cast<std::size_t>(y - rect.y) * rect.w + x - rect.x];
+                    coverage = command.coverage.page->pixels[static_cast<std::size_t>(command.coverage.rect.y + y - rect.y) * command.coverage.page->width + command.coverage.rect.x + x - rect.x];
                 unsigned alpha = coverage * command.color.a / 255;
                 auto index = (static_cast<std::size_t>(y) * width + x) * 4;
                 unsigned char values[] = {command.color.r, command.color.g, command.color.b};
