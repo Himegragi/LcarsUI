@@ -134,7 +134,7 @@ void semantic_showcase_states_and_identity() {
     visit(visit, {});
     check(inventory.size() == tree_components.size() && unique == tree_components,
           "X04 includes every tree component exactly once");
-    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.preview}})
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.compact}, ComponentHandle{form.handles.preview}})
         check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
     auto mode = form.handles.mode.describe()->id;
     auto options = tree.children({mode});
@@ -1301,7 +1301,7 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
           "X04 V01 and V02 are absent and reject actions on V03");
     auto& state = detail::access(form.ui);
     std::vector<std::vector<Id>> page_items;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         h.tabs.activate({page});
         auto current = frame();
         std::vector<Id> ids_on_page;
@@ -1309,10 +1309,10 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
         page_items.push_back(std::move(ids_on_page));
     }
     int page_index = 0;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         h.tabs.activate({page});
         auto current = frame();
-        for (int other = 0; other < static_cast<int>(page_items.size()); ++other) if (other != page_index) for (const auto& id : page_items[other]) {
+        for (int other = 0; other < 3; ++other) if (other != page_index) for (const auto& id : page_items[other]) {
             check(!detail::find_placement(current, id) && state.available(id).status == Status::hidden,
                   "X04 each other-page placement is absent and not admitted");
         }
@@ -1699,6 +1699,7 @@ void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto baseline = x04::snapshot(form);
+            auto presentation = form.ui.presentation();
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
             if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 select page");
@@ -1718,7 +1719,7 @@ void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
                 return c.r == cue.r && c.g == cue.g && c.b == cue.b;
             }) && paint.drawn.find(semantic->kind == Kind::checkbox ? semantic->name : semantic->value) != std::u16string::npos,
                 message.c_str());
-            check(x04::restore_selected(form, entry) && x04::same_model(baseline, x04::snapshot(form)), message.c_str());
+            check(x04::restore_selected(form, entry, *before, presentation) && form.ui.presentation() == presentation && x04::same_model(baseline, x04::snapshot(form)), message.c_str());
         }
     }
 }
@@ -1739,7 +1740,7 @@ void x04_hidden_inventory_at_each_size_and_scale() {
                   detail::access(form.ui).pointer_down(semantic->id).status == Status::hidden &&
                   x04::hidden_retry(entry.handle), message.c_str());
         }
-        for (const auto& page : x04::pages(form)) {
+        for (auto page : {"v01", "v02", "v03"}) {
             check(bool(form.handles.tabs.activate({page})), "X04 activate page");
             auto frame = arrange(form.page(), form.ui, *appearance, measure,
                                  int(size.first * scale), int(size.second * scale), scale, form.scroll);
@@ -1759,7 +1760,7 @@ void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {
