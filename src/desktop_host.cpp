@@ -142,7 +142,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
-        detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 44, 0, 0); });
+        detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
         detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlas_text_size_ = ui_.presentation().text_size;
         atlas_font_family_ = ui_.presentation().font_family;
@@ -616,7 +616,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
-    case WM_APP+44:
+    case WM_APP+45:
         ui_.semantics().dispatch_events(); return 0;
     case WM_PAINT: {
         ++paint_messages_;
