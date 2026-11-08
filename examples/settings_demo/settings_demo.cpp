@@ -54,7 +54,15 @@ Demo::Demo() {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
     });
-    name.on_blur([this] { name.confirm(); });
+    name.on_blur([this] {
+        auto draft = name.draft(); if (!draft) return;
+        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
+            name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); update_history_controls(); return;
+        }
+        name.set_error(u"");
+        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
+        name.reset_to_source(); update_history_controls();
+    });
     notices.connect_source({[this] { return notices_value_; }, [this](std::function<void()> notify) { notices_changed_ = std::move(notify); return [this] { notices_changed_ = {}; }; }});
     notices.connect_immediate([this](const BoolChange& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
     mode.connect_source({[this] { return mode_value_; }, [this](std::function<void()> notify) { mode_changed_ = std::move(notify); return [this] { mode_changed_ = {}; }; }});
@@ -62,7 +70,8 @@ Demo::Demo() {
     region.connect_source({[this] { return region_value_; }, [this](std::function<void()> notify) { region_changed_ = std::move(notify); return [this] { region_changed_ = {}; }; }});
     region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, [this](std::function<void()> notify) { volume_changed_ = std::move(notify); return [this] { volume_changed_ = {}; }; }});
-    volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(); return Result{}; });
+    volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); bool focused = volume.describe()->focused; dirty(focused && volume_group_); volume_group_ = focused; return Result{}; });
+    volume.on_blur([this] { volume_group_ = false; });
     item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
     item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
@@ -135,6 +144,40 @@ Demo::Demo() {
     ui.add_shortcut({.letter=u'Z',.ctrl=true},undo_);
     ui.add_shortcut({.letter=u'Y',.ctrl=true},redo_);
     ui.add_shortcut({.letter=u'Z',.ctrl=true,.shift=true},redo_);
+    current_ = snapshot(); saved_ = current_;
+    undo_.bind([this] {
+        auto description = name.describe();
+        if (description && !description->error.empty()) {
+            auto result=name.reset_to_source(); if (!result) return result;
+            name.set_error(u""); update_history_controls(); return Result{};
+        }
+        if (undo_history_.empty()) return Result{Status::empty_history, {}};
+        redo_history_.push_back(snapshot());
+        auto previous = undo_history_.back(); undo_history_.pop_back();
+        apply(previous); return Result{};
+    });
+    redo_.bind([this] {
+        if (redo_history_.empty()) return Result{Status::empty_history, {}};
+        undo_history_.push_back(snapshot());
+        auto next = redo_history_.back(); redo_history_.pop_back();
+        apply(next); return Result{};
+    });
+    save_.bind([this] {
+        auto draft = name.draft();
+        if (!draft) return Result{draft.status, draft.message};
+        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
+            nav.select({"general"}); name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); name.focus();
+            return Result{Status::invalid_value, u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"};
+        }
+        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
+        saved_ = snapshot(); saved_once_ = true; update_history_controls(); return Result{};
+    });
+    revert_.bind([this] {
+        name.reset_to_source();
+        if (saved_ && snapshot() != *saved_) { auto target=*saved_; auto before=snapshot(); apply(target); current_=before; dirty(); }
+        update_history_controls(); return Result{};
+    });
+    ui.on_change([this] { update_history_controls(); });
     nav.focus();
 }
 Result Demo::refresh_items() {
@@ -155,7 +198,39 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
-void Demo::dirty() { undo_.enable(true); }
+Result Demo::set_presentation(const PresentationSettings& settings) {
+    auto result=ui.set_presentation(settings); if (result) dirty(); return result;
+}
+void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
+SettingsDocument Demo::snapshot() const {
+    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation()};
+}
+void Demo::update_history_controls() {
+    auto description = name.describe();
+    undo_.enable(!undo_history_.empty() || (description && !description->error.empty())); redo_.enable(!redo_history_.empty());
+    auto draft = name.draft();
+    bool changed = saved_ && (snapshot() != *saved_ || (draft && *draft != name_value_));
+    save_.enable(changed); revert_.enable(changed);
+    if (changed != dirty_state_) { dirty_state_=changed; if (dirty_changed_) dirty_changed_(changed); }
+    status_.connect_source([changed, this] { return changed ? u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539" : saved_once_ ? u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58" : u"\u4f7f\u7528\u9810\u8a2d\u503c\uff0c\u5c1a\u672a\u5efa\u7acb\u8a2d\u5b9a\u6a94"; });
+}
+void Demo::dirty(bool coalesce) {
+    auto now = snapshot();
+    if (current_ && *current_ != now) {
+        if (!coalesce) undo_history_.push_back(*current_);
+        if (undo_history_.size() > 100) undo_history_.erase(undo_history_.begin());
+        redo_history_.clear();
+    }
+    current_ = std::move(now); update_history_controls();
+}
+void Demo::apply(const SettingsDocument& value) {
+    volume_group_=false;
+    name_value_=value.name; notices_value_=value.notices; mode_value_=value.mode; region_value_=value.region;
+    volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
+    if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
+    if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
+    ui.set_presentation(value.presentation); refresh_items(); current_=value; update_history_controls();
+}
 layout::Node Demo::page() const {
     using namespace layout;
     std::vector<Node> content{control(title_,24)};

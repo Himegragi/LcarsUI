@@ -1,4 +1,4 @@
-﻿#include "desktop_host.hpp"
+#include "desktop_host.hpp"
 #include "core_internal.hpp"
 #include "edit_form.hpp"
 #include "renderer_failure_checks.hpp"
@@ -26,6 +26,21 @@ static void startup(const Appearance& appearance) {
     auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
     check(created.desktop && !created.desktop->capabilities().reset_detection, "RF05 unavailable reset detection");
 }
+static void title_updates(const Appearance& appearance) {
+    edit_form::Form form;
+    DesktopOptions options; options.title = u"Initial title for test";
+    auto created = Desktop::create(form.ui, appearance, [&]{return form.page();}, form.scroll, options);
+    check(bool(created.desktop), "title test desktop");
+    auto window = FindWindowW(nullptr, L"Initial title for test");
+    check(window != nullptr, "find test window");
+    check(bool(created.desktop->set_title(u"Updated title")), "set title");
+    wchar_t text[64]{}; GetWindowTextW(window, text, 64);
+    check(std::wstring(text) == L"Updated title", "native title updated");
+    check(created.desktop->set_title(u"Bad\nTitle").status == Status::invalid_value, "reject multiline title");
+    Status status = Status::ok;
+    std::thread worker([&] { status=created.desktop->set_title(u"Other thread").status; }); worker.join();
+    check(status == Status::wrong_thread, "title requires UI thread");
+}
 static void public_lifecycle(const Appearance& appearance, bool handled) {
     edit_form::Form form;
     edit_form::Form other;
@@ -37,6 +52,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
     if (handled) options.on_renderer_failed=[&](Desktop& desktop, const RendererFailure& failure) {
         ++callbacks;
         check(failure.kind==RendererFailureKind::frame_error, "public failure kind");
+        check(bool(desktop.set_title(u"Title during failure")), "title works during renderer failure");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");
         check(desktop.rebuild_renderer().status==Status::failed && desktop.renderer_failed(), "public rebuild failure");
         hooks.gl_error_at_frame=0;
@@ -117,7 +133,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         for (auto appearance : {&web_appearance(), &material_appearance()}) {
-            startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
+            title_updates(*appearance); startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
             public_lifecycle(*appearance,true); public_lifecycle(*appearance,false);
         }
         std::cout << "RF01-RF05, RF07 failure seam checks passed\n"; return 0;

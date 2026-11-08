@@ -1,6 +1,17 @@
 #pragma once
 #include "lcars/layout.hpp"
 namespace settings_demo {
+struct Item { lcars::OptionValue id; std::u16string name, note; bool operator==(const Item&) const = default; };
+struct SettingsDocument {
+    std::u16string name;
+    bool notices;
+    std::optional<lcars::OptionValue> mode, region;
+    int volume;
+    std::vector<Item> items;
+    int next_item_id;
+    lcars::PresentationSettings presentation;
+    bool operator==(const SettingsDocument&) const = default;
+};
 class Demo {
     std::u16string name_value_ = u"測試使用者";
     bool notices_value_ = true;
@@ -9,7 +20,6 @@ class Demo {
     std::function<void()> name_changed_, notices_changed_, mode_changed_, region_changed_, volume_changed_;
     lcars::LabelHandle title_, status_, name_label_, name_help_, name_error_;
     lcars::ButtonHandle undo_, redo_, revert_, save_;
-    struct Item { lcars::OptionValue id; std::u16string name, note; };
     std::vector<Item> items_;
     std::u16string search_value_, item_name_source_, item_note_source_;
     std::function<void()> item_name_changed_, item_note_changed_;
@@ -21,7 +31,14 @@ class Demo {
     int next_item_id_ = 21;
     lcars::ButtonHandle item_cancel_, delete_cancel_, delete_confirm_;
     lcars::Result refresh_items();
-    void dirty();
+    SettingsDocument snapshot() const;
+    void apply(const SettingsDocument&);
+    void dirty(bool coalesce = false);
+    std::optional<SettingsDocument> current_, saved_;
+    std::vector<SettingsDocument> undo_history_, redo_history_;
+    bool saved_once_ = false, volume_group_ = false, dirty_state_ = false;
+    std::function<void(bool)> dirty_changed_;
+    void update_history_controls();
 public:
     lcars::Ui ui;
     lcars::ScrollState scroll;
@@ -36,6 +53,8 @@ public:
     lcars::DropdownHandle region;
     lcars::SliderHandle volume;
     Demo();
+    void on_dirty_changed(std::function<void(bool)> callback);
+    lcars::Result set_presentation(const lcars::PresentationSettings& settings);
     lcars::layout::Node page() const;
 };
 }

@@ -1,4 +1,4 @@
-﻿#include "settings_demo.hpp"
+#include "settings_demo.hpp"
 #include "lcars/desktop.hpp"
 #include <iostream>
 int wmain() {
@@ -14,6 +14,7 @@ int wmain() {
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
         auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) return 1;
+        demo.on_dirty_changed([&](bool dirty) { creation.desktop->set_title((dirty ? u"*" : u"") + options.title); });
         return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

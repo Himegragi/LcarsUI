@@ -361,9 +361,154 @@ void item_search_count_and_empty_state() {
                 detail::component_type(Kind::list).paint(paint);
                 test::check(std::find(paint.drawn.begin(), paint.drawn.end(), u"\u6c92\u6709\u9805\u76ee") != paint.drawn.end(), "empty-list message is painted");
             }
-            test::check(state.describe("app.status")->value == status && !state.describe("app.undo")->enabled, "search does not mark the document changed");
+            test::check(state.describe("app.status")->value == status, "search keeps status");
+            test::check(!state.describe("app.undo")->enabled, "search does not create history");
         }
     }
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+void history_delete_restore() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.nav.select({"items"}); demo.items_list.select({"T003"}); demo.items_delete.invoke();
+    test::check(bool(state.invoke("items.delete_dialog.confirm")), "confirm deletion");
+    test::check(demo.items_list.describe()->options.size()==19, "deleted item absent");
+    test::check(bool(state.invoke("app.undo")), "undo deletion");
+    auto list=demo.items_list.describe();
+    test::check(list->options.size()==20 && list->options[2].value.id=="T003", "undo restores original identity and order");
+}
+
+void history_key_repeat() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.notices.toggle(); demo.volume.set_value(45); demo.nav.focus();
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "first undo");
+    for (int i=0; i<10; ++i) state.key_down({.ctrl=true, .repeat=true, .letter=u'Z'});
+    test::check(*demo.volume.draft()==40 && !*demo.notices.draft(), "repeated key does not undo another step");
+}
+
+void history_field_shortcuts() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.notices.toggle(); demo.name.focus(); demo.name.set_value(u"A");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "field undo");
+    test::check(*demo.notices.draft()==false, "field undo leaves document history alone");
+    demo.nav.focus(); state.key_up(Key::other);
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "document undo");
+    test::check(*demo.notices.draft(), "document undo restores previous setting");
+}
+
+void history_limit_and_branch() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    for (int i=0; i<101; ++i) test::check(bool(demo.notices.toggle()), "toggle step");
+    for (int i=0; i<100; ++i) test::check(bool(state.invoke("app.undo")), "undo retained step");
+    test::check(!state.describe("app.undo")->enabled && !*demo.notices.draft(), "oldest step is discarded");
+    test::check(bool(state.invoke("app.redo")), "redo retained step");
+    demo.volume.set_value(45);
+    test::check(!state.describe("app.redo")->enabled, "new step clears redo");
+}
+
+void history_presentation() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    auto value=demo.ui.presentation(); value.text_size=28; value.variant=ThemeVariant::dark();
+    test::check(bool(demo.set_presentation(value)), "presentation change succeeds");
+    test::check(state.describe("app.save")->enabled, "presentation changes mark document dirty");
+    test::check(bool(state.invoke("app.undo")), "undo presentation");
+    test::check(demo.ui.presentation().text_size==16 && demo.ui.presentation().variant==ThemeVariant::light(), "undo applies presentation");
+}
+
+void history_items() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.nav.select({"items"}); demo.items_add.invoke(); demo.item_name.set_value(u"Station");
+    test::check(bool(demo.item_ok.invoke()), "add item");
+    test::check(demo.items_list.describe()->options.size()==21, "new item visible");
+    test::check(bool(state.invoke("app.undo")), "undo item addition");
+    test::check(demo.items_list.describe()->options.size()==20, "undo removes item");
+    demo.items_add.invoke(); demo.item_name.set_value(u"Next"); demo.item_ok.invoke();
+    test::check(demo.items_list.describe()->options.back().value.id=="T021", "undo restores next item id");
+}
+
+void history_revert_is_undoable() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.notices.toggle(); demo.volume.set_value(55);
+    test::check(bool(state.invoke("app.revert")), "revert restores baseline");
+    test::check(*demo.notices.draft() && *demo.volume.draft()==40, "revert restores all values");
+    test::check(bool(state.invoke("app.undo")), "revert itself can be undone");
+    test::check(!*demo.notices.draft() && *demo.volume.draft()==55, "undo restores changes");
+}
+
+void history_save_focused_name() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.name.focus(); demo.name.set_value(u"Station");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'S'})), "save commits focused name");
+    test::check(!state.describe("app.save")->enabled, "saved draft is clean");
+    demo.nav.focus();
+    test::check(!state.describe("app.save")->enabled, "blur after save remains clean");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "name save keeps history");
+    test::check(*demo.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "undo returns old name");
+}
+
+void history_invalid_save() {
+    settings_demo::Demo demo; auto& state=detail::access(demo.ui);
+    demo.name.focus(); demo.name.set_value(u""); demo.nav.select({"about"});
+    test::check(!state.key_down({.ctrl=true, .letter=u'S'}), "invalid save is refused");
+    test::check(demo.nav.selected()->id == "general", "invalid save returns to general");
+    test::check(demo.name.describe()->focused && !demo.name.describe()->error.empty(), "invalid field receives focus and error");
+}
+
+void history_invalid_draft() {
+    settings_demo::Demo demo;
+    auto& state=detail::access(demo.ui);
+    demo.name.focus(); demo.name.set_value(u""); demo.nav.focus();
+    test::check(!demo.name.describe()->error.empty(), "invalid draft retains error");
+    test::check(state.describe("app.undo")->enabled, "invalid draft can be discarded with undo");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "undo discards rejected draft");
+    test::check(*demo.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "discard restores document value");
+    test::check(demo.name.describe()->error.empty(), "discard clears error");
+}
+
+void history_title_notification() {
+    settings_demo::Demo demo;
+    std::vector<bool> states;
+    demo.on_dirty_changed([&](bool value) { states.push_back(value); });
+    demo.name.focus(); demo.name.set_value(u"Station");
+    test::check(!states.empty() && states.back(), "draft notifies dirty title");
+    demo.name.undo();
+    test::check(!states.back(), "discarding draft clears title marker");
+}
+
+void history_slider_group() {
+    settings_demo::Demo demo;
+    auto& state=detail::access(demo.ui);
+    demo.volume.focus(); demo.volume.set_value(45); demo.volume.set_value(50); demo.volume.set_value(55);
+    demo.nav.focus();
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "undo slider group");
+    test::check(*demo.volume.draft() == 40, "slider focus period is one history step");
+}
+
+void history_draft_dirty() {
+    settings_demo::Demo demo;
+    auto& state = detail::access(demo.ui);
+    demo.name.focus(); demo.name.set_value(u"New name");
+    test::check(state.describe("app.save")->enabled, "draft enables save");
+    test::check(state.describe("app.status")->value == u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539", "draft updates status");
+}
+
+void history_save_revert() {
+    settings_demo::Demo demo;
+    auto& state = detail::access(demo.ui);
+    demo.notices.toggle();
+    test::check(state.describe("app.save")->enabled, "changed document can be saved");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'S'})), "save shortcut");
+    test::check(!state.describe("app.save")->enabled, "save clears dirty state");
+    state.key_up(Key::other);
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "undo after save");
+    test::check(*demo.notices.draft(), "undo restores original value");
+    test::check(state.describe("app.save")->enabled, "undo after save is dirty");
+}
+
+void history_toggle_undo() {
+    settings_demo::Demo demo;
+    auto& state = detail::access(demo.ui);
+    test::check(bool(demo.notices.toggle()), "change notices");
+    test::check(bool(state.key_down({.ctrl=true, .letter=u'Z'})), "undo shortcut");
+    test::check(*demo.notices.draft(), "undo restores notices");
+}
+int main() { const test::Case cases[] = {{"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
