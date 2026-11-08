@@ -3,17 +3,55 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <windows.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+bool loadable(const lcars::detail::FontFile& source, FT_Library library) {
+    HANDLE file = CreateFileW(source.path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER size{};
+    HANDLE mapping = nullptr; void* data = nullptr; FT_Face face = nullptr;
+    bool ok = GetFileSizeEx(file, &size) && size.QuadPart > 0 && size.QuadPart <= LONG_MAX &&
+        (mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr)) &&
+        (data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0)) &&
+        FT_New_Memory_Face(library, static_cast<const FT_Byte*>(data), static_cast<FT_Long>(size.QuadPart), source.face_index, &face) == 0;
+    if (face) FT_Done_Face(face);
+    if (data) UnmapViewOfFile(data);
+    if (mapping) CloseHandle(mapping);
+    CloseHandle(file);
+    return ok;
+}
 
 int main() {
     const auto& catalog = lcars::system_font_catalog();
     std::cout << "Font families: " << catalog.families().size() << '\n';
     if (catalog.families().empty()) return 1;
     if (catalog.contains(u"Wingdings") || catalog.contains(u"Marlett")) return 6;
+    FT_Library library = nullptr;
+    if (FT_Init_FreeType(&library)) return 23;
+    for (const auto& family : catalog.families()) if (!loadable(lcars::detail::system_font_file(family.key), library)) return 24;
+    FT_Done_FreeType(library);
+    std::cout << "Segoe UI " << catalog.contains(u"Segoe UI") << ", JhengHei " << catalog.contains(u"Microsoft JhengHei")
+              << ", Emoji " << catalog.contains(u"Segoe UI Emoji") << '\n';
     lcars::detail::Text text;
     auto layout = text.shape(u"笑😀心❤️", 18);
     if (layout.missing != 0) return 2;
     if (std::none_of(layout.glyphs.begin(), layout.glyphs.end(), [](const auto& glyph) { return glyph.cluster == 1 && glyph.font == 9 && glyph.id; }) ||
         std::none_of(layout.glyphs.begin(), layout.glyphs.end(), [](const auto& glyph) { return glyph.cluster == 4 && glyph.font == 9 && glyph.id; })) return 18;
+    for (unsigned cluster : {1u, 4u}) {
+        auto glyph = *std::find_if(layout.glyphs.begin(), layout.glyphs.end(), [cluster](const auto& g) { return g.cluster == cluster && g.font == 9 && g.id; });
+        glyph.x = 0;
+        lcars::detail::TextLayout one; one.size = 18; one.glyphs.push_back(glyph);
+        lcars::detail::Canvas emoji_canvas(64, 64, {255,255,255});
+        text.draw(emoji_canvas, one, 4, 32, {0,0,0});
+        bool has_ink = false;
+        for (std::size_t i = 0; i < emoji_canvas.pixels.size(); i += 4) {
+            if (emoji_canvas.pixels[i] != emoji_canvas.pixels[i+1] || emoji_canvas.pixels[i] != emoji_canvas.pixels[i+2]) return 25;
+            has_ink |= emoji_canvas.pixels[i] != 255;
+        }
+        if (!has_ink) return 26;
+    }
     // U+10FFFF is a Unicode noncharacter and is absent even on systems whose
     // symbol fonts assign private-use characters such as U+E000.
     auto missing = text.shape(u"\U0010ffff", 18);
@@ -62,8 +100,12 @@ int main() {
     }
     events.clear();
     {
-        Text broken([&](std::u16string_view family) { return family == u"Segoe UI" ? FontFile{copy, original.face_index} : FontFile{}; }, emit);
-        broken.shape(u"Alpha", 18); broken.shape(u"Alpha", 18);
+        Text broken([&](std::u16string_view family) {
+            if (family == u"Microsoft JhengHei") return FontFile{copy, original.face_index};
+            return system_font_file(family);
+        }, emit);
+        if (broken.shape(u"測試使用者", 18).missing) return 22;
+        broken.shape(u"測試使用者", 18);
         if (std::count(events.begin(), events.end(), "font.file_unreadable") != 1) return 12;
     }
     std::filesystem::remove(copy);
