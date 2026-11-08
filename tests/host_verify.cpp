@@ -1622,6 +1622,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
                 auto baseline_model = x04::snapshot(f.form);
+                auto presentation = f.form.ui.presentation();
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
                 bool page = entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
@@ -1642,7 +1643,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto expected = semantic->kind == Kind::checkbox ? semantic->name : semantic->value;
                 bool compared = semantic->visible && x04::placement(f.host.frame(), entry.handle) &&
                     x04::selected_semantics(*semantic) && !expected.empty() && ink.find(expected) != std::u16string::npos && cue_visible;
-                bool restored = x04::restore_selected(f.form, entry) && x04::same_model(baseline_model, x04::snapshot(f.form));
+                bool restored = x04::restore_selected(f.form, entry, *before, presentation) && f.form.ui.presentation() == presentation && x04::same_model(baseline_model, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;

@@ -192,26 +192,26 @@ inline bool same_model(const std::vector<lcars::Semantics>& a, const std::vector
             a[i].source_conflict != b[i].source_conflict || !same_selection(a[i], b[i])) return false;
     return true;
 }
-inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
+inline bool restore_selected(edit_form::Form& form, const Entry& entry, const lcars::Semantics& before, const lcars::PresentationSettings& presentation) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
-            if (h.describe()->id == form.handles.dark.describe()->id || h.describe()->id == form.handles.compact.describe()->id) return bool(h.toggle());
-            return bool(form.handles.reset.invoke());
+            auto current = h.draft();
+            return current && before.checked && (*current == *before.checked || bool(h.toggle()));
         } else if constexpr (std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
     }, entry.handle);
-    return restored && baseline_context(form);
+    return restored && bool(form.ui.set_presentation(presentation)) && baseline_context(form);
 }
 // Applicability follows the application-owned connection, not component IDs.
 inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
     auto field = std::get_if<lcars::TextHandle>(&entry.handle);
     if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
     auto semantic = describe(entry.handle);
-    return semantic && semantic->kind == lcars::Kind::slider &&
+    return semantic && (semantic->kind == lcars::Kind::slider || semantic->kind == lcars::Kind::checkbox) &&
         !lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, semantic->id);
 }
 inline bool group_conflict_supported(edit_form::Form& form, const lcars::Semantics& s) {
