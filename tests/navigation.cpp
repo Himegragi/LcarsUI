@@ -123,10 +123,21 @@ void exercise() {
     auto second = modal_ui.add_button({.id="second",.kind=Kind::button}).value.value();
     auto dialog2 = modal_ui.add_dialog("dialog2", {second}, second, fallback, [](bool) {});
     check(bool(dialog2), "multiple dialogs can be registered");
+    auto first_children = modal_ui.semantics().children({"dialog"});
+    auto second_children = modal_ui.semantics().children({"dialog2"});
+    check(first_children && first_children->size() == 1 && (*first_children)[0].id == "first" &&
+          second_children && second_children->size() == 1 && (*second_children)[0].id == "second",
+          "each semantic dialog owns only its own members");
     check(bool(dialog.open(fallback)), "open modal");
     check(dialog2->open(fallback).status == Status::busy, "second dialog cannot open concurrently");
+    check(!modal_ui.semantics().get({"dialog"})->hidden && modal_ui.semantics().get({"dialog2"})->hidden &&
+          !modal_ui.semantics().get({"first"})->hidden && modal_ui.semantics().get({"second"})->hidden,
+          "only the active semantic dialog and its members are visible");
     check(bool(dialog.settle(false)) && bool(dialog2->open()), "second dialog opens after first settles");
     check(*dialog2->is_open() && !*dialog.is_open(), "only active dialog reports open");
+    check(modal_ui.semantics().get({"dialog"})->hidden && !modal_ui.semantics().get({"dialog2"})->hidden &&
+          modal_ui.semantics().get({"first"})->hidden && !modal_ui.semantics().get({"second"})->hidden,
+          "semantic dialog visibility follows the active dialog");
     check(bool(dialog2->settle(false)) && bool(dialog.open(fallback)), "first dialog can reopen");
     check(nav2.select({"b"}).status == Status::blocked_by_modal && nav2.selected()->id == "a", "modal blocks navigation selection");
     check(modal_ui.add_navigation_list({.id="nav",.kind=Kind::navigation_list}, {{{"x"},u"X",true,{first}}}, {"x"}).status == Status::invalid_value, "dialog member rejected");

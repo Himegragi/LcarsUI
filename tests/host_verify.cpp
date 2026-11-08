@@ -214,7 +214,59 @@ void presentation_before_input(const Appearance& appearance, Report& report) {
                  "IME query and pointer use updated layout before paint");
 }
 
-void draw_list_initial(const Appearance& appearance, Report& report) {
+void write_comparison_bmp(const std::filesystem::path& path, const Image& image) {
+    auto pixels=image.pixels;
+    for(std::size_t i=0;i<pixels.size();i+=4)std::swap(pixels[i],pixels[i+2]);
+    BITMAPFILEHEADER file{}; BITMAPINFOHEADER info{};
+    file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+static_cast<DWORD>(pixels.size());
+    info.biSize=sizeof(info);info.biWidth=image.width;info.biHeight=-image.height;info.biPlanes=1;info.biBitCount=32;info.biSizeImage=static_cast<DWORD>(pixels.size());
+    std::ofstream out(path,std::ios::binary);out.write(reinterpret_cast<const char*>(&file),sizeof(file));out.write(reinterpret_cast<const char*>(&info),sizeof(info));out.write(reinterpret_cast<const char*>(pixels.data()),static_cast<std::streamsize>(pixels.size()));
+    if(!out)throw std::runtime_error("comparison image write failed");
+}
+void write_comparison_failure(const std::filesystem::path& folder, const std::string& name, const detail::GpuComparison& result) {
+    std::filesystem::create_directories(folder);
+    write_comparison_bmp(folder/(name+"-cpu.bmp"),result.reference);
+    write_comparison_bmp(folder/(name+"-gpu.bmp"),result.actual);
+    Image diff{result.reference.width,result.reference.height,std::vector<unsigned char>(result.reference.pixels.size(),255)};
+    for(std::size_t i=0;i<diff.pixels.size();i+=4){
+        int delta=0;for(int c=0;c<4;++c)delta=std::max(delta,std::abs(int(result.reference.pixels[i+c])-int(result.actual.pixels[i+c])));
+        diff.pixels[i]=static_cast<unsigned char>(delta);diff.pixels[i+1]=0;diff.pixels[i+2]=0;
+    }
+    write_comparison_bmp(folder/(name+"-diff.bmp"),diff);
+}
+
+void emit_failure_if_needed(const std::filesystem::path& folder, const std::string& name, const detail::GpuComparison& result, bool passed) {
+    if(!passed)write_comparison_failure(folder,name,result);
+}
+
+// The same recorded frame must be executed by the graphics backend offscreen.
+void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std::filesystem::path& evidence) {
+    Fixture f(appearance, true);
+    f.host.force_scale(1.f);
+    f.settle();
+    f.form.handles.name.focus();
+    report.check("GPU-draw-list", bool(f.host.compare_gpu(960, 720, 1.f)),
+                 "offscreen GPU execution agrees with the CPU reference");
+    auto shifted=f.host.compare_gpu(960,720,1.f,1);
+    auto missing=f.host.compare_gpu(960,720,1.f,2);
+    report.check("GC03-caret", !shifted && (shifted.failed_roles & 2), "one-pixel caret shift is detected in the caret region");
+    report.check("GC03-focus", !missing && (missing.failed_roles & 1), "missing focus indicator is detected in the focus region");
+    auto key=report.appearance+"-injected";
+    emit_failure_if_needed(evidence,key,shifted,bool(shifted));
+    bool images=std::filesystem::exists(evidence/(key+"-cpu.bmp")) && std::filesystem::exists(evidence/(key+"-gpu.bmp")) && std::filesystem::exists(evidence/(key+"-diff.bmp"));
+    report.check("GC05-images", images, "failed comparison writes reference, GPU and difference images");
+    f.host.configure_atlas(64,1);
+    report.check("GA03-GPU", bool(f.host.compare_gpu(960,720,1.f)) && f.host.atlas_peak_pages()<=1,
+                 "bounded atlas segmentation preserves GPU output");
+}
+
+std::string windows_build() {
+    using QueryVersion=LONG (WINAPI*)(OSVERSIONINFOW*);
+    auto proc=reinterpret_cast<QueryVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
+    OSVERSIONINFOW version{};version.dwOSVersionInfoSize=sizeof(version);
+    return proc && proc(&version)==0 ? std::to_string(version.dwBuildNumber) : "unknown";
+}
+void draw_list_initial(const Appearance& appearance, Report& report, std::ofstream* gpu_tsv = nullptr, const std::filesystem::path& evidence = {}) {
     const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
     for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
         Fixture f(appearance, true);
@@ -247,6 +299,40 @@ void draw_list_initial(const Appearance& appearance, Report& report) {
         }
         bool matched=setup && f.host.compare_legacy(width,height,scale);
         report.check("DL01", matched, std::string(names[scenario])+" scale="+std::to_string(scale)+" setup="+std::to_string(setup));
+        auto comparison=f.host.compare_gpu(width,height,scale);
+        const unsigned required = scenario==0 ? 3u : scenario==1 ? 4u : scenario==2 ? 10u : scenario==3 ? 48u : scenario==4 ? 5u : scenario==5 || scenario==6 ? 5u : scenario==9 ? 1u : 0u;
+        auto has_role=[&](std::string_view owner, unsigned role, bool require_popup=false){
+            return std::any_of(comparison.regions.begin(),comparison.regions.end(),[&](const auto& region){
+                return region.owner==owner && (region.role & role) && region.passed && (!require_popup || region.popup);
+            });
+        };
+        bool role_presence=(comparison.roles & required)==required;
+        if(scenario==0)role_presence &= has_role(f.ids.name,1) && has_role(f.ids.name,2);
+        if(scenario==1)role_presence &= has_role(f.ids.name,4);
+        if(scenario==2)role_presence &= has_role(f.ids.name,8) && has_role(f.ids.name,2);
+        if(scenario==3)role_presence &= has_role(f.ids.name,32) && (has_role(f.ids.name,16) || has_role(f.ids.name_error,16));
+        if(scenario==4)role_presence &= has_role(f.ids.region,1) && has_role(f.ids.region,4,true);
+        if(scenario==5 || scenario==6){auto id=f.form.list->handles.list.describe()->id;role_presence &= has_role(id,1) && has_role(id,4);}
+        if(scenario==9)role_presence &= has_role(h.dialog_cancel.describe()->id,1);
+        bool pass=setup && bool(comparison) && role_presence;
+        report.check("GC01", pass, std::string(names[scenario])+" scale="+std::to_string(scale)+" roles="+std::to_string(comparison.roles));
+        if(gpu_tsv){
+            auto key=report.appearance+"-"+names[scenario]+"-"+(scale==1.f?"100":"150");
+            *gpu_tsv << names[scenario] << '\t' << report.appearance << '\t' << width << 'x' << height << '\t' << scale << '\t' << f.host.renderer_name() << '\t' << windows_build() << '\t' <<
+#ifdef NDEBUG
+            "Release"
+#else
+            "Debug"
+#endif
+            << '\t' << double(comparison.comparison.different_pixels)/(width*height) << '\t' << comparison.comparison.maximum_difference << '\t' << comparison.roles << '\t' << comparison.failed_roles << '\t';
+            for(std::size_t i=0;i<comparison.regions.size();++i) {
+                if(i)*gpu_tsv << ',';
+                const auto& r=comparison.regions[i];
+                *gpu_tsv << r.owner << ':' << r.role << ':' << r.popup << ':' << r.bounds.x << ':' << r.bounds.y << ':' << r.bounds.w << ':' << r.bounds.h << ':' << (r.passed?"PASS":"FAIL");
+            }
+            *gpu_tsv << '\t' << comparison.comparison.regions_ok << '\t' << (pass?"PASS":"FAIL") << '\n';
+            emit_failure_if_needed(evidence,key,comparison,pass);
+        }
     }
 }
 
@@ -1409,7 +1495,7 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
         f.host.observe_paint(true);
         for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
             f.x04_size(size.first, size.second, scale);
-            for (const char* page : {"v01", "v02", "v03"}) {
+            for (const auto& page : x04::pages(f.form)) {
                 h.tabs.activate({page}); f.settle();
                 for (const auto& entry : entries) {
                     auto s = x04::describe(entry.handle); if (!s) continue;
@@ -1464,7 +1550,7 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
             auto entries = x04::inventory(f.form);
             struct Outcome { int pages = 0; bool passed = true; };
             std::map<std::string, Outcome> results;
-            for (auto page : {"v01", "v02", "v03"}) {
+            for (const auto& page : x04::pages(f.form)) {
                 bool switched = bool(f.form.handles.tabs.activate({page})); f.settle();
                 for (const auto& entry : entries) {
                     if (entry.page == "shared" || entry.page == "modal" || entry.page == page) continue;
@@ -1500,8 +1586,8 @@ void x04_hidden_matrix(const Appearance& appearance, Report& report) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + id;
-                report.check("X04-hidden-member", result.pages == 2 && result.passed,
-                    sample + ": both inactive pages; semantics, paint, placement and admission");
+                report.check("X04-hidden-member", result.pages == static_cast<int>(x04::pages(f.form).size()) - 1 && result.passed,
+                    sample + ": all inactive pages; semantics, paint, placement and admission");
             }
         }
 }
@@ -1543,8 +1629,9 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto semantic = x04::describe(entry.handle);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
+                const auto palette = appearance.palette(f.form.ui.presentation().variant);
                 auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
-                    ? appearance.palette().accent : appearance.palette().selection;
+                    ? palette.accent : palette.selection;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
                     if (draw.owner != semantic->id || !draw.visible) continue;
@@ -1998,7 +2085,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 bool baseline = x04::baseline_context(f.form);
                 auto semantic = x04::describe(entry.handle);
                 if (!semantic || !detail::component_type(semantic->kind).supports_state(detail::ComponentState::conflict) ||
-                    !x04::group_conflict_supported(*semantic)) continue;
+                    !x04::group_conflict_supported(f.form, *semantic)) continue;
                 bool driven = baseline && x04::drive_group_conflict(f.form, entry);
                 reveal(semantic->id); semantic = x04::describe(entry.handle);
                 std::u16string ink; bool checked_cue = false;
@@ -2959,7 +3046,7 @@ int wmain(int argc, wchar_t** argv) {
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
-            else if (arg == L"--dl01-only") dl01_only = true;
+            else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -2972,7 +3059,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report); } return report.failures ? 1 : 0; }
+        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);

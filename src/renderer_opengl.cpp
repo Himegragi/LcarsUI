@@ -1,9 +1,10 @@
 #include "renderer_opengl.hpp"
 #include "glcorearb.h"
-#include <fstream>
-#include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
+#include <unordered_map>
+
 namespace lcars::detail {
 namespace {
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
@@ -29,6 +30,7 @@ static PROC symbol(const char* name) {
  X(PFNGLDISABLEPROC, Disable) \
  X(PFNGLSCISSORPROC, Scissor) \
  X(PFNGLBLENDFUNCPROC, BlendFunc) \
+ X(PFNGLBLENDFUNCSEPARATEPROC, BlendFuncSeparate) \
  X(PFNGLGENVERTEXARRAYSPROC, GenVertexArrays) \
  X(PFNGLBINDVERTEXARRAYPROC, BindVertexArray) \
  X(PFNGLDELETEVERTEXARRAYSPROC, DeleteVertexArrays) \
@@ -48,11 +50,23 @@ static PROC symbol(const char* name) {
  X(PFNGLGENTEXTURESPROC, GenTextures) \
  X(PFNGLBINDTEXTUREPROC, BindTexture) \
  X(PFNGLTEXIMAGE2DPROC, TexImage2D) \
+ X(PFNGLTEXSUBIMAGE2DPROC, TexSubImage2D) \
  X(PFNGLTEXPARAMETERIPROC, TexParameteri) \
  X(PFNGLDELETETEXTURESPROC, DeleteTextures) \
  X(PFNGLDRAWARRAYSPROC, DrawArrays) \
  X(PFNGLREADPIXELSPROC, ReadPixels) \
- X(PFNGLFINISHPROC, Finish)
+ X(PFNGLFINISHPROC, Finish) \
+ X(PFNGLGETUNIFORMLOCATIONPROC, GetUniformLocation) \
+ X(PFNGLUNIFORM1IPROC, Uniform1i) \
+ X(PFNGLUNIFORM1FPROC, Uniform1f) \
+ X(PFNGLUNIFORM2FPROC, Uniform2f) \
+ X(PFNGLUNIFORM4FPROC, Uniform4f) \
+ X(PFNGLPIXELSTOREIPROC, PixelStorei) \
+ X(PFNGLGENFRAMEBUFFERSPROC, GenFramebuffers) \
+ X(PFNGLBINDFRAMEBUFFERPROC, BindFramebuffer) \
+ X(PFNGLFRAMEBUFFERTEXTURE2DPROC, FramebufferTexture2D) \
+ X(PFNGLCHECKFRAMEBUFFERSTATUSPROC, CheckFramebufferStatus) \
+ X(PFNGLDELETEFRAMEBUFFERSPROC, DeleteFramebuffers)
 struct GL {
 #define FIELD(type, name) type name{};
     GL_FUNCTIONS(FIELD)
@@ -72,37 +86,52 @@ static GLuint shader(GL& g, GLenum kind, const char* source) {
 }
 struct Scene {
     GL& g;
-    GLuint program{}, vao{}, texture{};
+    GLuint program{}, vao{}, textures[4]{}, fbo{}, target{};
+    int atlas_width=0, atlas_height=0;
     explicit Scene(GL& gl) : g(gl) {}
     ~Scene() {
-        if (texture) g.DeleteTextures(1, &texture);
-        if (vao) g.DeleteVertexArrays(1, &vao);
+        if (fbo) g.DeleteFramebuffers(1,&fbo);
+        if (target) g.DeleteTextures(1,&target);
+        g.DeleteTextures(4,textures);
+        if (vao) g.DeleteVertexArrays(1,&vao);
         if (program) g.DeleteProgram(program);
     }
     void init() {
         const char* vertex = R"(#version 330 core
-out vec2 uv;
+uniform vec2 screen; uniform vec4 rect;
+out vec2 pixel;
 void main(){
-    vec2 p[3]=vec2[3](vec2(-1,-1),vec2(3,-1),vec2(-1,3));
-    gl_Position=vec4(p[gl_VertexID],0,1); uv=(p[gl_VertexID]+1)*0.5; uv.y=1.0-uv.y;
+ vec2 corners[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
+ pixel=rect.xy+corners[gl_VertexID]*rect.zw;
+ gl_Position=vec4(pixel.x/screen.x*2.0-1.0,1.0-pixel.y/screen.y*2.0,0,1);
 })";
         const char* fragment = R"(#version 330 core
-in vec2 uv; out vec4 color; uniform sampler2D image;
-void main(){color=texture(image,uv);})";
+in vec2 pixel; out vec4 outputColor;
+uniform vec4 rect; uniform vec4 tint; uniform float radius; uniform int kind;
+uniform vec2 atlasOrigin; uniform sampler2D atlas;
+void main(){
+ float coverage=1.0;
+ if(kind==1){
+   float r=min(radius,min(floor(rect.z/2.0),floor(rect.w/2.0)));
+   vec2 d=max(vec2(0),vec2(r)-min(pixel-rect.xy,rect.xy+rect.zw-pixel));
+   if(d.x>0.0 && d.y>0.0) coverage=floor(clamp(r+0.5-length(d),0.0,1.0)*255.0)/255.0;
+ } else if(kind==2) {
+   coverage=texelFetch(atlas,ivec2(atlasOrigin+floor(pixel-rect.xy)),0).r;
+ }
+ outputColor=vec4(tint.rgb,tint.a*coverage);
+})";
         GLuint vs=0,fs=0;
-        try {
-            vs=shader(g,GL_VERTEX_SHADER,vertex);fs=shader(g,GL_FRAGMENT_SHADER,fragment);
+        try { vs=shader(g,GL_VERTEX_SHADER,vertex); fs=shader(g,GL_FRAGMENT_SHADER,fragment);
             program=g.CreateProgram();g.AttachShader(program,vs);g.AttachShader(program,fs);g.LinkProgram(program);
         } catch (...) {if(vs)g.DeleteShader(vs);if(fs)g.DeleteShader(fs);throw;}
         g.DeleteShader(vs);g.DeleteShader(fs);
-        GLint ok{}; g.GetProgramiv(program, GL_LINK_STATUS, &ok);
-        if (!ok) { char log[4096]{}; g.GetProgramInfoLog(program,sizeof(log),nullptr,log); throw std::runtime_error(log); }
-        g.GenVertexArrays(1,&vao); g.BindVertexArray(vao);
-        g.GenTextures(1,&texture); g.BindTexture(GL_TEXTURE_2D,texture);
-        g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-        g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        GLint ok{};g.GetProgramiv(program,GL_LINK_STATUS,&ok);
+        if(!ok){char log[4096]{};g.GetProgramInfoLog(program,sizeof(log),nullptr,log);throw std::runtime_error(log);}
+        g.GenVertexArrays(1,&vao);g.GenTextures(4,textures);
+        for(auto texture : textures){g.BindTexture(GL_TEXTURE_2D,texture);
+            g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);}
+        g.GenTextures(1,&target);g.GenFramebuffers(1,&fbo);
     }
-
 };
 
 }
@@ -129,31 +158,105 @@ struct Renderer::Impl {
             require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");gl.load();
             GLint major=0,minor=0,profile=0;gl.GetIntegerv(GL_MAJOR_VERSION,&major);gl.GetIntegerv(GL_MINOR_VERSION,&minor);gl.GetIntegerv(GL_CONTEXT_PROFILE_MASK,&profile);
             require((major>3||(major==3&&minor>=3))&&(profile&GL_CONTEXT_CORE_PROFILE_BIT),"Wrong OpenGL context");
-            std::cout<<"OpenGL "<<gl.GetString(GL_VERSION)<<" | "<<gl.GetString(GL_RENDERER)<<'\n';
+            using SwapInterval = BOOL (WINAPI*)(int);
+            auto interval = wglGetProcAddress("wglSwapIntervalEXT");
+            if (interval && interval != reinterpret_cast<PROC>(1) && interval != reinterpret_cast<PROC>(2) &&
+                interval != reinterpret_cast<PROC>(3) && interval != reinterpret_cast<PROC>(-1))
+                reinterpret_cast<SwapInterval>(interval)(1);
             scene=std::make_unique<Scene>(gl);scene->init();
         } catch(...) {release();throw;}
     }
-    void release(){scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
+    void release(){if(context && dc)wglMakeCurrent(dc,context);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
     ~Impl(){release();}
-    void upload(const Image& canvas){
-        auto& g=gl;g.Viewport(0,0,canvas.width,canvas.height);g.Disable(GL_SCISSOR_TEST);g.Disable(GL_BLEND);g.Disable(GL_FRAMEBUFFER_SRGB);g.Disable(GL_DITHER);
-        g.BindTexture(GL_TEXTURE_2D,scene->texture);g.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,canvas.width,canvas.height,0,GL_RGBA,GL_UNSIGNED_BYTE,canvas.pixels.data());
-        g.UseProgram(scene->program);g.BindVertexArray(scene->vao);g.DrawArrays(GL_TRIANGLES,0,3);
+    void execute(const DrawList& list,int width,int height,bool offscreen) {
+        require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");
+        auto& g=gl; auto& sc=*scene;
+        if(offscreen){
+            g.BindTexture(GL_TEXTURE_2D,sc.target);
+            g.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+            g.BindFramebuffer(GL_FRAMEBUFFER,sc.fbo);
+            g.FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,sc.target,0);
+            require(g.CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"Framebuffer incomplete");
+        } else g.BindFramebuffer(GL_FRAMEBUFFER,0);
+        g.Viewport(0,0,width,height);g.Disable(GL_FRAMEBUFFER_SRGB);g.Disable(GL_DITHER);
+        g.Enable(GL_BLEND);g.BlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+        g.UseProgram(sc.program);g.BindVertexArray(sc.vao);g.PixelStorei(GL_UNPACK_ALIGNMENT,1);
+        auto uniform=[&](const char* name){return g.GetUniformLocation(sc.program,name);};
+        g.Uniform2f(uniform("screen"),float(width),float(height));
+        g.Uniform1i(uniform("atlas"),0);
+        // Resolve the complete frame before uploading. An eviction invalidates borrowed
+        // pages, so retry once from the new generation; a frame larger than the atlas
+        // is consumed one glyph at a time instead.
+        std::vector<ResolvedGlyph> resolved(list.commands.size());
+        bool segmented=false;
+        for(int attempt=0;attempt<2;++attempt){
+            bool reset=false;
+            for(std::size_t i=0;i<list.commands.size();++i){
+                const auto& command=list.commands[i];
+                resolved[i]=command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage};
+                if(resolved[i].reset){reset=true;break;}
+            }
+            if(!reset)break;
+            if(attempt==1)segmented=true;
+        }
+        std::unordered_map<const AtlasPage*,unsigned> pages;
+        if(!segmented){
+            for(const auto& glyph:resolved)if(glyph.region.page && !pages.contains(glyph.region.page)){
+                if(pages.size()==4){segmented=true;break;}
+                unsigned slot=static_cast<unsigned>(pages.size());pages.emplace(glyph.region.page,slot);
+                const auto& page=*glyph.region.page;g.BindTexture(GL_TEXTURE_2D,sc.textures[slot]);
+                g.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
+            }
+        }
+        if(!segmented){sc.atlas_width=0;sc.atlas_height=0;}
+        for(std::size_t index=0;index<list.commands.size();++index){
+            const auto& command=list.commands[index];
+            if(command.type==DrawCommand::Type::clear){
+                g.Disable(GL_SCISSOR_TEST);g.ClearColor(command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);g.Clear(GL_COLOR_BUFFER_BIT);continue;
+            }
+            if(command.type==DrawCommand::Type::clip){
+                auto clip=intersect(command.rect,{0,0,width,height});g.Enable(GL_SCISSOR_TEST);
+                g.Scissor(clip.x,height-clip.y-clip.h,clip.w,clip.h);continue;
+            }
+            if(command.type!=DrawCommand::Type::fill && command.type!=DrawCommand::Type::rounded && command.type!=DrawCommand::Type::glyph)continue;
+            auto glyph=segmented?(command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage}):resolved[index];
+            if(command.type==DrawCommand::Type::glyph && !glyph.region.page)continue;
+            auto rect=glyph.rect;if(rect.w<=0 || rect.h<=0)continue;
+            int kind=command.type==DrawCommand::Type::rounded?1:command.type==DrawCommand::Type::glyph?2:0;
+            if(kind==2){const auto& page=*glyph.region.page;
+                if(!segmented)g.BindTexture(GL_TEXTURE_2D,sc.textures[pages.at(&page)]);
+                else {g.BindTexture(GL_TEXTURE_2D,sc.textures[0]);
+                // Each borrowed region is uploaded and drawn before the next
+                // resolution can evict its CPU page.
+                if(sc.atlas_width!=page.width || sc.atlas_height!=page.height){
+                    g.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,nullptr);
+                    sc.atlas_width=page.width;sc.atlas_height=page.height;
+                }
+                auto r=glyph.region.rect;g.PixelStorei(GL_UNPACK_ROW_LENGTH,page.width);
+                g.TexSubImage2D(GL_TEXTURE_2D,0,r.x,r.y,r.w,r.h,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data()+static_cast<std::size_t>(r.y)*page.width+r.x);
+                g.PixelStorei(GL_UNPACK_ROW_LENGTH,0);}
+                g.Uniform2f(uniform("atlasOrigin"),float(glyph.region.rect.x),float(glyph.region.rect.y));}
+            g.Uniform4f(uniform("rect"),float(rect.x),float(rect.y),float(rect.w),float(rect.h));
+            g.Uniform4f(uniform("tint"),command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);
+            g.Uniform1f(uniform("radius"),float(command.radius));g.Uniform1i(uniform("kind"),kind);
+            g.DrawArrays(GL_TRIANGLES,0,6);
+        }
         require(g.GetError()==GL_NO_ERROR,"OpenGL frame failed");
     }
 };
 Renderer::Renderer(HWND window):impl_(std::make_unique<Impl>(window)){}
 Renderer::~Renderer()=default;
-void Renderer::draw(const Image& canvas){impl_->upload(canvas);require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");}
-void Renderer::capture(const Image& canvas,const std::filesystem::path& path){
-    impl_->upload(canvas);auto& gl=impl_->gl;gl.Finish();
-    std::vector<unsigned char> actual(canvas.pixels.size());
-    gl.ReadPixels(0,0,canvas.width,canvas.height,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
-    for(std::size_t i=0;i<actual.size();++i)if(i%4!=3)require(std::abs(int(actual[i])-int(canvas.pixels[((canvas.height-1-static_cast<int>(i/(canvas.width*4)))*canvas.width*4)+(i%(canvas.width*4))]))<=1,"GPU readback does not match rasterized frame");
-    for(std::size_t i=0;i<actual.size();i+=4)std::swap(actual[i],actual[i+2]);
-    BITMAPFILEHEADER file{};BITMAPINFOHEADER info{};file.bfType=0x4d42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+static_cast<DWORD>(actual.size());
-    info.biSize=sizeof(info);info.biWidth=canvas.width;info.biHeight=canvas.height;info.biPlanes=1;info.biBitCount=32;info.biSizeImage=static_cast<DWORD>(actual.size());
-    std::ofstream out(path,std::ios::binary);out.write(reinterpret_cast<const char*>(&file),sizeof(file));out.write(reinterpret_cast<const char*>(&info),sizeof(info));out.write(reinterpret_cast<const char*>(actual.data()),actual.size());require(bool(out),"Screenshot write failed");
-    std::cout<<"PASS GPU readback "<<canvas.width<<'x'<<canvas.height<<'\n';
+void Renderer::draw(const DrawList& list,int width,int height){impl_->execute(list,width,height,false);require(SwapBuffers(impl_->dc)!=FALSE,"SwapBuffers failed");}
+std::string Renderer::name() const {
+    return std::string(reinterpret_cast<const char*>(impl_->gl.GetString(GL_RENDERER))) + " / " +
+        reinterpret_cast<const char*>(impl_->gl.GetString(GL_VERSION));
+}
+Image Renderer::read_back(const DrawList& list,int width,int height){
+    impl_->execute(list,width,height,true);auto& gl=impl_->gl;gl.Finish();
+    Image result{width,height,std::vector<unsigned char>(static_cast<std::size_t>(width)*height*4)};
+    std::vector<unsigned char> raw(result.pixels.size());gl.ReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,raw.data());
+    const auto stride=static_cast<std::size_t>(width)*4;
+    for(int y=0;y<height;++y)std::copy_n(raw.data()+static_cast<std::size_t>(height-1-y)*stride,stride,result.pixels.data()+static_cast<std::size_t>(y)*stride);
+    return result;
 }
 }

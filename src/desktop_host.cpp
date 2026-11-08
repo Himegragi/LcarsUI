@@ -272,8 +272,7 @@ void DesktopHost::paint() {
             command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
             observation.popup, observation.tooltip});
     }
-    auto image = render_cpu(recording.list, r.right, r.bottom);
-    renderer_->draw(image);
+    renderer_->draw(recording.list, r.right, r.bottom);
     ++frames_;
     sync_ime();
     diagnostics_.drain();
@@ -305,6 +304,48 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
     if (!out) throw std::runtime_error("Screenshot write failed");
     diagnostics_.drain(); return frame;
 }
+
+GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
+    auto frame = arrange(width, height, s);
+    RecordingCanvas recording(width, height, appearance_.palette().background);
+    draw(recording, frame, s, true);
+    auto reference = render_cpu(recording.list, width, height);
+    std::vector<Rect> regions;
+    std::vector<GpuRegion> observed;
+    std::string owner; bool popup=false;
+    unsigned roles=0;
+    Rect clip{0,0,width,height};
+    for (std::size_t i=0;i<recording.list.commands.size();++i) {
+        const auto& command=recording.list.commands[i];
+        if(command.type==DrawCommand::Type::clip){clip=intersect(command.rect,{0,0,width,height});continue;}
+        if(command.type==DrawCommand::Type::begin_group){owner=command.owner;popup=command.popup;continue;}
+        if(command.type==DrawCommand::Type::end_group){owner.clear();popup=false;continue;}
+        if(command.role==PaintRole::content)continue;
+        auto glyph=command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage};
+        auto bounds=intersect(glyph.rect,clip);
+        if(bounds.w>0 && bounds.h>0){
+            bool ink=command_ink(recording.list,i,i+1,clip,width,height);
+            regions.push_back(bounds); observed.push_back({bounds,owner,static_cast<unsigned>(command.role),popup,ink,false});
+            if(ink)roles |= static_cast<unsigned>(command.role);
+        }
+    }
+    auto gpu_list=recording.list;
+    for(auto& command:gpu_list.commands){
+        unsigned role=static_cast<unsigned>(command.role);
+        if(fault==1 && (role & static_cast<unsigned>(PaintRole::caret))) ++command.rect.x;
+        if(fault==2 && (role & static_cast<unsigned>(PaintRole::focus_indicator))) command.color.a=0;
+    }
+    auto actual = renderer_->read_back(gpu_list, width, height);
+    auto result=compare_images(reference,actual,regions);
+    unsigned failed_roles=0;
+    for(std::size_t i=0;i<observed.size();++i){
+        observed[i].passed=observed[i].ink && result.region_pass[i];
+        if(!observed[i].passed)failed_roles |= observed[i].role;
+    }
+    bool passed=!failed_roles && result.regions_ok && result.different_pixels*200<=static_cast<std::size_t>(width)*height;
+    return {std::move(reference),std::move(actual),std::move(result),roles,failed_roles,std::move(observed),passed};
+}
+std::string DesktopHost::renderer_name() const { return renderer_->name(); }
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
     auto frame = arrange(width, height, s);

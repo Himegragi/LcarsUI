@@ -269,7 +269,7 @@ Result Form::set_clip_padding(LabelHandle label, std::u16string text) {
     if (list && (id == list->handles.title.describe()->id || id == list->handles.detail.describe()->id))
         return list->set_clip_padding(label, std::move(text));
     if (id != handles.title.describe()->id && id != handles.intro.describe()->id &&
-        (!pages_ || (id != handles.v03_title.describe()->id && id != handles.dialog_result.describe()->id)))
+        (!pages_ || (id != handles.v03_title.describe()->id && id != handles.dialog_result.describe()->id && id != handles.v04_title.describe()->id)))
         return {Status::invalid_value, u"Unknown clipping fixture label"};
     clip_padding_id_ = std::move(id); clip_padding_text_ = std::move(text); return {};
 }
@@ -398,7 +398,19 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.text_size), control(handles.dark), control(handles.compact), control(handles.preview)}, 16, 24));
+    else if (active.id == "v04") {
+        std::vector<Node> items;
+        bool clipping_fixture = clip_padding_id_ == handles.v04_title.describe()->id;
+        if (clipping_fixture) items.push_back(column({}, 0, 700));
+        items.push_back(control(handles.v04_title, 24));
+        items.push_back(control(handles.text_size));
+        items.push_back(control(handles.dark));
+        items.push_back(control(handles.compact));
+        items.push_back(control(handles.preview));
+        if (clipping_fixture) items.push_back(column({}, 0, 700));
+        content = layout::scroll(column(std::move(items), 16, 24));
+    }
+
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));

@@ -111,6 +111,11 @@ public:
     std::optional<Semantics> describe(std::string_view id) const;
     void semantic_frame(const Frame& frame);
     std::string semantic_page(std::string_view id) const;
+    bool confirmation_group_contains(std::string_view button, std::string_view field) const {
+        auto group = confirmation_members_.find(button);
+        return group != confirmation_members_.end() &&
+            std::find(group->second.begin(), group->second.end(), field) != group->second.end();
+    }
     void frame_visibility(std::map<Id, bool, std::less<>> visibility);
     // Current display text: field content, or label text (bound provider wins over static value).
     std::u16string text(std::string_view id) const;
