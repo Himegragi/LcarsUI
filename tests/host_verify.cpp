@@ -157,6 +157,27 @@ struct Fixture {
     }
 };
 
+void presentation_before_input(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.name.focus(); h.name.select(1, 1); f.settle();
+    auto settings = f.form.ui.presentation(); settings.text_size = 28;
+    auto result = f.form.ui.set_presentation(settings);
+    auto* field = f.host.frame().find(h.name);
+    IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+    bool query = SendMessageW(f.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
+    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+    ClientToScreen(f.host.window(), &expected);
+    bool geometry = field && field->text_size == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
+    int x = field ? field->caret_x(2) : 0;
+    int y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+    SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    auto* session = detail::access(f.form.ui).edit(f.ids.name);
+    report.check("PS09", bool(result) && geometry && session && session->selection.caret == 2,
+                 "IME query and pointer use updated layout before paint");
+}
+
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
@@ -2640,6 +2661,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        presentation_before_input(*appearance, report);
         tabs_native(*appearance, report, folder);
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);

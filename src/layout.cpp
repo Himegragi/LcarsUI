@@ -201,7 +201,7 @@ struct Arranger {
     Frame frame;
     bool measuring = false;
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
-    int pixels(int size) const { return d(size ? size : appearance.text_size()); }
+    int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
     int component_width(const Node& node) {
         auto id = node.type == Node::Type::control ? ui.layout_id(node.component) : std::nullopt;

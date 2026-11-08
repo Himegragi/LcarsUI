@@ -204,6 +204,16 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
         bind_action(handles.dialog_cancel, [this] { return handles.dialog.settle(false); });
         bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
+        handles.v04_title = ui.add_label({.id = prefix + "v04.title", .kind = Kind::label, .value = u"Presentation settings"});
+        handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"Text size"}, {12, 28, 1}).value.value();
+        handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"Preview", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"});
+        handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
+        handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
+        handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [](std::function<void()>) { return [] {}; }});
+        handles.text_size.connect_immediate([this](const NumericChange& change) {
+            auto settings = ui.presentation(); settings.text_size = change.value;
+            return ui.set_presentation(settings);
+        });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
@@ -214,10 +224,11 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
                 list->handles.hundred, list->handles.sort, list->handles.disable_eight, list->handles.reset,
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
-                handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}}
+                handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
+            {{"v04"}, u"Presentation", true, {handles.v04_title, handles.text_size, handles.preview}}
         });
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
-            auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : 2; };
+            auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
             page_offsets_[index(from)] = scroll.offset;
             scroll.offset = page_offsets_[index(to)];
         });
@@ -375,6 +386,7 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
+    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.text_size), control(handles.preview)}, 16, 24));
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));
