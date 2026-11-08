@@ -45,4 +45,4 @@ Check `Result::status` and query status before using results. Read-only, disable
 
 The earlier settings MVP is preserved unchanged on the **local** branch `prototype/mvp-settings` at `e6d3fb3`. Its sources, targets, persistence and smoke tests are not part of this S1 branch. Applicable core and host regressions remain in the S1 tests.
 
-The native host currently targets Windows and OpenGL 3.3. Full grapheme, RTL, UIA, MCP, multi-page and cross-monitor DPI coverage are outside S1; see the form documentation for the supported text and IME boundaries. Third-party sources and licenses are listed in [third_party/SOURCES.md](third_party/SOURCES.md).
+The native host currently targets Windows and OpenGL 3.3. Full grapheme, RTL, UIA, MCP, multi-page and cross-monitor DPI coverage are outside S1; see the form documentation for the supported text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).

@@ -28,4 +28,4 @@ The small local GL symbol table is probe code, not a production loader dependenc
 
 MVP reuse: source archives and GL headers copied unchanged from prototype branch codex/prototype-selfdraw-editing, commit 7950cab4d81f8c4b57d3368fa8e77a0faee16020. The MVP extracts and adapts the GL bootstrap, shaping and rasterization approach; it does not include prototype entry points, UIA providers or benchmark fixtures.
 
-Convenience copies of upstream licenses are retained under licenses/: HarfBuzz-COPYING.txt, FreeType-FTL.txt and FreeType-GPLv2.txt. The original source archives remain unchanged.
+The generated [third-party notices](../THIRD_PARTY_NOTICES.txt) contain the shipped licenses. The original source archives remain unchanged.
