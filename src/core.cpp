@@ -2520,7 +2520,7 @@ static Role semantic_role(Kind kind) {
     switch (kind) {
     case Kind::text: return Role::text; case Kind::button: return Role::button; case Kind::label: return Role::label;
     case Kind::checkbox: return Role::checkbox; case Kind::radio_group: return Role::radio_group; case Kind::slider: return Role::slider;
-    case Kind::dropdown: return Role::dropdown; case Kind::list: return Role::list; case Kind::tabs: return Role::tabs; case Kind::progress: return Role::progress;
+    case Kind::dropdown: return Role::dropdown; case Kind::list: case Kind::navigation_list: return Role::list; case Kind::tabs: return Role::tabs; case Kind::progress: return Role::progress;
     }
     return Role::label;
 }
@@ -2560,7 +2560,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         if (it == s.options.end()) return {Status::not_found, {}, {}};
         if (c->kind == Kind::radio_group) n.role = Role::radio_option;
         else if (c->kind == Kind::dropdown) n.role = Role::dropdown_option;
-        else if (c->kind == Kind::list) n.role = Role::list_item;
+        else if (c->kind == Kind::list || c->kind == Kind::navigation_list) n.role = Role::list_item;
         else if (c->kind == Kind::tabs) n.role = Role::tab_item;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
