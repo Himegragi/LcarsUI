@@ -87,6 +87,12 @@ int main() {
     std::cout << "Font families: " << catalog.families().size() << '\n';
     if (catalog.families().empty()) return 1;
     if (catalog.contains(u"Wingdings") || catalog.contains(u"Marlett")) return 6;
+    for (std::size_t i = 1; i < catalog.families().size(); ++i) {
+        const auto& a = catalog.families()[i-1].display_name; const auto& b = catalog.families()[i].display_name;
+        if (CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, reinterpret_cast<const wchar_t*>(a.c_str()), -1,
+                            reinterpret_cast<const wchar_t*>(b.c_str()), -1, nullptr, nullptr, 0) == CSTR_GREATER_THAN) return 49;
+    }
+    if (!lcars::detail::system_font_file(u"Microsoft JhengHei").path.empty() && !catalog.contains(u"Microsoft JhengHei")) return 50;
     lcars::PresentationSettings settings;
     auto resolved = catalog.resolve(settings);
     if (resolved.requested != u"" || !resolved.requested_available || resolved.primary != u"Segoe UI") return 27;
@@ -128,6 +134,15 @@ int main() {
         text.set_primary_family({});
         if (text.atlas_clears()!=clears+1) return 46;
     }
+    if (catalog.contains(u"MingLiU")) {
+        text.set_primary_family(u"MingLiU");
+        auto ming = text.shape(u"?A", 24);
+        if (ming.missing || ming.glyphs.size() != 2 || ming.glyphs[0].font != 10 || ming.glyphs[1].font != 10 || !ming.glyphs[0].face_id || ming.glyphs[0].face_id != ming.glyphs[1].face_id) return 47;
+        text.set_primary_family(u"Segoe UI");
+        auto other = text.shape(u"A", 24);
+        if (other.glyphs.empty() || other.glyphs[0].face_id == ming.glyphs[1].face_id) return 48;
+        text.set_primary_family({});
+    } else std::cout << "MingLiU selection: N/A (not installed)\n";
     auto layout = text.shape(u"笑😀心❤️", 18);
     if (layout.missing != 0) return 2;
     if (std::none_of(layout.glyphs.begin(), layout.glyphs.end(), [](const auto& glyph) { return glyph.cluster == 1 && glyph.font == 9 && glyph.id; }) ||

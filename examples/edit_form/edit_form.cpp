@@ -219,13 +219,13 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.font.connect_source({[this] {
             const auto& f = ui.presentation().font_family;
             return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
-        }, [](std::function<void()>) { return [] {}; }});
+        }, [this](std::function<void()> changed) { font_changed_ = std::move(changed); return [this] { font_changed_ = {}; }; }});
         handles.font.connect_immediate([this](const DropdownChange& change) {
-            if (!change.value) return Result{Status::invalid_value};
+            if (!change.value) return Result{Status::invalid_value, u"Font choice required"};
             const auto& id = change.value->id;
             auto settings = ui.presentation();
             settings.font_family = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
-            return ui.set_presentation(settings);
+            auto result = ui.set_presentation(settings); if (result && font_changed_) font_changed_(); return result;
         });
         handles.font_status = ui.add_label({.id = prefix + "v04.status", .kind = Kind::label}).value.value();
         handles.font_status.connect_source([this, resolve] {
@@ -236,15 +236,19 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
                 (ui.presentation().density == Density::compact ? u"???" : u"???");
         });
         handles.reset_v04 = ui.add_button({.id = prefix + "v04.reset", .kind = Kind::button, .label = u"?? V04"}).value.value();
-        bind_action(handles.reset_v04, [this] { return ui.set_presentation({}); });
+        bind_action(handles.reset_v04, [this] {
+            auto result = ui.set_presentation({}); if (!result) return result;
+            if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_();
+            handles.font.use_latest(); handles.text_size.use_latest(); return Result{};
+        });
         handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
-        handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [](std::function<void()>) { return [] {}; }});
+        handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](std::function<void()> changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
         handles.text_size.connect_immediate([this](const NumericChange& change) {
             auto settings = ui.presentation(); settings.text_size = change.value;
-            return ui.set_presentation(settings);
+            auto result = ui.set_presentation(settings); if (result && text_size_changed_) text_size_changed_(); return result;
         });
         handles.tabs = ui.add_tabs({.id = prefix + "tabs", .kind = Kind::tabs, .label = u"Showcase"}, {
             {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,

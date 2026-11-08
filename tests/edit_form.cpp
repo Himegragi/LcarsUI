@@ -91,6 +91,8 @@ void v04_font_choice_applies_and_reports_fallback() {
           h.font_status.describe()->value.find(u"??") != std::u16string::npos, "Fallback is visible");
     check(bool(h.font.select({"mingliu"})), "Select MingLiU");
     check(form.ui.presentation().font_family == u"MingLiU" && h.font_status.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
+    check(bool(h.text_size.set_value(28)) && bool(h.reset_v04.invoke()), "Reset presentation");
+    check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.text_size.describe()->value == u"16", "Reset updates controls and settings");
 }
 
 void font_switch_reflows_active_composition() {

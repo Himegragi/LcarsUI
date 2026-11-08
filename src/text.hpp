@@ -12,7 +12,7 @@
 #include <optional>
 #include "font_files.hpp"
 namespace lcars::detail {
-struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; };
+struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; std::uint64_t face_id = 0; };
 // Convert a FreeType bitmap row into single-channel coverage. Returns false for
 // unsupported pixel modes; the caller paints a missing-glyph box in that case.
 bool bitmap_coverage(unsigned mode, const unsigned char* row, unsigned width,
