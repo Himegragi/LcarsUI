@@ -35,6 +35,16 @@ public:
     ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override { if (id == expected) SetEvent(received); return S_OK; }
 };
+class StructureEvent final : public IUIAutomationStructureChangedEventHandler {
+    std::atomic<ULONG> refs_{1};
+public:
+    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ~StructureEvent() { CloseHandle(received); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override { if (!out) return E_POINTER; *out = nullptr; if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationStructureChangedEventHandler)) return E_NOINTERFACE; *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this); AddRef(); return S_OK; }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override { if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK; }
+};
 struct Search { DWORD pid; HWND hwnd = nullptr; };
 BOOL CALLBACK find_window(HWND hwnd, LPARAM l) { auto& s = *reinterpret_cast<Search*>(l); DWORD pid = 0; GetWindowThreadProcessId(hwnd, &pid); if (pid == s.pid && IsWindowVisible(hwnd) && !GetWindow(hwnd, GW_OWNER)) { s.hwnd = hwnd; return FALSE; } return TRUE; }
 IUIAutomationElement* find_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
@@ -62,7 +72,14 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "layout event=" << layout_event << '\n'; ok &= layout_event;
         auto nav = find_id(uia, root, L"app.nav"); IUIAutomationSelectionPattern* selection = nullptr; BOOL required = FALSE, multiple = TRUE; CONTROLTYPEID type = 0;
         bool navigation = nav && SUCCEEDED(nav->get_CurrentControlType(&type)) && type == UIA_ListControlTypeId && SUCCEEDED(nav->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&selection))) && selection && SUCCEEDED(selection->get_CurrentIsSelectionRequired(&required)) && required && SUCCEEDED(selection->get_CurrentCanSelectMultiple(&multiple)) && !multiple;
-        navigation = navigation && patterns(uia, root) && select(uia, nav, L"items") && !find_id(uia, root, L"general.name") && patterns(uia, root);
+        navigation = navigation && patterns(uia, root);
+        auto nav_item = find_id(uia, nav, L"items"); auto selected_event = new TextEvent(); selected_event->expected = UIA_SelectionItem_ElementSelectedEventId;
+        auto selected_subscribed = nav_item ? uia->AddAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, nav_item, TreeScope_Element, nullptr, selected_event) : E_FAIL;
+        auto structure_event = new StructureEvent(); auto structure_subscribed = uia->AddStructureChangedEventHandler(root, TreeScope_Element, nullptr, structure_event);
+        bool nav_changed = select(uia, nav, L"items") && SUCCEEDED(selected_subscribed) && SUCCEEDED(structure_subscribed) && WaitForSingleObject(selected_event->received, 3000) == WAIT_OBJECT_0 && WaitForSingleObject(structure_event->received, 3000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(selected_subscribed)) uia->RemoveAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, nav_item, selected_event); selected_event->Release(); if (nav_item) nav_item->Release();
+        if (SUCCEEDED(structure_subscribed)) uia->RemoveStructureChangedEventHandler(root, structure_event); structure_event->Release();
+        auto hidden_name = find_id(uia, root, L"general.name"); navigation = navigation && nav_changed && !hidden_name && patterns(uia, root); if (hidden_name) hidden_name->Release();
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;
         if (item_selection) item_selection->Release(); if (items_list) items_list->Release();
@@ -99,8 +116,9 @@ int wmain(int argc, wchar_t** argv) {
         if (expand) { collapsed = collapsed && SUCCEEDED(expand->Collapse()); closed_offscreen = FALSE; collapsed = collapsed && SUCCEEDED(default_option->get_CurrentIsOffscreen(&closed_offscreen)) && closed_offscreen; }
         dropdown = dropdown && collapsed; if (default_option) default_option->Release();
         if (last) last->Release(); if (expand) expand->Release(); if (font) font->Release();
-        bool about = select(uia, nav, L"about") && patterns(uia, root); auto text = find_id(uia, root, L"about.license_text"); BSTR name = nullptr; type = 0; BOOL focusable = FALSE;
+        bool about = select(uia, nav, L"about"); RedrawWindow(s.hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW); about = about && patterns(uia, root); auto text = find_id(uia, root, L"about.license_text"); BSTR name = nullptr; type = 0; BOOL focusable = FALSE;
         about = about && text && SUCCEEDED(text->get_CurrentControlType(&type)) && type == UIA_TextControlTypeId && SUCCEEDED(text->get_CurrentName(&name)) && name && SysStringLen(name) == 3009 && SUCCEEDED(text->get_CurrentIsKeyboardFocusable(&focusable)) && focusable;
+        if (!about) std::cout << "about details element=" << bool(text) << " type=" << type << " name-length=" << (name ? SysStringLen(name) : 0) << " focusable=" << focusable << '\n';
         SysFreeString(name); if (text) text->Release();
         std::cout << "navigation=" << navigation << " long-dropdown=" << dropdown << " about-text=" << about << '\n'; ok = ok && navigation && dropdown && about;
         if (selection) selection->Release(); if (nav) nav->Release();

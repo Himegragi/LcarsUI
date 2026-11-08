@@ -7,6 +7,7 @@
 namespace {
 WNDPROC original_proc = nullptr;
 edit_form::Form* active_form = nullptr;
+lcars::detail::DesktopHost* active_host = nullptr;
 int root_requests = 0;
 LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (msg == WM_GETOBJECT && static_cast<LONG>(l) == UiaRootObjectId) ++root_requests;
@@ -31,9 +32,14 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 14: lcars::detail::access(active_form->ui).renderer_failed(false); return 0;
         case 15: return static_cast<LRESULT>(active_form->handles.notices.toggle().status);
         case 16: return root_requests;
-        case 17: return static_cast<LRESULT>(active_form->handles.apply.focus().status);
-        case 18: lcars::detail::access(active_form->ui).window_active(true); return static_cast<LRESULT>(active_form->handles.progress_half.focus().status);
-        case 19: { auto r = active_form->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(active_form->ui).key_down({.key=lcars::Key::down}).status); }
+        case 20: return static_cast<LRESULT>(active_form->handles.apply.focus().status);
+        case 21: lcars::detail::access(active_form->ui).window_active(true); return 0;
+        case 23: return static_cast<LRESULT>(active_form->handles.dialog_open.focus().status);
+        case 24: return lcars::detail::access(active_form->ui).focused() == "form.title.pages.v03.half";
+        case 22: { auto r = active_form->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(active_form->ui).key_down({.key=lcars::Key::down}).status); }
+        case 17: { auto settings = active_form->ui.presentation(); settings.text_size = static_cast<int>(l); return static_cast<LRESULT>(active_form->ui.set_presentation(settings).status); }
+        case 19: { const auto* item = lcars::detail::find_placement(active_host->frame(), "form.name"); if (!item) return -1; POINT p{item->caret_x(static_cast<unsigned>(l)), item->bounds.y + item->field.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
+        case 18: { auto node = active_form->ui.semantics().get({"form.name"}); if (!node || !node->text_selection) return -1; return MAKELPARAM(node->text_selection->anchor, node->text_selection->caret); }
         }
     }
     return CallWindowProcW(original_proc, window, msg, w, l);
@@ -79,7 +85,7 @@ int wmain(int argc, wchar_t** argv) {
             std::cout << "Unobserved host unrelated semantic reads: " << (pass ? "PASS" : "FAIL") << " reads=" << unrelated_reads << '\n';
             return pass ? 0 : 1;
         }
-        active_form = &form;
+        active_form = &form; active_host = &host;
         original_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(test_proc)));
         ShowWindow(host.window(), SW_SHOWNOACTIVATE); UpdateWindow(host.window());
         return host.run();

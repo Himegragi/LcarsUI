@@ -34,6 +34,7 @@ struct SemanticNode {
     std::vector<NodeRef> labelled_by, described_by;
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
+    std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.
 class SemanticTree {

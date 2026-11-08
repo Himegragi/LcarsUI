@@ -88,6 +88,18 @@ public:
     }
 };
 
+class TextEvents final : public IUIAutomationEventHandler {
+    std::atomic<ULONG> refs_{1};
+public:
+    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    EVENTID expected = UIA_Text_TextSelectionChangedEventId;
+    ~TextEvents() { CloseHandle(received); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override { if (!out) return E_POINTER; *out = nullptr; if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE; *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK; }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n=--refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override { if (id==expected) SetEvent(received); return S_OK; }
+};
+
 struct Search { DWORD pid; HWND window = nullptr; };
 BOOL CALLBACK find_window(HWND window, LPARAM data) {
     auto& search = *reinterpret_cast<Search*>(data);
@@ -117,6 +129,7 @@ HRESULT select_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t*
 }
 int wmain(int argc, wchar_t** argv) {
     std::cout << std::unitbuf;
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if (argc != 3 || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
     std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" " + argv[2];
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
@@ -149,7 +162,14 @@ int wmain(int argc, wchar_t** argv) {
         if (hidden) hidden->Release(); if (label) label->Release(); SysFreeString(name); SysFreeString(label_id);
         auto structures = new StructureEvents();
         auto structure_subscribed = automation->AddStructureChangedEventHandler(root, TreeScope_Element, nullptr, structures);
-        SendMessageW(search.window, WM_APP + 80, 6, 0);
+        IUIAutomationValuePattern* cached_value = nullptr;
+        HRESULT cached_pattern_hr = element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&cached_value));
+        HRESULT tab_select_hr = select_id(automation, root, L"v02");
+        BSTR cached_text = nullptr; HRESULT cached_read_hr = cached_value ? cached_value->get_CurrentValue(&cached_text) : E_FAIL;
+        BSTR hidden_input = SysAllocString(L"hidden"); HRESULT cached_write_hr = cached_value ? cached_value->SetValue(hidden_input) : E_FAIL;
+        bool cached_case = SUCCEEDED(tab_select_hr) && SUCCEEDED(cached_pattern_hr) && SUCCEEDED(cached_read_hr) && cached_text && cached_write_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
+        std::cout << "UIA10 cached edit: " << (cached_case ? "PASS" : "FAIL") << '\n'; pass &= cached_case;
+        SysFreeString(cached_text); SysFreeString(hidden_input); if (cached_value) cached_value->Release();
         bool structure = SUCCEEDED(structure_subscribed) && WaitForSingleObject(structures->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(structure_subscribed)) automation->RemoveStructureChangedEventHandler(root, structures);
         structures->Release();
@@ -167,7 +187,7 @@ int wmain(int argc, wchar_t** argv) {
         if (list_item) list_item->Release();
         list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.disable")) && select_id(automation, root, L"T008") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
         list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.sort"));
-        bool list_focus = SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 19, 0) == 0 && WaitForSingleObject(focus_events->received, 10000) == WAIT_OBJECT_0;
+        bool list_focus = SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 22, 0) == 0 && WaitForSingleObject(focus_events->received, 10000) == WAIT_OBJECT_0;
         { std::lock_guard lock(focus_events->mutex); list_focus = list_focus && focus_events->observed.size() >= 2 && focus_events->observed[0] == L"T003" && focus_events->observed[1] == L"T004"; }
         std::cout << "UIA14 list focus: " << (list_focus ? "PASS" : "FAIL") << '\n'; pass &= list_focus;
         pass &= patterns(automation, root);
@@ -182,10 +202,122 @@ int wmain(int argc, wchar_t** argv) {
         pass = pass && field && items && patterns(automation, root);
         std::cout << "UIA01 details field=" << field << " items=" << items << '\n';
     }
+    if (pass) {
+        IUIAutomationValuePattern* value_pattern = nullptr;
+        HRESULT pattern_hr = element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value_pattern));
+        auto applied = find_id(automation, root, L"result.applied");
+        BSTR applied_before = nullptr, applied_after = nullptr;
+        HRESULT before_hr = applied ? applied->get_CurrentName(&applied_before) : E_FAIL;
+        BSTR input = SysAllocString(L"\u5de5\u4f5c\u7ad9 A"), actual = nullptr;
+        HRESULT set_hr = value_pattern ? value_pattern->SetValue(input) : E_FAIL;
+        HRESULT read_hr = value_pattern ? value_pattern->get_CurrentValue(&actual) : E_FAIL;
+        HRESULT after_hr = applied ? applied->get_CurrentName(&applied_after) : E_FAIL;
+        SendMessageW(search.window, WM_APP + 80, 9, 0);
+        BOOL read_only = FALSE;
+        HRESULT readonly_hr = value_pattern ? value_pattern->get_CurrentIsReadOnly(&read_only) : E_FAIL;
+        HRESULT rejected = value_pattern ? value_pattern->SetValue(input) : E_FAIL;
+        SendMessageW(search.window, WM_APP + 80, 10, 0);
+        bool value_ok = SUCCEEDED(before_hr) && SUCCEEDED(after_hr) && applied_before && applied_after &&
+            std::wstring(applied_before, SysStringLen(applied_before)) == std::wstring(applied_after, SysStringLen(applied_after)) && SUCCEEDED(pattern_hr) && SUCCEEDED(set_hr) && SUCCEEDED(read_hr) && actual &&
+            std::wstring(actual, SysStringLen(actual)) == L"\u5de5\u4f5c\u7ad9 A" && SUCCEEDED(readonly_hr) && read_only && rejected == UIA_E_INVALIDOPERATION;
+        std::cout << "UIA07 Value: " << (value_ok ? "PASS" : "FAIL") << '\n';
+        pass &= value_ok; SysFreeString(applied_before); SysFreeString(applied_after); if (applied) applied->Release(); SysFreeString(input); SysFreeString(actual); if (value_pattern) value_pattern->Release();
+    }
+    if (pass) {
+        SendMessageW(search.window, WM_APP + 80, 17, 14);
+        IUIAutomationTextPattern* pattern = nullptr; IUIAutomationTextRange* range = nullptr;
+        HRESULT ph = element->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&pattern));
+        HRESULT rh = pattern ? pattern->get_DocumentRange(&range) : E_FAIL;
+        BSTR content = nullptr; HRESULT th = range ? range->GetText(-1, &content) : E_FAIL;
+        bool text_ok = SUCCEEDED(ph) && SUCCEEDED(rh) && SUCCEEDED(th) && content &&
+            std::wstring(content, SysStringLen(content)) == L"\u5de5\u4f5c\u7ad9 A";
+        auto events = new TextEvents();
+        HRESULT subscribed = automation->AddAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, element, TreeScope_Element, nullptr, events);
+        int moved = 0; HRESULT move_hr = range ? range->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, -3, &moved) : E_FAIL;
+        HRESULT select_hr = range ? range->Select() : E_FAIL;
+        auto selection = SendMessageW(search.window, WM_APP + 80, 18, 0);
+        bool selected = SUCCEEDED(move_hr) && moved == -3 && SUCCEEDED(select_hr) && LOWORD(selection) == 0 && HIWORD(selection) == 2 && SUCCEEDED(subscribed) && WaitForSingleObject(events->received, 2000) == WAIT_OBJECT_0;
+        IUIAutomationTextRangeArray* selected_ranges = nullptr; IUIAutomationTextRange* selected_range = nullptr;
+        int selected_count = 0, start_cmp = 1, end_cmp = 1;
+        if (pattern && SUCCEEDED(pattern->GetSelection(&selected_ranges)) && selected_ranges) {
+            selected_ranges->get_Length(&selected_count);
+            if (selected_count == 1 && SUCCEEDED(selected_ranges->GetElement(0, &selected_range)) && selected_range && range) {
+                selected_range->CompareEndpoints(TextPatternRangeEndpoint_Start, range, TextPatternRangeEndpoint_Start, &start_cmp);
+                selected_range->CompareEndpoints(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_End, &end_cmp);
+            }
+        }
+        selected = selected && selected_count == 1 && start_cmp == 0 && end_cmp == 0;
+        if (selected_range) selected_range->Release(); if (selected_ranges) selected_ranges->Release();
+        bool whole_units = true;
+        for (auto unit : {TextUnit_Word, TextUnit_Line, TextUnit_Document}) {
+            IUIAutomationTextRange* expanded = nullptr; BSTR all = nullptr;
+            HRESULT eh = range ? range->Clone(&expanded) : E_FAIL;
+            if (SUCCEEDED(eh) && expanded) eh = expanded->ExpandToEnclosingUnit(unit);
+            if (SUCCEEDED(eh) && expanded) eh = expanded->GetText(-1, &all);
+            whole_units = whole_units && SUCCEEDED(eh) && all && std::wstring(all, SysStringLen(all)) == L"\u5de5\u4f5c\u7ad9 A";
+            SysFreeString(all); if (expanded) expanded->Release();
+        }
+        IUIAutomationTextRange* first = nullptr; if (range) range->Clone(&first);
+        HRESULT expand = first ? first->ExpandToEnclosingUnit(TextUnit_Character) : E_FAIL;
+        SAFEARRAY* rects = nullptr; HRESULT rect_hr = first ? first->GetBoundingRectangles(&rects) : E_FAIL;
+        LONG lo=0, hi=-1; if (rects) { SafeArrayGetLBound(rects,1,&lo); SafeArrayGetUBound(rects,1,&hi); }
+        double rect[4]{}; if (hi-lo+1==4) for (LONG i=0;i<4;++i) SafeArrayGetElement(rects,&i,&rect[i]);
+        IUIAutomationTextRange* hit = nullptr; POINT point{static_cast<LONG>(rect[0]+rect[2]/2), static_cast<LONG>(rect[1]+rect[3]/2)};
+        HRESULT hit_hr = pattern ? pattern->RangeFromPoint(point,&hit) : E_FAIL;
+        int cmp=99; if (hit && first) hit->CompareEndpoints(TextPatternRangeEndpoint_Start,first,TextPatternRangeEndpoint_Start,&cmp);
+        auto pos0=SendMessageW(search.window, WM_APP + 80, 19, 0), pos1=SendMessageW(search.window, WM_APP + 80, 19, 1);
+        bool matches_paint = std::abs(rect[0]-static_cast<short>(LOWORD(pos0))) <= 1 && std::abs(rect[2]-(static_cast<short>(LOWORD(pos1))-static_cast<short>(LOWORD(pos0)))) <= 1 && std::abs(rect[1]-static_cast<short>(HIWORD(pos0))) <= 1;
+        std::cout << "rect=" << rect[0] << "," << rect[1] << "," << rect[2] << "," << rect[3] << " paint=" << static_cast<short>(LOWORD(pos0)) << "," << static_cast<short>(HIWORD(pos0)) << "," << static_cast<short>(LOWORD(pos1)) << " cmp=" << cmp << "\n";
+        RECT field_bounds{}; element->get_CurrentBoundingRectangle(&field_bounds);
+        bool inside = rect[0] >= field_bounds.left && rect[1] >= field_bounds.top && rect[0]+rect[2] <= field_bounds.right && rect[1]+rect[3] <= field_bounds.bottom;
+        bool geometry = inside && matches_paint && SUCCEEDED(expand) && SUCCEEDED(rect_hr) && hi-lo+1==4 && rect[2]>0 && rect[3]>0 && SUCCEEDED(hit_hr) && cmp==0;
+        if (rects) SafeArrayDestroy(rects); rects=nullptr;
+        auto layout_events = new TextEvents(); layout_events->expected = UIA_LayoutInvalidatedEventId;
+        HRESULT layout_subscribed = automation->AddAutomationEventHandler(UIA_LayoutInvalidatedEventId, root, TreeScope_Element, nullptr, layout_events);
+        SendMessageW(search.window, WM_APP + 80, 17, 28);
+        HRESULT resized_hr = first ? first->GetBoundingRectangles(&rects) : E_FAIL;
+        double resized[4]{}; hi=-1; if (rects) { SafeArrayGetUBound(rects,1,&hi); if (hi==3) for (LONG i=0;i<4;++i) SafeArrayGetElement(rects,&i,&resized[i]); }
+        auto new0=SendMessageW(search.window, WM_APP + 80, 19, 0), new1=SendMessageW(search.window, WM_APP + 80, 19, 1);
+        RECT resized_field{}; HRESULT field_hr = element->get_CurrentBoundingRectangle(&resized_field);
+        bool resized_ok = SUCCEEDED(field_hr) && resized_field.bottom - resized_field.top > field_bounds.bottom - field_bounds.top && SUCCEEDED(resized_hr) && hi==3 && resized[3] > rect[3] && std::abs(resized[0]-static_cast<short>(LOWORD(new0))) <= 1 && std::abs(resized[2]-(static_cast<short>(LOWORD(new1))-static_cast<short>(LOWORD(new0)))) <= 1;
+        auto layout_wait = WaitForSingleObject(layout_events->received, 2000);
+        std::cout << "resized=" << resized[0] << "," << resized[1] << "," << resized[2] << "," << resized[3] << " paint=" << static_cast<short>(LOWORD(new0)) << "," << static_cast<short>(LOWORD(new1)) << " layout=" << layout_wait << "\n";
+        resized_ok = resized_ok && SUCCEEDED(layout_subscribed) && layout_wait == WAIT_OBJECT_0;
+        if (SUCCEEDED(layout_subscribed)) automation->RemoveAutomationEventHandler(UIA_LayoutInvalidatedEventId, root, layout_events);
+        layout_events->Release();
+        SendMessageW(search.window, WM_APP + 80, 17, 16);
+        IUIAutomationValuePattern* change = nullptr;
+        if (element) element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&change));
+        BSTR replacement = SysAllocString(L"A\U0001f680B");
+        HRESULT change_hr = change ? change->SetValue(replacement) : E_FAIL;
+        BSTR stale = nullptr; HRESULT stale_hr = range ? range->GetText(-1, &stale) : E_FAIL;
+        IUIAutomationTextRange* unicode_range = nullptr; if (pattern) pattern->get_DocumentRange(&unicode_range);
+        int unicode_moved = 0; HRESULT unicode_hr = unicode_range ? unicode_range->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, -2, &unicode_moved) : E_FAIL;
+        BSTR unicode = nullptr; if (unicode_range) unicode_range->GetText(-1, &unicode);
+        bool revision_ok = SUCCEEDED(change_hr) && stale_hr == static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE) && SUCCEEDED(unicode_hr) && unicode_moved == -2 && unicode && std::wstring(unicode, SysStringLen(unicode)) == L"A";
+        BSTR original = SysAllocString(L"\u5de5\u4f5c\u7ad9 A");
+        if (change) change->SetValue(original);
+        BSTR stale_again = nullptr; auto stale_again_hr = range ? range->GetText(-1, &stale_again) : E_FAIL;
+        revision_ok = revision_ok && stale_again_hr == static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
+        auto ime_setup = SendMessageW(search.window, WM_APP + 80, 11, 0);
+        IUIAutomationTextRange* composing_range = nullptr; if (pattern) pattern->get_DocumentRange(&composing_range);
+        BSTR committed = nullptr; HRESULT committed_hr = composing_range ? composing_range->GetText(-1, &committed) : E_FAIL;
+        HRESULT busy_hr = change ? change->SetValue(original) : E_FAIL;
+        bool composition_ok = ime_setup == 0 && SUCCEEDED(committed_hr) && committed && std::wstring(committed, SysStringLen(committed)) == L"\u5de5\u4f5c\u7ad9 A" && busy_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
+        SendMessageW(search.window, WM_APP + 80, 12, 0); SysFreeString(committed); if (composing_range) composing_range->Release();
+        SysFreeString(stale_again); SysFreeString(original);
+        SysFreeString(replacement); SysFreeString(stale); SysFreeString(unicode); if (unicode_range) unicode_range->Release(); if (change) change->Release();
+        text_ok = text_ok && selected && geometry && resized_ok && revision_ok && whole_units && composition_ok;
+        std::cout << "UIA08 selection=" << selected << " geometry=" << geometry << " UIA17 size=" << resized_ok << '\n';
+        if (SUCCEEDED(subscribed)) automation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, element, events);
+        events->Release(); if (rects) SafeArrayDestroy(rects); if (first) first->Release(); if (hit) hit->Release();
+        std::cout << "UIA08 DocumentRange: " << (text_ok ? "PASS" : "FAIL") << '\n';
+        pass &= text_ok; SysFreeString(content); if (range) range->Release(); if (pattern) pattern->Release();
+    }
     std::cout << "UIA01 tree and identity: " << (pass ? "PASS" : "FAIL") << " hr=0x" << std::hex << hr << '\n';
     if (pass) {
         auto apply = find_id(automation, root, L"form.apply");
-        bool focus = apply && SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 17, 0) == 0 && WaitForSingleObject(focus_events->apply_received, 2000) == WAIT_OBJECT_0;
+        bool focus = apply && SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 20, 0) == 0 && WaitForSingleObject(focus_events->apply_received, 2000) == WAIT_OBJECT_0;
         std::cout << "UIA14 focus event: " << (focus ? "PASS" : "FAIL") << '\n'; pass &= focus;
         auto count = find_id(automation, root, L"result.count");
         auto name_events = new PropertyEvents(); name_events->expected = UIA_NamePropertyId; name_events->string_value = true; name_events->expected_string = L"\u5957\u7528\u6b21\u6578\uff1a1";
@@ -226,8 +358,9 @@ int wmain(int argc, wchar_t** argv) {
         bool radio = mode && SUCCEEDED(mode->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&selection))) && selection &&
             SUCCEEDED(selection->get_CurrentCanSelectMultiple(&multiple)) && !multiple &&
             SUCCEEDED(selection->GetCurrentSelection(&selected)) && selected;
-        int selected_count = 0;
-        radio = radio && SUCCEEDED(selected->get_Length(&selected_count)) && selected_count == 1;
+        int selected_count = 0; IUIAutomationElement* initial_radio = nullptr; BSTR initial_radio_id = nullptr;
+        radio = radio && SUCCEEDED(selected->get_Length(&selected_count)) && selected_count == 1 && SUCCEEDED(selected->GetElement(0, &initial_radio)) && initial_radio && SUCCEEDED(initial_radio->get_CurrentAutomationId(&initial_radio_id)) && initial_radio_id && std::wstring(initial_radio_id) == L"normal";
+        SysFreeString(initial_radio_id); if (initial_radio) initial_radio->Release();
         auto focus_option = find_id(automation, mode, L"focus");
         IUIAutomationSelectionItemPattern* select_item = nullptr;
         auto selection_events = new SelectionEvents();
@@ -300,11 +433,14 @@ int wmain(int argc, wchar_t** argv) {
         PROPERTYID progress_property = UIA_RangeValueValuePropertyId;
         auto progress_subscribed = progress ? automation->AddPropertyChangedEventHandlerNativeArray(progress, TreeScope_Element, nullptr, progress_events, &progress_property, 1) : E_FAIL;
         bool progress_case = progress && SUCCEEDED(progress->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&progress_pattern))) && progress_pattern && SUCCEEDED(progress_pattern->get_CurrentIsReadOnly(&readonly)) && readonly && SUCCEEDED(progress_pattern->get_CurrentValue(&progress_value)) && progress_value == 50 && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v03.above")) && SUCCEEDED(progress_subscribed) && WaitForSingleObject(progress_events->received, 2000) == WAIT_OBJECT_0 && SUCCEEDED(progress_pattern->get_CurrentValue(&progress_value)) && progress_value == 100;
+        if (!progress_case) std::cout << "progress details element=" << bool(progress) << " pattern=" << bool(progress_pattern) << " readonly=" << readonly << " value=" << progress_value << " subscribe=0x" << std::hex << progress_subscribed << std::dec << '\n';
         std::cout << "UIA11 progress: " << (progress_case ? "PASS" : "FAIL") << '\n'; pass &= progress_case;
         if (SUCCEEDED(progress_subscribed)) automation->RemovePropertyChangedEventHandler(progress, progress_events); progress_events->Release(); if (progress_pattern) progress_pattern->Release(); if (progress) progress->Release();
         invoke_id(automation, root, L"form.title.pages.v03.half");
         auto modal_target = find_id(automation, root, L"form.title.pages.v03.temporary"); IUIAutomationInvokePattern* modal_action = nullptr;
         if (modal_target) modal_target->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&modal_action));
+        auto closed_events = new SelectionEvents(); closed_events->expected = UIA_Window_WindowClosedEventId;
+        auto closed_subscribed = automation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, root, TreeScope_Subtree, nullptr, closed_events);
         auto window_events = new SelectionEvents(); window_events->expected = UIA_Window_WindowOpenedEventId;
         auto window_subscribed = automation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, root, TreeScope_Subtree, nullptr, window_events);
         SendMessageW(search.window, WM_APP + 80, 7, 0);
@@ -315,6 +451,9 @@ int wmain(int argc, wchar_t** argv) {
         auto dialog = find_id(automation, root, L"form.title.pages.dialog"); IUIAutomationWindowPattern* window_pattern = nullptr; BOOL is_modal = FALSE;
         bool window = dialog && SUCCEEDED(dialog->GetCurrentPatternAs(UIA_WindowPatternId, IID_PPV_ARGS(&window_pattern))) && window_pattern &&
             SUCCEEDED(window_pattern->get_CurrentIsModal(&is_modal)) && is_modal && SUCCEEDED(window_pattern->Close());
+        bool closed_event = SUCCEEDED(closed_subscribed) && WaitForSingleObject(closed_events->received, 3000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(closed_subscribed)) automation->RemoveAutomationEventHandler(UIA_Window_WindowClosedEventId, root, closed_events); closed_events->Release();
+        std::cout << "UIA12 window closed event: " << (closed_event ? "PASS" : "FAIL") << '\n'; pass &= closed_event;
         std::cout << "UIA12 modal window: " << (window ? "PASS" : "FAIL") << '\n'; pass &= window;
         if (window_pattern) window_pattern->Release(); if (dialog) dialog->Release();
         if (window) SendMessageW(search.window, WM_APP + 80, 7, 0);
@@ -326,13 +465,22 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT modal_hr = modal_action ? modal_action->Invoke() : E_FAIL;
         mapping = mapping && modal_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
         SendMessageW(search.window, WM_APP + 80, 8, 0);
+        auto tip_closed_events = new SelectionEvents(); tip_closed_events->expected = UIA_ToolTipClosedEventId;
+        auto tip_closed_subscribed = automation->AddAutomationEventHandler(UIA_ToolTipClosedEventId, root, TreeScope_Subtree, nullptr, tip_closed_events);
         auto tip_events = new SelectionEvents(); tip_events->expected = UIA_ToolTipOpenedEventId;
         auto tip_subscribed = automation->AddAutomationEventHandler(UIA_ToolTipOpenedEventId, root, TreeScope_Subtree, nullptr, tip_events);
-        auto tip_setup = SendMessageW(search.window, WM_APP + 80, 18, 0);
-        bool tip_event = tip_setup == 0 && SUCCEEDED(tip_subscribed) && WaitForSingleObject(tip_events->received, 3000) == WAIT_OBJECT_0;
+        auto tip_setup = SendMessageW(search.window, WM_APP + 80, 21, 0);
+        auto tip_source = find_id(automation, root, L"form.title.pages.v03.half");
+        auto focus_tip = tip_source ? tip_source->SetFocus() : E_FAIL;
+        bool tip_event = tip_setup == 0 && SUCCEEDED(focus_tip) && SUCCEEDED(tip_subscribed) && WaitForSingleObject(tip_events->received, 3000) == WAIT_OBJECT_0;
         auto tip = find_id(automation, root, L"form.title.pages.v03.half.tip"); CONTROLTYPEID tip_type = 0; BSTR tip_name = nullptr;
         bool tooltip = tip_event && tip && SUCCEEDED(tip->get_CurrentControlType(&tip_type)) && tip_type == UIA_ToolTipControlTypeId && SUCCEEDED(tip->get_CurrentName(&tip_name)) && tip_name && std::wstring(tip_name) == L"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002";
         if (!tooltip) std::cout << "tip setup=" << tip_setup << " event=" << tip_event << " element=" << bool(tip) << " type=" << tip_type << " subscribed=" << std::hex << tip_subscribed << std::dec << '\n';
+        tooltip = tooltip && SendMessageW(search.window, WM_APP + 80, 24, 0) == 1;
+        SendMessageW(search.window, WM_APP + 80, 23, 0);
+        bool tip_closed = SUCCEEDED(tip_closed_subscribed) && WaitForSingleObject(tip_closed_events->received, 3000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(tip_closed_subscribed)) automation->RemoveAutomationEventHandler(UIA_ToolTipClosedEventId, root, tip_closed_events); tip_closed_events->Release(); if (tip_source) tip_source->Release();
+        std::cout << "UIA13 tooltip closed event: " << (tip_closed ? "PASS" : "FAIL") << '\n'; pass &= tip_closed;
         std::cout << "UIA13 tooltip: " << (tooltip ? "PASS" : "FAIL") << '\n'; pass &= tooltip;
         SysFreeString(tip_name); if (tip) tip->Release(); if (SUCCEEDED(tip_subscribed)) automation->RemoveAutomationEventHandler(UIA_ToolTipOpenedEventId, root, tip_events); tip_events->Release();
         if (modal_action) modal_action->Release(); if (modal_target) modal_target->Release();

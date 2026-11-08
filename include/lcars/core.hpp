@@ -95,6 +95,7 @@ std::u16string paste_as_single_line(std::u16string_view text);
 class EditSession {
 public:
     std::u16string text;
+    std::uint64_t revision = 0; // committed content changes, independent of layout and composition
     Selection selection;
     bool composing = false;
     std::u16string preedit;

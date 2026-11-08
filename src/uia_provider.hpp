@@ -1,12 +1,13 @@
 #pragma once
 #include <windows.h>
 #include <memory>
-namespace lcars { class Ui; }
+#include <functional>
+namespace lcars { class Ui; struct Frame; }
 namespace lcars::detail {
 class UiaBridge {
 public:
     struct Impl;
-    UiaBridge(Ui&, HWND);
+    UiaBridge(Ui&, HWND, std::function<const Frame&()>);
     ~UiaBridge();
     LRESULT get_object(WPARAM, LPARAM);
     void dispatch();
