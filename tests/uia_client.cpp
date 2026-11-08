@@ -22,6 +22,23 @@ public:
     }
 };
 
+class SelectionEvents final : public IUIAutomationEventHandler {
+    std::atomic<ULONG> refs_{1};
+public:
+    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ~SelectionEvents() { CloseHandle(received); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE;
+        *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override {
+        if (id == UIA_SelectionItem_ElementSelectedEventId) SetEvent(received); return S_OK;
+    }
+};
+
 struct Search { DWORD pid; HWND window = nullptr; };
 BOOL CALLBACK find_window(HWND window, LPARAM data) {
     auto& search = *reinterpret_cast<Search*>(data);
@@ -110,6 +127,45 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "UIA03 Toggle: " << (toggled ? "PASS" : "FAIL") << '\n'; pass &= toggled;
         if (SUCCEEDED(subscribed)) automation->RemovePropertyChangedEventHandler(notices, events);
         events->Release(); if (toggle) toggle->Release(); if (notices) notices->Release();
+        auto mode = find_id(automation, root, L"form.mode");
+        IUIAutomationSelectionPattern* selection = nullptr;
+        IUIAutomationElementArray* selected = nullptr;
+        BOOL multiple = TRUE;
+        bool radio = mode && SUCCEEDED(mode->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&selection))) && selection &&
+            SUCCEEDED(selection->get_CurrentCanSelectMultiple(&multiple)) && !multiple &&
+            SUCCEEDED(selection->GetCurrentSelection(&selected)) && selected;
+        int selected_count = 0;
+        radio = radio && SUCCEEDED(selected->get_Length(&selected_count)) && selected_count == 1;
+        auto focus_option = find_id(automation, mode, L"focus");
+        IUIAutomationSelectionItemPattern* select_item = nullptr;
+        auto selection_events = new SelectionEvents();
+        HRESULT selection_subscribed = focus_option ? automation->AddAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, focus_option, TreeScope_Element, nullptr, selection_events) : E_FAIL;
+        radio = radio && focus_option && SUCCEEDED(focus_option->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&select_item))) &&
+            select_item && SUCCEEDED(select_item->Select());
+        BOOL is_selected = FALSE;
+        radio = radio && SUCCEEDED(select_item->get_CurrentIsSelected(&is_selected)) && is_selected;
+        radio = radio && SUCCEEDED(selection_subscribed) && WaitForSingleObject(selection_events->received, 2000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(selection_subscribed)) automation->RemoveAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, focus_option, selection_events);
+        selection_events->Release();
+        std::cout << "UIA04 radio selection: " << (radio ? "PASS" : "FAIL") << '\n'; pass &= radio;
+        if (select_item) select_item->Release(); if (focus_option) focus_option->Release();
+        if (selected) selected->Release(); if (selection) selection->Release(); if (mode) mode->Release();
+        auto region = find_id(automation, root, L"form.region");
+        IUIAutomationExpandCollapsePattern* expand = nullptr;
+        ExpandCollapseState expanded{};
+        bool dropdown = region && SUCCEEDED(region->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, IID_PPV_ARGS(&expand))) && expand &&
+            SUCCEEDED(expand->Expand()) && SUCCEEDED(expand->get_CurrentExpandCollapseState(&expanded)) && expanded == ExpandCollapseState_Expanded &&
+            SUCCEEDED(expand->Collapse()) && SUCCEEDED(expand->get_CurrentExpandCollapseState(&expanded)) && expanded == ExpandCollapseState_Collapsed;
+        std::cout << "UIA05 dropdown: " << (dropdown ? "PASS" : "FAIL") << '\n'; pass &= dropdown;
+        if (expand) expand->Release(); if (region) region->Release();
+        auto volume = find_id(automation, root, L"form.volume"); IUIAutomationRangeValuePattern* range = nullptr;
+        double min = 0, max = 0, step = 0, value_now = 0;
+        bool slider = volume && SUCCEEDED(volume->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&range))) && range &&
+            SUCCEEDED(range->get_CurrentMinimum(&min)) && min == 0 && SUCCEEDED(range->get_CurrentMaximum(&max)) && max == 100 &&
+            SUCCEEDED(range->get_CurrentSmallChange(&step)) && step == 5 && SUCCEEDED(range->SetValue(65)) &&
+            range->SetValue(62.5) == E_INVALIDARG && SUCCEEDED(range->get_CurrentValue(&value_now)) && value_now == 65;
+        std::cout << "UIA06 slider: " << (slider ? "PASS" : "FAIL") << '\n'; pass &= slider;
+        if (range) range->Release(); if (volume) volume->Release();
         const HRESULT expected[] = {S_OK, static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE), static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED),
             static_cast<HRESULT>(UIA_E_INVALIDOPERATION), static_cast<HRESULT>(UIA_E_INVALIDOPERATION), static_cast<HRESULT>(UIA_E_INVALIDOPERATION), E_INVALIDARG,
             E_FAIL, E_FAIL, static_cast<HRESULT>(UIA_E_NOTSUPPORTED), static_cast<HRESULT>(UIA_E_INVALIDOPERATION),
@@ -136,6 +192,12 @@ int wmain(int argc, wchar_t** argv) {
         auto modal_target = find_id(automation, root, L"form.title.pages.v03.temporary"); IUIAutomationInvokePattern* modal_action = nullptr;
         if (modal_target) modal_target->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&modal_action));
         SendMessageW(search.window, WM_APP + 80, 7, 0);
+        auto dialog = find_id(automation, root, L"form.title.pages.dialog"); IUIAutomationWindowPattern* window_pattern = nullptr; BOOL is_modal = FALSE;
+        bool window = dialog && SUCCEEDED(dialog->GetCurrentPatternAs(UIA_WindowPatternId, IID_PPV_ARGS(&window_pattern))) && window_pattern &&
+            SUCCEEDED(window_pattern->get_CurrentIsModal(&is_modal)) && is_modal && SUCCEEDED(window_pattern->Close());
+        std::cout << "UIA12 modal window: " << (window ? "PASS" : "FAIL") << '\n'; pass &= window;
+        if (window_pattern) window_pattern->Release(); if (dialog) dialog->Release();
+        if (window) SendMessageW(search.window, WM_APP + 80, 7, 0);
         HRESULT modal_hr = modal_action ? modal_action->Invoke() : E_FAIL;
         mapping = mapping && modal_hr == static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
         SendMessageW(search.window, WM_APP + 80, 8, 0);

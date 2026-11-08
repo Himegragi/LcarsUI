@@ -3,6 +3,8 @@
 #include <objbase.h>
 #include <UIAutomation.h>
 #include <atomic>
+#include <cmath>
+#include <limits>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -101,7 +103,7 @@ BSTR bstr_id(const std::string& s) {
     if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
     return result;
 }
-class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider {
+class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider {
     std::atomic<ULONG> refs_{1};
 public:
     std::shared_ptr<UiaBridge::Impl> ctx; NodeRef ref; int serial; std::uint64_t instance; std::atomic<bool> valid = true, disconnecting = false;
@@ -114,6 +116,11 @@ public:
         else if (iid == __uuidof(IRawElementProviderFragmentRoot) && root()) *out = static_cast<IRawElementProviderFragmentRoot*>(this);
         else if (iid == __uuidof(IInvokeProvider)) *out = static_cast<IInvokeProvider*>(this);
         else if (iid == __uuidof(IToggleProvider)) *out = static_cast<IToggleProvider*>(this);
+        else if (iid == __uuidof(ISelectionProvider)) *out = static_cast<ISelectionProvider*>(this);
+        else if (iid == __uuidof(ISelectionItemProvider)) *out = static_cast<ISelectionItemProvider*>(this);
+        else if (iid == __uuidof(IExpandCollapseProvider)) *out = static_cast<IExpandCollapseProvider*>(this);
+        else if (iid == __uuidof(IRangeValueProvider)) *out = static_cast<IRangeValueProvider*>(this);
+        else if (iid == __uuidof(IWindowProvider)) *out = static_cast<IWindowProvider*>(this);
         if (!*out) return E_NOINTERFACE; AddRef(); return S_OK;
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
@@ -136,6 +143,11 @@ public:
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
             auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && n->role == Role::button) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
+            if (id == UIA_WindowPatternId && n->role == Role::dialog) *result = static_cast<IWindowProvider*>(this);
+            if (id == UIA_RangeValuePatternId && (n->role == Role::slider || n->role == Role::progress)) *result = static_cast<IRangeValueProvider*>(this);
+            if (id == UIA_ExpandCollapsePatternId && n->role == Role::dropdown) *result = static_cast<IExpandCollapseProvider*>(this);
+            if (id == UIA_SelectionPatternId && (n->role == Role::radio_group || n->role == Role::dropdown || n->role == Role::list || n->role == Role::tabs)) *result = static_cast<ISelectionProvider*>(this);
+            if (id == UIA_SelectionItemPatternId && (n->role == Role::radio_option || n->role == Role::dropdown_option || n->role == Role::list_item || n->role == Role::tab_item)) *result = static_cast<ISelectionItemProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -239,6 +251,71 @@ public:
         });
         Release(); if (SUCCEEDED(hr) && *result) *out = static_cast<IRawElementProviderFragment*>(*result); return hr;
     }
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        auto result = std::make_shared<SAFEARRAY*>(nullptr); AddRef();
+        auto hr = ctx->call([this, result] {
+            auto h = check(); if (FAILED(h)) return h;
+            auto children = ctx->ui->semantics().children(ref); if (!children) return status_hr(children.status);
+            std::vector<IRawElementProviderSimple*> selected;
+            for (auto& child : *children) { auto n = ctx->ui->semantics().get(child); if (n && n->selected) selected.push_back(static_cast<IRawElementProviderSimple*>(ctx->provider(child))); }
+            auto a = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(selected.size())); if (!a) return E_OUTOFMEMORY;
+            for (LONG i = 0; i < static_cast<LONG>(selected.size()); ++i) SafeArrayPutElement(a, &i, selected[i]);
+            *result = a; return S_OK;
+        }); Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
+    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
+    HRESULT STDMETHODCALLTYPE Select() override { return perform(Verb::select); }
+    HRESULT STDMETHODCALLTYPE AddToSelection() override { return perform(Verb::select); }
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection() override { return UIA_E_INVALIDOPERATION; }
+    HRESULT STDMETHODCALLTYPE get_IsSelected(BOOL* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selected; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_SelectionContainer(IRawElementProviderSimple** out) override {
+        if (!out) return E_POINTER; *out = nullptr; auto result = std::make_shared<Provider*>(nullptr); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->provider({ref.id}); (*result)->AddRef(); return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = static_cast<IRawElementProviderSimple*>(*result); return hr;
+    }
+    HRESULT STDMETHODCALLTYPE Expand() override { return perform(Verb::open); }
+    HRESULT STDMETHODCALLTYPE Collapse() override { return perform(Verb::cancel); }
+    HRESULT STDMETHODCALLTYPE get_ExpandCollapseState(ExpandCollapseState* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<ExpandCollapseState>(ExpandCollapseState_Collapsed); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->expanded ? ExpandCollapseState_Expanded : ExpandCollapseState_Collapsed; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE SetValue(double value) override {
+        if (!std::isfinite(value) || std::trunc(value) != value || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) return E_INVALIDARG;
+        AddRef(); auto hr = ctx->call([this, value] { auto h = check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref, Verb::set_value, static_cast<int>(value)).status); }); Release(); return hr;
+    }
+    HRESULT range_property(double* out, int which) {
+        if (!out) return E_POINTER; auto result = std::make_shared<double>(0); AddRef();
+        auto hr = ctx->call([this, result, which] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref);
+            auto r = n->range.value_or(SliderRange{0, 100, 1});
+            *result = which == 0 ? n->numeric_value.value_or(0) : which == 1 ? r.minimum : which == 2 ? r.maximum : r.step; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(double* out) override { return range_property(out, 0); }
+    HRESULT STDMETHODCALLTYPE get_Minimum(double* out) override { return range_property(out, 1); }
+    HRESULT STDMETHODCALLTYPE get_Maximum(double* out) override { return range_property(out, 2); }
+    HRESULT STDMETHODCALLTYPE get_SmallChange(double* out) override { return range_property(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_LargeChange(double* out) override { return range_property(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref); *result = n->read_only || n->role == Role::progress; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE Close() override { return perform(Verb::cancel); }
+    HRESULT STDMETHODCALLTYPE SetVisualState(WindowVisualState) override { return UIA_E_INVALIDOPERATION; }
+    HRESULT STDMETHODCALLTYPE WaitForInputIdle(int, BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_CanMaximize(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_CanMinimize(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_IsModal(BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_IsTopmost(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_WindowVisualState(WindowVisualState* out) override { if (!out) return E_POINTER; *out = WindowVisualState_Normal; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_WindowInteractionState(WindowInteractionState* out) override { if (!out) return E_POINTER; *out = WindowInteractionState_Running; return S_OK; }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
     HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
@@ -265,6 +342,18 @@ void UiaBridge::Impl::observe() {
             }
         }
         if (!UiaClientsAreListening()) return;
+        if (event.kind == SemanticEventKind::property_changed && event.property == "selected") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool selected = n->selected;
+            std::thread([p, selected] {
+                auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_BOOL; before.boolVal = selected ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = selected ? VARIANT_TRUE : VARIANT_FALSE;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_SelectionItemIsSelectedPropertyId, before, after);
+                if (selected) UiaRaiseAutomationEvent(p, UIA_SelectionItem_ElementSelectedEventId);
+                p->Release(); if (SUCCEEDED(init)) CoUninitialize();
+            }).detach();
+        }
         if (event.kind == SemanticEventKind::property_changed && event.property == "checked") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->checked) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool checked = *n->checked;
