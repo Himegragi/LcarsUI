@@ -10,6 +10,7 @@
 #include <cmath>
 #include <array>
 #include <set>
+#include <mutex>
 namespace lcars::detail {
 namespace {
 std::string utf8(std::wstring_view value) {
@@ -17,6 +18,14 @@ std::string utf8(std::wstring_view value) {
     int size=WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
     if(size<=0) return {};
     std::string result(size,'\0'); WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr); return result;
+}
+bool first_unreadable_file(const std::filesystem::path& path) {
+    static std::mutex mutex;
+    static std::set<std::wstring> reported;
+    auto key=path.wstring();
+    std::transform(key.begin(),key.end(),key.begin(),::towlower);
+    std::lock_guard lock(mutex);
+    return reported.insert(std::move(key)).second;
 }
 void diagnostic(const wchar_t* message) {
 #ifndef NDEBUG
@@ -87,7 +96,7 @@ struct Text::Impl {
     ~Impl(){for(auto& font:fonts)font.reset();if(library)FT_Done_FreeType(library);}
     Font* font(unsigned id) {
         if(id>=fonts.size()) return nullptr;
-        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
+        if(!attempted[id]) { attempted[id]=true; auto file=lookup(names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
         return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
     }
 };
@@ -155,7 +164,7 @@ Canvas::Canvas(int w,int h,Color color):width(w),height(h),pixels(static_cast<st
 void Canvas::blend(int x,int y,Color color,unsigned alpha){
     if(!clip.contains(x,y)||x<0||y<0||x>=width||y>=height)return;
     if(count_ink && alpha) ++ink;
-    auto index=(static_cast<std::size_t>(height-1-y)*width+x)*4;
+    auto index=(static_cast<std::size_t>(y)*width+x)*4;
     const unsigned char ink[]={color.r,color.g,color.b};
     for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
     pixels[index+3]=255;
@@ -219,6 +228,37 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
             bitmap_coverage(mode,data,bitmap.width,coverage);
             for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col]);
         }
+    }
+}
+void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
+    for(const auto& glyph:layout.glyphs) {
+        auto box=[&] {
+            int left=x+static_cast<int>(std::round(glyph.x));
+            int width=std::max(1,static_cast<int>(std::round(layout.size*.6f)));
+            int height=std::max(1,static_cast<int>(std::round(layout.size*.8f)));
+            int line=std::max(1,static_cast<int>(std::round(layout.size/16.f)));
+            canvas.fill({left,baseline-height,width,line},color); canvas.fill({left,baseline-line,width,line},color);
+            canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
+        };
+        if(!glyph.id) {box();continue;}
+        auto font=impl_->font(glyph.font);
+        if(!font || !font->size(layout.size) || FT_Load_Glyph(font->face,glyph.id,FT_LOAD_DEFAULT) || FT_Render_Glyph(font->face->glyph,FT_RENDER_MODE_NORMAL)) {
+            impl_->report("text.glyph_load_failed", "glyph " + std::to_string(glyph.id),glyph.id); box();continue;
+        }
+        const auto& bitmap=font->face->glyph->bitmap;
+        unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);
+        if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
+            impl_->report("text.glyph_format_unsupported", "pixel mode " + std::to_string(mode),mode); box();continue;
+        }
+        int left=x+static_cast<int>(std::round(glyph.x+glyph.dx))+font->face->glyph->bitmap_left;
+        int top=baseline-static_cast<int>(std::round(glyph.dy))-font->face->glyph->bitmap_top;
+        std::vector<unsigned char> coverage(static_cast<std::size_t>(bitmap.width)*bitmap.rows), row;
+        for(unsigned y=0;y<bitmap.rows;++y) {
+            unsigned source=bitmap.pitch>=0?y:bitmap.rows-1-y;
+            bitmap_coverage(mode,bitmap.buffer+source*std::abs(bitmap.pitch),bitmap.width,row);
+            std::copy(row.begin(),row.end(),coverage.begin()+static_cast<std::size_t>(y)*bitmap.width);
+        }
+        canvas.glyph({left,top,static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows)},color,std::move(coverage));
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {

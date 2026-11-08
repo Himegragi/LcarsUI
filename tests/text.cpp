@@ -176,5 +176,12 @@ int main() {
     lcars::detail::Canvas unsupported(64,64,{255,255,255});
     failed_load.draw(unsupported,valid,0,30,{0,0,0});
     if (std::count(events.begin(), events.end(), "text.glyph_format_unsupported") != 1 || unsupported.pixels == lcars::detail::Canvas(64,64,{255,255,255}).pixels) return 29;
+    events.clear();
+    RecordingCanvas recorded(64,64,{255,255,255});
+    failed_load.draw(recorded,valid,0,30,{0,0,0});
+    if(std::count(events.begin(),events.end(),"text.glyph_format_unsupported")!=1 || recorded.list.commands.size()<=1) return 34;
+    RecordingCanvas recorded_missing(64,64,{255,255,255});
+    without_fonts.draw(recorded_missing,private_glyph,0,30,{0,0,0});
+    if(recorded_missing.list.commands.size()<=1) return 35;
     return 0;
 }

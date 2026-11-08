@@ -1,5 +1,6 @@
 #pragma once
 #include "lcars/appearance.hpp"
+#include "render.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/diagnostics.hpp"
 #include <map>
@@ -48,6 +49,7 @@ public:
     Text& operator=(const Text&)=delete;
     TextLayout shape(std::u16string_view text,int pixels);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
+    void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
     void test_bitmap_mode(int mode); // -1 uses the rasterizer's pixel mode
 private:
