@@ -328,6 +328,7 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
         report.check("GC01", pass, std::string(names[scenario])+" scale="+std::to_string(scale)+" roles="+std::to_string(comparison.roles));
         if(gpu_tsv){
             auto key=report.appearance+"-"+names[scenario]+"-"+(scale==1.f?"100":"150");
+            write_comparison_bmp(evidence/(key+"-cpu.bmp"), comparison.reference);
             *gpu_tsv << names[scenario] << '\t' << report.appearance << '\t' << width << 'x' << height << '\t' << scale << '\t' << f.host.renderer_name() << '\t' << windows_build() << '\t' <<
 #ifdef NDEBUG
             "Release"
@@ -3240,7 +3241,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false, matrix = false, presentation = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_skin=L"web";
@@ -3256,6 +3257,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--trial-screenshots") trial = true;
             else if (arg == L"--presentation-matrix") matrix = true;
             else if (arg == L"--presentation-idle") presentation = true;
+            else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3271,6 +3273,16 @@ int wmain(int argc, wchar_t** argv) {
         if (presentation) return run_presentation_idle(evidence);
         if (trial) return trial_screenshots(evidence);
         if (matrix) return native_presentation_matrix(evidence);
+        if (backend_check) {
+            Fixture fixture(web_appearance(), true);
+            const auto renderer = fixture.host.renderer_name();
+            std::cout << "OpenGL renderer: " << renderer << '\n';
+            if (renderer.find("llvmpipe") == std::string::npos) {
+                std::cerr << "Expected Mesa llvmpipe\n";
+                return 1;
+            }
+            return 0;
+        }
         if (!perf.empty()) return run_perf(evidence,perf,perf_skin,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)

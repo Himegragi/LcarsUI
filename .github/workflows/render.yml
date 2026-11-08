@@ -1,0 +1,43 @@
+﻿name: Render
+on: [push, pull_request]
+
+jobs:
+  render:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
+      MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
+      GALLIUM_DRIVER: llvmpipe
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build full Release configuration
+        shell: pwsh
+        run: ./build.ps1 -Configuration Release -SkipTests
+      - name: Download and verify Mesa
+        shell: pwsh
+        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\lcars-mesa"
+      - name: Install application-local OpenGL DLLs
+        shell: pwsh
+        run: |
+          $source = "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64"
+          Copy-Item -LiteralPath "$source\opengl32.dll", "$source\libgallium_wgl.dll" -Destination build\Release
+      - name: Verify llvmpipe backend
+        shell: pwsh
+        run: |
+          & ./build/Release/lcars_host_verify.exe --backend-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run full CTest suite
+        shell: pwsh
+        run: |
+          ctest --test-dir build/Release --output-on-failure --timeout 900
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload render evidence and CTest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-evidence
+          path: |
+            build/Release/evidence/
+            build/Release/Testing/Temporary/
+          if-no-files-found: warn
