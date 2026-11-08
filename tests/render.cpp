@@ -15,11 +15,23 @@ int main() {
                                               10, 20, 30, 255, 10, 20, 30, 255};
     require(image.pixels == expected, "top-down pixels and clipping");
 
+    require(command_ink(list, 1, list.commands.size(), {0, 0, 2, 2}, 2, 2), "visible draw command has ink");
+    DrawList clipped;
+    clipped.set_clip({0, 0, 0, 0});
+    clipped.fill_rect({0, 0, 2, 2}, {255, 255, 255, 255});
+    require(!command_ink(clipped, 0, clipped.commands.size(), {0, 0, 2, 2}, 2, 2), "empty clip has no ink");
+
     DrawList translucent;
     translucent.clear({200, 100, 50, 255});
     translucent.fill_rect({0, 0, 1, 1}, {0, 0, 0, 110});
     auto blended = render_cpu(translucent, 1, 1);
     require(blended.pixels == std::vector<unsigned char>{113, 56, 28, 255}, "alpha blending");
+
+    DrawList transparent;
+    transparent.clear({0, 0, 0, 0});
+    transparent.fill_rect({0, 0, 1, 1}, {255, 0, 0, 128});
+    auto partial = render_cpu(transparent, 2, 1);
+    require(partial.pixels == std::vector<unsigned char>{128, 0, 0, 128, 0, 0, 0, 0}, "transparent clear and resulting alpha");
 
     DrawList rounded;
     rounded.clear({0, 0, 0, 255});

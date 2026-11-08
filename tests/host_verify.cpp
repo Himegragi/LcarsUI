@@ -167,11 +167,11 @@ void draw_list_initial(const Appearance& appearance, Report& report) {
             if(scenario==1) setup=setup && bool(state.select(f.ids.name,0,2));
             if(scenario==2) setup=setup && bool(state.composition_update(u"\u3118\u311c\u02cb",3));
             if(scenario==3) { setup=setup && bool(h.name.set_value(u"")); h.apply.invoke(); setup=setup && h.name.describe()->invalid; }
-            if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); }
+            if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); setup=setup && h.region.describe()->candidate==OptionValue{"south"}; }
         } else if(scenario<8) {
             setup=bool(h.tabs.activate({"v02"})); auto& list=*f.form.list;
             if(scenario==5) setup=setup && bool(list.handles.twenty.invoke()) && bool(list.handles.list.select({"T003"})) && bool(list.handles.list.focus());
-            if(scenario==6) { setup=setup && bool(list.handles.hundred.invoke()) && bool(list.handles.list.focus()); f.tap(VK_END); }
+            if(scenario==6) { setup=setup && bool(list.handles.hundred.invoke()) && bool(list.handles.list.focus()); f.tap(VK_END); setup=setup && list.selection()==OptionValue{"T100"} && list.handles.list.describe()->candidate==OptionValue{"T100"}; }
             if(scenario==7) setup=setup && bool(list.handles.zero.invoke());
         } else {
             setup=bool(h.tabs.activate({"v03"}));
@@ -179,6 +179,11 @@ void draw_list_initial(const Appearance& appearance, Report& report) {
             if(scenario==9) setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open();
         }
         int width=960,height=720;
+        if(scenario==6 && setup) {
+            auto frame=f.host.layout(width,height,scale,f.form.scroll,{});
+            auto item=frame.find(f.form.list->handles.list);
+            setup=item && !item->options.empty() && intersect(item->options.back(),item->clip)==item->options.back();
+        }
         bool matched=setup && f.host.compare_legacy(width,height,scale);
         report.check("DL01", matched, std::string(names[scenario])+" scale="+std::to_string(scale)+" setup="+std::to_string(setup));
     }

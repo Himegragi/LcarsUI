@@ -1,4 +1,4 @@
-﻿#include "render.hpp"
+#include "render.hpp"
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -22,36 +22,23 @@ void RecordingCanvas::fill(Rect rect, Color color) {
     list.set_clip(clip);
     list.fill_rect(rect, {color.r, color.g, color.b, 255});
     list.commands.back().role = current_role;
-    auto visible = intersect(intersect(rect, clip), {0, 0, width, height});
-    if (count_ink && visible.w > 0 && visible.h > 0)
-        ink += static_cast<std::uint64_t>(visible.w) * visible.h;
+
 }
 void RecordingCanvas::rounded(Rect rect, int radius, Color color) {
     list.set_clip(clip);
     list.rounded_rect(rect, radius, {color.r, color.g, color.b, 255});
     list.commands.back().role = current_role;
-    if (!count_ink) return;
-    auto visible = intersect(intersect(rect, clip), {0, 0, width, height});
-    for (int y = visible.y; y < visible.y + visible.h; ++y)
-        for (int x = visible.x; x < visible.x + visible.w; ++x)
-            if (rounded_coverage(rect, radius, x, y)) ++ink;
+
 }
 void RecordingCanvas::glyph(Rect rect, Color color, std::vector<unsigned char> coverage) {
     list.set_clip(clip);
     DrawCommand command{DrawCommand::Type::glyph, rect, {color.r, color.g, color.b, 255}, 0,
                         std::move(coverage), current_role, {}, false, false};
-    if (count_ink) {
-        auto visible = intersect(intersect(rect, clip), {0, 0, width, height});
-        for (int y = visible.y; y < visible.y + visible.h; ++y)
-            for (int x = visible.x; x < visible.x + visible.w; ++x)
-                if (command.coverage[static_cast<std::size_t>(y - rect.y) * rect.w + x - rect.x]) ++ink;
-    }
     list.commands.push_back(std::move(command));
 }
 void RecordingCanvas::blend(int x, int y, Color color, unsigned alpha) {
     list.set_clip(clip);
     list.fill_rect({x, y, 1, 1}, {color.r, color.g, color.b, static_cast<unsigned char>(alpha)});
-    if (count_ink && alpha && clip.contains(x, y) && x >= 0 && y >= 0 && x < width && y < height) ++ink;
 }
 void RecordingCanvas::begin_group(std::string owner, bool popup, bool tooltip) {
     DrawCommand command{DrawCommand::Type::begin_group, {}, {}, 0, {}, PaintRole::content, std::move(owner), popup, tooltip};
@@ -60,6 +47,23 @@ void RecordingCanvas::begin_group(std::string owner, bool popup, bool tooltip) {
 void RecordingCanvas::end_group() {
     list.commands.push_back({DrawCommand::Type::end_group, {}, {}, 0, {}, PaintRole::content, {}, false, false});
 }
+bool command_ink(const DrawList& list, std::size_t begin, std::size_t end, Rect clip, int width, int height) {
+    clip = intersect(clip, {0, 0, width, height});
+    for (std::size_t i = begin; i < end; ++i) {
+        const auto& command = list.commands[i];
+        if (command.type == DrawCommand::Type::clip) { clip = intersect(command.rect, {0, 0, width, height}); continue; }
+        if (command.type != DrawCommand::Type::fill && command.type != DrawCommand::Type::rounded && command.type != DrawCommand::Type::glyph) continue;
+        if (!command.color.a) continue;
+        auto bounds = intersect(command.rect, clip);
+        for (int y = bounds.y; y < bounds.y + bounds.h; ++y) for (int x = bounds.x; x < bounds.x + bounds.w; ++x) {
+            if (command.type == DrawCommand::Type::fill) return true;
+            if (command.type == DrawCommand::Type::rounded && rounded_coverage(command.rect, command.radius, x, y)) return true;
+            if (command.type == DrawCommand::Type::glyph && command.coverage[static_cast<std::size_t>(y - command.rect.y) * command.rect.w + x - command.rect.x]) return true;
+        }
+    }
+    return false;
+}
+
 Image render_cpu(const DrawList& list, int width, int height) {
     Image image{width, height, std::vector<unsigned char>(static_cast<std::size_t>(width) * height * 4)};
     Rect clip{0, 0, width, height};
@@ -81,9 +85,14 @@ Image render_cpu(const DrawList& list, int width, int height) {
                 unsigned alpha = coverage * command.color.a / 255;
                 auto index = (static_cast<std::size_t>(y) * width + x) * 4;
                 unsigned char values[] = {command.color.r, command.color.g, command.color.b};
+                if (command.type == DrawCommand::Type::clear) {
+                    for (int channel = 0; channel < 3; ++channel) image.pixels[index + channel] = values[channel];
+                    image.pixels[index + 3] = command.color.a;
+                    continue;
+                }
                 for (int channel = 0; channel < 3; ++channel)
                     image.pixels[index + channel] = static_cast<unsigned char>((values[channel] * alpha + image.pixels[index + channel] * (255 - alpha)) / 255);
-                image.pixels[index + 3] = 255;
+                image.pixels[index + 3] = static_cast<unsigned char>(alpha + image.pixels[index + 3] * (255 - alpha) / 255);
             }
         }
     }
