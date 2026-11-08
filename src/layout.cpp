@@ -461,7 +461,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         }
         Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true;
         popup.text_size = source.text_size; popup.clip = window;
-        int row = std::max(1, measure.line_height(popup.text_size) + static_cast<int>(std::lround(appearance.component_presentation().gap * scale)));
+        int row = std::max(static_cast<int>(std::lround(24 * scale)), measure.line_height(popup.text_size) + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)));
         int h = std::min(height, row * std::max(1, static_cast<int>(s->options.size())));
         int w = std::min(width, source.bounds.w);
         int x = std::clamp(source.bounds.x, 0, std::max(0, width - w));
@@ -469,11 +469,11 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         int y = below + h <= height ? below : source.bounds.y - h;
         y = std::clamp(y, 0, std::max(0, height - h));
         popup.bounds = {x, y, w, h};
-        if (s->options.empty()) popup.lines.push_back({{x + static_cast<int>(std::lround(appearance.component_presentation().gap * scale)), y + (row - measure.line_height(popup.text_size)) / 2, w, measure.line_height(popup.text_size)}, appearance.component_presentation().no_options});
+        if (s->options.empty()) popup.lines.push_back({{x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), y + (row - measure.line_height(popup.text_size)) / 2, w, measure.line_height(popup.text_size)}, appearance.component_presentation(ui.presentation().density).no_options});
         for (std::size_t i = 0; i < s->options.size(); ++i) {
             Rect r{x, y + static_cast<int>(i) * row, w, row};
             popup.options.push_back(r);
-            popup.lines.push_back({{r.x + static_cast<int>(std::lround(appearance.component_presentation().gap * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(appearance.component_presentation().body_spacing * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
+            popup.lines.push_back({{r.x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).body_spacing * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
         }
         a.frame.overlays.push_back(std::move(popup));
     }

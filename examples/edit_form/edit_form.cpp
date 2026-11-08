@@ -206,6 +206,12 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
         bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
         handles.v04_title = ui.add_label({.id = prefix + "v04.title", .kind = Kind::label, .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
         handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
+        handles.compact = ui.add_checkbox({.id = prefix + "v04.compact", .kind = Kind::checkbox, .label = u"\u7dfb\u6e4a"}).value.value();
+        handles.compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
+        handles.compact.connect_immediate([this](const BoolChange& change) {
+            auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
+            return ui.set_presentation(settings);
+        });
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
@@ -225,7 +231,7 @@ Form::Form(Ids ids, bool pages) : ids_(std::move(ids)), applied_(initial_name), 
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.preview}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.text_size, handles.compact, handles.preview}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
@@ -386,7 +392,7 @@ layout::Node Form::page() const {
     layout::Node content;
     if (active.id == "v01") content = std::move(form);
     else if (active.id == "v02") content = list->page();
-    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.text_size), control(handles.preview)}, 16, 24));
+    else if (active.id == "v04") content = layout::scroll(column({control(handles.v04_title, 24), control(handles.text_size), control(handles.compact), control(handles.preview)}, 16, 24));
     else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
         grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
               control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));

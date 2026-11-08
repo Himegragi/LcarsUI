@@ -61,7 +61,7 @@ public:
         lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_body, dialog_result;
         lcars::ProgressHandle progress;
         lcars::TooltipHandle progress_tip;
-        lcars::CheckboxHandle notices;
+        lcars::CheckboxHandle notices, compact;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
         lcars::DropdownHandle region;
