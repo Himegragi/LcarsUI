@@ -109,3 +109,5 @@ The V01 behavior cases drive the assembled form through public handles; native k
 | 真實 DPI | `lcars_host_verify --dpi --evidence DIR`：使用前兩個依水平位置排序的螢幕，移動前景視窗並觀察實際 `WM_DPICHANGED`、選取、實體點擊、組字、游標查詢、候選窗定位請求及下拉彈出層。需要不同縮放的螢幕及微軟注音；這會移動視窗並短暫操作鍵盤與指標。候選窗的實際畫面位置仍需目視驗證。 |
 
 驗收紀錄、工具鏈與代表畫面見 [evidence/rework-verification.md](evidence/rework-verification.md)。
+
+Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.

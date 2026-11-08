@@ -10,6 +10,7 @@
 #include "geometry.hpp"
 #include "list_page.hpp"
 #include <imm.h>
+#include <psapi.h>
 #include <msctf.h>
 #include <algorithm>
 #include <atomic>
@@ -3030,6 +3031,71 @@ int run_clipboard(const std::filesystem::path& folder, int repeat) {
     return report.failures ? 1 : 0;
 }
 
+// A fresh process is used for each run so startup age and warmup share one origin.
+int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& skin,
+             bool large, int delay, int duration_ms) {
+    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
+        throw std::runtime_error("Unknown perf scenario");
+    if (skin!=L"web" && skin!=L"material") throw std::runtime_error("Unknown perf appearance");
+    if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
+    const auto& appearance=skin==L"web" ? web_appearance() : material_appearance();
+    edit_form::Form form(edit_form::default_ids(),true);
+    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,Fixture::options());
+    const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
+    host.perf_enable(delay,offscreen);
+    auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
+    x04_original_procs.emplace(host.window(),previous_proc);
+    if (!SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(&x04_window_proc))) throw std::runtime_error("Perf sizing fixture failed");
+    host.force_scale(large && !offscreen ? 2.f : 1.f); host.client_size(1920,1080);
+    RECT actual{}; GetClientRect(host.window(),&actual);
+    if(actual.right!=(large && !offscreen ? 3840 : 1920) || actual.bottom!=(large && !offscreen ? 2160 : 1080)) throw std::runtime_error("Perf client size mismatch");
+    ShowWindow(host.window(),SW_SHOW); SetForegroundWindow(host.window()); SetFocus(host.window()); host.pump();
+    if (GetForegroundWindow()!=host.window() || GetFocus()!=host.window()) throw std::runtime_error("Perf window did not acquire foreground focus");
+    if (scenario==L"list-hold-down") {
+        if (!form.handles.tabs.activate({"v02"}) || !form.list->handles.hundred.invoke() || !form.list->handles.list.focus())
+            throw std::runtime_error("Perf list setup failed");
+    } else if (scenario==L"typing" || scenario==L"idle") {
+        if (!form.handles.tabs.activate({"v01"}) || !form.handles.name.focus()) throw std::runtime_error("Perf typing setup failed");
+    }
+    host.pump();
+    if(scenario!=L"startup") host.perf_reset();
+    auto send=[&](WORD key, DWORD flags) { if(GetForegroundWindow()!=host.window() || GetFocus()!=host.window()) throw std::runtime_error("Perf window lost foreground focus"); INPUT input{}; input.type=INPUT_KEYBOARD; input.ki.wVk=(flags & KEYEVENTF_UNICODE)?0:key; input.ki.wScan=(flags & KEYEVENTF_UNICODE)?key:0; input.ki.dwFlags=flags; if(SendInput(1,&input,sizeof(input))!=1) throw std::runtime_error("SendInput failed"); };
+    auto wait=[&](int milliseconds) { auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(milliseconds); while(std::chrono::steady_clock::now()<end) { host.pump(); auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(end-std::chrono::steady_clock::now()).count(); if(remaining>0) MsgWaitForMultipleObjectsEx(0,nullptr,static_cast<DWORD>(remaining),QS_ALLINPUT,MWMO_INPUTAVAILABLE); } host.pump(); };
+    if(scenario==L"list-hold-down") {
+        int duration=duration_ms ? duration_ms : 5000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration);
+        while(std::chrono::steady_clock::now()<end) { send(VK_DOWN,0); wait(33); } send(VK_DOWN,KEYEVENTF_KEYUP); host.pump();
+    } else if(scenario==L"typing") {
+        int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
+        while(std::chrono::steady_clock::now()<end) { WORD c=(i++%2)?0x4e2d:L'A'; send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(50); }
+    }
+    int paints=0,presents=0; double cpu_ms=0;
+    if(scenario==L"idle") {
+        send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500);
+        int before_paints=host.paint_messages(), before_frames=host.frames(); FILETIME c{},e{},k1{},u1{},k2{},u2{};
+        GetProcessTimes(GetCurrentProcess(),&c,&e,&k1,&u1); wait(duration_ms ? duration_ms : 10000); GetProcessTimes(GetCurrentProcess(),&c,&e,&k2,&u2);
+        auto ticks=[](FILETIME t){ULARGE_INTEGER x{}; x.LowPart=t.dwLowDateTime; x.HighPart=t.dwHighDateTime; return x.QuadPart;};
+        cpu_ms=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paint_messages()-before_paints; presents=host.frames()-before_frames;
+    }
+    auto warm=host.perf_samples().summary(true), steady=host.perf_samples().summary(false);
+    bool ok=scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
+    PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
+    if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
+    std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
+    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
+    for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
+        out << narrow(scenario) << '\t' << narrow(skin) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
+#ifdef NDEBUG
+            << "Release"
+#else
+            << "Debug"
+#endif
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << '\n';
+    }
+    if(!out) throw std::runtime_error("Cannot write perf report");
+    SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previous_proc)); x04_original_procs.erase(host.window());
+    return ok?0:1;
+}
+
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     auto address = reinterpret_cast<std::uintptr_t>(info->ExceptionRecord->ExceptionAddress);
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -3044,10 +3110,16 @@ int wmain(int argc, wchar_t** argv) {
         std::filesystem::path evidence = "host-evidence";
         bool dl01_only = false, backend_check = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
-        int repeat = 1;
+        int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
+        std::wstring perf, perf_skin=L"web";
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
-            if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            if (arg == L"--perf" && i+1<argc) perf=argv[++i];
+            else if (arg == L"--perf-skin" && i+1<argc) perf_skin=argv[++i];
+            else if (arg == L"--perf-large") perf_large=true;
+            else if (arg == L"--paint-delay-ms" && i+1<argc) perf_delay=std::stoi(argv[++i]);
+            else if (arg == L"--perf-duration-ms" && i+1<argc) perf_duration=std::stoi(argv[++i]);
+            else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
             else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--ime") ime = true;
@@ -3072,6 +3144,7 @@ int wmain(int argc, wchar_t** argv) {
             }
             return 0;
         }
+        if (!perf.empty()) return run_perf(evidence,perf,perf_skin,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
