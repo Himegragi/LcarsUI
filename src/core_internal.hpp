@@ -123,6 +123,7 @@ public:
     Result set_value(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
     Result available(std::string_view id) const;
+    Result available_option(std::string_view id, const OptionValue& value) const;
 
     void bind(Id id, Action action);
     void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
@@ -132,6 +133,7 @@ public:
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     void on_semantic_pending(std::function<void()> callback) { semantic_schedule_ = std::move(callback); }
+    void on_reveal(std::function<void(const Id&)> callback) { reveal_requested_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // Native input methods must finalize before core changes the focused editing target.
@@ -326,6 +328,7 @@ private:
     bool semantic_dispatching_ = false;
     bool semantic_inspecting_ = false;
     std::function<void()> semantic_schedule_;
+    std::function<void(const Id&)> reveal_requested_;
     std::vector<SemanticNode> semantic_snapshot();
     void semantic_diff();
     bool committing_removals_ = false;

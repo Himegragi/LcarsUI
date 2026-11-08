@@ -13,9 +13,12 @@ void exercise() {
     auto option = ui.semantics().get({"nav", OptionValue{"one"}});
     check(semantic && semantic->role == Role::list && option && option->role == Role::list_item && option->selected,
           "navigation list exposes list and list-item semantics");
+    check(option && std::find(option->verbs.begin(), option->verbs.end(), Verb::select) != option->verbs.end(), "navigation item advertises select");
     auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
     check(bool(nav->add_member({"one"}, field)), "attach member");
     check(nav->selected()->id == "one", "initial page is selected");
+    check(bool(ui.semantics().perform({"nav", OptionValue{"two"}}, Verb::select)) && nav->selected()->id == "two", "semantic navigation selects page");
+    check(bool(ui.semantics().perform({"nav", OptionValue{"one"}}, Verb::select)), "semantic navigation restores page");
     int invalidations = 0; detail::access(ui).on_invalidate([&] { ++invalidations; });
     int changes = 0; nav->on_page_change([&](auto, auto) { ++changes; });
     check(bool(nav->select({"one"})) && changes == 0 && invalidations == 0, "reselect does not notify or redraw");
@@ -30,6 +33,10 @@ void exercise() {
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {}, {"one"}).status == Status::invalid_value, "empty rejected");
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",true,{}},{{"x"},u"Y",true,{}}}, {"x"}).status == Status::invalid_value, "duplicate rejected");
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",false,{}}}, {"x"}).status == Status::invalid_value, "disabled initial rejected");
+    auto locked_list = ui.add_list({.id="locked", .kind=Kind::list, .read_only=true}, {{{"x"}, u"X", false}}).value.value();
+    check(locked_list.select({"x"}).status == Status::disabled &&
+          ui.semantics().perform({"locked", OptionValue{"x"}}, Verb::select).status == Status::disabled,
+          "disabled item precedes read-only list");
     check(bool(field.focus()), "focus page member");
     bool blurred = false;
     field.on_blur([&] { blurred = true; });

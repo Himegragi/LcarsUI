@@ -6,7 +6,7 @@ namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection>;
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
 struct SemanticEvent { SemanticEventKind kind; NodeRef ref; std::string property; };
 class Subscription {

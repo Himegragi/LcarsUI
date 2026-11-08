@@ -94,18 +94,24 @@ void semantic_tree_reads_registered_components() {
 void semantic_form_operations() {
     edit_form::Form form(ids, true);
     auto& tree = form.ui.semantics();
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"Workstation A"))), "semantic name draft");
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "semantic name draft");
     auto name_node = tree.get({ids.name});
     check(name_node && std::find(name_node->verbs.begin(), name_node->verbs.end(), Verb::undo) != name_node->verbs.end(), "semantic verbs expose available undo");
     check(bool(tree.perform({ids.notices}, Verb::toggle)), "semantic checkbox");
     check(bool(tree.perform({ids.mode, OptionValue{"focus"}}, Verb::select)), "semantic radio selection");
+    check(tree.perform({ids.mode}, Verb::select, OptionValue{"normal"}).status == Status::invalid_value,
+          "item selection requires a logical item reference");
     check(bool(tree.perform({ids.region}, Verb::open)), "semantic dropdown open");
     check(bool(tree.perform({ids.region, OptionValue{"south"}}, Verb::select)), "semantic dropdown selection");
     check(bool(tree.perform({ids.volume}, Verb::set_value, 65)), "semantic slider");
-    check(form.applies() == 0 && bool(tree.perform({ids.apply}, Verb::invoke)), "semantic apply");
-    check(form.applies() == 1 && form.applied() == u"Workstation A" && !form.notices_applied() &&
+    check(form.applies() == 0 && form.applied() == u"測試使用者" && bool(tree.perform({ids.apply}, Verb::invoke)), "semantic apply");
+    check(form.applies() == 1 && form.applied() == u"工作站 A" && !form.notices_applied() &&
           form.mode_applied() == OptionValue{"focus"} && form.region_applied() == OptionValue{"south"} &&
           form.volume_applied() == 65, "semantic F01 results");
+    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"  "))) &&
+          tree.perform({ids.apply}, Verb::invoke).status == Status::invalid_value &&
+          tree.get({ids.name})->error == u"請填寫顯示名稱" && tree.get({ids.name})->focused && form.applies() == 1,
+          "semantic apply rejects blank draft and focuses the error");
 }
 
 void semantic_modal_operations() {
@@ -114,12 +120,18 @@ void semantic_modal_operations() {
     auto prefix = ids.title + ".pages.";
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v03"}}, Verb::select)), "semantic switch page");
     check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)), "semantic open dialog");
+    auto dialog = tree.get({prefix + "dialog"});
+    check(dialog && std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog advertises cancel");
     auto half = tree.get({prefix + "v03.half"});
     check(half && half->blocked_by_modal && half->enabled, "modal background readable");
     check(tree.perform({prefix + "v03.half"}, Verb::invoke).status == Status::blocked_by_modal, "modal rejects background");
     check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
     check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
           "semantic cancel dialog");
+    check(tree.get({prefix + "v03.open"})->focused, "dialog cancel restores opener focus");
+    check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)) &&
+          bool(tree.perform({prefix + "dialog.confirm"}, Verb::invoke)) &&
+          form.progress() == 0 && form.dialog_confirmations() == 1, "semantic P03 confirms exactly once");
 }
 
 void semantic_list_operations() {
@@ -128,6 +140,15 @@ void semantic_list_operations() {
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "select list page");
     check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "load list sample");
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "select duplicate-name item");
+    std::string reveal;
+    detail::access(form.ui).on_reveal([&](const std::string& id) { reveal = id; });
+    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus)) &&
+          tree.get({prefix + "v02.list", OptionValue{"T005"}})->focused &&
+          form.list->selection() == OptionValue{"T006"} && reveal == prefix + "v02.list", "focus item without changing selection and request reveal");
+    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T003"}}, Verb::select)) &&
+          tree.get({prefix + "v02.list", OptionValue{"T005"}})->focused,
+          "selecting an item does not move the focus cursor");
+    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "restore list selection");
     check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)) &&
           form.list->selection() == OptionValue{"T006"}, "list selection survives sorting");
 }
@@ -137,6 +158,11 @@ void semantic_text_and_thread() {
     check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"A\U0001f600B"))), "semantic UTF-16 value");
     check(tree.perform({ids.name}, Verb::select, Selection{1, 2}).status == Status::invalid_value, "semantic selection rejects surrogate split");
     check(bool(tree.perform({ids.name}, Verb::select, Selection{1, 3})), "semantic selection accepts code point");
+    form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3);
+    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::busy &&
+          tree.perform({ids.name}, Verb::select, Selection{1, 3}).status == Status::busy &&
+          tree.text(ids.name).value == u"A\U0001f600B", "composition blocks edits and keeps preedit out of text");
+    detail::access(form.ui).composition_cancel();
     check(bool(tree.perform({ids.name}, Verb::paste, std::u16string(u"x"))) && tree.text(ids.name).value == u"AxB", "semantic paste uses selected range");
     check(bool(tree.perform({ids.name}, Verb::select, Selection{1, 1})) && bool(tree.perform({ids.name}, Verb::copy)), "semantic copy of empty selection succeeds");
     check(bool(tree.perform({ids.apply}, Verb::focus)) && tree.get({ids.apply})->focused, "semantic focus uses handle behavior");
@@ -146,6 +172,26 @@ void semantic_text_and_thread() {
     std::thread worker([&] { read = tree.get({ids.name}).status; write = tree.perform({ids.name}, Verb::undo).status; });
     worker.join();
     check(read == Status::wrong_thread && write == Status::wrong_thread, "semantic access requires UI thread");
+}
+
+void semantic_admission_priority() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    form.handles.name.enable(false);
+    check(tree.perform({ids.name}, Verb::set_value, 7).status == Status::disabled, "disabled precedes invalid argument");
+    form.handles.tabs.activate({"v03"});
+    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::hidden, "hidden precedes disabled");
+    form.handles.progress_half.enable(false); form.handles.dialog_open.invoke();
+    check(tree.perform({ids.title + ".pages.v03.half"}, Verb::invoke).status == Status::disabled, "disabled precedes modal block");
+    form.handles.dialog.settle(false); form.handles.tabs.activate({"v01"}); form.handles.name.enable(true);
+    form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3); form.handles.name.read_only(true);
+    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::read_only, "read-only precedes composition");
+    detail::access(form.ui).composition_cancel();
+    form.handles.name.read_only(false); form.handles.tabs.activate({"v02"});
+    form.list->handles.twenty.invoke(); form.list->handles.disable_eight.invoke(); form.list->handles.list.focus();
+    check(bool(form.handles.dialog.open()), "open dialog over list");
+    check(tree.perform({ids.title + ".pages.v02.list", OptionValue{"T008"}}, Verb::select).status == Status::disabled,
+          "disabled item precedes modal block");
+    form.handles.dialog.settle(false);
 }
 
 void semantic_notifications() {
@@ -168,11 +214,141 @@ void semantic_notifications() {
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
         return e.kind == SemanticEventKind::property_changed && e.ref.id == ids.name && e.property == "value";
     }), "value property notification delivered");
+    check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::text_selection_changed && e.ref.id == ids.name;
+    }), "text selection notification delivered");
     events.clear(); auto prefix = ids.title + ".pages.";
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "switch for structure notification");
     tree.dispatch_events();
     check(std::any_of(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::structure_changed && e.ref.id.empty(); }),
           "page switch changes root structure");
+    events.clear();
+    check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "populate list");
+    tree.dispatch_events(); events.clear();
+    check(bool(tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus)), "focus a logical item");
+    tree.dispatch_events();
+    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::focus_changed; }) == 1 &&
+          std::any_of(events.begin(), events.end(), [&](const auto& e) {
+              return e.kind == SemanticEventKind::focus_changed && e.ref.id == prefix + "v02.list" && e.ref.item == OptionValue{"T005"};
+          }), "focus event names only the focused list item");
+    events.clear();
+    check(bool(tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"共用範本"))), "filter list");
+    tree.dispatch_events();
+    check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::structure_changed && e.ref.id == prefix + "v02.list";
+    }), "filter notifies list structure");
+    events.clear();
+    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"a"));
+    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"b"));
+    tree.dispatch_events();
+    check(std::count_if(events.begin(), events.end(), [&](const auto& e) {
+        return e.kind == SemanticEventKind::text_changed && e.ref.id == prefix + "v02.search";
+    }) == 2, "separate operations retain separate notifications");
+    events.clear(); test::FakeMeasure measure;
+    arrange(form.page(), form.ui, *appearance, measure, 800, 600, 1.f, form.scroll);
+    tree.dispatch_events();
+    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::layout_changed; }) == 1,
+          "layout changes coalesce per arrangement");
+    subscription.reset(); events.clear();
+    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"c")); tree.dispatch_events();
+    check(events.empty(), "unsubscribed listener receives no events");
+}
+
+void semantic_focus_driver() {
+    for (int scenario = 0; scenario < 5; ++scenario) {
+    edit_form::Form form(ids, true); auto& state = detail::access(form.ui);
+    auto entries = x04::inventory(form);
+    if (scenario == 1) for (const auto& entry : entries) std::visit([](const auto& h) {
+        if constexpr (requires { h.enable(false); }) h.enable(false);
+    }, entry.handle);
+    if (scenario == 2) for (const auto& entry : entries) std::visit([](const auto& h) {
+        if constexpr (requires { h.read_only(true); }) h.read_only(true);
+    }, entry.handle);
+    if (scenario == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
+    if (scenario == 4) form.handles.tabs.activate({"v03"});
+    for (const auto& entry : entries) {
+        auto id = state.layout_id(entry.handle); if (!id) continue;
+        auto typed = std::visit([](const auto& handle) -> Status {
+            if constexpr (requires { handle.focus(); }) return handle.focus().status;
+            else return Status::not_supported;
+        }, entry.handle);
+        auto semantic = form.ui.semantics().perform({*id}, Verb::focus).status;
+        check(typed == semantic, "semantic focus matches typed handle");
+    }
+    }
+}
+
+void semantic_verb_drivers() {
+    for (int state = 0; state < 5; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
+                      Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
+        edit_form::Form a(ids, true), b(ids, true);
+        auto typed_entries = x04::inventory(a); auto semantic_entries = x04::inventory(b);
+        auto prepare = [&](edit_form::Form& form, const auto& entries) {
+            if (state == 1) for (const auto& entry : entries) std::visit([](const auto& h) {
+                if constexpr (requires { h.enable(false); }) h.enable(false);
+            }, entry.handle);
+            if (state == 2) for (const auto& entry : entries) std::visit([](const auto& h) {
+                if constexpr (requires { h.read_only(true); }) h.read_only(true);
+            }, entry.handle);
+            if (state == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
+            if (state == 4) form.handles.tabs.activate({"v03"});
+        };
+        prepare(a, typed_entries); prepare(b, semantic_entries);
+        check(typed_entries.size() == semantic_entries.size(), "same inventory for verb driver");
+        for (std::size_t i = 0; i < typed_entries.size() && i < semantic_entries.size(); ++i) {
+            auto expected = std::visit([&](const auto& h) -> Status {
+                using T = std::decay_t<decltype(h)>;
+                if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
+                if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
+                if constexpr (std::is_same_v<T, TextHandle>) {
+                    switch (verb) {
+                    case Verb::set_value: return h.set_value(u"example").status;
+                    case Verb::select: return h.select(0, 0).status;
+                    case Verb::undo: return h.undo().status;
+                    case Verb::redo: return h.redo().status;
+                    case Verb::copy: return h.copy().status;
+                    case Verb::cut: return h.cut().status;
+                    case Verb::paste: return h.paste(u"x").status;
+                    default: break;
+                    }
+                }
+                if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::set_value) return h.set_value(50).status; }
+                if constexpr (std::is_same_v<T, DropdownHandle>) {
+                    if (verb == Verb::open) return h.open().status;
+                    if (verb == Verb::cancel) return h.cancel().status;
+                }
+                return Status::not_supported;
+            }, typed_entries[i].handle);
+            auto ref = detail::access(b.ui).layout_id(semantic_entries[i].handle);
+            if (!ref) { check(expected == Status::not_found, "removed handle is unavailable"); continue; }
+            auto snapshot = b.ui.semantics().get({*ref});
+            if (snapshot && (snapshot->hidden || !snapshot->enabled || snapshot->blocked_by_modal))
+                check(snapshot->verbs.empty(), "restricted node omits verbs");
+            Argument arg;
+            if (verb == Verb::set_value) {
+                auto n = b.ui.semantics().get({*ref});
+                arg = n && n->role == Role::slider ? Argument{50} : Argument{std::u16string(u"example")};
+            } else if (verb == Verb::select) arg = Selection{0, 0};
+            else if (verb == Verb::paste) arg = std::u16string(u"x");
+            auto actual = b.ui.semantics().perform({*ref}, verb, arg).status;
+            check(actual == expected, "semantic verb status matches typed handle or is inapplicable");
+            if (verb == Verb::select) {
+                auto children = b.ui.semantics().children({*ref});
+                if (children) for (const auto& child : *children) if (child.item) {
+                    auto item_status = std::visit([&](const auto& h) -> Status {
+                        using T = std::decay_t<decltype(h)>;
+                        if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
+                                      std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>)
+                            return h.select(*child.item).status;
+                        else if constexpr (std::is_same_v<T, TabsHandle>) return h.activate(*child.item).status;
+                        else return Status::not_supported;
+                    }, typed_entries[i].handle);
+                    auto semantic_status = b.ui.semantics().perform(child, verb).status;
+                    check(item_status == semantic_status, "semantic item selection matches typed handle");
+                }
+            }
+        }
+    }
 }
 
 void write_semantic_tsv(edit_form::Form& form, const char* state) {
@@ -2550,7 +2726,10 @@ int main() {
         {"Semantic modal operations", semantic_modal_operations},
         {"Semantic list operations", semantic_list_operations},
         {"Semantic text and thread", semantic_text_and_thread},
+        {"Semantic admission priority", semantic_admission_priority},
         {"Semantic notifications", semantic_notifications},
+        {"Semantic focus driver", semantic_focus_driver},
+        {"Semantic verb drivers", semantic_verb_drivers},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},

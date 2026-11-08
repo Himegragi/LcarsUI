@@ -142,6 +142,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 44, 0, 0); });
+        detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlas_text_size_ = ui_.presentation().text_size;
         atlas_font_family_ = ui_.presentation().font_family;
         detail::access(ui_).on_presentation([this] {
@@ -194,6 +195,7 @@ void DesktopHost::release() {
     detail::access(ui_).on_presentation({});
     detail::access(ui_).on_invalidate({});
     detail::access(ui_).on_semantic_pending({});
+    detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
     if (window_) KillTimer(window_, tooltip_timer);
     detail::access(ui_).before_focus({});
