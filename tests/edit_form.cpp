@@ -132,6 +132,8 @@ void semantic_modal_operations() {
     check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
     check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
           "semantic cancel dialog");
+    check(tree.perform({prefix + "dialog"}, Verb::cancel).status == Status::hidden &&
+          form.handles.dialog.settle(false).status == Status::hidden, "closed dialog reports hidden through either path");
     check(tree.get({prefix + "v03.open"})->focused, "dialog cancel restores opener focus");
     check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)) &&
           bool(tree.perform({prefix + "dialog.confirm"}, Verb::invoke)) &&

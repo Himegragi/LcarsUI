@@ -1144,11 +1144,12 @@ Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener)
 Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     OperationScope operation(this);
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
     auto it = dialogs_.find(id);
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
     auto& dialog = it->second;
     if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
-    if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
+    if (!modal_ || active_dialog_ != id) return {Status::hidden, u"Dialog is not open"};
     dialog.transitioning = true; dialog_transitioning_ = true;
     struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     modal(false); active_dialog_.clear();
