@@ -128,7 +128,7 @@ const Placement* Frame::find(const ListHandle& handle) const {
 }
 std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y) const {
     if (!item.clip.contains(x, y)) return std::nullopt;
-    for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return i;
+    for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return item.option_start + i;
     return std::nullopt;
 }
 const Placement* Frame::hit(int x, int y) const {
@@ -158,27 +158,33 @@ int ScrollRegion::offset_for_thumb(int thumb_top) const {
 }
 bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     auto& owner = detail::access(ui);
-    if (owner_ != &owner || modal || owner.modal()) return false;
+    if (owner_ != &owner) return false;
+    bool popup_scroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) { return p.dropdown_panel && &owner.dropdown_scroll(p.id) == &state; });
+    if ((modal || owner.modal()) && !popup_scroll) return false;
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
     if (region == regions.end()) return false;
     int next = std::clamp(offset, 0, region->maximum);
     if (next == state.offset) return false;
     state.offset = next;
-    owner.scrolled();
+    if (popup_scroll) owner.popup_scrolled();
+    else owner.scrolled();
     return true;
 }
 bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
     auto& owner = detail::access(ui);
-    if (modal || owner.modal() || owner_ != &owner) return false;
+    if (owner_ != &owner) return false;
     // A popup owns its own wheel input; it must not scroll the background beneath it.
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
-        if (!it->popup || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
+        if (!it->dropdown_panel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
         if (it->kind == Kind::dropdown) {
             auto current = detail::access(ui).describe(it->id);
             if (!current || !current->expanded) continue; // the frame can outlive a dismissed panel
+            auto& state = owner.dropdown_scroll(it->id);
+            return scroll_to(ui, state, state.offset - delta);
         }
         return false;
     }
+    if (modal || owner.modal()) return false;
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->clip.contains(x, y)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
@@ -465,7 +471,8 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         a.frame.extent = outer.extent; a.frame.maximum = outer.maximum; a.frame.offset = outer.offset;
     }
     // Overlay placement is relative to its visible source, but clipped to the window, not its scroll region.
-    for (const auto& source : a.frame.items) {
+    auto popup_sources = a.frame.modal ? a.frame.overlays : a.frame.items;
+    for (const auto& source : popup_sources) {
         if (source.kind != Kind::dropdown) continue;
         auto s = detail::access(ui).describe(source.id);
         if (!s || !s->expanded) continue;
@@ -473,21 +480,48 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
             detail::access(ui).close_popup();
             continue;
         }
-        Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true;
+        Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true; popup.dropdown_panel = true;
         popup.text_size = source.text_size; popup.clip = window;
         int row = std::max(static_cast<int>(std::lround(24 * scale)), measure.line_height(popup.text_size) + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)));
-        int h = std::min(height, row * std::max(1, static_cast<int>(s->options.size())));
+        int h = std::min(height, row * std::max(1, std::min(10, static_cast<int>(s->options.size()))));
         int w = std::min(width, source.bounds.w);
         int x = std::clamp(source.bounds.x, 0, std::max(0, width - w));
-        int below = source.bounds.y + source.bounds.h;
-        int y = below + h <= height ? below : source.bounds.y - h;
-        y = std::clamp(y, 0, std::max(0, height - h));
+        int below = std::clamp(source.bounds.y + source.bounds.h, 0, height);
+        int above = std::clamp(source.bounds.y, 0, height);
+        int below_space = height - below;
+        if (h > below_space && h > above) h = std::max(below_space, above);
+        int y = h <= below_space ? below : above - h;
         popup.bounds = {x, y, w, h};
         if (s->options.empty()) popup.lines.push_back({{x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), y + (row - measure.line_height(popup.text_size)) / 2, w, measure.line_height(popup.text_size)}, appearance.component_presentation(ui.presentation().density).no_options});
-        for (std::size_t i = 0; i < s->options.size(); ++i) {
-            Rect r{x, y + static_cast<int>(i) * row, w, row};
+        auto& state = detail::access(ui).dropdown_scroll(source.id);
+        int extent = row * static_cast<int>(s->options.size());
+        int maximum = std::max(0, extent - h);
+        state.offset = std::clamp(state.offset, 0, maximum);
+        if (detail::access(ui).dropdown_reveal(source.id) && s->candidate) {
+            for (std::size_t i=0; i<s->options.size(); ++i) if (s->options[i].value == *s->candidate) {
+                int top = static_cast<int>(i) * row;
+                if (top < state.offset) state.offset = top;
+                else if (top + row > state.offset + h) state.offset = std::min(maximum, top + row - h);
+                break;
+            }
+        }
+        int bar = maximum ? std::max(1, static_cast<int>(std::lround(8 * scale))) : 0;
+        popup.clip = popup.bounds;
+        std::size_t first = state.offset / row;
+        if (first) --first;
+        std::size_t last = std::min(s->options.size(), static_cast<std::size_t>((state.offset + h + row - 1) / row + 1));
+        popup.option_start = first;
+        for (std::size_t i = first; i < last; ++i) {
+            Rect r{x, y + static_cast<int>(i) * row - state.offset, w - bar, row};
             popup.options.push_back(r);
             popup.lines.push_back({{r.x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).body_spacing * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
+        }
+        if (maximum) {
+            ScrollRegion region; region.state=&state; region.viewport=region.clip=popup.bounds;
+            region.track={x+w-bar,y,bar,h}; region.extent=extent; region.maximum=maximum; region.offset=state.offset;
+            int thumb=std::min(h,std::max(static_cast<int>(std::lround(24*scale)),h*h/extent));
+            region.thumb={region.track.x,y+(h-thumb)*state.offset/maximum,bar,thumb};
+            a.frame.regions.push_back(region);
         }
         a.frame.overlays.push_back(std::move(popup));
     }

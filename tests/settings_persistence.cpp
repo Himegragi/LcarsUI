@@ -47,13 +47,27 @@ void validation() {
     auto extra=replace("\"version\": 1","\"extra\": 1, \"version\": 1");
     auto decoded=settings_demo::parse_settings(extra); test::check(decoded && settings_demo::write_settings(*decoded).find("extra")==std::string::npos,"unknown fields discarded");
 }
+void appearance_persistence() {
+    auto path=std::filesystem::temp_directory_path()/"lcars-persistence-appearance";
+    std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
+    settings_demo::Demo demo; demo.on_save([&](const auto& doc) { return store.save(doc); });
+    auto settings=demo.ui.presentation(); settings.font_family=u"NoSuchFont"; settings.text_size=20;
+    test::check(bool(demo.set_presentation(settings)) && bool(demo.save()), "save appearance settings");
+    settings.text_size=28; test::check(bool(demo.set_presentation(settings)), "make unsaved size change");
+    auto loaded=store.load(); test::check(bool(loaded.document), "load saved appearance");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
+    test::check(reopened.ui.presentation().text_size==20, "reopen retains saved size");
+    auto font=reopened.ui.semantics().get({"appearance.font",lcars::OptionValue{"family:NoSuchFont"}});
+    test::check(font && font->selected && font->name==u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "saved missing font stays selected");
+    std::filesystem::remove_all(path);
+}
 void failures();
 void load_failures();
 void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"appearance persistence",appearance_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

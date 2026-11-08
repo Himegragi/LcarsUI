@@ -550,6 +550,41 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
                  "custom color and hit region render; inside click and Enter each activate once");
 }
 
+void long_dropdown_native(const Appearance& appearance, Report& report) {
+    std::optional<OptionValue> value=OptionValue{"0"}; std::function<void()> changed; bool invoked=false;
+    Ui ui; ScrollState scroll; std::vector<RadioOption> options;
+    for (int i=0; i<150; ++i) { auto id=std::to_string(i); options.push_back({{id},std::u16string(id.begin(),id.end())}); }
+    auto dropdown=ui.add_dropdown({.id="native.dropdown",.kind=Kind::dropdown,.label=u"Font"},std::move(options)).value.value();
+    auto other=ui.add_button({.id="native.other",.kind=Kind::button,.label=u"Other"}).value.value();
+    dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
+    dropdown.connect_immediate([&](const DropdownChange& c) { value=c.value; if (changed) changed(); return Result{}; });
+    other.bind([&] { invoked=true; return Result{}; });
+    auto root=layout::row({layout::control(dropdown),layout::control(other)},8);
+    DesktopOptions settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
+    ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(1.f); host.client_size(640,480);
+    dropdown.open(); host.pump(); host.paint();
+    auto post=[&](UINT message,WPARAM w,LPARAM l) { PostMessageW(host.window(),message,w,l); host.pump(); };
+    auto region=host.frame().regions.back();
+    POINT point{region.viewport.x+4,region.viewport.y+4}; ClientToScreen(host.window(),&point);
+    post(WM_MOUSEWHEEL,MAKEWPARAM(0,static_cast<WORD>(-120)),MAKELPARAM(point.x,point.y)); host.paint();
+    bool wheel=host.frame().regions.back().offset>0 && dropdown.describe()->expanded && value->id=="0";
+    region=host.frame().regions.back();
+    POINT start{region.thumb.x+region.thumb.w/2,region.thumb.y+region.thumb.h/2};
+    POINT end{start.x,region.track.y+region.track.h-region.thumb.h/2};
+    post(WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(start.x,start.y));
+    post(WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(end.x,end.y));
+    post(WM_LBUTTONUP,0,MAKELPARAM(end.x,end.y)); host.paint();
+    auto frame=host.frame(); bool drag=frame.regions.back().offset==frame.regions.back().maximum && dropdown.describe()->expanded;
+    bool selected=false;
+    if (drag) { auto row=frame.overlays.back().options.back();
+        post(WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(row.x+4,row.y+row.h/2));
+        post(WM_LBUTTONUP,0,MAKELPARAM(row.x+4,row.y+row.h/2)); selected=value->id=="149"; }
+    dropdown.open(); host.pump(); host.paint(); auto target=host.frame().find(other)->bounds;
+    post(WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(target.x+4,target.y+target.h/2));
+    post(WM_LBUTTONUP,0,MAKELPARAM(target.x+4,target.y+target.h/2));
+    report.check("DD-native",wheel && drag && selected && invoked, "wheel, drag, selected last row and outside click");
+}
+
 void list_native(const Appearance& appearance, Report& report) {
     list_page::Page page;
     DesktopOptions options;
@@ -2942,6 +2977,7 @@ int run(const std::filesystem::path& folder) {
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);
         tooltip_native(*appearance, report, folder);
+        long_dropdown_native(*appearance, report);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
         font_diagnostic_reaches_application(*appearance, report);
@@ -3266,7 +3302,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_skin=L"web";
@@ -3284,6 +3320,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--presentation-idle") presentation = true;
             else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--r06-only") r06_only = true;
+            else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -3295,6 +3332,14 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x04-selection-only") x04_selection_only = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+        }
+        if (dd_only) {
+            std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                long_dropdown_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
         }
         if (presentation) return run_presentation_idle(evidence);
         if (trial) return trial_screenshots(evidence);
