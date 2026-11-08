@@ -2385,10 +2385,10 @@ void both_appearances_give_same_results() {
 
 void presentation_combination_matrix() {
     presentation_matrix::run(ids, *appearance, [&](edit_form::Form& form) {
-        return [&](int width, int height, float scale, std::string_view reveal) {
+        return presentation_matrix::Driver{[&](int width, int height, float scale, std::string_view reveal) {
             test::FakeMeasure measure;
             return arrange(form.page(), form.ui, *appearance, measure, width, height, scale, form.scroll, reveal);
-        };
+        }, {}};
     }, [](bool ok, const std::string& message) { check(ok, message.c_str()); });
 }
 

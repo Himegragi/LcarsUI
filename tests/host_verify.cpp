@@ -15,6 +15,7 @@
 #include <msctf.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -2772,6 +2773,12 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         UINT second = move(monitors[1]);
         if (presentation && !((first == 96 && second == 144) || (first == 144 && second == 96)))
             throw Blocked("PR02 requires one 100% and one 150% monitor");
+        if (presentation && first == 96) {
+            std::swap(monitors[0], monitors[1]);
+            first = move(monitors[0]);
+            before = dpi_messages;
+            second = move(monitors[1]);
+        }
         auto* session = detail::access(ui).edit(ids.name);
         auto* field = live.host.frame().find(live.form.handles.name);
         bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
@@ -3108,9 +3115,13 @@ int native_presentation_matrix(const std::filesystem::path& folder) {
             presentation_matrix::run(edit_form::default_ids(), *appearance, [&](edit_form::Form& form) {
                 DesktopOptions options; options.title = u"Presentation matrix";
                 auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
-                return [host, &form](int width, int height, float scale, std::string_view reveal) {
+                return presentation_matrix::Driver{[host, &form](int width, int height, float scale, std::string_view reveal) {
                     return host->layout(width, height, scale, form.scroll, reveal);
-                };
+                }, [host, &folder, &report](int width, int height, float scale) {
+                    auto result = host->compare_gpu(width, height, scale);
+                    if (!result) write_comparison_failure(folder, report.appearance + "-matrix-failure", result);
+                    return bool(result);
+                }};
             }, [](bool ok, const std::string& message) { if (!ok) throw std::runtime_error(message); });
             report.check("MX01-shaped", true, "all presentation dimensions and focusable components");
         } catch (const std::exception& error) { report.check("MX01-shaped", false, error.what()); }
@@ -3121,10 +3132,22 @@ int native_presentation_matrix(const std::filesystem::path& folder) {
 int trial_screenshots(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     std::ofstream manifest(folder / "trial.tsv");
+    std::ofstream timing(folder / "font-switch-timing.tsv");
+    timing << "appearance\tfont\tmilliseconds\tstatus\n";
     manifest << "appearance\tvariant\tdensity\ttext_size\tfile\n";
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         const std::string name = appearance == &web_appearance() ? "web" : "material";
         Fixture f(*appearance, true);
+        if (system_font_catalog().contains(u"MingLiU")) {
+            auto settings = f.form.ui.presentation(); settings.font_family = u"MingLiU";
+            auto start = std::chrono::steady_clock::now();
+            bool accepted = bool(f.form.ui.set_presentation(settings));
+            f.host.paint();
+            auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            timing << name << "\tMingLiU\t" << elapsed << '\t' << (accepted ? "recorded" : "FAIL") << '\n';
+            if (!accepted) return 1;
+            settings.font_family.clear(); if (!f.form.ui.set_presentation(settings)) return 1;
+        } else timing << name << "\tMingLiU\t\tN/A (font absent)\n";
         for (bool dark : {false, true}) for (bool compact : {false, true}) for (int size : {16, 28}) {
             auto settings = f.form.ui.presentation();
             settings.variant = dark ? ThemeVariant::dark() : ThemeVariant::light();
@@ -3137,7 +3160,7 @@ int trial_screenshots(const std::filesystem::path& folder) {
             manifest << name << '\t' << (dark ? "dark" : "light") << '\t' << (compact ? "compact" : "standard") << '\t' << size << '\t' << file << '\n';
         }
     }
-    return manifest ? 0 : 1;
+    return manifest && timing ? 0 : 1;
 }
 
 // A fresh process is used for each run so startup age and warmup share one origin.

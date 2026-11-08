@@ -3,9 +3,14 @@
 #include "geometry.hpp"
 #include <cmath>
 #include <stdexcept>
+#include <functional>
 
 // The same dimension and component drivers run against fake and native text measurement.
 namespace presentation_matrix {
+struct Driver {
+    std::function<lcars::Frame(int, int, float, std::string_view)> arrange;
+    std::function<bool(int, int, float)> compare;
+};
 template<class Layout, class Check>
 void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Check check) {
     using namespace lcars;
@@ -15,7 +20,7 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
     for (auto dimensions : {std::pair{960, 720}, std::pair{640, 480}})
     for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true);
-        auto arrange = layout(form);
+        auto driver = layout(form);
         auto settings = form.ui.presentation(); settings.variant = variant; settings.density = density; settings.text_size = size;
         check(bool(form.ui.set_presentation(settings)), "MX01 settings accepted");
         int width = int(std::lround(dimensions.first * scale)), height = int(std::lround(dimensions.second * scale));
@@ -31,7 +36,7 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
                 continue;
             }
             check(x04::focus(entry.handle), "MX01 focus accepted: " + semantic->id);
-            auto frame = arrange(width, height, scale, semantic->id);
+            auto frame = driver.arrange(width, height, scale, semantic->id);
             auto item = x04::placement(frame, entry.handle);
             bool inside = item && x04::inside_client(*item, width, height);
             bool tall = item && item->bounds.w > 0 && item->bounds.h > item->clip.h && item->clip.h > 0 &&
@@ -46,7 +51,8 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
         }
         for (const auto& page : x04::pages(form)) {
             check(bool(form.handles.tabs.activate({page})), "MX01 overlap page activated");
-            auto frame = arrange(width, height, scale, {});
+            auto frame = driver.arrange(width, height, scale, {});
+            if (driver.compare) check(driver.compare(width, height, scale), "MX01 CPU/GPU comparison: " + page);
             for (std::size_t i = 0; i < frame.items.size(); ++i) for (std::size_t j = i + 1; j < frame.items.size(); ++j) {
                 auto a = intersect(frame.items[i].bounds, frame.items[i].clip);
                 auto b = intersect(frame.items[j].bounds, frame.items[j].clip);
@@ -55,7 +61,7 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
             }
         }
         check(bool(form.handles.tabs.activate({"v01"})) && bool(form.handles.region.focus()) && bool(form.handles.region.open()), "MX01 dropdown opens");
-        auto popup = arrange(width, height, scale, form.ids().region);
+        auto popup = driver.arrange(width, height, scale, form.ids().region);
         check(bool(test::popup_in_client(popup, {0, 0, width, height}, form.ids().region)), "MX01 popup fits and hits");
     }
 }
