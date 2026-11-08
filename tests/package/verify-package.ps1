@@ -1,8 +1,9 @@
 ﻿param(
     [Parameter(Mandatory=$true)][string]$Prefix,
     [ValidateSet('Debug','Release')][string[]]$Configurations = @('Debug','Release'),
-    [ValidateSet('Ninja','VS2022')][string[]]$Generators = @('Ninja','VS2022'),
-    [string]$Evidence = 'build/evidence/package'
+    [ValidateSet('Ninja','VS','VS2022')][string[]]$Generators = @('Ninja','VS'),
+    [string]$Evidence = 'build/evidence/package',
+    [string]$Toolchain
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -11,16 +12,24 @@ New-Item -ItemType Directory -Force -Path $Evidence | Out-Null
 $evidencePath = (Resolve-Path -LiteralPath $Evidence).Path
 $work = Join-Path ([IO.Path]::GetTempPath()) ('lcars-package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
-$vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
-$vs = & $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vs) { throw 'Visual Studio 2022 C++ Build Tools not found' }
-$env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
-$devCmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
-$envLines = & cmd.exe /d /c "call `"$devCmd`" -no_logo -arch=x64 -host_arch=x64 >nul && set"
-if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
-foreach ($line in $envLines) { if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') } }
-if (-not $env:VCToolsVersion) { throw 'VsDevCmd did not select an MSVC toolset version' }
-$toolsetVersion = $env:VCToolsVersion.TrimEnd('\', '/')
+. (Join-Path $root 'cmake/VisualStudio.ps1')
+if (-not $Toolchain) {
+    $suffix = if (Test-Path (Join-Path $prefixPath 'lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake')) { '' } else { '-core' }
+    $configuration = if ($Configurations -contains 'Release') { 'Release' } else { $Configurations[0] }
+    $Toolchain = Join-Path $root "build/$configuration$suffix/lcars-visual-studio.json"
+}
+if (-not (Test-Path -LiteralPath $Toolchain)) { throw "Build toolchain record not found: $Toolchain; pass -Toolchain from the build that produced this prefix" }
+$record = Get-Content -Raw -LiteralPath $Toolchain | ConvertFrom-Json
+$vs = $record.InstallationPath
+$generatorName = Get-LcarsVisualStudioGenerator $record.InstallationVersion
+if ($record.Generator -ne $generatorName -or -not $record.ToolsetVersion) { throw 'Invalid Visual Studio build toolchain record' }
+$toolsetVersion = Import-LcarsVisualStudioEnvironment $vs $record.ToolsetVersion
+$configFile = Join-Path $prefixPath 'lib/cmake/LcarsUI/LcarsUIConfig.cmake'
+$packageConfig = Get-Content -Raw -LiteralPath $configFile
+if ($packageConfig -notmatch 'set\(LcarsUI_MSVC_TOOLSET_VERSION "([^"]+)"\)' -or $matches[1] -ne $toolsetVersion) {
+    throw "Installed package toolset does not match build record $toolsetVersion"
+}
+Write-Host "Visual Studio: $vs ($($record.InstallationVersion)); MSVC toolset: $toolsetVersion; generator: $generatorName"
 $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 if (-not (Test-Path $cmake)) { $cmake = (Get-Command cmake.exe).Source }
 $ctest = Join-Path (Split-Path $cmake) 'ctest.exe'
@@ -40,7 +49,7 @@ function Run-Case($name, $generator, $config, $source, $mode = 'build', $extra =
     $id = '{0:D3}' -f $script:counter
     $dir = Join-Path $work $id
     $log = Join-Path $evidencePath "$id.log"
-    $genName = if ($generator -eq 'Ninja') { 'Ninja' } else { 'Visual Studio 17 2022' }
+    $genName = if ($generator -eq 'Ninja') { 'Ninja' } else { $generatorName }
     $compiler = if ($generator -eq 'Ninja') { $clang } else { $cl }
     $compilerLabel = if ($generator -eq 'Ninja') { 'clang-cl' } else { 'cl.exe' }
     $args = @('-S', $source, '-B', $dir, '-G', $genName, '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF', '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
@@ -69,7 +78,7 @@ function Run-Case($name, $generator, $config, $source, $mode = 'build', $extra =
                 $lib = if ($config -eq 'Debug') { 'lcars_cored\.lib' } else { 'lcars_core\.lib' }
                 if ($commands.Code -ne 0 -or $commands.Output -notmatch $lib) { $ok = $false; $message = 'wrong Core library selected; see log' }
             }
-            if ($ok -and $generator -eq 'VS2022') {
+            if ($ok -and $generator -ne 'Ninja') {
                 $lib = if ($config -eq 'Debug') { 'lcars_cored\.lib' } else { 'lcars_core\.lib' }
                 if ($buildOutput -notmatch $lib) { $ok = $false; $message = 'wrong Core library selected; see log' }
             }
@@ -97,7 +106,7 @@ try {
     $consumer = Join-Path $root 'examples/consumer'
     foreach ($gen in $Generators) {
         $configs = @($Configurations)
-        if ($gen -eq 'VS2022' -and $Configurations -contains 'Release') { $configs += 'RelWithDebInfo' }
+        if ($gen -ne 'Ninja' -and $Configurations -contains 'Release') { $configs += 'RelWithDebInfo' }
         foreach ($cfg in $configs) { Run-Case "consume/$gen/$cfg" $gen $cfg $consumer 'consume' }
     }
     $primary = if ($Generators -contains 'Ninja') { 'Ninja' } else { $Generators[0] }
