@@ -14,6 +14,11 @@ jobs:
       - name: Build full Release configuration
         shell: pwsh
         run: ./build.ps1 -Configuration Release -SkipTests
+      - name: Check startup failure without Mesa
+        shell: pwsh
+        run: |
+          & ./build/Release/lcars_renderer_failure_tests.exe --gdi-version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install and verify Release package
         shell: pwsh
         run: |

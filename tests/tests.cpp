@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "renderer_failure_checks.hpp"
 #include "lcars/appearance.hpp"
 #include <chrono>
 #include <fstream>
@@ -54,6 +55,27 @@ void core_behavior(){
     Ui bad; bad.add_button({.id="x", .kind=Kind::button}); bool duplicate = bad.add_button({.id="x", .kind=Kind::button}).status == Status::invalid_value;
     check(duplicate,"Duplicate IDs must be rejected");
 }
+void renderer_failure_admission() {
+    Ui ui;
+    auto name = ui.add_text({.id="name", .kind=Kind::text, .value=u"draft"}).value.value();
+    name.connect_source({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
+    name.connect_confirmed([](const TextChange&) { return Result{}; });
+    check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
+    detail::access(ui).renderer_failed(true);
+    check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");
+    check(detail::access(ui).set_value("missing", u"x").status == Status::not_found, "Missing ID precedes failure");
+    check(detail::access(ui).key_down({.key=Key::tab}).status == Status::renderer_failed, "Failure rejects focus traversal");
+    check(name.enable(false).status == Status::renderer_failed, "Failure rejects disabling focused control");
+    check(name.reset_to_source().status == Status::renderer_failed, "Failure rejects resetting draft");
+    check(detail::access(ui).focused() == "name", "Failure freezes focus");
+    check(ui.add_button({.id="new",.kind=Kind::button}).status == Status::renderer_failed, "Failure rejects adding controls");
+    Status background=Status::ok;
+    std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
+    check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
+    check(name.describe()->operations.empty(), "Failure advertises no operations");
+    detail::access(ui).renderer_failed(false);
+    check(bool(name.set_value(u"recovered")), "Recovery permits edits");
+}
 void appearances(){
     auto& a=web_appearance();auto& b=material_appearance();
     for(int size:{16,18,24,26,39}){
@@ -69,7 +91,7 @@ void appearances(){
 }
 int main(){
     try {
-        core_behavior(); appearances();
+        core_behavior(); renderer_failure_admission(); appearances();
         std::cout << "PASS " << checks << " checks: core admission and appearance geometry\n"; return 0;
     } catch (const std::exception& e) {
         std::cerr << "FAIL after " << checks << " checks: " << e.what() << '\n'; return 1;

@@ -34,6 +34,7 @@ public:
     unsigned clears() const { return clears_; }
     unsigned batches() const { return batches_; }
     unsigned peak_pages() const { return peak_pages_; }
+    std::vector<const AtlasPage*> pages() const { std::vector<const AtlasPage*> result; for (const auto& p : pages_) result.push_back(p.page.get()); return result; }
     AtlasGlyph get(GlyphKey key,const std::function<GlyphBitmap()>& rasterize) {
         auto found=glyphs_.find(key); if(found!=glyphs_.end()) return found->second;
         auto bitmap=rasterize(); AtlasGlyph result{{},bitmap.left,bitmap.top};

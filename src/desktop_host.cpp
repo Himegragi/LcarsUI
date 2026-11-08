@@ -114,9 +114,10 @@ Query<std::u16string> WindowsClipboard::read() {
 }
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                         const DesktopOptions& options, bool trace, bool background)
+                         const DesktopOptions& options, bool trace, bool background, RendererTestHooks* hooks)
     : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
+    hooks_ = hooks; debug_context_ = options.debug_context;
     configure_font(ui.presentation().font_family);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -160,13 +161,47 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
             sync_ime();
         });
         detail::access(ui_).before_focus([this] { finish_composition(); });
-        renderer_ = std::make_unique<Renderer>(window_);
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_);
+        capabilities_ = renderer_->capabilities();
         client_size(options.width, options.height);
         PostMessageW(window_,WM_APP+43,0,0);
     } catch (...) {
         release();  // the destructor will not run for a half-built host
         throw;
     }
+}
+Result DesktopHost::rebuild_renderer() {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (painting_) return {Status::busy, u"Painting in progress"};
+    if (!renderer_failure_) return {Status::invalid_value, u"Renderer is not failed"};
+    if (hooks_) ++hooks_->rebuild_attempts;
+    renderer_.reset();
+    struct ShaderOverride {
+        RendererTestHooks* hooks;
+        std::string previous;
+        explicit ShaderOverride(RendererTestHooks* value): hooks(value) {
+            if (hooks) { previous=hooks->fragment_shader_override; if (hooks->fail_rebuild_once) { hooks->fail_rebuild_once=false; hooks->fragment_shader_override="invalid shader"; } }
+        }
+        ~ShaderOverride() { if (hooks) hooks->fragment_shader_override=std::move(previous); }
+    } shader_override(hooks_);
+    try {
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_);
+        renderer_->restore_atlas(text_.atlas_pages());
+        capabilities_=renderer_->capabilities();
+    } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
+      catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,std::u16string(text.begin(),text.end())}; }
+    renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
+    InvalidateRect(window_,nullptr,FALSE);
+    return {};
+}
+void DesktopHost::fail_renderer(RendererFailure failure) {
+    renderer_failure_=std::move(failure);
+    detail::access(ui_).renderer_failed(true);
+    if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
+        if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
+        detail::access(ui_).composition_cancel();
+    }
+    PostMessageW(window_,WM_APP+44,0,0);
 }
 void DesktopHost::configure_font(std::u16string_view family) {
     if(font_configured_ && requested_font_==family) return;
@@ -183,7 +218,7 @@ void DesktopHost::release() {
     // preedit on both sides before detaching the window; closing must not leave
     // an orphaned composition in the retained text session.
     const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
-    if (window_ && session && session->composing) {
+    if (window_ && session && session->composing && !renderer_failure_) {
         if (auto imc = ImmGetContext(window_)) {
             ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
             ImmReleaseContext(window_, imc);
@@ -212,8 +247,8 @@ void DesktopHost::client_size(int width_dip, int height_dip) {
 }
 int DesktopHost::run() {
     MSG msg{};
-    BOOL result;
-    while ((result = GetMessageW(&msg, nullptr, 0, 0)) > 0) dispatch(msg);
+    BOOL result = 0;
+    while (!quit_ && (result = GetMessageW(&msg, nullptr, 0, 0)) > 0) dispatch(msg);
     return result < 0 || failed_ ? 1 : static_cast<int>(msg.wParam);
 }
 void DesktopHost::dispatch(MSG& message) {
@@ -256,6 +291,8 @@ Frame DesktopHost::arrange(int width, int height, float scale) {
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
+    if (renderer_failure_ || painting_) return;
+    struct Guard { bool& flag; explicit Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard(painting_);
     auto start=std::chrono::steady_clock::now();
     RECT r{};
     GetClientRect(window_, &r);
@@ -277,7 +314,17 @@ void DesktopHost::paint() {
     if(perf_enabled_ && perf_delay_) Sleep(static_cast<DWORD>(perf_delay_));
     auto before_gpu=std::chrono::steady_clock::now();
     double submission=0; std::chrono::steady_clock::time_point presented;
-    double gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented);
+    double gpu=0;
+    try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented); }
+    catch (const FrameError& e) {
+        for (auto code : e.codes) diagnostics_.push(frame_diagnostic(code));
+        if (!e.codes.empty()) PostMessageW(window_,WM_APP+43,0,0);
+        fail_renderer(e.failure); return;
+    }
+    catch (const std::exception& e) {
+        std::string message=e.what();
+        fail_renderer({RendererFailureKind::resource_failed,0,std::u16string(message.begin(),message.end())}); return;
+    }
     auto end=std::chrono::steady_clock::now();
     if(perf_enabled_) {
         FILETIME created{},exited{},kernel{},user{},now{}; GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user); GetSystemTimeAsFileTime(&now);
@@ -543,6 +590,9 @@ void DesktopHost::after_input(const Id& focus_before) {
 }
 
 LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
+    if (renderer_failure_ && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
+        (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || (msg >= WM_IME_STARTCOMPOSITION && msg <= WM_IME_COMPOSITION) ||
+        msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_TIMER || msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE)) return 0;
     if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));
     if (tracing_) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
@@ -554,6 +604,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
     }
     switch (msg) {
+    case WM_APP+44:
+        if (renderer_failure_) {
+            if (failure_callback_) { auto failure = *renderer_failure_; failure_callback_(failure); }
+            else { quit_ = true; release(); }
+        }
+        return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
     case WM_PAINT: {
@@ -578,10 +634,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_CLOSE:
+        if (renderer_failure_) { quit_ = true; return 0; }
         // Use the same IME completion policy as a focus transition before the host is torn down.
         log_ime(L"host:close");
         finish_composition();
-        PostQuitMessage(0); return 0;
+        quit_ = true; return 0;
     case WM_SETFOCUS: {
         detail::access(ui_).window_active(true);
         POINT point{};
@@ -789,11 +846,43 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
 }
 
 namespace lcars {
-int run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
-    detail::DesktopHost host(ui, appearance, std::move(page), scroll, options);
-    ShowWindow(host.window(), SW_SHOW);
-    SetFocus(host.window());
-    UpdateWindow(host.window());
-    return host.run();
+struct Desktop::Impl {
+    std::unique_ptr<detail::DesktopHost> host;
+    DesktopOptions options;
+};
+Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
+Desktop::~Desktop() = default;
+DesktopCreation Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+    return create_desktop_for_test(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
+}
+DesktopCreation create_desktop_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options, detail::RendererTestHooks* hooks) {
+    try {
+        auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
+        impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
+        auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
+        if (desktop->impl_->options.on_renderer_failed) {
+            auto ptr=desktop.get();
+            ptr->impl_->host->on_renderer_failure([ptr](const RendererFailure& failure) { ptr->impl_->options.on_renderer_failed(*ptr,failure); });
+        }
+        return {Status::ok,{},std::move(desktop)};
+    } catch (const detail::StartupError& e) { return {Status::failed,e.failure,{}}; }
+      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::window,{}, {},std::u16string(message.begin(),message.end())},{}}; }
+}
+RunResult Desktop::run() {
+    auto& host=*impl_->host;
+    ShowWindow(host.window(),SW_SHOW); SetFocus(host.window()); UpdateWindow(host.window());
+    int result=host.run();
+    auto failure=host.renderer_failure();
+    host.close();
+    if (failure) return {Status::renderer_failed,failure,{}};
+    return {result ? Status::failed : Status::ok,{}, {}};
+}
+Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
+bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
+RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
+RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+    auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(options));
+    if (!creation.desktop) return {creation.status,{},creation.failure};
+    return creation.desktop->run();
 }
 }

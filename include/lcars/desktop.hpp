@@ -5,14 +5,44 @@
 #include "lcars/layout.hpp"
 #include "lcars/diagnostics.hpp"
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 
 namespace lcars {
+enum class DebugContext { build_default, on, off };
+enum class RendererFailureKind { frame_error, device_reset, present_failed, resource_failed };
+struct RendererFailure { RendererFailureKind kind; std::uint32_t native_code = 0; std::u16string message; };
+enum class StartupFailureKind { window, context_version, context_creation, shader, resource };
+struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; };
+struct RendererCapabilities { std::u16string version, vendor, renderer; bool debug_context = false, debug_messages = false, reset_detection = false; };
+class Desktop;
+struct DesktopCreation;
+namespace detail { struct RendererTestHooks; }
 struct DesktopOptions {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
     std::function<void(const RenderDiagnostic&)> on_diagnostic;
+    DebugContext debug_context = DebugContext::build_default;
+    std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;
 };
-int run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
+struct DesktopCreation;
+struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
+class Desktop {
+public:
+    ~Desktop();
+    static DesktopCreation create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions = {});
+    RunResult run();
+    Result rebuild_renderer();
+    bool renderer_failed() const;
+    RendererCapabilities capabilities() const;
+private:
+    friend DesktopCreation create_desktop_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, detail::RendererTestHooks*);
+    struct Impl;
+    explicit Desktop(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> impl_;
+};
+struct DesktopCreation { Status status; std::optional<StartupFailure> failure; std::unique_ptr<Desktop> desktop; };
+RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                 DesktopOptions options = {});
 }

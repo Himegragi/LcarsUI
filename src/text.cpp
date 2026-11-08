@@ -265,6 +265,7 @@ void Text::configure_atlas(int size,int pages) { impl_->atlas=GlyphAtlas(size,pa
 unsigned Text::atlas_clears() const { return impl_->atlas.clears(); }
 unsigned Text::atlas_batches() const { return impl_->atlas.batches(); }
 unsigned Text::atlas_peak_pages() const { return impl_->atlas.peak_pages(); }
+std::vector<const AtlasPage*> Text::atlas_pages() const { return impl_->atlas.pages(); }
 unsigned Text::rasterizations() const { return impl_->rasterizations; }
 void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
     for(const auto glyph:layout.glyphs) {
