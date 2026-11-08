@@ -30,12 +30,13 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
             if (modal) {
                 check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "MX01 dialog opened");
             } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "MX01 page activated");
+            driver.arrange(width, height, scale, {});
             auto semantic = x04::describe(entry.handle);
-            if (!semantic || !semantic->focusable || !semantic->enabled) {
+            if (!semantic || !x04::focus_applicable(*semantic)) {
                 if (modal) form.handles.dialog_cancel.invoke();
                 continue;
             }
-            check(x04::focus(entry.handle), "MX01 focus accepted: " + semantic->id);
+            check(x04::focus(form.ui, entry.handle), "MX01 focus accepted: " + semantic->id);
             auto frame = driver.arrange(width, height, scale, semantic->id);
             auto item = x04::placement(frame, entry.handle);
             bool inside = item && x04::inside_client(*item, width, height);
