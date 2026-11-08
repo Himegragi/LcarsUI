@@ -401,6 +401,15 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
     DesktopHost host(ui,appearance,[&] { return layout::control(*label); },scroll,options,false,true);
     active=&host;
     host.client_size(200,100); host.paint(); host.paint();
+    auto dark=ui.presentation(); dark.variant=ThemeVariant::dark();
+    bool dark_accepted=bool(ui.set_presentation(dark));
+    host.observe_paint(true); host.paint();
+    auto dark_text=appearance.palette(ThemeVariant::dark()).text;
+    bool dark_missing=std::any_of(host.paint_observations().begin(),host.paint_observations().end(),[&](const auto& event) {
+        return event.owner=="missing-font-glyph" && event.type==detail::PaintObservation::Type::text && event.visible &&
+            event.color.r==dark_text.r && event.color.g==dark_text.g && event.color.b==dark_text.b;
+    });
+    report.check("dark-missing-glyph",dark_accepted && dark_missing,"Missing glyph receives the dark text color");
     auto changed=ui.presentation(); changed.font_family=u"LcarsUI another absent family";
     bool accepted=bool(ui.set_presentation(changed)); host.pump();
     auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {
@@ -1527,6 +1536,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baseline_context(f.form);
                 auto baseline_model = x04::snapshot(f.form);
+                auto presentation = f.form.ui.presentation();
                 auto before = x04::describe(entry.handle);
                 if (!before || !detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
                 bool page = entry.page == "shared" || bool(f.form.handles.tabs.activate({std::string(entry.page)}));
@@ -1534,8 +1544,9 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto semantic = x04::describe(entry.handle);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
+                auto palette = appearance.palette(f.form.ui.presentation().variant);
                 auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
-                    ? appearance.palette().accent : appearance.palette().selection;
+                    ? palette.accent : palette.selection;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
                     if (draw.owner != semantic->id || !draw.visible) continue;
@@ -1546,7 +1557,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 auto expected = semantic->kind == Kind::checkbox ? semantic->name : semantic->value;
                 bool compared = semantic->visible && x04::placement(f.host.frame(), entry.handle) &&
                     x04::selected_semantics(*semantic) && !expected.empty() && ink.find(expected) != std::u16string::npos && cue_visible;
-                bool restored = x04::restore_selected(f.form, entry) && x04::same_model(baseline_model, x04::snapshot(f.form));
+                bool restored = x04::restore_selected(f.form, entry, *before, presentation) && f.form.ui.presentation() == presentation && x04::same_model(baseline_model, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -2088,8 +2099,6 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
 // Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
 // Colored pixels demonstrate a cue was drawn; they are not OCR of the semantic string.
 void semantic_raster_samples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
-    Fixture f(appearance, true);
-    auto& h = f.form.handles;
     auto contains_color = [](const Image& canvas, Rect bounds, Color color) {
         auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
         for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
@@ -2098,6 +2107,33 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         }
         return false;
     };
+    {
+        Fixture dark(appearance, true); auto& d = dark.form.handles;
+        auto settings = dark.form.ui.presentation(); settings.variant = ThemeVariant::dark();
+        bool applied = bool(dark.form.ui.set_presentation(settings));
+        d.error.invoke();
+        dark.host.layout(960, 720, 1.f, dark.form.scroll, d.name.describe()->id);
+        Image image{1, 1, {}};
+        auto dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-dark.bmp"), &image);
+        auto* field = dark_frame.find(d.name); auto colors = appearance.palette(ThemeVariant::dark());
+        bool error_ink = field && !field->error_lines.empty() && contains_color(image, intersect(field->error_lines.front().bounds, field->clip), colors.error);
+        bool invalid = d.name.describe()->invalid;
+        d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
+        dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
+        field = dark_frame.find(d.name);
+        bool selection = field && contains_color(image, intersect(field->bounds, field->clip), colors.selection);
+        bool focus = field && contains_color(image, intersect(field->bounds, field->clip), colors.accent);
+        d.disabled.invoke();
+        dark.host.observe_paint(true); dark.host.paint();
+        bool disabled = !d.name.describe()->enabled && std::any_of(dark.host.paint_observations().begin(), dark.host.paint_observations().end(), [&](const auto& event) {
+            return event.visible && event.text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+        });
+        dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-disabled.bmp"));
+        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled,
+                     "CPU raster: applied=" + std::to_string(applied) + ", error=" + std::to_string(error_ink) + ", selection=" + std::to_string(selection) + ", focus=" + std::to_string(focus) + ", invalid=" + std::to_string(invalid) + ", disabled=" + std::to_string(disabled));
+    }
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
     auto sample = [&](std::string_view name, Image& pixels) {
         return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
     };

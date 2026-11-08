@@ -10,11 +10,11 @@
 #include "fake_measure.hpp"
 #include "geometry.hpp"
 #include <cmath>
+#include <thread>
 #include <set>
 #include <fstream>
 #include <codecvt>
 #include <locale>
-#include <thread>
 using namespace lcars;
 using test::check;
 
@@ -33,99 +33,52 @@ edit_form::Ids alternate_ids() {
 }
 KeyPress key(Key k, bool shift = false) { return {.key = k, .shift = shift}; }
 
-void semantic_tree_reads_registered_components() {
-    Ui ui;
-    ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"});
-    auto children = ui.semantics().children({});
-    auto node = ui.semantics().get({"save"});
-    check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
-          "Semantic tree enumerates and reads a registered button");
-}
-
-void write_semantic_tsv(edit_form::Form& form, const char* state) {
-    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
-    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
-    std::ofstream out(filename, std::ios::binary);
-    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
-    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
-    out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
-    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
-        auto children = form.ui.semantics().children(parent);
-        check(bool(children), "Tree traversal succeeds while writing TSV");
-        for (const auto& ref : *children) {
-            auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
-            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
-                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
-            if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
-            else out << '-';
-            out << '\n'; self(self, ref);
-        }
+void theme_variants_have_accessible_palettes() {
+    auto luminance = [](Color c) {
+        auto channel = [](double v) { v /= 255.; return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
     };
-    visit(visit, {}); out.flush(); check(bool(out), "Semantic TSV was written");
+    auto contrast = [&](Color a, Color b) { auto x = luminance(a), y = luminance(b); return (std::max(x,y)+0.05)/(std::min(x,y)+0.05); };
+    for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+        check(appearance->supports(variant), "PV01 official variant supported");
+        auto p = appearance->palette(variant);
+        for (auto ink : {p.text, p.muted, p.error})
+            for (auto surface : {p.background, p.panel, p.surface})
+                check(contrast(ink, surface) >= 4.5, "PV01 text contrast");
+        check(contrast(p.text, p.selection) >= 4.5 && contrast(p.on_accent, p.accent) >= 4.5, "PV01 selection and accent contrast");
+        check(p.scrim_alpha == (variant == ThemeVariant::dark() ? 160 : 110), "Variant scrim opacity");
+    }
+    check(!appearance->supports(ThemeVariant::high_contrast()), "High contrast is unsupported");
 }
 
-void semantic_showcase_states_and_identity() {
-    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
-    test::FakeMeasure measure;
-    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
-    draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v01");
-    auto inventory = x04::inventory(form);
-    std::set<std::string> unique;
-    for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
-    std::set<std::string> tree_components;
-    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
-        auto children = tree.children(parent); check(bool(children), "Semantic children are readable");
-        for (const auto& ref : *children) {
-            auto node = tree.get(ref); check(bool(node), "Enumerated semantic node is readable");
-            if (!ref.item && node->role != Role::dialog && node->role != Role::tooltip) tree_components.insert(ref.id);
-            if (node->role == Role::dialog) self(self, ref);
+void theme_switch_preserves_showcase_geometry() {
+    edit_form::Form form(ids, true); test::FakeMeasure measure;
+    for (const char* page : {"v01", "v02", "v03"}) {
+        form.handles.tabs.activate({page});
+        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::light(); form.ui.set_presentation(settings);
+        ScrollState a, b;
+        auto light = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, a);
+        settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark accepted");
+        auto dark = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, b);
+        check(light.items.size() == dark.items.size() && light.overlays.size() == dark.overlays.size(), "PV02 same placements");
+        for (size_t i = 0; i < light.items.size(); ++i) {
+            const auto& x = light.items[i]; const auto& y = dark.items[i];
+            auto lines_equal = [](const auto& a, const auto& b) {
+                if (a.size() != b.size()) return false;
+                for (size_t j = 0; j < a.size(); ++j) if (a[j].bounds != b[j].bounds) return false;
+                return true;
+            };
+            check(x.id == y.id && x.bounds == y.bounds && x.clip == y.clip && x.text_size == y.text_size &&
+                  x.field.label == y.field.label && x.field.surface == y.field.surface && x.field.editor == y.field.editor &&
+                  x.field.description == y.field.description && x.field.error == y.field.error && x.options == y.options &&
+                  x.slider_track == y.slider_track && x.progress_track == y.progress_track && x.progress_fill == y.progress_fill &&
+                  lines_equal(x.lines, y.lines) && lines_equal(x.label_lines, y.label_lines) &&
+                  lines_equal(x.description_lines, y.description_lines) && lines_equal(x.error_lines, y.error_lines), "PV02 geometry unchanged");
         }
-    };
-    visit(visit, {});
-    check(inventory.size() == tree_components.size() && unique == tree_components,
-          "X04 includes every tree component exactly once");
-    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.preview}})
-        check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
-    auto mode = form.handles.mode.describe()->id;
-    auto options = tree.children({mode});
-    check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
-          (*options)[1].item == OptionValue{"focus"} && (*options)[2].item == OptionValue{"offline"}, "SEM02 radio options are tree children");
-    auto name = tree.get({ids.name});
-    check(name && !name->hidden && name->name == form.handles.name.describe()->name && name->bounds,
-          "SEM02 active field has its current name and clipped bounds");
-    auto list_id = form.list->handles.list.describe()->id;
-    check(tree.get({list_id})->hidden, "SEM02 inactive list remains readable and hidden");
-    form.handles.tabs.activate({"v02"}); draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v02");
-    auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
-    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
-    form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
-    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
-          "SEM03 selected identity survives sorting and unknown item is absent");
-    form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
-    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
-    form.handles.tabs.activate({"v04"}); draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v04");
-    form.handles.tabs.activate({"v03"}); draw();
-    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
-    auto hidden = tree.get({ids.name});
-    check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
-          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
-    form.handles.dialog_open.invoke(); draw();
-    auto background = tree.get({form.handles.progress_half.describe()->id});
-    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
-}
-
-void semantic_unnamed_diagnostic() {
-    Ui ui; auto button = ui.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
-    test::FakeMeasure measure; ScrollState scroll;
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
-    check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
-#ifndef NDEBUG
-    check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
-#endif
+    }
+    edit_form::Form controls(ids, true); controls.handles.tabs.activate({"v04"});
+    check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::dark(), "V04 switches to dark");
+    check(bool(controls.handles.dark.toggle()) && controls.ui.presentation().variant == ThemeVariant::light(), "V04 switches to light");
 }
 
 void presentation_settings_are_atomic() {
@@ -249,6 +202,101 @@ void ps08_large_text_wraps_without_overlap() {
     for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
     for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
     check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
+}
+
+void semantic_tree_reads_registered_components() {
+    Ui ui;
+    ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"});
+    auto children = ui.semantics().children({});
+    auto node = ui.semantics().get({"save"});
+    check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
+          "Semantic tree enumerates and reads a registered button");
+}
+
+void write_semantic_tsv(edit_form::Form& form, const char* state) {
+    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
+    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
+    std::ofstream out(filename, std::ios::binary);
+    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
+    out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = form.ui.semantics().children(parent);
+        check(bool(children), "Tree traversal succeeds while writing TSV");
+        for (const auto& ref : *children) {
+            auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
+            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
+                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
+            if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
+            else out << '-';
+            out << '\n'; self(self, ref);
+        }
+    };
+    visit(visit, {}); out.flush(); check(bool(out), "Semantic TSV was written");
+}
+
+void semantic_showcase_states_and_identity() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    test::FakeMeasure measure;
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v01");
+    auto inventory = x04::inventory(form);
+    std::set<std::string> unique;
+    for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
+    std::set<std::string> tree_components;
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = tree.children(parent); check(bool(children), "Semantic children are readable");
+        for (const auto& ref : *children) {
+            auto node = tree.get(ref); check(bool(node), "Enumerated semantic node is readable");
+            if (!ref.item && node->role != Role::dialog && node->role != Role::tooltip) tree_components.insert(ref.id);
+            if (node->role == Role::dialog) self(self, ref);
+        }
+    };
+    visit(visit, {});
+    check(inventory.size() == tree_components.size() && unique == tree_components,
+          "X04 includes every tree component exactly once");
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.preview}})
+        check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
+    auto mode = form.handles.mode.describe()->id;
+    auto options = tree.children({mode});
+    check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
+          (*options)[1].item == OptionValue{"focus"} && (*options)[2].item == OptionValue{"offline"}, "SEM02 radio options are tree children");
+    auto name = tree.get({ids.name});
+    check(name && !name->hidden && name->name == form.handles.name.describe()->name && name->bounds,
+          "SEM02 active field has its current name and clipped bounds");
+    auto list_id = form.list->handles.list.describe()->id;
+    check(tree.get({list_id})->hidden, "SEM02 inactive list remains readable and hidden");
+    form.handles.tabs.activate({"v02"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v02");
+    auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
+    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
+    form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
+    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
+          "SEM03 selected identity survives sorting and unknown item is absent");
+    form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
+    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
+    form.handles.tabs.activate({"v04"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v04");
+    form.handles.tabs.activate({"v03"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
+    auto hidden = tree.get({ids.name});
+    check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
+          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
+    form.handles.dialog_open.invoke(); draw();
+    auto background = tree.get({form.handles.progress_half.describe()->id});
+    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
+}
+
+void semantic_unnamed_diagnostic() {
+    Ui ui; auto button = ui.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
+#ifndef NDEBUG
+    check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
+#endif
 }
 
 void long_field_label_and_error_keep_their_association() {
@@ -990,6 +1038,36 @@ void draw_command_state_matrix() {
         if(state_index==5) check(probe.count(detail::PaintRole::composition)>0,"DL03 composition cue");
     }
 }
+void dark_focus_inventory() {
+    edit_form::Form inventory(ids, true);
+    auto entries = x04::inventory(inventory);
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
+        auto semantic = x04::describe(entry.handle);
+        const auto& type = detail::component_type(semantic->kind);
+        if (!type.can_focus()) continue;
+        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark();
+        check(bool(form.ui.set_presentation(settings)), "Dark theme accepted");
+        if (entry.page == "modal") {
+            check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "Focus modal opened");
+        } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "Focus page activated");
+        if (!semantic->enabled) check(x04::set_enabled(entry.handle, true), "Focus target enabled");
+        check(x04::focus(entry.handle), ("Dark focus setup " + semantic->id).c_str());
+        test::FakeMeasure measure;
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll, semantic->id);
+        semantic = x04::describe(entry.handle); auto* item = x04::placement(frame, entry.handle);
+        check(item && semantic->focused && semantic->visible, ("Dark focus visible " + semantic->id).c_str());
+        PaintRoleProbe paint(detail::access(form.ui), *item, *semantic, *appearance, 1.f, true);
+        detail::component_type(item->kind).paint(paint);
+        auto accent = appearance->palette(ThemeVariant::dark()).accent;
+        bool cue = std::any_of(paint.recording.list.commands.begin(), paint.recording.list.commands.end(), [&](const auto& c) {
+            auto r = intersect(c.rect, item->clip);
+            return (static_cast<unsigned>(c.role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) && r.w > 0 && r.h > 0 &&
+                c.color.r == accent.r && c.color.g == accent.g && c.color.b == accent.b;
+        });
+        check(cue, ("Dark focus indicator " + semantic->id).c_str());
+    }
+}
 // Record the text sent to the component paint adapter, independently of layout's line lists.
 struct PaintTextProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -1160,7 +1238,7 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
           "X04 V01 and V02 are absent and reject actions on V03");
     auto& state = detail::access(form.ui);
     std::vector<std::vector<Id>> page_items;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         h.tabs.activate({page});
         auto current = frame();
         std::vector<Id> ids_on_page;
@@ -1168,10 +1246,10 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
         page_items.push_back(std::move(ids_on_page));
     }
     int page_index = 0;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         h.tabs.activate({page});
         auto current = frame();
-        for (int other = 0; other < static_cast<int>(page_items.size()); ++other) if (other != page_index) for (const auto& id : page_items[other]) {
+        for (int other = 0; other < 3; ++other) if (other != page_index) for (const auto& id : page_items[other]) {
             check(!detail::find_placement(current, id) && state.available(id).status == Status::hidden,
                   "X04 each other-page placement is absent and not admitted");
         }
@@ -1268,14 +1346,14 @@ void x04_clipped_inventory_at_each_size_and_scale() {
     }
 }
 
-void x04_error_inventory_at_each_size_and_scale() {
+void x04_error_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form inventory_form(ids, true);
         auto entries = x04::inventory(inventory_form);
         for (std::size_t index = 0; index < entries.size(); ++index) {
-            edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
+            edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } auto entry = x04::inventory(form)[index];
             auto semantic = x04::describe(entry.handle);
-            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error) || !x04::error_supported(*semantic)) continue;
+            if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error)) continue;
             auto message = std::string("X04 error ") + semantic->id;
             check(x04::drive_error(form, entry), (message + " drive").c_str());
             test::FakeMeasure measure;
@@ -1288,10 +1366,11 @@ void x04_error_inventory_at_each_size_and_scale() {
             PaintTextProbe paint(detail::access(form.ui), *item, *owner_semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
             if (semantic->kind == Kind::tabs) {
-                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos,
+                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos &&
+                      std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto e = appearance->palette(form.ui.presentation().variant).text; return c.r == e.r && c.g == e.g && c.b == e.b; }),
                       (message + " tab cue").c_str());
             } else {
-                auto color = appearance->palette().error;
+                auto color = appearance->palette(form.ui.presentation().variant).error;
                 check(paint.drawn.find(x04::error_message) != std::u16string::npos &&
                       std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { return c.r == color.r && c.g == color.g && c.b == color.b; }),
                       (message + " error text and cue").c_str());
@@ -1426,9 +1505,9 @@ void x04_normal_inventory_at_each_size_and_scale() {
     }
 }
 
-void x04_disabled_inventory_at_each_size_and_scale() {
+void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto baseline = x04::snapshot(form);
@@ -1471,7 +1550,8 @@ void x04_disabled_inventory_at_each_size_and_scale() {
                   (message + " restriction").c_str());
             PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
-            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos &&
+                  std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto m = appearance->palette(form.ui.presentation().variant).muted; return c.r == m.r && c.g == m.g && c.b == m.b; }),
                   (message + " non-color cue").c_str());
             auto snapshot = x04::snapshot(form);
             check(state.pointer_down(semantic->id).status == Status::disabled, (message + " pointer").c_str());
@@ -1549,13 +1629,14 @@ void x04_group_conflicts_at_each_size_and_scale() {
     }
 }
 
-void x04_selected_inventory_at_each_size_and_scale() {
+void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true);
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); }
         test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto baseline = x04::snapshot(form);
+            auto presentation = form.ui.presentation();
             auto before = x04::describe(entry.handle);
             if (!detail::component_type(before->kind).supports_state(detail::ComponentState::selected)) continue;
             if (entry.page != "shared") check(bool(form.handles.tabs.activate({std::string(entry.page)})), "X04 select page");
@@ -1570,12 +1651,12 @@ void x04_selected_inventory_at_each_size_and_scale() {
             PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
             const auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
-                ? appearance->palette().accent : appearance->palette().selection;
+                ? appearance->palette(form.ui.presentation().variant).accent : appearance->palette(form.ui.presentation().variant).selection;
             check(std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) {
                 return c.r == cue.r && c.g == cue.g && c.b == cue.b;
             }) && paint.drawn.find(semantic->kind == Kind::checkbox ? semantic->name : semantic->value) != std::u16string::npos,
                 message.c_str());
-            check(x04::restore_selected(form, entry) && x04::same_model(baseline, x04::snapshot(form)), message.c_str());
+            check(x04::restore_selected(form, entry, *before, presentation) && form.ui.presentation() == presentation && x04::same_model(baseline, x04::snapshot(form)), message.c_str());
         }
     }
 }
@@ -1596,7 +1677,7 @@ void x04_hidden_inventory_at_each_size_and_scale() {
                   detail::access(form.ui).pointer_down(semantic->id).status == Status::hidden &&
                   x04::hidden_retry(entry.handle), message.c_str());
         }
-        for (const auto& page : x04::pages(form)) {
+        for (auto page : {"v01", "v02", "v03"}) {
             check(bool(form.handles.tabs.activate({page})), "X04 activate page");
             auto frame = arrange(form.page(), form.ui, *appearance, measure,
                                  int(size.first * scale), int(size.second * scale), scale, form.scroll);
@@ -1616,7 +1697,7 @@ void visible_text_agrees_with_semantics_on_each_page() {
     edit_form::Form form(ids, true);
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
-    for (const auto& page : x04::pages(form)) {
+    for (auto page : {"v01", "v02", "v03"}) {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {
@@ -2211,6 +2292,8 @@ int main() {
         {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
         {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},
         {"PS08 large text", ps08_large_text_wraps_without_overlap},
+        {"PV02 theme geometry", theme_switch_preserves_showcase_geometry},
+        {"PV01 palette contrast", theme_variants_have_accessible_palettes},
         {"V04 size slider", v04_slider_updates_global_text_size},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},
         {"N03 radio boundaries in each appearance", radio_boundaries_under_the_appearance},
@@ -2223,15 +2306,19 @@ int main() {
         {"X04 executing inventory at each size and scale", x04_executing_inventory_at_each_size_and_scale},
         {"X04 fixed placements fit each client", x04_fixed_placements_fit_each_client},
         {"X04 clipped inventory at each size and scale", x04_clipped_inventory_at_each_size_and_scale},
-        {"X04 error inventory at each size and scale", x04_error_inventory_at_each_size_and_scale},
+        {"X04 error inventory at each size and scale", [] { x04_error_inventory_at_each_size_and_scale(); }},
+        {"Dark focus inventory", dark_focus_inventory},
+        {"Dark error inventory", [] { x04_error_inventory_at_each_size_and_scale(true); }},
+        {"Dark disabled inventory", [] { x04_disabled_inventory_at_each_size_and_scale(true); }},
+        {"Dark selected inventory", [] { x04_selected_inventory_at_each_size_and_scale(true); }},
         {"X04 candidate inventory at each size and scale", x04_candidate_inventory_at_each_size_and_scale},
         {"X04 search read-only at each size and scale", x04_search_read_only_at_each_size_and_scale},
         {"X04 modal inventory at each size and scale", x04_modal_inventory_at_each_size_and_scale},
         {"X04 tooltip at each size and scale", x04_tooltip_at_each_size_and_scale},
         {"X04 normal inventory at each size and scale", x04_normal_inventory_at_each_size_and_scale},
-        {"X04 disabled inventory at each size and scale", x04_disabled_inventory_at_each_size_and_scale},
+        {"X04 disabled inventory at each size and scale", [] { x04_disabled_inventory_at_each_size_and_scale(); }},
         {"X04 group conflicts at each size and scale", x04_group_conflicts_at_each_size_and_scale},
-        {"X04 selected inventory at each size and scale", x04_selected_inventory_at_each_size_and_scale},
+        {"X04 selected inventory at each size and scale", [] { x04_selected_inventory_at_each_size_and_scale(); }},
         {"X04 hidden inventory at each size and scale", x04_hidden_inventory_at_each_size_and_scale},
         {"DL02 DL03 state matrix", draw_command_state_matrix},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},

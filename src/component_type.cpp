@@ -61,8 +61,8 @@ public:
         p.bounds = {0, 0, c.width, height_of(p.lines)};
     }
     void paint(ComponentPaint& c) const override {
-        if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.appearance.palette().text);
-        else paint_lines(c, c.placement.lines, c.placement.text_size, c.appearance.palette().text);
+        if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).text);
+        else paint_lines(c, c.placement.lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).text);
     }
     bool can_focus() const override { return false; }
     bool can_target() const override { return true; }
@@ -112,7 +112,7 @@ public:
         const auto& item = c.placement;
         const auto& semantics = c.semantics;
         const auto& f = item.field;
-        auto p = c.appearance.palette();
+        auto p = c.appearance.palette(c.ui.presentation().variant);
         auto d = [&](int value) { return scaled(c.scale, value); };
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
         bool focused = semantics.focused, enabled = semantics.enabled;
@@ -166,7 +166,7 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement;
-        auto p = c.appearance.palette();
+        auto p = c.appearance.palette(c.ui.presentation().variant);
         auto d = [&](int value) { return scaled(c.scale, value); };
         bool focused = c.semantics.focused, enabled = c.semantics.enabled;
         int ring = focused ? d(c.appearance.component_presentation().focus) : d(c.appearance.component_presentation().thin);
@@ -204,9 +204,9 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         Command::paint(c);
-        paint_lines(c, c.placement.description_lines, c.placement.text_size, c.appearance.palette().muted);
-        paint_errors(c, c.placement.error_lines, c.placement.text_size, c.appearance.palette().error);
-        auto p = c.appearance.palette();
+        paint_lines(c, c.placement.description_lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).muted);
+        paint_errors(c, c.placement.error_lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).error);
+        auto p = c.appearance.palette(c.ui.presentation().variant);
         int size = scaled(c.scale, c.appearance.component_presentation().indicator), x = c.placement.bounds.x + scaled(c.scale, c.appearance.component_presentation().gap);
         int y = c.placement.bounds.y + (c.appearance.button_height(c.placement.lines.front().bounds.h, c.scale) - size) / 2;
         c.fill({x, y, size, size}, c.semantics.enabled ? p.border : p.muted);
@@ -245,7 +245,7 @@ public:
         p.bounds = {0, 0, c.width, y};
     }
     void paint(ComponentPaint& c) const override {
-        auto p = c.appearance.palette();
+        auto p = c.appearance.palette(c.ui.presentation().variant);
         const auto& item = c.placement;
         if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
         if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.appearance.component_presentation().inset), item.bounds.h}, p.accent); });
@@ -289,7 +289,7 @@ public:
         p.bounds = {0, 0, c.width, y};
     }
     void paint(ComponentPaint& c) const override {
-        auto palette = c.appearance.palette(); const auto& p = c.placement;
+        auto palette = c.appearance.palette(c.ui.presentation().variant); const auto& p = c.placement;
         paint_lines(c, p.label_lines, p.text_size, c.semantics.enabled ? palette.text : palette.muted);
         if (c.semantics.options.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
         for (std::size_t i = 0; i < p.options.size(); ++i) {
@@ -322,7 +322,7 @@ public:
         p.bounds = {0, 0, c.width, y};
     }
     void paint(ComponentPaint& c) const override {
-        auto palette = c.appearance.palette();
+        auto palette = c.appearance.palette(c.ui.presentation().variant);
         auto bounds = c.placement.bounds;
         if (c.placement.popup) {
             c.clip(bounds);
@@ -376,7 +376,7 @@ public:
         p.bounds = {0, 0, c.width, std::max(y, line)};
     }
     void paint(ComponentPaint& c) const override {
-        const auto& item = c.placement; auto palette = c.appearance.palette();
+        const auto& item = c.placement; auto palette = c.appearance.palette(c.ui.presentation().variant);
         paint_lines(c, item.lines, item.text_size, c.semantics.enabled ? palette.text : palette.muted);
         paint_errors(c, item.error_lines, item.text_size, palette.error);
         auto track = item.slider_track; int thickness = scaled(c.scale, c.appearance.component_presentation().focus);
@@ -410,7 +410,7 @@ public:
         p.bounds = {0, 0, c.width, y + p.progress_track.h};
     }
     void paint(ComponentPaint& c) const override {
-        auto palette = c.appearance.palette();
+        auto palette = c.appearance.palette(c.ui.presentation().variant);
         paint_lines(c, c.placement.lines, c.placement.text_size, palette.text);
         c.fill(c.placement.progress_track, palette.border);
         if (c.placement.progress_fill.w > 0) c.fill(c.placement.progress_fill, palette.accent);
@@ -448,7 +448,7 @@ public:
         c.placement.bounds = {0, 0, c.width, top + height};
     }
     void paint(ComponentPaint& c) const override {
-        auto palette = c.appearance.palette();
+        auto palette = c.appearance.palette(c.ui.presentation().variant);
         paint_lines(c, c.placement.label_lines, c.placement.text_size, palette.text);
         for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
@@ -488,7 +488,7 @@ public:
         c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.options.size())};
     }
     void paint(ComponentPaint& c) const override {
-        auto palette = c.appearance.palette();
+        auto palette = c.appearance.palette(c.ui.presentation().variant);
         bool material = c.appearance.name() == "Material-inspired";
         c.fill(c.placement.bounds, material ? palette.surface : palette.panel);
         if (!material) c.fill({c.placement.bounds.x+c.placement.bounds.w-scaled(c.scale,1), c.placement.bounds.y, scaled(c.scale,1), c.placement.bounds.h}, palette.border);
@@ -504,7 +504,7 @@ public:
                 });
             }
             const auto& line = c.placement.lines[i];
-            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);
+            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.navigation_key_down(key); }

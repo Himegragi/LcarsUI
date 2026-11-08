@@ -53,6 +53,7 @@ public:
         lcars::TextHandle name, preview;
         lcars::SliderHandle text_size;
         lcars::LabelHandle v04_title;
+        lcars::CheckboxHandle dark;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
         lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;

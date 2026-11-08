@@ -157,6 +157,13 @@ int main() {
         if (canvas.pixels[i] != canvas.pixels[i + 1] || canvas.pixels[i] != canvas.pixels[i + 2]) return 4;
     }
     if (!ink) return 5;
+    // Missing-glyph outlines preserve the caller's text color on a dark surface.
+    lcars::detail::Canvas dark_box(64, 64, {10, 20, 30});
+    text.draw(dark_box, missing, 0, 30, {210, 180, 150});
+    bool colored_box = false;
+    for (std::size_t i = 0; i < dark_box.pixels.size(); i += 4)
+        colored_box |= dark_box.pixels[i] == 210 && dark_box.pixels[i+1] == 180 && dark_box.pixels[i+2] == 150;
+    if (!colored_box) return 27;
     using namespace lcars::detail;
     std::vector<std::string> events;
     auto emit = [&](std::string_view code) { events.emplace_back(code); };
