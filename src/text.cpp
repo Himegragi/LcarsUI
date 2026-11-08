@@ -112,6 +112,17 @@ void Canvas::rounded(Rect r,int radius,Color color){
 }
 void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
     for(auto& glyph:layout.glyphs){
+        if (!glyph.id) {
+            int left=x+static_cast<int>(std::round(glyph.x));
+            int width=std::max(1,static_cast<int>(std::round(layout.size*.6f)));
+            int height=std::max(1,static_cast<int>(std::round(layout.size*.8f)));
+            int line=std::max(1,static_cast<int>(std::round(layout.size/16.f)));
+            canvas.fill({left,baseline-height,width,line},color);
+            canvas.fill({left,baseline-line,width,line},color);
+            canvas.fill({left,baseline-height,line,height},color);
+            canvas.fill({left+width-line,baseline-height,line,height},color);
+            continue;
+        }
         auto& font=impl_->font(glyph.font);font.size(layout.size);
         require(FT_Load_Glyph(font.face,glyph.id,FT_LOAD_DEFAULT)==0,"Glyph load failed");
         require(FT_Render_Glyph(font.face->glyph,FT_RENDER_MODE_NORMAL)==0,"Glyph rasterization failed");
