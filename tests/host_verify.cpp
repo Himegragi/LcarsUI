@@ -23,7 +23,7 @@
 
 using namespace lcars;
 using lcars::detail::DesktopHost;
-using lcars::detail::Canvas;
+using lcars::detail::Image;
 
 namespace {
 edit_form::Ids alternate_ids() {
@@ -157,6 +157,33 @@ struct Fixture {
     }
 };
 
+void draw_list_initial(const Appearance& appearance, Report& report) {
+    const char* names[] = {"v01-a","v01-b","v01-c","v01-d","v01-e","v02-a","v02-b","v02-c","v03-a","v03-b"};
+    for (int scenario=0; scenario<10; ++scenario) for (float scale : {1.f,1.5f}) {
+        Fixture f(appearance, true); auto& h=f.form.handles; auto& state=detail::access(f.form.ui);
+        bool setup=true;
+        if(scenario<5) {
+            setup=bool(h.name.focus());
+            if(scenario==1) setup=setup && bool(state.select(f.ids.name,0,2));
+            if(scenario==2) setup=setup && bool(state.composition_update(u"\u3118\u311c\u02cb",3));
+            if(scenario==3) { setup=setup && bool(h.name.set_value(u"")); h.apply.invoke(); setup=setup && h.name.describe()->invalid; }
+            if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); }
+        } else if(scenario<8) {
+            setup=bool(h.tabs.activate({"v02"})); auto& list=*f.form.list;
+            if(scenario==5) setup=setup && bool(list.handles.twenty.invoke()) && bool(list.handles.list.select({"T003"})) && bool(list.handles.list.focus());
+            if(scenario==6) { setup=setup && bool(list.handles.hundred.invoke()) && bool(list.handles.list.focus()); f.tap(VK_END); }
+            if(scenario==7) setup=setup && bool(list.handles.zero.invoke());
+        } else {
+            setup=bool(h.tabs.activate({"v03"}));
+            if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
+            if(scenario==9) setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open();
+        }
+        int width=960,height=720;
+        bool matched=setup && f.host.compare_legacy(width,height,scale);
+        report.check("DL01", matched, std::string(names[scenario])+" scale="+std::to_string(scale)+" setup="+std::to_string(setup));
+    }
+}
+
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
@@ -191,14 +218,14 @@ void progress_native(const Appearance& appearance, Report& report, const std::fi
     };
     for (const auto& c : cases) {
         c.button.focus(); f.tap(VK_RETURN); f.settle();
-        Canvas pixels(1, 1, {0, 0, 0});
+        Image pixels{1, 1, {}};
         auto path = folder / (report.appearance + (c.source == 50 ? "-v03-50.bmp" : "-v03-p07.bmp"));
         auto frame = f.host.render(960, 720, 1.f, path, &pixels);
         const auto* item = frame.find(h.progress);
         if (!item || item->progress_track.w < 4) { passed = false; continue; }
         auto track = item->progress_track;
         auto at = [&](int x) {
-            auto i = (static_cast<std::size_t>(pixels.height - 1 - (track.y + track.h / 2)) * pixels.width + x) * 4;
+            auto i = (static_cast<std::size_t>((track.y + track.h / 2)) * pixels.width + x) * 4;
             return Color{pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]};
         };
         auto matches = [](Color a, Color b) { return a.r == b.r && a.g == b.g && a.b == b.b; };
@@ -307,9 +334,9 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     host.client_size(200, 100);
     host.pump();
     host.paint();
-    Canvas pixels(1, 1, {0, 0, 0});
+    Image pixels{1, 1, {}};
     host.render(200, 100, 1.f, folder / (report.appearance + "-registered-component.bmp"), &pixels);
-    const std::size_t sample = (static_cast<std::size_t>(100 - 1 - 20) * 200 + 70) * 4;
+    const std::size_t sample = (static_cast<std::size_t>(20) * 200 + 70) * 4;
     bool painted = pixels.pixels[sample] == 17 && pixels.pixels[sample + 1] == 91 && pixels.pixels[sample + 2] == 173;
     auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(host.window(), message, w, l); host.pump(); };
     post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(60, 4));
@@ -686,11 +713,11 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     state[VK_SHIFT] = 0;
     SetKeyboardState(state);
     bool back = detail::access(f.form.ui).focused() == f.ids.apply;
-    Canvas pixels(1, 1, {0, 0, 0});
+    Image pixels{1, 1, {}};
     auto frame = f.host.render(900, 700, 1.f, folder / (tag + "-focus-apply.bmp"), &pixels);
     auto r = detail::find_placement(frame, f.ids.apply)->bounds;
     auto color_at = [&](int x, int y) {
-        auto i = (static_cast<std::size_t>(pixels.height - 1 - y) * pixels.width + x) * 4;
+        auto i = (static_cast<std::size_t>(y) * pixels.width + x) * 4;
         return Color{pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]};
     };
     auto accent = appearance.palette().accent, ring = color_at(r.x + 1, r.y + r.h / 2);
@@ -1970,15 +1997,15 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
 void semantic_raster_samples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
-    auto contains_color = [](const Canvas& canvas, Rect bounds, Color color) {
+    auto contains_color = [](const Image& canvas, Rect bounds, Color color) {
         auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
         for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
-            auto i = (static_cast<std::size_t>(canvas.height - 1 - y) * canvas.width + x) * 4;
+            auto i = (static_cast<std::size_t>(y) * canvas.width + x) * 4;
             if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
         }
         return false;
     };
-    auto sample = [&](std::string_view name, Canvas& pixels) {
+    auto sample = [&](std::string_view name, Image& pixels) {
         return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
     };
     h.error.invoke();
@@ -1992,7 +2019,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         });
     report.check("X04-native-paint-observation", observed_error,
                  "The actual host paint path records visible error text under its owning field");
-    Canvas pixels(1, 1, {0, 0, 0});
+    Image pixels{1, 1, {}};
     auto frame = sample("v01-error", pixels);
     auto* field = frame.find(h.name);
     bool error = field && h.name.describe()->invalid && !h.name.describe()->error.empty() && !field->error_lines.empty() &&
@@ -2640,6 +2667,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        draw_list_initial(*appearance, report);
         tabs_native(*appearance, report, folder);
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);
@@ -2795,11 +2823,13 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
+        bool dl01_only = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1;
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            else if (arg == L"--dl01-only") dl01_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
@@ -2812,6 +2842,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
+        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report); } return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
