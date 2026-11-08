@@ -71,11 +71,13 @@ struct Placement {
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
     bool clipped = false;         // clip has been assigned, including an empty intersection
     bool popup = false;           // an overlay belongs to its source, outside normal layout flow
+    bool dropdown_panel = false; // actual dropdown panel, distinct from modal content
     bool tooltip = false;         // explanatory overlay: never receives pointer input
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
     std::vector<Line> lines;      // labels and command titles
     std::vector<Rect> options;   // radio option hit and paint bounds
+    std::size_t option_start = 0; // logical index of the first placed option
     Rect slider_track;           // slider track in frame coordinates
     Rect progress_track, progress_fill; // progress display in frame coordinates
     FieldLayout field;            // text fields, translated to frame coordinates

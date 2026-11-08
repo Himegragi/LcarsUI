@@ -623,6 +623,7 @@ Result DropdownHandle::open() const {
     ui_->close_popup(); ui_->popup_source_ = id_;
     auto current = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && f.value && o.value == *f.value; });
     if (current == f.options.end()) current = std::find_if(f.options.begin(), f.options.end(), [](const auto& o) { return o.enabled; });
+    f.reveal = true; f.scroll.offset = 0;
     f.candidate = current == f.options.end() ? std::nullopt : std::optional<OptionValue>(current->value);
     if (ui_->invalidate_) ui_->invalidate_();
     return {};
@@ -756,9 +757,12 @@ Result detail::UiState::dropdown_key_down(KeyPress key) {
     }
     if (popup_source_ != focus_) return {};
     int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
+    if (key.key == Key::home) direction = 1;
+    if (key.key == Key::end) direction = -1;
     if (!direction) return {};
     int n = static_cast<int>(f.options.size()), index = direction > 0 ? -1 : n;
-    for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
+    if (key.key != Key::home && key.key != Key::end) for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
+    f.reveal = true;
     for (int i = index + direction; i >= 0 && i < n; i += direction) if (f.options[i].enabled) { f.candidate = f.options[i].value; break; }
     if (invalidate_) invalidate_(); return {};
 }
@@ -2268,6 +2272,7 @@ Result detail::UiState::key_down(KeyPress key) {
             }
         }
     }
+    if (key.key == Key::escape && !popup_source_.empty()) { if (!key.repeat) close_popup(); return {}; }
     if (modal_ && !active_dialog_.empty() && key.key == Key::escape) {
         if (key.repeat) return {};
         return settle_dialog(active_dialog_, false);
@@ -2310,7 +2315,7 @@ Result detail::UiState::key_down(KeyPress key) {
             case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
             case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
             case Kind::radio_group: case Kind::slider: handled = key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
-            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::escape)); break;
+            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::escape)); break;
             case Kind::button: case Kind::checkbox: case Kind::tabs: handled = key.key == Key::enter || key.key == Key::space || (control->kind == Kind::tabs && (key.key == Key::left || key.key == Key::right)); break;
             case Kind::label: case Kind::progress: break;
             default: handled = true; break;
@@ -2656,7 +2661,10 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         if (!p.popup && rect.w > 0 && rect.h > 0) semantic_bounds_[p.id] = rect;
         if (!p.popup) { semantic_order_.push_back(p.id); semantic_positions_[p.id] = p.bounds; }
         auto& options = semantic_options_[p.id];
-        for (auto option : p.options) options.push_back(intersect(option, p.clip));
+        if (p.dropdown_panel) {
+            options.assign(dropdowns_.at(p.id).options.size(), {});
+            for (std::size_t i=0; i<p.options.size(); ++i) options[p.option_start+i] = intersect(p.options[i], p.clip);
+        } else for (auto option : p.options) options.push_back(intersect(option, p.clip));
         for (const auto& control : controls_) {
             if (control.target != p.id) continue;
             const std::vector<Line>* lines = nullptr;

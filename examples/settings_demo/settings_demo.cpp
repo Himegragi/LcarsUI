@@ -2,6 +2,8 @@
 #include "lcars/version.hpp"
 #include <algorithm>
 #include <cstdio>
+#include <codecvt>
+#include <locale>
 using namespace lcars;
 namespace settings_demo {
 namespace {
@@ -28,6 +30,33 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
     items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
     items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    font = ui.add_dropdown({.id="appearance.font",.kind=Kind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
+    font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
+    nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
+    refresh_fonts();
+    font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(value)}; }, [this](auto changed) { font_changed_=std::move(changed); return [this] { font_changed_={}; }; }});
+    font.connect_immediate([this](const DropdownChange& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.from_bytes(c.value->id.substr(7)); return set_presentation(settings); });
+    text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
+    nav.add_member({"appearance"}, text_size);
+    text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](auto changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
+    text_size.connect_immediate([this](const NumericChange& change) {
+        auto settings = ui.presentation(); settings.text_size = change.value;
+        bool focused = text_size.describe()->focused;
+        auto result = set_presentation(settings, focused && text_size_group_); if (!result) return result;
+        text_size_group_ = focused;
+        return Result{};
+    });
+    text_size.on_blur([this] { text_size_group_ = false; });
+    dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
+    compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
+    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
+    reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
+    for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
+    dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](auto changed) { dark_changed_=std::move(changed); return [this] { dark_changed_={}; }; }});
+    compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [this](auto changed) { compact_changed_=std::move(changed); return [this] { compact_changed_={}; }; }});
+    dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
+    compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
+    reset_appearance_.bind([this] { return set_presentation(PresentationSettings{}); });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
         about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
         nav.add_member({"about"}, about_labels_.back());
@@ -219,8 +248,22 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
-Result Demo::set_presentation(const PresentationSettings& settings) {
-    auto result=ui.set_presentation(settings); if (result) dirty(); return result;
+void Demo::refresh_fonts() {
+    std::vector<RadioOption> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
+    auto key = ui.presentation().font_family;
+    bool found = key.empty();
+    for (const auto& family : about_.fonts) {
+        options.push_back({{"family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(family.key)}, family.display_name});
+        found = found || family.key == key;
+    }
+    if (!found) options.push_back({{"family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
+    font.set_options(std::move(options));
+    auto resolution = about_.resolve_font ? about_.resolve_font(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
+    auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
+    font_status_.connect_source([status] { return status; });
+}
+Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
+    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); dirty(coalesce); } return result;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
@@ -236,6 +279,7 @@ void Demo::update_history_controls() {
     status_.connect_source([changed, this] { return changed ? u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539" : saved_once_ ? u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58" : u"\u4f7f\u7528\u9810\u8a2d\u503c\uff0c\u5c1a\u672a\u5efa\u7acb\u8a2d\u5b9a\u6a94"; });
 }
 void Demo::dirty(bool coalesce) {
+    if (!coalesce) { volume_group_=false; text_size_group_=false; }
     auto now = snapshot();
     if (current_ && *current_ != now) {
         if (!coalesce) undo_history_.push_back(*current_);
@@ -245,12 +289,12 @@ void Demo::dirty(bool coalesce) {
     current_ = std::move(now); update_history_controls();
 }
 void Demo::apply(const SettingsDocument& value) {
-    volume_group_=false;
+    volume_group_=false; text_size_group_=false;
     name_value_=value.name; notices_value_=value.notices; mode_value_=value.mode; region_value_=value.region;
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
-    ui.set_presentation(value.presentation); refresh_items(); current_=value; update_history_controls();
+    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); refresh_items(); current_=value; update_history_controls();
 }
 void Demo::set_renderer(std::u16string value) { about_.renderer = std::move(value); }
 layout::Node Demo::page() const {
@@ -263,6 +307,7 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
+    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
         content.push_back(control(licenses));

@@ -690,4 +690,66 @@ void about_keyboard_scroll() {
         test::check(short_label && !short_label->focusable, "fitting license stays out of Tab order");
     }
 }
-int main() { const test::Case cases[] = {{"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+void appearance_size_history() {
+    settings_demo::Demo demo;
+    test::check(bool(demo.nav.select({"appearance"})), "open appearance page");
+    auto& tree = demo.ui.semantics();
+    test::check(bool(tree.get({"appearance.text_size"})), "text size control exists");
+    test::check(bool(tree.perform({"appearance.text_size"}, Verb::focus)), "focus text size");
+    test::check(bool(tree.perform({"appearance.text_size"}, Verb::set_value, 28)), "change text size");
+    test::check(demo.ui.presentation().text_size == 28, "text size applies immediately");
+    test::check(bool(tree.perform({"appearance.text_size"}, Verb::set_value, 26)), "second size in focus period");
+    test::check(demo.ui.presentation().text_size == 26, "second size applies immediately");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})), "undo appearance edit");
+    test::check(demo.ui.presentation().text_size == 16, "undo restores presentation");
+}
+void appearance_toggle_reset() {
+    settings_demo::Demo demo;
+    demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    auto settings=demo.ui.presentation(); settings.font_family=u"Consolas"; settings.text_size=25;
+    test::check(bool(demo.set_presentation(settings)), "change font and size");
+    for (const char* id : {"appearance.dark", "appearance.compact"})
+        test::check(bool(tree.perform({id}, Verb::toggle)), "toggle appearance setting");
+    test::check(demo.ui.presentation().variant == ThemeVariant::dark() && demo.ui.presentation().density == Density::compact, "appearance toggles apply");
+    test::check(bool(tree.perform({"appearance.reset"}, Verb::invoke)), "reset appearance");
+    test::check(demo.ui.presentation() == PresentationSettings{}, "reset restores defaults");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true,.letter=u'Z'})), "undo reset");
+    test::check(demo.ui.presentation().variant == ThemeVariant::dark() && demo.ui.presentation().density == Density::compact &&
+                demo.ui.presentation().font_family == u"Consolas" && demo.ui.presentation().text_size == 25, "reset is one history step");
+}
+void appearance_font_history() {
+    settings_demo::AboutInfo info;
+    info.fonts = {{u"Consolas", u"Consolas"}};
+    for (int i=0; i<149; ++i) { auto n=std::to_string(i); auto key=u"Font" + std::u16string(n.begin(),n.end()); info.fonts.push_back({key,key}); }
+    settings_demo::Demo demo(info); demo.nav.select({"appearance"});
+    auto& tree=demo.ui.semantics();
+    test::check(bool(tree.perform({"appearance.font", OptionValue{"family:Consolas"}}, Verb::select)), "select font");
+    test::check(demo.ui.presentation().font_family == u"Consolas", "font applies");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true,.letter=u'Z'})), "undo font");
+    test::check(demo.ui.presentation().font_family.empty(), "font undo restores default");
+}
+void appearance_missing_font() {
+    settings_demo::Demo demo;
+    auto settings=demo.ui.presentation(); settings.font_family=u"NoSuchFont";
+    test::check(bool(demo.set_presentation(settings)), "restore unavailable font");
+    demo.nav.select({"appearance"});
+    auto node=demo.ui.semantics().get({"appearance.font", OptionValue{"family:NoSuchFont"}});
+    test::check(node && node->selected && node->name == u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "unavailable font remains selected");
+    auto status=demo.ui.semantics().get({"appearance.font.status"});
+    test::check(status && status->value.find(u"NoSuchFont") != std::u16string::npos, "unavailable font is explained");
+}
+void appearance_interleaved_history() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree=demo.ui.semantics();
+    tree.perform({"appearance.text_size"}, Verb::focus);
+    tree.perform({"appearance.text_size"}, Verb::set_value, 20);
+    tree.perform({"appearance.dark"}, Verb::toggle);
+    tree.perform({"appearance.text_size"}, Verb::set_value, 22);
+    auto& state=detail::access(demo.ui);
+    state.key_down({.ctrl=true,.letter=u'Z'});
+    test::check(demo.ui.presentation().text_size==20 && demo.ui.presentation().variant==ThemeVariant::dark(), "undo latest size independently");
+    state.key_down({.ctrl=true,.letter=u'Z'});
+    test::check(demo.ui.presentation().variant==ThemeVariant::light(), "undo intervening toggle independently");
+}
+int main() { const test::Case cases[] = {{"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
