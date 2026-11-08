@@ -53,7 +53,8 @@ std::u16string EditSession::visible() const {
 }
 detail::UiState::OperationScope::OperationScope(UiState* state)
     : state_(state && std::this_thread::get_id() == state->owner_ ? state : nullptr) {
-    if (state_ && ++state_->operation_depth_ == 1 && !state_->semantic_subscribers_.empty() && !state_->semantic_inspecting_) {
+    if (state_ && ++state_->operation_depth_ == 1 && !state_->semantic_subscribers_.empty() &&
+        !state_->semantic_inspecting_ && !state_->committing_removals_) {
         state_->semantic_inspecting_ = true;
         state_->semantic_before_ = state_->semantic_snapshot();
         state_->semantic_inspecting_ = false;

@@ -41,6 +41,8 @@ public:
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
+    // Callbacks run on the UI thread. The desktop host dispatches queued notifications;
+    // core-only hosts call dispatch_events() at their own safe event-loop boundary.
     Subscription subscribe(std::function<void(const SemanticEvent&)> callback);
     void dispatch_events();
 private:

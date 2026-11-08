@@ -16,6 +16,7 @@
 #include <fstream>
 #include <codecvt>
 #include <locale>
+#include <stdexcept>
 using namespace lcars;
 using test::check;
 
@@ -125,6 +126,8 @@ void semantic_modal_operations() {
     check(dialog && std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog advertises cancel");
     auto half = tree.get({prefix + "v03.half"});
     check(half && half->blocked_by_modal && half->enabled, "modal background readable");
+    auto progress = tree.get({prefix + "v03.progress"});
+    check(progress && progress->numeric_value == 50 && progress->blocked_by_modal, "modal background progress remains readable");
     check(tree.perform({prefix + "v03.half"}, Verb::invoke).status == Status::blocked_by_modal, "modal rejects background");
     check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
     check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
@@ -140,6 +143,9 @@ void semantic_list_operations() {
     auto prefix = ids.title + ".pages.";
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "select list page");
     check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "load list sample");
+    auto first = tree.get({prefix + "v02.list", OptionValue{"T005"}});
+    auto second = tree.get({prefix + "v02.list", OptionValue{"T006"}});
+    check(first && second && first->name == second->name && first->name == u"共用範本", "duplicate names retain distinct identities");
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "select duplicate-name item");
     std::string reveal;
     detail::access(form.ui).on_reveal([&](const std::string& id) { reveal = id; });
@@ -152,6 +158,11 @@ void semantic_list_operations() {
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "restore list selection");
     check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)) &&
           form.list->selection() == OptionValue{"T006"}, "list selection survives sorting");
+    check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)) && form.list->selection() == OptionValue{"T006"},
+          "list selection survives sorting back");
+    check(bool(tree.perform({prefix + "v02.disable"}, Verb::invoke)) &&
+          tree.perform({prefix + "v02.list", OptionValue{"T008"}}, Verb::select).status == Status::disabled,
+          "disabled list item rejects selection");
 }
 
 void semantic_text_and_thread() {
@@ -205,6 +216,9 @@ void semantic_notifications() {
     });
     check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"new name"))), "semantic change accepted");
     check(events.empty(), "notifications wait until operation returns");
+    int scheduled = 0;
+    detail::access(form.ui).on_semantic_pending([&] { ++scheduled; });
+    check(scheduled == 1, "new host schedules notifications queued before attachment");
     tree.dispatch_events();
     check(std::count_if(events.begin(), events.end(), [&](const auto& e) {
         return e.kind == SemanticEventKind::text_changed && e.ref.id == ids.name;
@@ -279,6 +293,26 @@ void semantic_focus_driver() {
     }
 }
 
+void semantic_subscriber_exception_boundary() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics(); int calls = 0;
+    auto first = tree.subscribe([](const SemanticEvent&) { throw std::runtime_error("subscriber failure"); });
+    auto second = tree.subscribe([&](const SemanticEvent&) { ++calls; });
+    check(bool(tree.perform({ids.apply}, Verb::focus)), "focus before subscriber failure");
+    tree.dispatch_events();
+    check(calls > 0, "a throwing subscriber does not prevent other listeners");
+}
+
+void semantic_removal_notification() {
+    Ui ui; auto button = ui.add_button({.id = "removable", .kind = Kind::button, .label = u"Removable"}).value.value();
+    button.focus(); std::vector<SemanticEvent> events;
+    auto subscription = ui.semantics().subscribe([&](const auto& event) { events.push_back(event); });
+    check(bool(button.remove()), "remove focused component");
+    ui.semantics().dispatch_events();
+    check(std::any_of(events.begin(), events.end(), [](const auto& event) {
+        return event.kind == SemanticEventKind::structure_changed && event.ref.id.empty();
+    }), "removal notifies root structure");
+}
+
 void semantic_verb_drivers() {
     for (int state = 0; state < 5; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
                       Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
@@ -333,9 +367,14 @@ void semantic_verb_drivers() {
             else if (verb == Verb::paste) arg = std::u16string(u"x");
             auto actual = b.ui.semantics().perform({*ref}, verb, arg).status;
             check(actual == expected, "semantic verb status matches typed handle or is inapplicable");
-            if (verb == Verb::select) {
+            {
                 auto children = b.ui.semantics().children({*ref});
                 if (children) for (const auto& child : *children) if (child.item) {
+                    if (verb != Verb::select) {
+                        check(b.ui.semantics().perform(child, verb, arg).status == Status::not_supported,
+                              "inapplicable logical-item verb is not supported");
+                        continue;
+                    }
                     auto item_status = std::visit([&](const auto& h) -> Status {
                         using T = std::decay_t<decltype(h)>;
                         if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
@@ -2741,6 +2780,8 @@ int main() {
         {"Semantic admission priority", semantic_admission_priority},
         {"Semantic notifications", semantic_notifications},
         {"Semantic focus driver", semantic_focus_driver},
+        {"Semantic subscriber exception boundary", semantic_subscriber_exception_boundary},
+        {"Semantic removal notification", semantic_removal_notification},
         {"Semantic verb drivers", semantic_verb_drivers},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},

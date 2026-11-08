@@ -132,7 +132,10 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
-    void on_semantic_pending(std::function<void()> callback) { semantic_schedule_ = std::move(callback); }
+    void on_semantic_pending(std::function<void()> callback) {
+        semantic_schedule_ = std::move(callback);
+        if (semantic_schedule_ && !semantic_pending_.empty()) semantic_schedule_();
+    }
     void on_reveal(std::function<void(const Id&)> callback) { reveal_requested_ = std::move(callback); }
     // Called after each focus move with the previous and new focus (either may be empty).
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
