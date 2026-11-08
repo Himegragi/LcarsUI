@@ -11,7 +11,7 @@ void exercise() {
     check(bool(nav), "navigation list is created");
     auto semantic = ui.semantics().get({"nav"});
     auto option = ui.semantics().get({"nav", OptionValue{"one"}});
-    check(semantic && semantic->role == Role::list && option && option->role == Role::list_item && option->selected,
+    check(semantic && semantic->role == Role::list && semantic->selection_required && option && option->role == Role::list_item && option->selected,
           "navigation list exposes list and list-item semantics");
     check(option && std::find(option->verbs.begin(), option->verbs.end(), Verb::select) != option->verbs.end(), "navigation item advertises select");
     auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
@@ -34,6 +34,7 @@ void exercise() {
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",true,{}},{{"x"},u"Y",true,{}}}, {"x"}).status == Status::invalid_value, "duplicate rejected");
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",false,{}}}, {"x"}).status == Status::invalid_value, "disabled initial rejected");
     auto locked_list = ui.add_list({.id="locked", .kind=Kind::list, .read_only=true}, {{{"x"}, u"X", false}}).value.value();
+    check(!ui.semantics().get({"locked"})->selection_required, "ordinary list permits no selection");
     check(locked_list.select({"x"}).status == Status::disabled &&
           ui.semantics().perform({"locked", OptionValue{"x"}}, Verb::select).status == Status::disabled,
           "disabled item precedes read-only list");
@@ -127,6 +128,17 @@ void exercise() {
     source.on_blur([&] { nested=second_dialog.open(); });
     source.focus();
     check(bool(first_dialog.open()) && nested.status==Status::busy && !*second_dialog.is_open(), "opening cannot reenter another dialog during blur");
+    Ui rapid_ui;
+    auto rapid_background = rapid_ui.add_button({.id="background",.kind=Kind::button}).value.value();
+    auto rapid_button = rapid_ui.add_button({.id="member",.kind=Kind::button}).value.value();
+    auto rapid_dialog = rapid_ui.add_dialog("rapid", {rapid_button}, rapid_button, rapid_background, [](bool) {}).value.value();
+    std::vector<bool> visibility_changes;
+    auto observer = rapid_ui.semantics().subscribe([&](const SemanticEvent& event) {
+        if (event.ref.id == "rapid" && event.property == "hidden" && event.hidden) visibility_changes.push_back(*event.hidden);
+    });
+    check(bool(rapid_dialog.open()) && bool(rapid_dialog.settle(false)), "rapid dialog transitions succeed");
+    rapid_ui.semantics().dispatch_events();
+    check(visibility_changes == std::vector<bool>{false, true}, "queued dialog events retain each visibility transition");
     Ui modal_ui;
     auto first = modal_ui.add_button({.id="first",.kind=Kind::button}).value.value();
     auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();

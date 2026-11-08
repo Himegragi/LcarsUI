@@ -5,13 +5,14 @@
 #include <objbase.h>
 #include <UIAutomation.h>
 #include <atomic>
+#include <cmath>
+#include <limits>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <algorithm>
 #include <functional>
 #include <thread>
-#include <unordered_map>
 
 namespace lcars::detail {
 namespace {
@@ -28,6 +29,30 @@ HRESULT status_hr(Status s) {
     }
 }
 class Provider;
+IUnknown* make_selection_provider(Provider*);
+// UIA can reenter the provider, so raise outside the UI thread. One draining
+// worker preserves semantic event order without blocking host shutdown.
+struct EventQueue : std::enable_shared_from_this<EventQueue> {
+    std::mutex mutex;
+    std::deque<std::function<void()>> pending;
+    bool running = false;
+    void post(std::function<void()> action) {
+        std::lock_guard lock(mutex); pending.push_back(std::move(action));
+        if (running) return;
+        running = true;
+        std::thread([self = shared_from_this()] {
+            auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            for (;;) {
+                std::function<void()> next;
+                { std::lock_guard guard(self->mutex);
+                  if (self->pending.empty()) { self->running = false; break; }
+                  next = std::move(self->pending.front()); self->pending.pop_front(); }
+                try { next(); } catch (...) { }
+            }
+            if (SUCCEEDED(init)) CoUninitialize();
+        }).detach();
+    }
+};
 struct Request {
     std::mutex mutex; std::condition_variable changed;
     enum class State { waiting, running, done, abandoned } state = State::waiting;
@@ -37,6 +62,11 @@ struct Request {
 struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
     Ui* ui; std::function<const Frame&()> frame; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identity_available = true;
     std::deque<std::shared_ptr<Request>> queue;
+    std::shared_ptr<EventQueue> events = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> focus_events = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> structure_events = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> overlay_events = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> text_events = std::make_shared<EventQueue>();
     std::vector<Provider*> providers;
     Subscription subscription;
     bool observing = false;
@@ -103,7 +133,7 @@ BSTR bstr_id(const std::string& s) {
     if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
     return result;
 }
-class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public IValueProvider, public ITextProvider {
+class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider {
     std::atomic<ULONG> refs_{1};
 public:
     std::shared_ptr<UiaBridge::Impl> ctx; NodeRef ref; int serial; std::uint64_t instance; std::atomic<bool> valid = true, disconnecting = false;
@@ -116,6 +146,10 @@ public:
         else if (iid == __uuidof(IRawElementProviderFragmentRoot) && root()) *out = static_cast<IRawElementProviderFragmentRoot*>(this);
         else if (iid == __uuidof(IInvokeProvider)) *out = static_cast<IInvokeProvider*>(this);
         else if (iid == __uuidof(IToggleProvider)) *out = static_cast<IToggleProvider*>(this);
+        else if (iid == __uuidof(ISelectionItemProvider)) *out = static_cast<ISelectionItemProvider*>(this);
+        else if (iid == __uuidof(IExpandCollapseProvider)) *out = static_cast<IExpandCollapseProvider*>(this);
+        else if (iid == __uuidof(IRangeValueProvider)) *out = static_cast<IRangeValueProvider*>(this);
+        else if (iid == __uuidof(IWindowProvider)) *out = static_cast<IWindowProvider*>(this);
         else if (iid == __uuidof(IValueProvider)) *out = static_cast<IValueProvider*>(this);
         else if (iid == __uuidof(ITextProvider)) *out = static_cast<ITextProvider*>(this);
         if (!*out) return E_NOINTERFACE; AddRef(); return S_OK;
@@ -140,6 +174,11 @@ public:
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
             auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && n->role == Role::button) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
+            if (id == UIA_WindowPatternId && n->role == Role::dialog) *result = static_cast<IWindowProvider*>(this);
+            if (id == UIA_RangeValuePatternId && (n->role == Role::slider || n->role == Role::progress)) *result = static_cast<IRangeValueProvider*>(this);
+            if (id == UIA_ExpandCollapsePatternId && n->role == Role::dropdown) *result = static_cast<IExpandCollapseProvider*>(this);
+            if (id == UIA_SelectionPatternId && (n->role == Role::radio_group || n->role == Role::dropdown || n->role == Role::list || n->role == Role::tabs)) { *result = make_selection_provider(this); return *result ? S_OK : E_OUTOFMEMORY; }
+            if (id == UIA_SelectionItemPatternId && (n->role == Role::radio_option || n->role == Role::dropdown_option || n->role == Role::list_item || n->role == Role::tab_item)) *result = static_cast<ISelectionItemProvider*>(this);
             if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
             if (id == UIA_TextPatternId && n->role == Role::text) *result = static_cast<ITextProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
@@ -245,6 +284,75 @@ public:
         });
         Release(); if (SUCCEEDED(hr) && *result) *out = static_cast<IRawElementProviderFragment*>(*result); return hr;
     }
+    HRESULT selection_get(SAFEARRAY** out) {
+        if (!out) return E_POINTER; *out = nullptr;
+        auto result = std::make_shared<SAFEARRAY*>(nullptr); AddRef();
+        auto hr = ctx->call([this, result] {
+            auto h = check(); if (FAILED(h)) return h;
+            auto children = ctx->ui->semantics().children(ref); if (!children) return status_hr(children.status);
+            std::vector<IRawElementProviderSimple*> selected;
+            for (auto& child : *children) { auto n = ctx->ui->semantics().get(child); if (n && n->selected) selected.push_back(static_cast<IRawElementProviderSimple*>(ctx->provider(child))); }
+            auto a = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(selected.size())); if (!a) return E_OUTOFMEMORY;
+            for (LONG i = 0; i < static_cast<LONG>(selected.size()); ++i) SafeArrayPutElement(a, &i, selected[i]);
+            *result = a; return S_OK;
+        }); Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT selection_can_select_multiple(BOOL* out) { if (!out) return E_POINTER; *out = FALSE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
+    HRESULT selection_is_required(BOOL* out) {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selection_required; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE Select() override { return perform(Verb::select); }
+    HRESULT STDMETHODCALLTYPE AddToSelection() override { return perform(Verb::select); }
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection() override { return UIA_E_INVALIDOPERATION; }
+    HRESULT STDMETHODCALLTYPE get_IsSelected(BOOL* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selected; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_SelectionContainer(IRawElementProviderSimple** out) override {
+        if (!out) return E_POINTER; *out = nullptr; auto result = std::make_shared<Provider*>(nullptr); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->provider({ref.id}); (*result)->AddRef(); return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = static_cast<IRawElementProviderSimple*>(*result); return hr;
+    }
+    HRESULT STDMETHODCALLTYPE Expand() override { return perform(Verb::open); }
+    HRESULT STDMETHODCALLTYPE Collapse() override { return perform(Verb::cancel); }
+    HRESULT STDMETHODCALLTYPE get_ExpandCollapseState(ExpandCollapseState* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<ExpandCollapseState>(ExpandCollapseState_Collapsed); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->expanded ? ExpandCollapseState_Expanded : ExpandCollapseState_Collapsed; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE SetValue(double value) override {
+        if (!std::isfinite(value) || std::trunc(value) != value || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) return E_INVALIDARG;
+        AddRef(); auto hr = ctx->call([this, value] { auto h = check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref, Verb::set_value, static_cast<int>(value)).status); }); Release(); return hr;
+    }
+    HRESULT range_property(double* out, int which) {
+        if (!out) return E_POINTER; auto result = std::make_shared<double>(0); AddRef();
+        auto hr = ctx->call([this, result, which] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref);
+            auto r = n->range.value_or(SliderRange{0, 100, 1});
+            *result = which == 0 ? n->numeric_value.value_or(0) : which == 1 ? r.minimum : which == 2 ? r.maximum : r.step; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_Value(double* out) override { return range_property(out, 0); }
+    HRESULT STDMETHODCALLTYPE get_Minimum(double* out) override { return range_property(out, 1); }
+    HRESULT STDMETHODCALLTYPE get_Maximum(double* out) override { return range_property(out, 2); }
+    HRESULT STDMETHODCALLTYPE get_SmallChange(double* out) override { return range_property(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_LargeChange(double* out) override { return range_property(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
+        if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref); *result = n->read_only || n->role == Role::progress; return S_OK; });
+        Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
+    }
+    HRESULT STDMETHODCALLTYPE Close() override { return perform(Verb::cancel); }
+    HRESULT STDMETHODCALLTYPE SetVisualState(WindowVisualState) override { return UIA_E_INVALIDOPERATION; }
+    HRESULT STDMETHODCALLTYPE WaitForInputIdle(int, BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_CanMaximize(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_CanMinimize(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_IsModal(BOOL* out) override { if (!out) return E_POINTER; *out = TRUE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_IsTopmost(BOOL* out) override { if (!out) return E_POINTER; *out = FALSE; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_WindowVisualState(WindowVisualState* out) override { if (!out) return E_POINTER; *out = WindowVisualState_Normal; return S_OK; }
+    HRESULT STDMETHODCALLTYPE get_WindowInteractionState(WindowInteractionState* out) override { if (!out) return E_POINTER; *out = WindowInteractionState_Running; return S_OK; }
     HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY**) override;
     HRESULT STDMETHODCALLTYPE GetVisibleRanges(SAFEARRAY**) override;
     HRESULT STDMETHODCALLTYPE RangeFromChild(IRawElementProviderSimple*, ITextRangeProvider**) override;
@@ -269,17 +377,32 @@ public:
             auto n = ctx->ui->semantics().get(ref); *result = n->value; return S_OK; }); Release();
         if (SUCCEEDED(hr)) { *out = bstr(*result); if (!*out) return E_OUTOFMEMORY; } return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
-        if (!out) return E_POINTER; *out = FALSE; auto result = std::make_shared<bool>(); AddRef();
-        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h;
-            auto n = ctx->ui->semantics().get(ref); *result = n->read_only; return S_OK; }); Release();
-        if (SUCCEEDED(hr)) *out = *result; return hr;
-    }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
     HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
     HRESULT STDMETHODCALLTYPE get_ToggleState(ToggleState* out) override { if (!out) return E_POINTER; auto result=std::make_shared<ToggleState>(ToggleState_Off); AddRef(); auto hr=ctx->call([this,result] { auto h=check(); if (FAILED(h)) return h; auto n=ctx->ui->semantics().get(ref); *result=n->checked.value_or(false) ? ToggleState_On : ToggleState_Off; return S_OK; }); Release(); if (SUCCEEDED(hr)) *out=*result; return hr; }
 };
+
+
+// ITextProvider and ISelectionProvider both declare GetSelection with different
+// meanings. A tear-off keeps their COM identities and results distinct.
+class SelectionProvider final : public ISelectionProvider {
+    std::atomic<ULONG> refs_{1}; Provider* owner_;
+public:
+    explicit SelectionProvider(Provider* owner) : owner_(owner) { owner_->AddRef(); }
+    ~SelectionProvider() { owner_->Release(); }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER; *out = nullptr;
+        if (iid != __uuidof(IUnknown) && iid != __uuidof(ISelectionProvider)) return E_NOINTERFACE;
+        *out = static_cast<ISelectionProvider*>(this); AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override { return owner_->selection_get(out); }
+    HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(BOOL* out) override { return owner_->selection_can_select_multiple(out); }
+    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override { return owner_->selection_is_required(out); }
+};
+IUnknown* make_selection_provider(Provider* owner) { return static_cast<ISelectionProvider*>(new SelectionProvider(owner)); }
 
 class TextRange final : public ITextRangeProvider {
     std::atomic<ULONG> refs{1};
@@ -762,23 +885,108 @@ void UiaBridge::Impl::observe() {
             }
         }
         if (!UiaClientsAreListening()) return;
-        if (event.kind == SemanticEventKind::text_changed || event.kind == SemanticEventKind::text_selection_changed || event.kind == SemanticEventKind::layout_changed) {
-            auto p = ctx->provider(event.kind == SemanticEventKind::layout_changed ? NodeRef{} : event.ref);
-            auto id = event.kind == SemanticEventKind::text_changed ? UIA_Text_TextChangedEventId : event.kind == SemanticEventKind::text_selection_changed ? UIA_Text_TextSelectionChangedEventId : UIA_LayoutInvalidatedEventId;
-            p->AddRef(); std::thread([p, id] { auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED); UiaRaiseAutomationEvent(p, id); p->Release(); if (SUCCEEDED(init)) CoUninitialize(); }).detach();
+        if (event.kind == SemanticEventKind::property_changed && event.property == "hidden" && event.hidden) {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || (n->role != Role::dialog && n->role != Role::tooltip)) return;
+            bool visible = !*event.hidden;
+            EVENTID id = n->role == Role::dialog ? (visible ? UIA_Window_WindowOpenedEventId : UIA_Window_WindowClosedEventId)
+                : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->overlay_events->post([p, id] { UiaRaiseAutomationEvent(p, id); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::layout_changed) {
+            auto p = ctx->provider({}); p->AddRef();
+            ctx->text_events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_LayoutInvalidatedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::text_selection_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->text_events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_Text_TextSelectionChangedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::text_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->text_events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_Text_TextChangedEventId); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::focus_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->focus_events->post([p] {
+                UiaRaiseAutomationEvent(p, UIA_AutomationFocusChangedEventId);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::structure_changed) {
+            auto p = ctx->provider(event.ref); p->AddRef();
+            ctx->structure_events->post([p] {
+                UiaRaiseStructureChangedEvent(p, StructureChangeType_ChildrenInvalidated, nullptr, 0);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "enabled") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool enabled = n->enabled;
+            ctx->events->post([p, enabled] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "value") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); auto value = n->value;
+            ctx->events->post([p, value = std::move(value)] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_BSTR; after.bstrVal = bstr(value);
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ValueValuePropertyId, before, after); VariantClear(&after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "name") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); auto name = n->name;
+            ctx->events->post([p, name = std::move(name)] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_BSTR; after.bstrVal = bstr(name);
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_NamePropertyId, before, after); VariantClear(&after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "numeric_value") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->numeric_value) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); double value = *n->numeric_value;
+            ctx->events->post([p, value] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                after.vt = VT_R8; after.dblVal = value;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_RangeValueValuePropertyId, before, after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "expanded") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool expanded = n->expanded;
+            ctx->events->post([p, expanded] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_I4;
+                before.lVal = expanded ? ExpandCollapseState_Collapsed : ExpandCollapseState_Expanded;
+                after.lVal = expanded ? ExpandCollapseState_Expanded : ExpandCollapseState_Collapsed;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ExpandCollapseExpandCollapseStatePropertyId, before, after);
+                p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::property_changed && event.property == "selected") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); bool selected = n->selected;
+            ctx->events->post([p, selected] {
+                VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                before.vt = after.vt = VT_BOOL; before.boolVal = selected ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = selected ? VARIANT_TRUE : VARIANT_FALSE;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_SelectionItemIsSelectedPropertyId, before, after);
+                if (selected) UiaRaiseAutomationEvent(p, UIA_SelectionItem_ElementSelectedEventId);
+                p->Release(); });
         }
         if (event.kind == SemanticEventKind::property_changed && event.property == "checked") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->checked) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool checked = *n->checked;
-            std::thread([p, checked] {
-                auto init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            ctx->events->post([p, checked] {
                 VARIANT old_value, new_value; VariantInit(&old_value); VariantInit(&new_value);
                 old_value.vt = new_value.vt = VT_I4;
                 new_value.lVal = checked ? ToggleState_On : ToggleState_Off;
                 old_value.lVal = checked ? ToggleState_Off : ToggleState_On;
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_ToggleToggleStatePropertyId, old_value, new_value);
-                p->Release(); if (SUCCEEDED(init)) CoUninitialize();
-            }).detach();
+                p->Release(); });
         }
     });
 }

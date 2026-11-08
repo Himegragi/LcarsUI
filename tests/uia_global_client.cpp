@@ -46,7 +46,13 @@ int wmain(int argc, wchar_t** argv) {
         }
     }
     DWORD_PTR requests = 0;
-    if (search.window) SendMessageTimeoutW(search.window, WM_APP + 80, 16, 0, SMTO_ABORTIFHUNG, 5000, &requests);
+    // Windows discovers newly created windows asynchronously. Wait for its
+    // WM_GETOBJECT request without requesting the root ourselves: the listener
+    // was registered before the host existed and the provider remains lazy.
+    if (search.window) for (int i = 0; i < 50 && requests == 0; ++i) {
+        SendMessageTimeoutW(search.window, WM_APP + 80, 16, 0, SMTO_ABORTIFHUNG, 1000, &requests);
+        if (!requests) Sleep(100);
+    }
     DWORD_PTR result = 0;
     bool sent = search.window && SendMessageTimeoutW(search.window, WM_APP + 80, 15, 0, SMTO_ABORTIFHUNG, 5000, &result) && result == 0;
     bool received = sent && WaitForSingleObject(handler->received, 5000) == WAIT_OBJECT_0;

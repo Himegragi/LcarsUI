@@ -8,7 +8,11 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm };
 using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
-struct SemanticEvent { SemanticEventKind kind; NodeRef ref; std::string property; };
+struct SemanticEvent {
+    SemanticEventKind kind; NodeRef ref; std::string property;
+    // Overlay visibility is captured at the transition, not at delivery time.
+    std::optional<bool> hidden;
+};
 class Subscription {
 public:
     explicit Subscription(std::function<void()> disconnect = {}) : disconnect_(std::move(disconnect)) {}
@@ -27,6 +31,7 @@ struct SemanticNode {
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
     bool hidden = false, visible = false, blocked_by_modal = false;
+    bool selection_required = false;
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;

@@ -2763,6 +2763,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (n.role == Role::label) n.name = s.value;
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
+    n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
@@ -2781,7 +2782,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
-        if (!n.hidden && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
     auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
@@ -2859,9 +2860,9 @@ void detail::UiState::semantic_diff() {
     const bool was_empty = semantic_pending_.empty();
     auto after = semantic_snapshot();
     std::vector<SemanticEvent> changes;
-    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}) {
+    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {}) {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
-        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property)});
+        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
     };
     auto find = [](const auto& nodes, const NodeRef& ref) -> const SemanticNode* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
@@ -2878,7 +2879,11 @@ void detail::UiState::semantic_diff() {
     for (const auto& node : after) {
         auto old = find(semantic_before_, node.ref);
         if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }
-        if (node.hidden != old->hidden) emit(SemanticEventKind::structure_changed, {});
+        if (node.hidden != old->hidden) {
+            if (node.role == Role::dialog || node.role == Role::tooltip)
+                emit(SemanticEventKind::property_changed, node.ref, "hidden", node.hidden);
+            emit(SemanticEventKind::structure_changed, {});
+        }
         bool focused_item = !node.ref.item && std::any_of(after.begin(), after.end(), [&](const auto& child) {
             return child.ref.id == node.ref.id && child.ref.item && child.focused;
         });
