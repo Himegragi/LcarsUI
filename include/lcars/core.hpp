@@ -137,6 +137,7 @@ struct OptionSource {
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
+class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
@@ -464,9 +465,11 @@ public:
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
     const std::vector<std::string>& diagnostics() const;
+    SemanticTree& semantics();
 private:
     friend detail::UiState& detail::access(Ui&);
     friend const detail::UiState& detail::access(const Ui&);
     std::unique_ptr<detail::UiState> state_;
+    std::unique_ptr<SemanticTree> semantics_;
 };
 }

@@ -1,4 +1,5 @@
 #include "x04_drivers.hpp"
+#include "lcars/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "render.hpp"
@@ -10,6 +11,10 @@
 #include "geometry.hpp"
 #include <cmath>
 #include <thread>
+#include <set>
+#include <fstream>
+#include <codecvt>
+#include <locale>
 using namespace lcars;
 using test::check;
 
@@ -149,6 +154,86 @@ void ps08_large_text_wraps_without_overlap() {
     for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
     for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
     check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
+}
+
+void semantic_tree_reads_registered_components() {
+    Ui ui;
+    ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"});
+    auto children = ui.semantics().children({});
+    auto node = ui.semantics().get({"save"});
+    check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
+          "Semantic tree enumerates and reads a registered button");
+}
+
+void write_semantic_tsv(edit_form::Form& form, const char* state) {
+    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
+    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
+    std::ofstream out(filename, std::ios::binary);
+    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
+    out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = form.ui.semantics().children(parent);
+        check(bool(children), "Tree traversal succeeds while writing TSV");
+        for (const auto& ref : *children) {
+            auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
+            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
+                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
+            if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
+            else out << '-';
+            out << '\n'; self(self, ref);
+        }
+    };
+    visit(visit, {}); out.flush(); check(bool(out), "Semantic TSV was written");
+}
+
+void semantic_showcase_states_and_identity() {
+    edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
+    test::FakeMeasure measure;
+    auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v01");
+    auto inventory = x04::inventory(form);
+    std::set<std::string> unique;
+    for (auto& entry : inventory) { auto s = x04::describe(entry.handle); if (s) unique.insert(s->id); }
+    check(inventory.size() == 57 && unique.size() == 57, "Tree enumerates exactly the 57 formerly inventoried showcase components");
+    auto mode = form.handles.mode.describe()->id;
+    auto options = tree.children({mode});
+    check(options && options->size() == 3 && (*options)[0].item == OptionValue{"normal"} &&
+          (*options)[1].item == OptionValue{"focus"} && (*options)[2].item == OptionValue{"offline"}, "SEM02 radio options are tree children");
+    auto name = tree.get({ids.name});
+    check(name && !name->hidden && name->name == form.handles.name.describe()->name && name->bounds,
+          "SEM02 active field has its current name and clipped bounds");
+    auto list_id = form.list->handles.list.describe()->id;
+    check(tree.get({list_id})->hidden, "SEM02 inactive list remains readable and hidden");
+    form.handles.tabs.activate({"v02"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v02");
+    auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
+    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
+    form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
+    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
+          "SEM03 selected identity survives sorting and unknown item is absent");
+    form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
+    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
+    form.handles.tabs.activate({"v03"}); draw();
+    if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
+    auto hidden = tree.get({ids.name});
+    check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
+          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
+    form.handles.dialog_open.invoke(); draw();
+    auto background = tree.get({form.handles.progress_half.describe()->id});
+    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
+}
+
+void semantic_unnamed_diagnostic() {
+    Ui ui; auto button = ui.add_button({.id = "probe.unnamed", .kind = Kind::button}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
+#ifndef NDEBUG
+    check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
+#endif
 }
 
 void long_field_label_and_error_keep_their_association() {
@@ -2165,6 +2250,9 @@ int main() {
         {"F09 volume confirmation", volume_is_a_confirmed_form_field},
         {"F09 checkbox and radio apply together", checkbox_and_radio_are_applied_together},
         {"G11 source updates offer the latest value", source_updates_offer_the_latest_value},
+        {"SEM02 SEM03 SEM08 showcase tree", semantic_showcase_states_and_identity},
+        {"SEM11 unnamed diagnostic", semantic_unnamed_diagnostic},
+        {"Semantic tree reads registered components", semantic_tree_reads_registered_components},
         {"AC04 initial values, apply and reset", initial_values_apply_and_reset},
         {"AC05 blank name error follows blur and apply", blank_name_error_follows_blur_and_apply},
         {"AC06 apply button starts once", apply_button_starts_once},

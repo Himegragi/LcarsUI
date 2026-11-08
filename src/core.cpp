@@ -93,7 +93,7 @@ void detail::UiState::commit_removals() {
             confirmation_members_.erase(group);
         }
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
-        actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id);
+        actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
         blur_callbacks_.erase(id); providers_.erase(id);
         std::erase_if(controls_, [&](const Control& control) { return control.id == id; });
         button_lifetimes_.erase(id);
@@ -2350,7 +2350,8 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0;
 }
-Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(std::make_unique<SemanticTree>(*state_)) {}
+SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
     for (auto& control : controls) {
@@ -2470,3 +2471,147 @@ const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
 }
 
+namespace lcars {
+void detail::UiState::semantic_frame(const Frame& frame) {
+    semantic_bounds_.clear(); semantic_options_.clear(); semantic_order_.clear(); semantic_positions_.clear();
+    auto store = [&](const Placement& p) {
+        auto rect = intersect(p.bounds, p.clip);
+        if (!p.popup && rect.w > 0 && rect.h > 0) semantic_bounds_[p.id] = rect;
+        if (!p.popup) { semantic_order_.push_back(p.id); semantic_positions_[p.id] = p.bounds; }
+        auto& options = semantic_options_[p.id];
+        for (auto option : p.options) options.push_back(intersect(option, p.clip));
+        for (const auto& control : controls_) {
+            if (control.target != p.id) continue;
+            const std::vector<Line>* lines = nullptr;
+            if (control.role == TextRole::name) lines = &p.label_lines;
+            else if (control.role == TextRole::description) lines = &p.description_lines;
+            else if (control.role == TextRole::error) lines = &p.error_lines;
+            if (!lines) continue;
+            for (const auto& line : *lines) {
+                auto r = intersect(line.bounds, p.clip);
+                if (r.w <= 0 || r.h <= 0) continue;
+                auto it = semantic_bounds_.find(control.id);
+                if (it == semantic_bounds_.end()) semantic_bounds_[control.id] = r;
+                else {
+                    auto old = it->second; int x = std::min(old.x, r.x), y = std::min(old.y, r.y);
+                    it->second = {x, y, std::max(old.x + old.w, r.x + r.w) - x, std::max(old.y + old.h, r.y + r.h) - y};
+                }
+            }
+        }
+    };
+    for (const auto& p : frame.items) store(p);
+    for (const auto& p : frame.overlays) {
+        if (p.tooltip) {
+            auto id = tooltip_ids_.find(p.id);
+            if (id != tooltip_ids_.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semantic_bounds_[id->second] = r; }
+        } else store(p);
+    }
+    if (frame.modal) for (const auto& [id, type] : overlay_ids_) if (type == "dialog") semantic_bounds_[id] = frame.modal_panel;
+#ifndef NDEBUG
+    for (const auto& id : semantic_order_) {
+        auto c = find(id); auto s = describe(id);
+        if (c && s && c->kind != Kind::label && c->kind != Kind::progress && s->name.empty() && diagnosed_names_.insert(id).second)
+        {
+            auto message = id + " is focusable but has no name";
+            diagnostics_.push_back(message);
+#ifdef _WIN32
+            int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
+            if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
+#else
+            std::fputs(message.c_str(), stderr);
+#endif
+        }
+    }
+#endif
+}
+std::string detail::UiState::semantic_page(std::string_view id) const {
+    auto c = find(id); if (!c) return {};
+    if (c->page == "dialog") return "modal";
+    auto it = page_members_.find(id);
+    if (it == page_members_.end()) return "shared";
+    return tabs_.at(it->second.first).pages[it->second.second].value.id;
+}
+static Role semantic_role(Kind kind) {
+    switch (kind) {
+    case Kind::text: return Role::text; case Kind::button: return Role::button; case Kind::label: return Role::label;
+    case Kind::checkbox: return Role::checkbox; case Kind::radio_group: return Role::radio_group; case Kind::slider: return Role::slider;
+    case Kind::dropdown: return Role::dropdown; case Kind::list: case Kind::navigation_list: return Role::list; case Kind::tabs: return Role::tabs; case Kind::progress: return Role::progress;
+    }
+    return Role::label;
+}
+Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    auto c = u.find(ref.id);
+    if (!c) {
+        auto overlay = u.overlay_ids_.find(ref.id);
+        if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
+        SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
+        if (n.role == Role::dialog) n.hidden = !u.modal_;
+        else for (const auto& [source, id] : u.tooltip_ids_) if (id == ref.id) {
+            auto tip = u.tooltips_.find(source);
+            if (tip != u.tooltips_.end()) { n.name = tip->second.text; n.hidden = !tip->second.visible; }
+        }
+        auto bounds = u.semantic_bounds_.find(ref.id);
+        if (!n.hidden && bounds != u.semantic_bounds_.end()) { n.bounds = bounds->second; n.visible = true; }
+        return {Status::ok, {}, n};
+    }
+    if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
+    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = semantic_role(c->kind);
+    n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
+    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
+    n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
+    n.range = s.slider_range; n.numeric_value = s.numeric_value;
+    auto member = u.page_members_.find(ref.id);
+    n.hidden = (member != u.page_members_.end() && u.tabs_.at(member->second.first).active != member->second.second) || (c->page == "dialog" && !u.modal_);
+    n.blocked_by_modal = u.modal_ && c->page != "dialog";
+    if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
+    n.visible = n.bounds.has_value();
+    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && label->role == TextRole::description) n.described_by.push_back({id}); }
+    auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) n.text_selection = edit->second.session.selection;
+    if (ref.item) {
+        auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
+        if (it == s.options.end()) return {Status::not_found, {}, {}};
+        if (c->kind == Kind::radio_group) n.role = Role::radio_option;
+        else if (c->kind == Kind::dropdown) n.role = Role::dropdown_option;
+        else if (c->kind == Kind::list || c->kind == Kind::navigation_list) n.role = Role::list_item;
+        else if (c->kind == Kind::tabs) n.role = Role::tab_item;
+        else return {Status::not_found, {}, {}};
+        n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
+        n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
+        if (!n.hidden && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        n.visible = n.bounds.has_value();
+    }
+    return {Status::ok, {}, n};
+}
+Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    std::vector<NodeRef> result;
+    if (parent.id.empty() && !parent.item) {
+        for (const auto& c : u.controls_) if (c.page != "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
+        for (const auto& [id, type] : u.overlay_ids_) result.push_back({id});
+        std::stable_sort(result.begin(), result.end(), [&](const NodeRef& a, const NodeRef& b) {
+            auto ai = u.semantic_positions_.find(a.id), bi = u.semantic_positions_.find(b.id);
+            if (ai == u.semantic_positions_.end()) return false;
+            if (bi == u.semantic_positions_.end()) return true;
+            return ai->second.y != bi->second.y ? ai->second.y < bi->second.y : ai->second.x < bi->second.x;
+        });
+    } else {
+        auto node = get(parent); if (!node) return {node.status, node.message, {}};
+        if (!parent.item && node->role == Role::dialog) {
+            for (const auto& c : u.controls_) if (c.page == "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
+        } else if (!parent.item) {
+            auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
+        }
+    }
+    return {Status::ok, {}, result};
+}
+Query<std::u16string> SemanticTree::text(std::string_view id) const {
+    auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
+    if (n->role != Role::text) return {Status::not_supported, {}, {}};
+    return {Status::ok, {}, n->value};
+}
+}

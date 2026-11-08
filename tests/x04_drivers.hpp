@@ -6,26 +6,32 @@
 #include <algorithm>
 
 namespace x04 {
-// The inventory uses the application's typed handles and explicit page membership. It is
-// shared by the core and native checks so adding a component changes both sweeps.
-struct Entry { std::string_view page; lcars::ComponentHandle handle; };
+// Enumerate the semantic tree; the existing typed drivers still exercise each component.
+struct Entry { std::string page; lcars::ComponentHandle handle; };
 inline std::vector<Entry> inventory(edit_form::Form& form) {
-    auto& h = form.handles; auto& l = form.list->handles;
-    return {
-        {"shared", h.tabs},
-        {"v01", h.title}, {"v01", h.intro}, {"v01", h.state}, {"v01", h.draft}, {"v01", h.result}, {"v01", h.count},
-        {"v01", h.name_label}, {"v01", h.name_help}, {"v01", h.name_error}, {"v01", h.name},
-        {"v01", h.normal}, {"v01", h.read_only}, {"v01", h.disabled}, {"v01", h.error}, {"v01", h.long_text},
-        {"v01", h.offline_disabled}, {"v01", h.region_empty}, {"v01", h.reset}, {"v01", h.apply}, {"v01", h.latest},
-        {"v01", h.notices_latest}, {"v01", h.mode_latest}, {"v01", h.region_latest}, {"v01", h.volume_latest},
-        {"v01", h.notices}, {"v01", h.mode}, {"v01", h.region}, {"v01", h.volume},
-        {"v02", l.title}, {"v02", l.detail}, {"v02", l.search}, {"v02", l.list}, {"v02", l.zero}, {"v02", l.one},
-        {"v02", l.twenty}, {"v02", l.hundred}, {"v02", l.sort}, {"v02", l.erase}, {"v02", l.disable_eight}, {"v02", l.reset},
-        {"v03", h.v03_title}, {"v03", h.progress_source}, {"v03", h.dialog_result}, {"v03", h.progress},
-        {"v03", h.progress_zero}, {"v03", h.progress_half}, {"v03", h.progress_full}, {"v03", h.progress_below},
-        {"v03", h.progress_above}, {"v03", h.reset_v03}, {"v03", h.dialog_open}, {"v03", h.dialog_temporary},
-        {"modal", h.dialog_title}, {"modal", h.dialog_body}, {"modal", h.dialog_cancel}, {"modal", h.dialog_confirm}
+    std::vector<Entry> result;
+    auto& state = lcars::detail::access(form.ui);
+    auto visit = [&](auto&& self, const lcars::NodeRef& parent) -> void {
+        auto children = form.ui.semantics().children(parent);
+        if (!children) return;
+        for (const auto& ref : *children) {
+            auto node = form.ui.semantics().get(ref);
+            if (!node) continue;
+            if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
+                result.push_back({state.semantic_page(ref.id), state.layout_handle(ref.id)});
+            if (node->role == lcars::Role::dialog) self(self, ref);
+        }
     };
+    visit(visit, {});
+    // Drivers compare independently constructed fixtures by index; keep that order stable
+    // even when the semantic tree's reading order changes with the arranged page.
+    const auto& controls = state.controls();
+    auto ordinal = [&](const Entry& entry) {
+        auto id = state.layout_id(entry.handle);
+        return std::find_if(controls.begin(), controls.end(), [&](const auto& c) { return id && c.id == *id; }) - controls.begin();
+    };
+    std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) { return ordinal(a) < ordinal(b); });
+    return result;
 }
 inline std::optional<lcars::Semantics> describe(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& handle) -> std::optional<lcars::Semantics> {
