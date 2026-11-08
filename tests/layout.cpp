@@ -582,6 +582,8 @@ void long_dropdown_viewport() {
         test::check(bool(state.pointer_down("long",index)) && bool(state.pointer_up("long",index)), "select scrolled option");
         auto selected=dropdown.draft()->value().id;
         test::check(std::u16string(selected.begin(),selected.end())==painted_label, "selected option matches the painted row label");
+        auto closed_option = ui.semantics().get({"long", OptionValue{selected}});
+        test::check(closed_option && !closed_option->visible && !closed_option->bounds, "collapsed option is offscreen before the next layout");
     }
 }
 int main() {

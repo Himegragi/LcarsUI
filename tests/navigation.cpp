@@ -11,7 +11,7 @@ void exercise() {
     check(bool(nav), "navigation list is created");
     auto semantic = ui.semantics().get({"nav"});
     auto option = ui.semantics().get({"nav", OptionValue{"one"}});
-    check(semantic && semantic->role == Role::list && option && option->role == Role::list_item && option->selected,
+    check(semantic && semantic->role == Role::list && semantic->selection_required && option && option->role == Role::list_item && option->selected,
           "navigation list exposes list and list-item semantics");
     check(option && std::find(option->verbs.begin(), option->verbs.end(), Verb::select) != option->verbs.end(), "navigation item advertises select");
     auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
@@ -34,6 +34,7 @@ void exercise() {
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",true,{}},{{"x"},u"Y",true,{}}}, {"x"}).status == Status::invalid_value, "duplicate rejected");
     check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",false,{}}}, {"x"}).status == Status::invalid_value, "disabled initial rejected");
     auto locked_list = ui.add_list({.id="locked", .kind=Kind::list, .read_only=true}, {{{"x"}, u"X", false}}).value.value();
+    check(!ui.semantics().get({"locked"})->selection_required, "ordinary list permits no selection");
     check(locked_list.select({"x"}).status == Status::disabled &&
           ui.semantics().perform({"locked", OptionValue{"x"}}, Verb::select).status == Status::disabled,
           "disabled item precedes read-only list");
