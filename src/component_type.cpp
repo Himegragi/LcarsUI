@@ -472,7 +472,7 @@ Command command;
 const std::map<Kind, const ComponentType*>& types() {
     static const std::map<Kind, const ComponentType*> registry{
         {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::toggle, &command}, {Kind::navigation, &command}, {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}};
+        {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable
