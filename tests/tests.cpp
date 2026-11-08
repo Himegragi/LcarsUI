@@ -10,11 +10,11 @@ namespace {
 int checks=0;
 void check(bool condition,const char* name){++checks;if(!condition)throw std::runtime_error(name);}
 void core_behavior(){
-    Ui ui({});
-    auto name = ui.add_text({.id = "name", .kind = Kind::text, .value = u"\u7e41\u9ad4\u4e2d\u6587"});
-    auto locked = ui.add_text({.id = "locked", .kind = Kind::text, .value = u"keep", .read_only = true});
-    auto run = ui.add_button({.id = "run", .kind = Kind::button});
-    ui.add_button({.id = "cancel", .kind = Kind::button, .page = "dialog"});
+    Ui ui;
+    auto name = ui.add_text({.id = "name", .kind = Kind::text, .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
+    auto locked = ui.add_text({.id = "locked", .kind = Kind::text, .value = u"keep", .read_only = true}).value.value();
+    auto run = ui.add_button({.id = "run", .kind = Kind::button}).value.value();
+    ui.add_button({.id = "cancel", .kind = Kind::button, .page = "dialog"}).value.value();
     name.connect_source({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
     name.connect_confirmed([](const TextChange&) { return Result{}; });
     locked.connect_source({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});
@@ -51,7 +51,7 @@ void core_behavior(){
     run.bind([]{throw std::runtime_error("extension");return Result{};});
     check(run.invoke().status==Status::failed&&detail::access(ui).stopped(),"Throwing extension stops the affected UI");
     check(name.set_value(u"unsafe").status==Status::failed,"Stopped UI rejects new work");
-    bool duplicate=false;try{Ui bad({{"x",Kind::button,u"","",{}},{"x",Kind::button,u"","",{}}});}catch(const std::invalid_argument&){duplicate=true;}
+    Ui bad; bad.add_button({.id="x", .kind=Kind::button}); bool duplicate = bad.add_button({.id="x", .kind=Kind::button}).status == Status::invalid_value;
     check(duplicate,"Duplicate IDs must be rejected");
 }
 void appearances(){

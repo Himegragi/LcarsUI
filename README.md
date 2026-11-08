@@ -22,9 +22,9 @@ Applications retain the handles returned by `Ui::add_text`, `add_button` and `ad
 ```cpp
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
-lcars::Ui ui({});
-auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text});
-auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button});
+lcars::Ui ui;
+auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text}).value.value();
+auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button}).value.value();
 name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };

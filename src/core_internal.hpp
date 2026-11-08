@@ -98,6 +98,11 @@ public:
                 confirmation_members_.size(), pending_removals_.size()};
     }
     const Control* find(std::string_view id) const;
+    bool registerable(std::string_view id);
+    void seed_test_controls(std::vector<Control> controls);
+    std::map<Id, std::string, std::less<>> overlay_ids_;
+    std::map<Id, Id, std::less<>> tooltip_ids_;
+    std::vector<std::string> diagnostics_;
     std::optional<Semantics> describe(std::string_view id) const;
     void frame_visibility(std::map<Id, bool, std::less<>> visibility);
     // Current display text: field content, or label text (bound provider wins over static value).

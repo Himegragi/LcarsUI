@@ -13,7 +13,7 @@
 
 namespace lcars {
 // label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, list, tabs, progress };
+enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
@@ -414,24 +414,24 @@ struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> err
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
-    explicit Ui(std::vector<Control> controls);
+    Ui();
     ~Ui();
     Ui(const Ui&) = delete;
     Ui& operator=(const Ui&) = delete;
-    TextHandle add_text(Control control);
-    ButtonHandle add_button(Control control);
-    LabelHandle add_label(Control control);
-    CheckboxHandle add_checkbox(Control control);
-    RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
+    Query<TextHandle> add_text(Control control);
+    Query<ButtonHandle> add_button(Control control);
+    Query<LabelHandle> add_label(Control control);
+    Query<CheckboxHandle> add_checkbox(Control control);
+    Query<RadioGroupHandle> add_radio_group(Control control, std::vector<RadioOption> options);
     // Invalid ranges and steps return invalid_value without creating a component.
     Query<SliderHandle> add_slider(Control control, SliderRange range);
-    ProgressHandle add_progress(Control control);
-    DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
-    TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
-    ListHandle add_list(Control control, std::vector<RadioOption> items);
+    Query<ProgressHandle> add_progress(Control control);
+    Query<DropdownHandle> add_dropdown(Control control, std::vector<RadioOption> options);
+    Query<TabsHandle> add_tabs(Control control, std::vector<TabPage> pages);
+    Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
-    TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
-    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial_focus,
+    Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
+    Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ButtonHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result);
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
@@ -440,6 +440,7 @@ public:
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
+    const std::vector<std::string>& diagnostics() const;
 private:
     friend detail::UiState& detail::access(Ui&);
     friend const detail::UiState& detail::access(const Ui&);
