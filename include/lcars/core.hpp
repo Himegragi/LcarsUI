@@ -379,6 +379,7 @@ public:
     Result select(OptionValue value) const;
     Result set_items(std::vector<RadioOption> items) const;
     Result focus() const;
+    Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
     Result connect_source(OptionSource source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
@@ -459,7 +460,7 @@ public:
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
-                            ButtonHandle fallback, std::function<void(bool)> result);
+                            ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
     Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
