@@ -63,6 +63,27 @@ void exercise() {
             if (i) test::check(item->options[i-1].y+item->options[i-1].h <= r.y, "rows do not overlap");
         }
     }
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        test::FakeMeasure measure; ScrollState scroll;
+        auto settings = demo.ui.presentation(); settings.text_size = 12;
+        test::check(bool(demo.ui.set_presentation(settings)), "small presentation accepted");
+        auto small = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
+        auto small_nav = *small.find(demo.nav);
+        settings.text_size = 28;
+        test::check(bool(demo.ui.set_presentation(settings)), "large presentation accepted");
+        for (const char* page : {"general", "items", "appearance", "about"}) {
+            demo.nav.select({page});
+            auto large = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
+            auto* nav = large.find(demo.nav);
+            auto title = std::find_if(large.items.begin(), large.items.end(), [](const auto& item) { return item.id == "app.page_title"; });
+            test::check(nav && nav->text_size == 28 && nav->bounds.w > small_nav.bounds.w &&
+                        nav->options[0].h > small_nav.options[0].h, "presentation reflows navigation");
+            test::check(title != large.items.end() && title->text_size == 42, "presentation reflows demo page title");
+            if (page == std::string_view("general"))
+                test::check(large.find(demo.name) && large.find(demo.name)->text_size == 28, "presentation reflows demo fields");
+        }
+    }
+    demo.nav.select({"about"});
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
 
