@@ -2914,7 +2914,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         auto handle = state_->layout_handle(ref.id);
         return std::get<ListHandle>(handle).focus(*ref.item);
     }
-    if (!ref.item && verb == Verb::focus && node->role != Role::label && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
+    if (!ref.item && verb == Verb::focus && (node->role != Role::label || node->focusable) && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);

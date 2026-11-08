@@ -408,6 +408,8 @@ void about_keyboard_scroll() {
         test::check(state.focused() == "about.license_text", "overflowing license receives Tab focus");
         auto semantic = demo.ui.semantics().get({"about.license_text"});
         test::check(semantic && semantic->role == Role::label && semantic->focusable, "license remains semantic text while focusable");
+        demo.licenses.focus();
+        test::check(bool(demo.ui.semantics().perform({"about.license_text"}, Verb::focus)), "semantic focus reaches overflowing license");
         auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.license_text"; });
         test::check(item != frame.items.end(), "license has placement");
         auto description = state.describe("about.license_text");
