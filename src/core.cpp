@@ -1784,7 +1784,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
         s.visible = it->second && available(id, true).status != Status::hidden;
-    s.focusable = bool(available(id, true)) && component_type(control->kind).can_focus();
+    auto text_scroll = text_scrolls_.find(id);
+    s.focusable = bool(available(id, true)) && (component_type(control->kind).can_focus() || (text_scroll != text_scrolls_.end() && text_scroll->second.maximum > 0));
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
@@ -2134,8 +2135,12 @@ void detail::UiState::bind(Id id, Action action) {
 }
 Result detail::UiState::focusable(const Control& control) const {
     if (auto result = available(control.id); !result) return result;
-    if (!component_type(control.kind).can_focus()) return {Status::not_supported, u"標籤不能取得焦點"};
+    auto scroll = text_scrolls_.find(control.id);
+    if (!component_type(control.kind).can_focus() && (scroll == text_scrolls_.end() || scroll->second.maximum <= 0)) return {Status::not_supported, u"標籤不能取得焦點"};
     return {};
+}
+void detail::UiState::set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height) {
+    text_scrolls_.insert_or_assign(std::move(id), TextScroll{&state, maximum, std::max(1, line_height)});
 }
 std::vector<Id> detail::UiState::focus_order() const {
     std::vector<Id> order;
@@ -2273,6 +2278,21 @@ Result detail::UiState::key_down(KeyPress key) {
     const auto* control = find(focus_);
     if (control) {
         if (auto result = available(focus_); !result) return result;
+        if (auto it = text_scrolls_.find(focus_); it != text_scrolls_.end() && it->second.maximum > 0 && !key.ctrl && !key.shift) {
+            auto& scroll = it->second;
+            int next = scroll.state->offset;
+            bool handled = true;
+            if (key.key == Key::up) next -= scroll.line_height;
+            else if (key.key == Key::down) next += scroll.line_height;
+            else if (key.key == Key::home) next = 0;
+            else if (key.key == Key::end) next = scroll.maximum;
+            else handled = false;
+            if (handled) {
+                scroll.state->offset = std::clamp(next, 0, scroll.maximum);
+                scrolled();
+                return {};
+            }
+        }
         bool handled = false;
         if (control->kind == Kind::text) {
             handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
@@ -2893,7 +2913,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         auto handle = state_->layout_handle(ref.id);
         return std::get<ListHandle>(handle).focus(*ref.item);
     }
-    if (!ref.item && verb == Verb::focus && node->role != Role::label && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
+    if (!ref.item && verb == Verb::focus && (node->role != Role::label || node->focusable) && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);

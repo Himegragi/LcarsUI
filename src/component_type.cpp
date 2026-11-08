@@ -61,6 +61,17 @@ public:
         p.bounds = {0, 0, c.width, height_of(p.lines)};
     }
     void paint(ComponentPaint& c) const override {
+        if (c.semantics.focused) {
+            auto r = c.placement.clip;
+            auto color = c.appearance.palette(c.ui.presentation().variant).accent;
+            int edge = std::max(1, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus));
+            marked(c, PaintRole::focus_indicator, [&] {
+                c.fill({r.x, r.y, r.w, edge}, color);
+                c.fill({r.x, r.y + r.h - edge, r.w, edge}, color);
+                c.fill({r.x, r.y, edge, r.h}, color);
+                c.fill({r.x + r.w - edge, r.y, edge, r.h}, color);
+            });
+        }
         if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).text);
         else paint_lines(c, c.placement.lines, c.placement.text_size, c.appearance.palette(c.ui.presentation().variant).text);
     }
