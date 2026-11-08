@@ -1,4 +1,4 @@
-#include "core_internal.hpp"
+﻿#include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
 #include "uia_provider.hpp"
@@ -167,7 +167,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
             sync_ime();
         });
         detail::access(ui_).before_focus([this] { finish_composition(); });
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_);
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
         capabilities_ = renderer_->capabilities();
         client_size(options.width, options.height);
         PostMessageW(window_,WM_APP+43,0,0);
@@ -191,7 +191,7 @@ Result DesktopHost::rebuild_renderer() {
         ~ShaderOverride() { if (hooks) hooks->fragment_shader_override=std::move(previous); }
     } shader_override(hooks_);
     try {
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_);
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
         renderer_->restore_atlas(text_.atlas_pages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
@@ -327,11 +327,12 @@ void DesktopHost::paint() {
     try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented); }
     catch (const FrameError& e) {
         for (auto code : e.codes) diagnostics_.push(frame_diagnostic(code));
-        if (!e.codes.empty()) PostMessageW(window_,WM_APP+43,0,0);
+        PostMessageW(window_,WM_APP+43,0,0);
         fail_renderer(e.failure); return;
     }
     catch (const std::exception& e) {
         std::string message=e.what();
+        PostMessageW(window_,WM_APP+43,0,0);
         fail_renderer({RendererFailureKind::resource_failed,0,std::u16string(message.begin(),message.end())}); return;
     }
     auto end=std::chrono::steady_clock::now();
@@ -346,7 +347,7 @@ void DesktopHost::paint() {
     }
     ++frames_;
     sync_ime();
-    diagnostics_.drain();
+    PostMessageW(window_,WM_APP+43,0,0);
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
     auto frame=lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
@@ -866,6 +867,7 @@ namespace lcars {
 struct Desktop::Impl {
     std::unique_ptr<detail::DesktopHost> host;
     DesktopOptions options;
+    std::thread::id owner = std::this_thread::get_id();
 };
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
@@ -893,6 +895,12 @@ RunResult Desktop::run() {
     host.close();
     if (failure) return {Status::renderer_failed,failure,{}};
     return {result ? Status::failed : Status::ok,{}, {}};
+}
+Result Desktop::set_title(std::u16string title) {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (!valid_single_line(title, title.size())) return {Status::invalid_value, u"Invalid title"};
+    if (!SetWindowTextW(impl_->host->window(), detail::wide(title).c_str())) return {Status::failed, u"Unable to set window title"};
+    return {};
 }
 Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
 bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }

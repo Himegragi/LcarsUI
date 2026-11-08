@@ -8,14 +8,14 @@
 namespace x04 {
 // Enumerate the semantic tree; the existing typed drivers still exercise each component.
 struct Entry { std::string page; lcars::ComponentHandle handle; };
-inline std::vector<Entry> inventory(edit_form::Form& form) {
+inline std::vector<Entry> inventory(lcars::Ui& ui) {
     std::vector<Entry> result;
-    auto& state = lcars::detail::access(form.ui);
+    auto& state = lcars::detail::access(ui);
     auto visit = [&](auto&& self, const lcars::NodeRef& parent) -> void {
-        auto children = form.ui.semantics().children(parent);
+        auto children = ui.semantics().children(parent);
         if (!children) return;
         for (const auto& ref : *children) {
-            auto node = form.ui.semantics().get(ref);
+            auto node = ui.semantics().get(ref);
             if (!node) continue;
             const auto page = state.semantic_page(ref.id);
             if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
@@ -34,6 +34,7 @@ inline std::vector<Entry> inventory(edit_form::Form& form) {
     std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) { return ordinal(a) < ordinal(b); });
     return result;
 }
+inline std::vector<Entry> inventory(edit_form::Form& form) { return inventory(form.ui); }
 inline std::vector<std::string> pages(edit_form::Form& form) {
     std::vector<std::string> result;
     auto tabs = form.handles.tabs.describe();
@@ -131,11 +132,12 @@ inline bool set_enabled(const lcars::ComponentHandle& value, bool enabled) {
         else return false;
     }, value);
 }
-inline bool focus(const lcars::ComponentHandle& value) {
-    return std::visit([](const auto& h) {
-        if constexpr (requires { h.focus(); }) return bool(h.focus());
-        else return false;
-    }, value);
+inline bool focus_applicable(const lcars::Semantics& semantic) {
+    return semantic.enabled && semantic.focusable;
+}
+inline bool focus(lcars::Ui& ui, const lcars::ComponentHandle& value) {
+    auto id = lcars::detail::access(ui).layout_id(value);
+    return id && bool(ui.semantics().perform({*id}, lcars::Verb::focus));
 }
 inline bool disabled_retry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {

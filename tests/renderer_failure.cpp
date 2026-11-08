@@ -1,8 +1,10 @@
-﻿#include "desktop_host.hpp"
+#include "desktop_host.hpp"
 #include "core_internal.hpp"
 #include "edit_form.hpp"
+#include "lcars/fonts.hpp"
 #include "renderer_failure_checks.hpp"
 #include <iostream>
+#include <algorithm>
 #include <stdexcept>
 #include <chrono>
 #include <cstdlib>
@@ -10,10 +12,28 @@
 using namespace lcars;
 using namespace lcars::detail;
 static void check(bool value, const char* what) { if (!value) throw std::runtime_error(what); }
+static void diagnostics(const Appearance& appearance) {
+    edit_form::Form form;
+    RendererTestHooks hooks; hooks.hide_khr_debug=true;
+    auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
+    check(created.desktop && !created.desktop->capabilities().debug_messages, "DG02 hidden debug");
+    edit_form::Form debug_form;
+    RendererTestHooks debug_hooks; debug_hooks.misuse_once=true;
+    DesktopOptions options; options.debug_context=DebugContext::on;
+    std::vector<RenderDiagnostic> events; auto owner=std::this_thread::get_id(); bool right_thread=true;
+    options.on_diagnostic=[&](const RenderDiagnostic& event) { right_thread &= std::this_thread::get_id()==owner; events.push_back(event); };
+    DesktopHost host(debug_form.ui,appearance,[&]{return debug_form.page();},debug_form.scroll,options,false,true,&debug_hooks);
+    check(host.capabilities().debug_messages,"DG01 KHR_debug available");
+    host.paint(); host.pump();
+    bool found=false;
+    for (const auto& event:events) if (event.category==DiagnosticCategory::api_misuse && event.backend==u"OpenGL" && event.native_code && !event.native_message.empty() && !event.source_time && event.received_at.time_since_epoch().count()) found=true;
+    check(found && right_thread,"DG01 debug event");
+}
 static void startup(const Appearance& appearance) {
+    diagnostics(appearance);
     for (int mode=0; mode<2; ++mode) {
         edit_form::Form form;
-        RendererTestHooks hooks;
+        RendererTestHooks hooks; hooks.hide_khr_debug=true;
         if (mode==0) hooks.fragment_shader_override="invalid shader"; else hooks.fail_context_33=true;
         auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
         auto e=created.failure;
@@ -26,6 +46,21 @@ static void startup(const Appearance& appearance) {
     auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
     check(created.desktop && !created.desktop->capabilities().reset_detection, "RF05 unavailable reset detection");
 }
+static void title_updates(const Appearance& appearance) {
+    edit_form::Form form;
+    DesktopOptions options; options.title = u"Initial title for test";
+    auto created = Desktop::create(form.ui, appearance, [&]{return form.page();}, form.scroll, options);
+    check(bool(created.desktop), "title test desktop");
+    auto window = FindWindowW(nullptr, L"Initial title for test");
+    check(window != nullptr, "find test window");
+    check(bool(created.desktop->set_title(u"Updated title")), "set title");
+    wchar_t text[64]{}; GetWindowTextW(window, text, 64);
+    check(std::wstring(text) == L"Updated title", "native title updated");
+    check(created.desktop->set_title(u"Bad\nTitle").status == Status::invalid_value, "reject multiline title");
+    Status status = Status::ok;
+    std::thread worker([&] { status=created.desktop->set_title(u"Other thread").status; }); worker.join();
+    check(status == Status::wrong_thread, "title requires UI thread");
+}
 static void public_lifecycle(const Appearance& appearance, bool handled) {
     edit_form::Form form;
     edit_form::Form other;
@@ -37,6 +72,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
     if (handled) options.on_renderer_failed=[&](Desktop& desktop, const RendererFailure& failure) {
         ++callbacks;
         check(failure.kind==RendererFailureKind::frame_error, "public failure kind");
+        check(bool(desktop.set_title(u"Title during failure")), "title works during renderer failure");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");
         check(form.ui.semantics().text(form.ids().name).value == u"workstation A" &&
               form.ui.semantics().perform({form.ids().apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
@@ -63,7 +99,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     check(bool(form.handles.name.focus()) && bool(form.handles.name.select(0,11)), "prepare selection");
     if (modal) check(bool(form.handles.dialog.open(form.handles.name)), "prepare modal");
     auto selection=access(form.ui).edit(form.ids().name)->selection;
-    RendererTestHooks hooks; hooks.gl_error_at_frame=reset?0:2; hooks.reset_at_frame=reset?2:0; hooks.fail_rebuild_once=handled;
+    RendererTestHooks hooks; hooks.hide_khr_debug=true; hooks.gl_error_at_frame=reset?0:2; hooks.reset_at_frame=reset?2:0; hooks.fail_rebuild_once=handled;
     DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,false,&hooks);
     auto before=host.compare_gpu(640,480,1.f);
     check(before.passed, "pre-failure comparison");
@@ -112,8 +148,55 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     }
     else { host.run(); check(host.renderer_failure()->kind==RendererFailureKind::frame_error, "RF04 result"); host.close(); check(form.handles.name.describe()->value==u"workstation A", "RF04 retained draft"); }
 }
+static void presentation_during_failure(const Appearance& appearance) {
+    edit_form::Form form(edit_form::default_ids(), true);
+    check(bool(form.handles.name.set_value(u"Station W")), "PS10 prepare Latin text");
+    RendererTestHooks hooks; hooks.gl_error_at_frame = 1;
+    DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, false, true, &hooks);
+    host.force_scale(1.f); host.client_size(960, 720);
+    host.paint();
+    check(host.renderer_failed(), "PS10 simulated failure");
+    int frames = host.frames();
+    auto settings = form.ui.presentation();
+    settings.text_size = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
+    const auto& families = system_font_catalog().families();
+    auto font = std::find_if(families.begin(), families.end(), [](const FontFamily& family) { return family.key != u"Segoe UI"; });
+    settings.font_family = font == families.end() ? u"LcarsUI missing PS10 font" : font->key;
+    check(bool(form.ui.set_presentation(settings)) && form.ui.presentation() == settings, "PS10 settings accepted while failed");
+    auto invalid = settings; invalid.text_size = 29;
+    check(form.ui.set_presentation(invalid).status == Status::invalid_value && form.ui.presentation() == settings, "PS10 invalid settings remain atomic");
+    check(form.handles.dark.toggle().status == Status::renderer_failed && form.ui.presentation() == settings, "PS10 presentation control remains blocked");
+    host.paint();
+    check(host.frames() == frames && host.renderer_failed(), "PS10 failure suppresses drawing");
+    hooks.gl_error_at_frame = 0;
+    check(bool(host.rebuild_renderer()), "PS10 rebuild");
+    host.observe_paint(true);
+    host.paint();
+    auto field = host.frame().find(form.handles.name);
+    auto dark = appearance.palette(ThemeVariant::dark()).text;
+    bool dark_text = std::any_of(host.paint_observations().begin(), host.paint_observations().end(), [&](const auto& event) {
+        return event.type == PaintObservation::Type::text && event.visible && event.color.r == dark.r && event.color.g == dark.g && event.color.b == dark.b;
+    });
+    check(host.frames() == frames + 1 && !host.renderer_failed() && field && field->text_size == 28 && dark_text && form.ui.presentation() == settings,
+          "PS10 first recovered frame uses stored presentation");
+    edit_form::Form reference(edit_form::default_ids(), true);
+    check(bool(reference.handles.name.set_value(u"Station W")), "PS10 reference Latin text");
+    check(bool(reference.ui.set_presentation(settings)), "PS10 reference settings");
+    DesktopHost reference_host(reference.ui, appearance, [&] { return reference.page(); }, reference.scroll, {}, false, true);
+    reference_host.force_scale(1.f); reference_host.client_size(960, 720); reference_host.paint();
+    auto expected = reference_host.frame().find(reference.handles.name);
+    check(expected && field->bounds.w == expected->bounds.w && field->bounds.h == expected->bounds.h &&
+          field->field.editor == expected->field.editor && field->run.width == expected->run.width,
+          "PS10 first recovered frame matches independently configured font and density");
+    auto comparison = host.compare_gpu(960, 720, 1.f);
+    check(bool(comparison), "PS10 recovered CPU/GPU frame comparison");
+}
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "--ps10") {
+            for (auto appearance : {&web_appearance(), &material_appearance()}) presentation_during_failure(*appearance);
+            std::cout << "PS10 passed for both appearances\n"; return 0;
+        }
         if (argc == 2 && std::string(argv[1]) == "--gdi-version") {
             edit_form::Form form;
             auto result=Desktop::create(form.ui,web_appearance(),[&]{return form.page();},form.scroll);
@@ -122,7 +205,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         for (auto appearance : {&web_appearance(), &material_appearance()}) {
-            startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
+            title_updates(*appearance); startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
             public_lifecycle(*appearance,true); public_lifecycle(*appearance,false);
         }
         std::cout << "RF01-RF05, RF07 failure seam checks passed\n"; return 0;

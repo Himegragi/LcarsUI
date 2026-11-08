@@ -12,7 +12,7 @@
 #include <variant>
 
 namespace lcars {
-// label is C01 display text: never focusable, may span lines, may describe another control.
+// Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
 enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
@@ -267,6 +267,7 @@ struct NumericChange;
 class SliderHandle {
 public:
     SliderHandle() = default;
+    Result on_blur(std::function<void()> callback) const;
     Result set_value(int value) const;
     Result use_latest() const;
     Result focus() const;

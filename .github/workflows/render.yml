@@ -63,6 +63,20 @@ jobs:
         run: |
           ctest --test-dir build/Release --output-on-failure --timeout 900
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run debug diagnostics checks
+        shell: pwsh
+        run: |
+          . ./cmake/VisualStudio.ps1
+          $vs = Get-LcarsVisualStudio
+          Import-LcarsVisualStudioEnvironment $vs.InstallationPath | Out-Null
+          $compiler = (Get-Command clang-cl.exe).Source
+          cmake -S . -B build/diagnostics-debug -G Ninja "-DCMAKE_C_COMPILER=$compiler" "-DCMAKE_CXX_COMPILER=$compiler" -DCMAKE_BUILD_TYPE=Debug -DLCARS_BUILD_DESKTOP=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/diagnostics-debug --parallel 4 --target lcars_renderer_failure_tests lcars_diagnostic_queue_tests lcars_diagnostics_tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item -LiteralPath "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64\opengl32.dll", "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64\libgallium_wgl.dll" -Destination build/diagnostics-debug
+          ctest --test-dir build/diagnostics-debug --output-on-failure --timeout 900 -R "^(renderer_failure|diagnostic_queue|diagnostics)$"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload render evidence and CTest logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -71,4 +85,5 @@ jobs:
           path: |
             build/Release/evidence/
             build/Release/Testing/Temporary/
+            build/diagnostics-debug/Testing/Temporary/
           if-no-files-found: warn

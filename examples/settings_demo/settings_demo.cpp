@@ -1,4 +1,5 @@
 #include "settings_demo.hpp"
+#include "lcars/version.hpp"
 #include <algorithm>
 #include <cstdio>
 using namespace lcars;
@@ -9,7 +10,7 @@ std::u16string fold_ascii(std::u16string value) {
     return value;
 }
 }
-Demo::Demo() {
+Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
     title_ = ui.add_label({.id="app.page_title",.kind=Kind::label}).value.value();
@@ -27,6 +28,26 @@ Demo::Demo() {
     items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
     items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
     items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
+        about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
+        nav.add_member({"about"}, about_labels_.back());
+    }
+    about_labels_[0].connect_source([] { return u"LcarsUI 設定管理示範 0.1.0"; });
+    about_labels_[1].connect_source([] { return u"LcarsUI 框架 " + std::u16string(lcars::framework_version); });
+    about_labels_[2].connect_source([this] { return u"建置：" + about_.build; });
+    about_labels_[3].connect_source([this] { return u"外觀：" + about_.appearance; });
+    about_labels_[4].connect_source([this] { return u"繪製：" + about_.renderer; });
+    about_labels_[5].connect_source([] { return u"診斷：未選用"; });
+    about_labels_[6].connect_source([this] { return about_.settings_path; });
+    std::vector<RadioOption> license_options;
+    for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
+    licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label}).value.value();
+    licenses.connect_source({[this] { return license_selection_; }, [this](auto changed) { license_selection_changed_ = std::move(changed); return [this] { license_selection_changed_ = {}; }; }});
+    licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
+    license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
+    nav.add_member({"about"}, licenses);
+    nav.add_member({"about"}, license_text_);
     for (int n=1; n<=20; ++n) {
         char id[8], number[8]; std::snprintf(id,sizeof(id),"T%03d",n); std::snprintf(number,sizeof(number),"%02d",n);
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
@@ -54,7 +75,15 @@ Demo::Demo() {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
     });
-    name.on_blur([this] { name.confirm(); });
+    name.on_blur([this] {
+        auto draft = name.draft(); if (!draft) return;
+        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
+            name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); update_history_controls(); return;
+        }
+        name.set_error(u"");
+        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
+        name.reset_to_source(); update_history_controls();
+    });
     notices.connect_source({[this] { return notices_value_; }, [this](std::function<void()> notify) { notices_changed_ = std::move(notify); return [this] { notices_changed_ = {}; }; }});
     notices.connect_immediate([this](const BoolChange& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
     mode.connect_source({[this] { return mode_value_; }, [this](std::function<void()> notify) { mode_changed_ = std::move(notify); return [this] { mode_changed_ = {}; }; }});
@@ -62,7 +91,8 @@ Demo::Demo() {
     region.connect_source({[this] { return region_value_; }, [this](std::function<void()> notify) { region_changed_ = std::move(notify); return [this] { region_changed_ = {}; }; }});
     region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, [this](std::function<void()> notify) { volume_changed_ = std::move(notify); return [this] { volume_changed_ = {}; }; }});
-    volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(); return Result{}; });
+    volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); bool focused = volume.describe()->focused; dirty(focused && volume_group_); volume_group_ = focused; return Result{}; });
+    volume.on_blur([this] { volume_group_ = false; });
     item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
     item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
@@ -129,12 +159,65 @@ Demo::Demo() {
         if (auto r=refresh_items(); !r) return r;
         dirty(); return Result{};
     });
+    load_title_ = ui.add_label({.id="app.load_dialog.title",.kind=Kind::label}).value.value();
+    load_message_ = ui.add_label({.id="app.load_dialog.message",.kind=Kind::label}).value.value();
+    load_ok_ = ui.add_button({.id="app.load_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    load_dialog_ = ui.add_dialog("app.load_dialog", {load_title_,load_message_,load_ok_}, load_ok_, save_, [this](bool) { nav.focus(); }).value.value();
+    load_ok_.bind([this] { return load_dialog_.settle(true); });
+    error_title_ = ui.add_label({.id="app.error_dialog.title",.kind=Kind::label,.value=u"無法儲存"}).value.value();
+    error_message_ = ui.add_label({.id="app.error_dialog.message",.kind=Kind::label}).value.value();
+    error_ok_ = ui.add_button({.id="app.error_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    error_dialog_ = ui.add_dialog("app.error_dialog", {error_title_,error_message_,error_ok_}, error_ok_, save_, [](bool) {}).value.value();
+    error_ok_.bind([this] { return error_dialog_.settle(true); });
     ui.add_shortcut({.key=Key::enter},items_edit,items_list);
     ui.add_shortcut({.key=Key::del},items_delete,items_list);
     ui.add_shortcut({.letter=u'S',.ctrl=true},save_);
     ui.add_shortcut({.letter=u'Z',.ctrl=true},undo_);
     ui.add_shortcut({.letter=u'Y',.ctrl=true},redo_);
     ui.add_shortcut({.letter=u'Z',.ctrl=true,.shift=true},redo_);
+    current_ = snapshot(); saved_ = current_;
+    undo_.bind([this] {
+        auto description = name.describe();
+        if (description && !description->error.empty()) {
+            auto result=name.reset_to_source(); if (!result) return result;
+            name.set_error(u""); update_history_controls(); return Result{};
+        }
+        if (undo_history_.empty()) return Result{Status::empty_history, {}};
+        redo_history_.push_back(snapshot());
+        auto previous = undo_history_.back(); undo_history_.pop_back();
+        apply(previous); return Result{};
+    });
+    redo_.bind([this] {
+        if (redo_history_.empty()) return Result{Status::empty_history, {}};
+        undo_history_.push_back(snapshot());
+        auto next = redo_history_.back(); redo_history_.pop_back();
+        apply(next); return Result{};
+    });
+    save_.bind([this] {
+        auto draft = name.draft();
+        if (!draft) return Result{draft.status, draft.message};
+        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
+            nav.select({"general"}); name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); name.focus();
+            return Result{Status::invalid_value, u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"};
+        }
+        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
+        if (save_handler_) {
+            auto error=save_handler_(snapshot());
+            if (!error.empty()) {
+                save_failed_=true; update_history_controls();
+                auto message=u"無法寫入 " + settings_path_ + u"：" + error + u"。修改仍保留，尚未儲存。";
+                error_message_.connect_source([message] { return message; }); error_dialog_.open();
+                return Result{Status::invalid_value, error};
+            }
+        }
+        save_failed_=false; saved_ = snapshot(); saved_once_ = true; update_history_controls(); return Result{};
+    });
+    revert_.bind([this] {
+        name.reset_to_source();
+        if (saved_ && snapshot() != *saved_) { auto target=*saved_; auto before=snapshot(); apply(target); current_=before; dirty(); }
+        update_history_controls(); return Result{};
+    });
+    ui.on_change([this] { update_history_controls(); });
     nav.focus();
 }
 Result Demo::refresh_items() {
@@ -155,7 +238,46 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
-void Demo::dirty() { undo_.enable(true); }
+Result Demo::set_presentation(const PresentationSettings& settings) {
+    auto result=ui.set_presentation(settings); if (result) dirty(); return result;
+}
+void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
+SettingsDocument Demo::snapshot() const {
+    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation()};
+}
+void Demo::update_history_controls() {
+    auto description = name.describe();
+    undo_.enable(!undo_history_.empty() || (description && !description->error.empty())); redo_.enable(!redo_history_.empty());
+    auto draft = name.draft();
+    bool changed = saved_ && (snapshot() != *saved_ || (draft && *draft != name_value_));
+    save_.enable(changed); revert_.enable(changed);
+    if (changed != dirty_state_) { dirty_state_=changed; if (dirty_changed_) dirty_changed_(changed); }
+    status_.connect_source([changed, this] { return changed && save_failed_ ? u"有未儲存的修改（上次儲存失敗）" : changed ? u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539" : saved_once_ ? u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58" : u"\u4f7f\u7528\u9810\u8a2d\u503c\uff0c\u5c1a\u672a\u5efa\u7acb\u8a2d\u5b9a\u6a94"; });
+}
+void Demo::dirty(bool coalesce) {
+    auto now = snapshot();
+    if (current_ && *current_ != now) {
+        if (!coalesce) undo_history_.push_back(*current_);
+        if (undo_history_.size() > 100) undo_history_.erase(undo_history_.begin());
+        redo_history_.clear();
+    }
+    current_ = std::move(now); update_history_controls();
+}
+void Demo::apply(const SettingsDocument& value) {
+    volume_group_=false;
+    name_value_=value.name; notices_value_=value.notices; mode_value_=value.mode; region_value_=value.region;
+    volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
+    if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
+    if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
+    ui.set_presentation(value.presentation); refresh_items(); current_=value; update_history_controls();
+}
+void Demo::load_document(const SettingsDocument& value) {
+    apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
+}
+void Demo::show_load_notice(std::u16string title, std::u16string message) {
+    load_title_.connect_source([title] { return title; }); load_message_.connect_source([message] { return message; }); load_dialog_.open();
+}
+void Demo::set_renderer(std::u16string value) { about_.renderer = std::move(value); }
 layout::Node Demo::page() const {
     using namespace layout;
     std::vector<Node> content{control(title_,24)};
@@ -166,12 +288,19 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
+    if (nav.selected()->id == "about") {
+        for (auto label : about_labels_) content.push_back(control(label));
+        content.push_back(control(licenses));
+        content.push_back(scroll_text(license_text_, license_scroll, 200));
+    }
     content.push_back(control(status_));
     content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));
     auto background=layout::scroll(row({control(nav),column(std::move(content),12,24)},16));
     return layout::modal(std::move(background), {
         {item_dialog,column({control(item_title_,24),control(item_name),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
-        {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)}
+        {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
+        {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
+        {error_dialog_,column({control(error_title_,24),control(error_message_),control(error_ok_)},12)}
     });
 }
 }

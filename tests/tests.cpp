@@ -73,6 +73,13 @@ void renderer_failure_admission() {
     std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
     check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
     check(name.describe()->operations.empty(), "Failure advertises no operations");
+    auto settings = ui.presentation(); settings.text_size = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
+    check(bool(ui.set_presentation(settings)) && ui.presentation() == settings, "PS10 presentation accepted while failed");
+    auto invalid = settings; invalid.text_size = 29;
+    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == settings, "PS10 invalid presentation stays atomic");
+    Status other_thread = Status::ok;
+    std::thread presentation_worker([&] { other_thread = ui.set_presentation(settings).status; }); presentation_worker.join();
+    check(other_thread == Status::wrong_thread, "PS10 presentation remains UI-thread only");
     detail::access(ui).renderer_failed(false);
     check(bool(name.set_value(u"recovered")), "Recovery permits edits");
 }
