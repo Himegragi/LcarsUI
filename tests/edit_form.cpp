@@ -66,6 +66,15 @@ void v04_slider_updates_global_text_size() {
     check(bool(form.handles.tabs.activate({"v04"})), "V04 available");
     check(bool(form.handles.text_size.set_value(28)), "Slider accepts 28");
     check(form.ui.presentation().text_size == 28, "Slider applies size globally");
+    test::FakeMeasure measure;
+    for (const char* page : {"v01", "v02", "v03"}) {
+        check(bool(form.handles.tabs.activate({page})), "Showcase page activates");
+        auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
+        const Placement* title = std::string_view(page) == "v01" ? frame.find(form.handles.title) :
+            std::string_view(page) == "v02" ? frame.find(form.list->handles.title) : frame.find(form.handles.v03_title);
+        check(title && title->text_size == 42, "V04 slider reflows each page title");
+    }
+    form.handles.tabs.activate({"v04"});
     check(form.handles.preview.describe()->value == u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f", "Preview contains sample text");
 }
 
