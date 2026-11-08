@@ -2,7 +2,8 @@ param(
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
     [switch]$CoreOnly,
     [switch]$SkipTests,
-    [string]$Tests
+    [string]$Tests,
+    [string]$Install
 )
 $ErrorActionPreference = 'Stop'
 if ($SkipTests -and $Tests) { throw '-SkipTests and -Tests cannot be combined' }
@@ -54,3 +55,5 @@ if (-not $SkipTests) {
     if ($Tests) { $testArgs += @('-R', $Tests) }
     Invoke-Native $ctest $testArgs 'Tests failed'
 }
+
+if ($Install) { Invoke-Native $cmake @('--install', $buildDir, '--prefix', $Install) 'Install failed' }

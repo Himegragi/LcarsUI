@@ -1,6 +1,8 @@
 // A consumer form unrelated to the shipped edit form: its own IDs, data model, validation
 // and callback, composed from C01-C03 and laid out with its own text measurement.
 #include "lcars/layout.hpp"
+#include "lcars/version.hpp"
+static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
 #include <cstdio>
 #include <string>
 #include <type_traits>
