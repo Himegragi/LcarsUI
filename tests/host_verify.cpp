@@ -401,6 +401,15 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
     DesktopHost host(ui,appearance,[&] { return layout::control(*label); },scroll,options,false,true);
     active=&host;
     host.client_size(200,100); host.paint(); host.paint();
+    auto dark=ui.presentation(); dark.variant=ThemeVariant::dark();
+    bool dark_accepted=bool(ui.set_presentation(dark));
+    host.observe_paint(true); host.paint();
+    auto dark_text=appearance.palette(ThemeVariant::dark()).text;
+    bool dark_missing=std::any_of(host.paint_observations().begin(),host.paint_observations().end(),[&](const auto& event) {
+        return event.owner=="missing-font-glyph" && event.type==detail::PaintObservation::Type::text && event.visible &&
+            event.color.r==dark_text.r && event.color.g==dark_text.g && event.color.b==dark_text.b;
+    });
+    report.check("dark-missing-glyph",dark_accepted && dark_missing,"Missing glyph receives the dark text color");
     auto changed=ui.presentation(); changed.font_family=u"LcarsUI another absent family";
     bool accepted=bool(ui.set_presentation(changed)); host.pump();
     auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {

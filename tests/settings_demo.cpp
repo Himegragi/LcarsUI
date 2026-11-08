@@ -26,6 +26,84 @@ struct TextProbe : detail::ComponentPaint {
     void clip(Rect) override {}
     void text(std::u16string_view value, int, int, int, Color) override { drawn.emplace_back(value); }
 };
+// Sweep the actual newer demo placements using the type's declared state applicability.
+struct DarkProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    detail::PaintRole current = detail::PaintRole::content;
+    std::vector<std::pair<detail::PaintRole, Color>> colors;
+    void role(detail::PaintRole r) override { current = r; }
+    void fill(Rect, Color c) override { colors.emplace_back(current, c); }
+    void rounded(Rect, int, Color c) override { colors.emplace_back(current, c); }
+    void clip(Rect) override {}
+    void text(std::u16string_view, int, int, int, Color c) override { colors.emplace_back(current, c); }
+    bool has(Color c, detail::PaintRole role = detail::PaintRole::content) const {
+        return std::any_of(colors.begin(), colors.end(), [&](const auto& entry) {
+            return entry.second.r == c.r && entry.second.g == c.g && entry.second.b == c.b &&
+                (role == detail::PaintRole::content || (unsigned(entry.first) & unsigned(role)) != 0);
+        });
+    }
+};
+void dark_new_component_sweep() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo;
+        auto settings = demo.ui.presentation(); settings.variant = ThemeVariant::dark();
+        test::check(bool(demo.ui.set_presentation(settings)), "dark presentation accepted");
+        test::check(bool(demo.nav.select({"items"})), "open items page");
+        auto& state = detail::access(demo.ui);
+        test::FakeMeasure measure; ScrollState scroll;
+        auto palette = appearance->palette(ThemeVariant::dark());
+        std::vector<std::string> visited;
+        auto sweep = [&] {
+            auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+            auto placements = frame.items;
+            placements.insert(placements.end(), frame.overlays.begin(), frame.overlays.end());
+            for (const auto& item : placements) {
+                if (item.tooltip) continue;
+                auto semantic = state.describe(item.id);
+                if (!semantic || !semantic->visible) continue;
+                visited.push_back(item.id);
+                const auto& type = detail::component_type(semantic->kind);
+                auto probe = [&](const Semantics& value) {
+                    DarkProbe paint(state, item, value, *appearance, 1.f, true);
+                    type.paint(paint); return paint;
+                };
+                if (type.supports_state(detail::ComponentState::disabled)) {
+                    auto value = *semantic; value.enabled = false; value.focused = false;
+                    auto paint = probe(value);
+                    test::check(paint.has(palette.muted), ("dark disabled " + item.id).c_str());
+                }
+                if (type.can_focus()) {
+                    auto value = *semantic; value.enabled = true; value.focused = true; value.invalid = false;
+                    if (!value.options.empty()) { value.options[0].selected = true; value.candidate = value.options[0].value; }
+                    auto paint = probe(value);
+                    test::check(paint.has(palette.accent, detail::PaintRole::focus_indicator), ("dark focus " + item.id).c_str());
+                }
+                if (type.supports_state(detail::ComponentState::selected)) {
+                    auto value = *semantic; value.enabled = true; value.focused = false;
+                    if (!value.options.empty()) value.options[0].selected = true;
+                    if (value.checked) value.checked = true;
+                    auto paint = probe(value);
+                    auto cue = value.kind == Kind::checkbox || value.kind == Kind::radio_group ? palette.accent : palette.selection;
+                    test::check(paint.has(cue), ("dark selection " + item.id).c_str());
+                }
+                if (type.supports_state(detail::ComponentState::error)) {
+                    auto value = *semantic; value.invalid = true;
+                    auto paint = probe(value);
+                    test::check(paint.has(palette.error), ("dark error " + item.id).c_str());
+                }
+            }
+        };
+        sweep();
+        test::check(bool(demo.items_add.invoke()), "open item dialog");
+        test::check(bool(demo.item_name.set_error(u"required")), "set dialog error");
+        sweep();
+        test::check(bool(demo.item_dialog.settle(false)), "close item dialog");
+        test::check(bool(demo.items_list.select({"T001"})) && bool(demo.items_delete.invoke()), "open delete dialog");
+        sweep();
+        for (const char* id : {"app.nav", "items.search", "items.list", "items.dialog.name", "items.dialog.ok", "items.delete_dialog.confirm"})
+            test::check(std::find(visited.begin(), visited.end(), id) != visited.end(), (std::string("dark sweep visited ") + id).c_str());
+    }
+}
 void semantic_navigation_pages() {
     settings_demo::Demo demo;
     auto& tree = demo.ui.semantics();
@@ -216,4 +294,5 @@ void item_search_count_and_empty_state() {
     }
 }
 
-int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"dark newer components", dark_new_component_sweep}}; return test::run("settings demo", cases); }
+

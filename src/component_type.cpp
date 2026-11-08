@@ -504,7 +504,7 @@ public:
                 });
             }
             const auto& line = c.placement.lines[i];
-            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted);
+            c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.navigation_key_down(key); }
