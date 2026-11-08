@@ -2025,8 +2025,6 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
 // Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
 // Colored pixels demonstrate a cue was drawn; they are not OCR of the semantic string.
 void semantic_raster_samples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
-    Fixture f(appearance, true);
-    auto& h = f.form.handles;
     auto contains_color = [](const Image& canvas, Rect bounds, Color color) {
         auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
         for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
@@ -2034,9 +2032,6 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
             if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
         }
         return false;
-    };
-    auto sample = [&](std::string_view name, Image& pixels) {
-        return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
     };
     {
         Fixture dark(appearance, true); auto& d = dark.form.handles;
@@ -2052,11 +2047,22 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
         dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
         field = dark_frame.find(d.name);
-        bool selection = field && contains_color(image, intersect(field->field.editor, field->clip), colors.selection);
+        bool selection = field && contains_color(image, intersect(field->bounds, field->clip), colors.selection);
         bool focus = field && contains_color(image, intersect(field->bounds, field->clip), colors.accent);
-        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid,
-                     "CPU image contains error, selection and focus colors with error semantics");
+        d.disabled.invoke();
+        dark.host.observe_paint(true); dark.host.paint();
+        bool disabled = !d.name.describe()->enabled && std::any_of(dark.host.paint_observations().begin(), dark.host.paint_observations().end(), [&](const auto& event) {
+            return event.visible && event.text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+        });
+        dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-disabled.bmp"));
+        report.check("PV03-dark-raster", applied && error_ink && selection && focus && invalid && disabled,
+                     "CPU raster: applied=" + std::to_string(applied) + ", error=" + std::to_string(error_ink) + ", selection=" + std::to_string(selection) + ", focus=" + std::to_string(focus) + ", invalid=" + std::to_string(invalid) + ", disabled=" + std::to_string(disabled));
     }
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    auto sample = [&](std::string_view name, Image& pixels) {
+        return f.host.render(960, 720, 1.f, folder / (report.appearance + "-x04-" + std::string(name) + ".bmp"), &pixels);
+    };
     h.error.invoke();
     f.host.layout(960, 720, 1.f, f.form.scroll, h.name.describe()->id);
     f.host.observe_paint(true);
