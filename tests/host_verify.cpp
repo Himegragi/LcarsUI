@@ -2570,6 +2570,44 @@ struct Profiles {
 };
 }
 
+int run_uia_ime(const std::filesystem::path& folder, const std::wstring& skin) {
+    std::filesystem::create_directories(folder); Report report(folder / "uia-ime.tsv");
+    report.appearance = skin == L"material" ? "material" : "web";
+    HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(init)) { report.check("UIA21", false, "COM initialization failed"); return 1; }
+    try {
+        Live live(skin == L"material" ? material_appearance() : web_appearance());
+        Profiles profiles;
+        if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated");
+        live.start_in_name();
+        if (!live.form.handles.name.set_value(u"UIA baseline") || !live.form.handles.name.select(4, 4)) throw Blocked("Unable to prepare committed value");
+        if (auto imc = ImmGetContext(live.host.window())) {
+            DWORD conversion = 0, sentence = 0; ImmGetConversionStatus(imc, &conversion, &sentence);
+            ImmSetConversionStatus(imc, conversion | IME_CMODE_NATIVE, sentence); ImmReleaseContext(live.host.window(), imc);
+        }
+        live.type("JI3");
+        const auto* edit = detail::access(live.form.ui).edit(live.ids.name);
+        if (!edit || !edit->composing || edit->preedit.empty()) throw Blocked("Bopomofo composition did not start");
+        const auto committed = edit->text; const auto preedit = edit->preedit;
+        wchar_t module[MAX_PATH]{}; GetModuleFileNameW(nullptr, module, MAX_PATH);
+        auto client = std::filesystem::path(module).parent_path() / L"lcars_uia_client.exe";
+        std::wstring command = L"\"" + client.wstring() + L"\" --ime-probe " + std::to_wstring(reinterpret_cast<std::uintptr_t>(live.host.window()));
+        STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+        if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) throw Blocked("UIA client could not start");
+        CloseHandle(process.hThread); auto deadline = GetTickCount64() + 30000;
+        while (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT && GetTickCount64() < deadline) live.wait(50);
+        DWORD code = 1;
+        if (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT) { TerminateProcess(process.hProcess, 1); WaitForSingleObject(process.hProcess, 5000); }
+        else GetExitCodeProcess(process.hProcess, &code);
+        CloseHandle(process.hProcess); live.wait(100);
+        edit = detail::access(live.form.ui).edit(live.ids.name);
+        bool intact = edit && edit->composing && edit->preedit == preedit && edit->text == committed;
+        report.check("UIA21", code == 0 && intact, "UIA SetValue rejected; committed Value unchanged; Bopomofo preedit intact; client exit=" + std::to_string(code));
+        live.clear_composition();
+    } catch (const Blocked& e) { report.check("UIA21-BLOCKED", false, e.what()); }
+    CoUninitialize(); return report.failures ? 1 : 0;
+}
+
 bool ime_session(const Appearance& appearance, Report& report, std::ofstream& events) {
     try {
         Live live(appearance);
@@ -3303,6 +3341,7 @@ int wmain(int argc, wchar_t** argv) {
     try {
         std::filesystem::path evidence = "host-evidence";
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
+        bool uia_ime = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_skin=L"web";
@@ -3322,6 +3361,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--ime") ime = true;
+            else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--x02-only") x02_only = true;
@@ -3333,6 +3373,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
+        if (uia_ime) return run_uia_ime(evidence, perf_skin);
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
