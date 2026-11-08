@@ -125,6 +125,7 @@ try {
             'AppearanceWeb' { '(void)lcars::web_appearance();' }
             'AppearanceMaterial' { '(void)lcars::material_appearance();' }
             'Desktop' { '(void)lcars::third_party_notices();' }
+            'Diagnostics' { 'lcars::Diagnostics diagnostics; (void)diagnostics.recent();' }
             default { '' }
         }
         if ($component -eq 'Desktop') { $header = 'third_party_notices.hpp' }
