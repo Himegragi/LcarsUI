@@ -111,6 +111,9 @@ int wmain(int argc, wchar_t** argv) {
         auto default_option = font ? find_id(uia, font, L"default") : nullptr; BOOL closed_offscreen = FALSE;
         bool collapsed = default_option && SUCCEEDED(default_option->get_CurrentIsOffscreen(&closed_offscreen)) && closed_offscreen;
         bool dropdown = font && SUCCEEDED(font->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, IID_PPV_ARGS(&expand))) && expand && SUCCEEDED(expand->Expand());
+        IUIAutomationCondition* all_options = nullptr; IUIAutomationElementArray* option_nodes = nullptr; int option_count = 0;
+        bool all_present = font && SUCCEEDED(uia->CreateTrueCondition(&all_options)) && all_options && SUCCEEDED(font->FindAll(TreeScope_Children, all_options, &option_nodes)) && option_nodes && SUCCEEDED(option_nodes->get_Length(&option_count)) && option_count == 151;
+        if (option_nodes) option_nodes->Release(); if (all_options) all_options->Release(); dropdown = dropdown && all_present;
         auto last = font ? find_id(uia, font, L"family:Font149") : nullptr; BOOL offscreen = FALSE;
         dropdown = dropdown && last && SUCCEEDED(last->get_CurrentIsOffscreen(&offscreen)) && offscreen && patterns(uia, root);
         if (expand) { collapsed = collapsed && SUCCEEDED(expand->Collapse()); closed_offscreen = FALSE; collapsed = collapsed && SUCCEEDED(default_option->get_CurrentIsOffscreen(&closed_offscreen)) && closed_offscreen; }
