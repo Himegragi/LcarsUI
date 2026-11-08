@@ -37,6 +37,15 @@ void exercise() {
     detail::access(ui).pointer_down("nav", 1);
     detail::access(ui).pointer_up("nav", 1);
     check(nav->selected()->id == "two" && detail::access(ui).focused() == "nav", "enabled pointer row selects and focuses navigation");
+    detail::access(ui).key_down({.key=Key::end});
+    check(nav->selected()->id == "two", "end selects last enabled page");
+    for (Key key : {Key::left, Key::right, Key::space, Key::enter}) {
+        detail::access(ui).key_down({.key=key});
+        detail::access(ui).key_up(key);
+        check(nav->selected()->id == "two", "non-navigation key does not select a different page");
+    }
+    detail::access(ui).key_down({.key=Key::up});
+    check(nav->selected()->id == "one", "up selects preceding page");
     Ui modal_ui;
     auto first = modal_ui.add_button({.id="first",.kind=Kind::button}).value.value();
     auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();

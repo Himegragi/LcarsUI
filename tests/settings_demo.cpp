@@ -23,6 +23,12 @@ void exercise() {
     test::check(detail::access(demo.ui).focused() == "app.nav", "navigation initially focused");
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(detail::access(demo.ui).focused() == "general.name", "tab enters general page");
+    demo.volume.focus();
+    detail::access(demo.ui).key_down({.key=Key::tab});
+    test::check(detail::access(demo.ui).focused() == "app.nav", "tab wraps past disabled toolbar");
+    detail::access(demo.ui).key_down({.key=Key::tab, .shift=true});
+    test::check(detail::access(demo.ui).focused() == "general.volume", "shift tab wraps to last page field");
+    demo.name.focus();
     demo.name.set_value(u"\u5de5\u4f5c\u7ad9 A");
     detail::access(demo.ui).key_down({.key=Key::tab});
     test::check(!demo.name.describe()->source_conflict, "confirmed name agrees with source");
