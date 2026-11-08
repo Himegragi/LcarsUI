@@ -78,6 +78,8 @@ private:
     Frame frame_;
     float forced_scale_ = 0;
     float atlas_scale_ = 0;
+    int atlas_text_size_ = 0;
+    std::u16string atlas_font_family_;
     int frames_ = 0;
     bool failed_ = false;
     std::string reveal_;                        // focus target to scroll into view on the next arrange

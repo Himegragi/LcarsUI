@@ -171,6 +171,12 @@ void atlas_native(const Appearance& appearance, Report& report) {
     f.host.configure_atlas(64,1);
     bool same=f.host.compare_legacy(960,720,1.f);
     report.check("GA03-CPU", same && f.host.atlas_batches()>0, "small atlas batches retain S1 pixels");
+    f.host.configure_atlas(1024,4);
+    auto settings=f.form.ui.presentation(); settings.text_size=18;
+    f.form.ui.set_presentation(settings); f.host.paint();
+    auto previous=f.host.atlas_clears(); settings.text_size=24;
+    bool changed=bool(f.form.ui.set_presentation(settings)); f.host.paint();
+    bool invalidated=f.host.atlas_clears()==previous+1 && f.host.compare_legacy(960,720,1.f);
     detail::Text text;
     auto old_layout=text.shape(u"Station",18);
     detail::RecordingCanvas old_canvas(300,80,{0,0,0});
@@ -181,10 +187,31 @@ void atlas_native(const Appearance& appearance, Report& report) {
     text.draw(new_canvas,new_layout,0,40,{255,255,255});
     detail::Canvas reference(300,80,{0,0,0});
     text.draw(reference,new_layout,0,40,{255,255,255});
-    report.check("GA04", text.atlas_clears()==count+1 &&
+    report.check("GA04", changed && invalidated && text.atlas_clears()==count+1 &&
         detail::render_cpu(new_canvas.list,300,80).pixels==reference.pixels &&
         detail::render_cpu(old_canvas.list,300,80).pixels!=reference.pixels,
         "font-size invalidation produces the 24 DIP reference");
+}
+
+void presentation_before_input(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    h.name.focus(); h.name.select(1, 1); f.settle();
+    auto settings = f.form.ui.presentation(); settings.text_size = 28;
+    auto result = f.form.ui.set_presentation(settings);
+    auto* field = f.host.frame().find(h.name);
+    IMECHARPOSITION position{}; position.dwSize = sizeof(position);
+    bool query = SendMessageW(f.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
+    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+    ClientToScreen(f.host.window(), &expected);
+    bool geometry = field && field->text_size == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
+    int x = field ? field->caret_x(2) : 0;
+    int y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+    SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    auto* session = detail::access(f.form.ui).edit(f.ids.name);
+    report.check("PS09", bool(result) && geometry && session && session->selection.caret == 2,
+                 "IME query and pointer use updated layout before paint");
 }
 
 void draw_list_initial(const Appearance& appearance, Report& report) {
@@ -2706,6 +2733,7 @@ int run(const std::filesystem::path& folder) {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         std::string tag = appearance == &web_appearance() ? "web" : "material";
         report.appearance = tag;
+        presentation_before_input(*appearance, report);
         draw_list_initial(*appearance, report);
         tabs_native(*appearance, report, folder);
         atlas_native(*appearance, report);
