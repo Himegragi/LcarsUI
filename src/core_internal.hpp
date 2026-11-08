@@ -37,6 +37,9 @@ public:
     ComponentHandle progress_layout_handle(const Control& control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
+    NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
+    ComponentHandle navigation_layout_handle(const Control& control);
+    Result navigation_key_down(KeyPress key);
     ComponentHandle tabs_layout_handle(const Control& control);
     Result tabs_key_down(KeyPress key);
     Result activate_tab(const Id& id, OptionValue page);
@@ -168,6 +171,7 @@ public:
     bool stopped() const { return stopped_; }
 private:
     friend class ::lcars::TabsHandle;
+    friend class ::lcars::NavigationListHandle;
     friend class ::lcars::TextHandle;
     friend class ::lcars::ButtonHandle;
     friend class ::lcars::LabelHandle;

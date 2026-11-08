@@ -112,6 +112,9 @@ const Placement* Frame::find(const DropdownHandle& handle) const {
 const Placement* Frame::find(const TabsHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
+const Placement* Frame::find(const NavigationListHandle& handle) const {
+    return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
+}
 const Placement* Frame::find(const ListHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
