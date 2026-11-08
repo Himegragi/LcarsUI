@@ -69,3 +69,56 @@ feedback and the first frame time after changing fonts (PR04). Generate the
 PR04 requires coordinator review and is not marked as passed by the generator.
 PS10 runs automatically in the `presentation_recovery` CTest. A report with open or failed cases causes the idle
 script to return a failure status.
+
+## Using LcarsUI from another CMake project
+
+LcarsUI ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating LcarsUI. Install both configurations into one prefix:
+
+```powershell
+.\build.ps1 -Configuration Release -Install C:\sdk\LcarsUI
+.\build.ps1 -Configuration Debug -Install C:\sdk\LcarsUI
+```
+
+Then in your project:
+
+```cmake
+cmake_minimum_required(VERSION 3.25)
+project(StationApp LANGUAGES CXX)
+find_package(LcarsUI 0.2 REQUIRED COMPONENTS Desktop AppearanceWeb)
+add_executable(station_app main.cpp)
+target_link_libraries(station_app PRIVATE LcarsUI::Desktop LcarsUI::AppearanceWeb)
+install(FILES "${LcarsUI_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)
+```
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\sdk\LcarsUI
+cmake --build build
+```
+
+Run these commands in a Visual Studio x64 developer environment. Without `build.ps1`, the equivalent framework build and install for each configuration is:
+
+```powershell
+cmake -S . -B build/Release -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+ctest --test-dir build/Release --output-on-failure
+cmake --install build/Release --prefix C:\sdk\LcarsUI
+```
+
+Repeat with `Debug` in the build directory and build type. Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build LcarsUI. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. LcarsUI itself builds with clang-cl and Ninja.
+
+Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `Desktop`, and `Diagnostics`. Each appearance and Desktop automatically imports Core. Desktop includes the Windows host, OpenGL, text, UI Automation, FreeType and HarfBuzz. Diagnostics is available in a full desktop build. Without `COMPONENTS`, only Core is imported. All public headers are installed regardless of the selected component; using a Desktop or Diagnostics API requires linking its corresponding target. Draw lists and the rendering backend are internal.
+
+If you link Desktop, credit FreeType in your product documentation: show `lcars::third_party_notices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `LcarsUI_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
+
+## Updating third-party dependencies
+
+1. Replace the relevant vendored archive or Khronos header under `third_party/`, retaining the exact upstream bytes. Review the new source and license files, including any added or changed license obligations.
+2. Update version, commit, URL, SHA256 and, where applicable, license-file and credit metadata in `cmake/ThirdPartyManifest.cmake`; update the matching human-readable entries in `third_party/SOURCES.md`. Preserve the binary attributes in `.gitattributes`.
+3. Configure a build with the updated manifest, then regenerate the checked-in notices:
+
+   ```powershell
+   cmake --build build/Release --target update_third_party_notices
+   ctest --test-dir build/Release -R third_party_notices --output-on-failure
+   ```
+
+4. Review `THIRD_PARTY_NOTICES.txt`, rebuild and run the full tests and installed-package verification. Commit the vendored files, manifest, source descriptions and regenerated notices together. CI-only tools and example-only dependencies do not belong in the shipped notices.
