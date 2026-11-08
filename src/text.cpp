@@ -29,7 +29,7 @@ struct Font {
 }
 struct Text::Impl {
     FT_Library library=nullptr;
-    std::unique_ptr<Font> latin,traditional;
+    std::unique_ptr<Font> latin,traditional,emoji;
     std::filesystem::path fonts;
     bool ming=false;
     Impl() {
@@ -37,11 +37,12 @@ struct Text::Impl {
         require(GetWindowsDirectoryW(path,MAX_PATH)>0,"Windows font directory unavailable");
         fonts=std::filesystem::path(path)/"Fonts";
         require(FT_Init_FreeType(&library)==0,"FreeType initialization failed");
-        try {latin=std::make_unique<Font>(library,fonts/"segoeui.ttf");traditional=std::make_unique<Font>(library,fonts/"msjh.ttc");}
+        try {latin=std::make_unique<Font>(library,fonts/"segoeui.ttf");traditional=std::make_unique<Font>(library,fonts/"msjh.ttc");
+            try { emoji=std::make_unique<Font>(library,fonts/"seguiemj.ttf"); } catch (...) {} }
         catch(...){traditional.reset();latin.reset();FT_Done_FreeType(library);throw;}
     }
-    ~Impl(){traditional.reset();latin.reset();FT_Done_FreeType(library);}
-    Font& font(unsigned id){return id?*traditional:*latin;}
+    ~Impl(){emoji.reset();traditional.reset();latin.reset();FT_Done_FreeType(library);}
+    Font& font(unsigned id){return id==2?*emoji:id?*traditional:*latin;}
 };
 Text::Text():impl_(std::make_unique<Impl>()){}
 Text::~Text()=default;
@@ -59,14 +60,16 @@ unsigned TextLayout::hit(float x) const {
     return best;
 }
 TextLayout Text::shape(std::u16string_view text,int size){
-    auto& e=*impl_;e.latin->size(size);e.traditional->size(size);
+    auto& e=*impl_;e.latin->size(size);e.traditional->size(size);if(e.emoji)e.emoji->size(size);
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
     for(unsigned i=0;i<text.size();){
         unsigned begin=i,cp=text[i++];
         if(cp>=0xd800&&cp<=0xdbff&&i<text.size()&&text[i]>=0xdc00&&text[i]<=0xdfff)cp=0x10000+((cp-0xd800)<<10)+(text[i++]-0xdc00);
+        if(cp==0xfe0f) continue;
         auto script=hb_unicode_script(unicode,cp);
         unsigned selected=FT_Get_Char_Index(e.latin->face,cp)?0:1;
+        if(e.emoji && (cp==0x2764 || cp>=0x1f000) && FT_Get_Char_Index(e.emoji->face,cp)) selected=2;
         if(script==HB_SCRIPT_INHERITED&&!runs.empty()&&FT_Get_Char_Index(e.font(runs.back().font).face,cp))selected=runs.back().font;
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
         if(!runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
