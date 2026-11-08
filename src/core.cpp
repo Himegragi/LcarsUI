@@ -2205,7 +2205,7 @@ Result detail::UiState::key_down(KeyPress key) {
         if (control->kind == Kind::text) {
             handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
                 (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del);
-        } else if (!key.ctrl) {
+        } else if (!key.ctrl || !key.letter) {
             switch (control->kind) {
             case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
             case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
