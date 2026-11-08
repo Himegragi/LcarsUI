@@ -2007,6 +2007,7 @@ Result detail::UiState::replace_selection(std::string_view id, Field& field, std
     field.past.push_back({session.text, session.selection});
     field.future.clear();
     session.text = std::move(next);
+    ++session.revision;
     session.select(caret, caret);
     return finish_edit(id, field);
 }
@@ -2023,6 +2024,7 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     to.push_back({session.text, session.selection});
     auto snapshot = std::move(from.back());
     from.pop_back();
+    if (session.text != snapshot.text) ++session.revision;
     session.text = std::move(snapshot.text);
     session.select(snapshot.selection.anchor, snapshot.selection.caret);
     return finish_edit(id, *field);
@@ -2506,6 +2508,7 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     if (composing_ == control->id) composition_cancel();
     auto& field = it->second;
     field.session.cancel_composition();
+    if (field.session.text != value) ++field.session.revision;
     field.session.text = std::move(value);
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0;
@@ -2766,7 +2769,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && label->role == TextRole::description) n.described_by.push_back({id}); }
-    auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) n.text_selection = edit->second.session.selection;
+    auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};

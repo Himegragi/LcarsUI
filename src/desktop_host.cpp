@@ -139,7 +139,11 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         throw std::runtime_error("Window creation failed");
     }
     try {
-        uia_ = std::make_unique<UiaBridge>(ui_, window_);
+        uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
+            RECT client{}; GetClientRect(window_, &client);
+            if (client.right > 0 && client.bottom > 0) frame_ = arrange(client.right, client.bottom, scale());
+            return frame_;
+        });
         input_context_ = ImmGetContext(window_);
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
