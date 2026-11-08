@@ -57,9 +57,9 @@ public:
     void window_active(bool active);
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
-    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
-    Result open_dialog(const ComponentHandle& opener);
-    Result settle_dialog(bool confirmed);
+    DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result);
+    Result open_dialog(const Id& id, const ComponentHandle* opener);
+    Result settle_dialog(const Id& id, bool confirmed);
     ComponentHandle list_layout_handle(const Control& control);
     Result list_key_down(KeyPress key);
     ComponentHandle dropdown_layout_handle(const Control& control);
@@ -144,6 +144,7 @@ public:
     // Input routed to the focused control. Hosts call these after translating native messages.
     // Buttons: Enter activates on press, Space on release, pointer on release over the pressed
     // control. A press belongs to the control that received it and dies with focus moves.
+    Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope);
     Result key_down(KeyPress key);
     Result key_up(Key key);
     // The host hit-tests and passes the control under the pointer (empty when none).
@@ -284,7 +285,11 @@ private:
         Id initial, fallback, opener;
         std::function<void(bool)> result;
         bool configured = false, transitioning = false;
-    } dialog_;
+    };
+    std::map<Id, DialogState, std::less<>> dialogs_;
+    Id active_dialog_;
+    bool dialog_transitioning_ = false;
+    bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
     struct NumericField {
@@ -316,6 +321,8 @@ private:
     bool committing_removals_ = false;
     void commit_removals();
     std::map<Id, std::u16string, std::less<>> errors_;  // the one source for field errors and error labels
+    struct ShortcutBinding { Shortcut chord; Id target, scope; };
+    std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;

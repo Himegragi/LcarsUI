@@ -76,7 +76,7 @@ void detail::UiState::commit_removals() {
         if (key_armed_ == id) key_armed_.clear();
         if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
         if (tooltip_hover_ == id) tooltip_hover_.clear();
-        if (dialog_.opener == id) dialog_.opener.clear();
+        for (auto& [key, dialog] : dialogs_) if (dialog.opener == id) dialog.opener.clear();
         if (auto member = page_members_.find(id); member != page_members_.end()) {
             auto& members = tabs_.at(member->second.first).pages[member->second.second].members;
             std::erase_if(members, [&](const ComponentHandle& handle) { return layout_id(handle) == id; });
@@ -970,7 +970,7 @@ NavigationListHandle detail::UiState::add_navigation_list(Control control, std::
         for (const auto& handle : page.members) {
             auto member = layout_id(handle);
             if (!member || !find(*member) || removal_pending(*member) || page_members_.contains(*member) ||
-                std::find(dialog_.members.begin(), dialog_.members.end(), *member) != dialog_.members.end() || !members.insert(*member).second)
+                dialog_member(*member) || !members.insert(*member).second)
                 throw std::invalid_argument("Invalid page member");
         }
     }
@@ -1080,71 +1080,95 @@ Query<bool> TooltipHandle::visible() const {
     if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
     return {Status::ok, {}, it->second.visible};
 }
-DialogHandle detail::UiState::add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+bool detail::UiState::dialog_member(std::string_view id) const {
+    for (const auto& [key, dialog] : dialogs_)
+        if (std::find(dialog.members.begin(), dialog.members.end(), id) != dialog.members.end()) return true;
+    return false;
+}
+DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
     OperationScope operation(this);
     auto first = layout_id(initial), backup = layout_id(fallback);
-    if (dialog_.configured || !first || !backup || !find(*first) || !find(*backup) || removal_pending(*first) || removal_pending(*backup) || !result || members.empty()) throw std::invalid_argument("Invalid dialog");
+    if (!first || !backup || !find(*first) || !find(*backup) || removal_pending(*first) || removal_pending(*backup) || !result || members.empty() || !component_type(find(*first)->kind).can_focus()) throw std::invalid_argument("Invalid dialog");
     std::set<Id> unique;
     for (const auto& member : members) {
-        auto id = layout_id(member);
-        if (!id || !find(*id) || removal_pending(*id) || page_members_.contains(*id) || !unique.insert(*id).second)
+        auto item = layout_id(member);
+        if (!item || !find(*item) || removal_pending(*item) || page_members_.contains(*item) || dialog_member(*item) || !unique.insert(*item).second)
             throw std::invalid_argument("Invalid dialog member");
     }
     if (!unique.contains(*first) || unique.contains(*backup)) throw std::invalid_argument("Invalid dialog focus targets");
-    dialog_.members.assign(unique.begin(), unique.end());
-    dialog_.initial = *first; dialog_.fallback = *backup; dialog_.result = std::move(result); dialog_.configured = true;
-    for (const auto& id : dialog_.members) const_cast<Control*>(find(id))->page = "dialog";
-    return DialogHandle(this, lifetime_);
+    DialogState dialog;
+    dialog.members.assign(unique.begin(), unique.end());
+    dialog.initial = *first; dialog.fallback = *backup; dialog.result = std::move(result); dialog.configured = true;
+    for (const auto& member : dialog.members) const_cast<Control*>(find(member))->page = "dialog";
+    dialogs_.emplace(id, std::move(dialog));
+    return DialogHandle(this, lifetime_, std::move(id));
 }
-Result detail::UiState::open_dialog(const ComponentHandle& opener) {
+Result detail::UiState::open_dialog(const Id& id, const ComponentHandle* opener) {
     OperationScope operation(this);
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
-    if (!dialog_.configured || modal_ || dialog_.transitioning) return {Status::busy, u"Dialog already open or transitioning"};
-    auto source = layout_id(opener);
-    if (!source) return {Status::not_found, u"Invalid opener"};
-    if (auto r = available(*source); !r) return r;
-    const auto* initial = find(dialog_.initial);
+    auto it = dialogs_.find(id);
+    if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    auto& dialog = it->second;
+    if (modal_ || dialog_transitioning_) return {Status::busy, u"Dialog already open or transitioning"};
+    Id source = focus_;
+    if (opener) {
+        auto selected = layout_id(*opener);
+        if (!selected) return {Status::not_found, u"Invalid opener"};
+        if (auto r = available(*selected); !r) return r;
+        source = *selected;
+    }
+    if (source.empty()) source = dialog.fallback;
+    const auto* initial = find(dialog.initial);
     if (!initial || !initial->enabled) return {Status::disabled, u"Initial focus is unavailable"};
-    dialog_.transitioning = true;
-    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog_.transitioning};
-    dialog_.opener = *source;
-    // Finish the previous edit while background operations are still admitted.
-    if (auto r = move_focus(dialog_.initial); !r) return r;
+    dialog.transitioning = true; dialog_transitioning_ = true;
+    struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
+    dialog.opener = source;
+    if (auto r = move_focus(dialog.initial); !r) return r;
+    active_dialog_ = id;
     modal(true);
     if (invalidate_) invalidate_();
     return {};
 }
-Result detail::UiState::settle_dialog(bool confirmed) {
+Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     OperationScope operation(this);
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
-    if (dialog_.transitioning) return {Status::busy, u"Dialog is transitioning"};
-    if (!modal_ || !dialog_.configured) return {Status::invalid_value, u"Dialog is not open"};
-    dialog_.transitioning = true;
-    struct Guard { bool& value; ~Guard() { value = false; } } guard{dialog_.transitioning};
-    modal(false);
-    auto source = std::exchange(dialog_.opener, {});
+    auto it = dialogs_.find(id);
+    if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
+    auto& dialog = it->second;
+    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
+    if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
+    dialog.transitioning = true; dialog_transitioning_ = true;
+    struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
+    modal(false); active_dialog_.clear();
+    auto source = std::exchange(dialog.opener, {});
     auto target = find(source);
-    if (!target || !focusable(*target)) target = find(dialog_.fallback);
+    if (!target || !focusable(*target)) target = find(dialog.fallback);
     if (target && focusable(*target)) move_focus(target->id); else move_focus({});
-    try { dialog_.result(confirmed); }
+    try { dialog.result(confirmed); }
     catch (...) { stopped_ = true; return {Status::failed, u"Dialog result failed"}; }
     if (invalidate_) invalidate_();
     return {};
 }
 Result DialogHandle::open(ComponentHandle opener) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(opener);
+    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(id_, &opener);
+}
+Result DialogHandle::open() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(id_, nullptr);
 }
 Result DialogHandle::settle(bool confirmed) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->settle_dialog(confirmed);
+    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->settle_dialog(id_, confirmed);
 }
 Query<bool> DialogHandle::is_open() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(ui_->dialog_.initial); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->modal_};
+    auto it = ui_->dialogs_.find(id_);
+    if (it == ui_->dialogs_.end()) return {Status::not_found, u"Dialog not found", std::nullopt};
+    if (auto r = ui_->configuration_access(it->second.initial); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, ui_->modal_ && ui_->active_dialog_ == id_};
 }
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     OperationScope operation(this);
@@ -1191,7 +1215,7 @@ Result detail::UiState::add_page_member(const Id& id, OptionValue page, Componen
     if (auto r = configuration_access(id); !r) return r;
     auto member = layout_id(component);
     if (!member || !find(*member) || removal_pending(*member) || page_members_.contains(*member) ||
-        std::find(dialog_.members.begin(), dialog_.members.end(), *member) != dialog_.members.end())
+        dialog_member(*member))
         return {Status::invalid_value, u"Invalid page member"};
     auto& t = tabs_.at(id);
     auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
@@ -1350,7 +1374,7 @@ Result ButtonHandle::remove() const {
     detail::UiState::OperationScope scope(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (std::find(ui_->dialog_.members.begin(), ui_->dialog_.members.end(), id_) != ui_->dialog_.members.end() || id_ == ui_->dialog_.fallback)
+    if (ui_->dialog_member(id_) || std::any_of(ui_->dialogs_.begin(), ui_->dialogs_.end(), [&](const auto& entry) { return entry.second.fallback == id_; }))
         return {Status::invalid_value, u"Dialog focus targets must remain alive"};
     if (std::find(ui_->pending_removals_.begin(), ui_->pending_removals_.end(), id_) == ui_->pending_removals_.end())
         ui_->pending_removals_.push_back(id_);
@@ -1879,7 +1903,7 @@ Result detail::UiState::available(std::string_view id) const {
     if (!control || removal_pending(id)) return {Status::not_found, u"Component no longer exists"};
     if (auto member = page_members_.find(id); member != page_members_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
-    if (control->page == "dialog" && !modal_) return {Status::hidden, u"對話框尚未開啟"};
+    if (control->page == "dialog" && (!modal_ || (dialog_member(id) && (active_dialog_.empty() || std::find(dialogs_.at(active_dialog_).members.begin(), dialogs_.at(active_dialog_).members.end(), id) == dialogs_.at(active_dialog_).members.end())))) return {Status::hidden, u"對話框尚未開啟"};
     if (!control->enabled) return {Status::disabled, u"目前無法執行"};
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};
@@ -2146,8 +2170,25 @@ Result detail::UiState::focus(std::string_view id) {
     if (auto result = focusable(*control); !result) return result;
     return move_focus(control->id);
 }
+Result detail::UiState::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    OperationScope operation(this);
+    auto target_id = layout_id(target);
+    auto scope_id = layout_id(scope);
+    if (!target_id || !find(*target_id) || (!std::holds_alternative<std::monostate>(scope) && (!scope_id || !find(*scope_id))) ||
+        chord.key == Key::tab || chord.key == Key::escape || (chord.key == Key::other && !chord.letter))
+        return {Status::invalid_value, u"Invalid shortcut"};
+    if (auto r = configuration_access(*target_id); !r) return r;
+    if (chord.letter && !chord.ctrl) return {Status::invalid_value, u"Letter shortcuts require Ctrl"};
+    Id scope_name = scope_id.value_or(Id{});
+    for (const auto& entry : shortcuts_)
+        if (entry.scope == scope_name && entry.chord.key == chord.key && entry.chord.letter == chord.letter && entry.chord.ctrl == chord.ctrl && entry.chord.shift == chord.shift)
+            return {Status::invalid_value, u"Duplicate shortcut"};
+    shortcuts_.push_back({chord, *target_id, std::move(scope_name)});
+    return {};
+}
 Result detail::UiState::key_down(KeyPress key) {
     OperationScope operation(this);
+    if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
             if (tip.visible) {
@@ -2157,9 +2198,9 @@ Result detail::UiState::key_down(KeyPress key) {
             }
         }
     }
-    if (modal_ && dialog_.configured && key.key == Key::escape) {
+    if (modal_ && !active_dialog_.empty() && key.key == Key::escape) {
         if (key.repeat) return {};
-        return settle_dialog(false);
+        return settle_dialog(active_dialog_, false);
     }
     if (key.key == Key::tab) {
         pointer_focus_ = false;
@@ -2173,9 +2214,36 @@ Result detail::UiState::key_down(KeyPress key) {
         return move_focus(order[static_cast<std::size_t>(index)]);
     }
     const auto* control = find(focus_);
-    if (!control) return {};
-    if (auto result = available(focus_); !result) return result;
-    return component_type(control->kind).key_down(*this, key);
+    if (control) {
+        if (auto result = available(focus_); !result) return result;
+        bool handled = false;
+        if (control->kind == Kind::text) {
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
+                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del);
+        } else if (!key.ctrl || !key.letter) {
+            switch (control->kind) {
+            case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
+            case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
+            case Kind::radio_group: case Kind::slider: handled = key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
+            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::escape)); break;
+            case Kind::button: case Kind::checkbox: case Kind::tabs: handled = key.key == Key::enter || key.key == Key::space || (control->kind == Kind::tabs && (key.key == Key::left || key.key == Key::right)); break;
+            case Kind::label: case Kind::progress: break;
+            default: handled = true; break;
+            }
+        }
+        if (handled) return component_type(control->kind).key_down(*this, key);
+    }
+    for (int scoped = 1; scoped >= 0; --scoped) for (const auto& entry : shortcuts_) {
+        if ((scoped ? entry.scope == focus_ && !entry.scope.empty() : entry.scope.empty()) && entry.chord.key == key.key && entry.chord.letter == key.letter && entry.chord.ctrl == key.ctrl && entry.chord.shift == key.shift) {
+            if (key.repeat) return {};
+            if (modal_) {
+                const auto* target = find(entry.target);
+                if (target && target->page != "dialog") return {Status::blocked_by_modal, u"Dialog is open"};
+            }
+            return invoke(entry.target);
+        }
+    }
+    return {};
 }
 Result detail::UiState::text_key_down(KeyPress key) {
     OperationScope operation(this); return edit_key(key); }
@@ -2447,13 +2515,16 @@ Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid tooltip", std::nullopt}; }
 }
-Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ButtonHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
     if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try {
-        auto handle = state_->add_dialog(std::move(members), initial, fallback, std::move(result));
+        auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result));
         state_->overlay_ids_.emplace(std::move(id), "dialog");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid dialog", std::nullopt}; }
+}
+Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    return state_->add_shortcut(chord, std::move(target), std::move(scope));
 }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
         std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
