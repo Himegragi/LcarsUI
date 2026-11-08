@@ -1,4 +1,5 @@
 #include "settings_demo.hpp"
+#include "failure_flow.hpp"
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 #include <algorithm>
@@ -690,4 +691,81 @@ void about_keyboard_scroll() {
         test::check(short_label && !short_label->focusable, "fitting license stays out of Tab order");
     }
 }
-int main() { const test::Case cases[] = {{"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+void failure_retry_flow() {
+    struct Prompt : settings_demo::NativePrompt {
+        int attempts = 0, saves = 0;
+        bool retry(std::u16string_view) override { return ++attempts < 3; }
+        settings_demo::SaveChoice save(bool) override { ++saves; return settings_demo::SaveChoice::discard; }
+        void error(std::u16string_view) override {}
+    } prompt;
+    int rebuilds=0, closes=0;
+    settings_demo::failure_flow(prompt, u"failed", [] { return true; }, [&] { ++rebuilds; return false; }, [] { return std::u16string{}; }, [&] { ++closes; });
+    test::check(rebuilds==2 && closes==1 && prompt.saves==1, "retry only on choice then discard");
+}
+void failure_choices() {
+    struct Prompt : settings_demo::NativePrompt {
+        settings_demo::SaveChoice choice = settings_demo::SaveChoice::cancel;
+        bool saw_blank=false; int errors=0;
+        bool retry(std::u16string_view) override { return false; }
+        settings_demo::SaveChoice save(bool blank) override { saw_blank=blank; return choice; }
+        void error(std::u16string_view) override { ++errors; }
+    } prompt;
+    int writes=0;
+    auto save=[&] { ++writes; return std::u16string(u"failed"); };
+    test::check(!settings_demo::failure_close(prompt,true,true,save) && prompt.saw_blank && writes==0, "cancel returns to retry");
+    prompt.choice=settings_demo::SaveChoice::save;
+    test::check(!settings_demo::failure_close(prompt,true,false,save) && writes==1 && prompt.errors==1, "save failure returns to retry");
+    prompt.choice=settings_demo::SaveChoice::discard;
+    test::check(settings_demo::failure_close(prompt,true,false,save) && writes==1, "discard does not save");
+}
+void close_invalid_name() {
+    settings_demo::Demo demo; int closed=0;
+    demo.on_close([&] { ++closed; });
+    test::check(bool(demo.name.focus()) && bool(demo.name.set_value(u"")), "empty name draft");
+    test::check(!demo.request_close(), "invalid draft prompts");
+    test::check(!demo.close_save.invoke() && closed==0 && demo.name.describe()->focused && !demo.name.describe()->error.empty(), "invalid draft remains open and focused");
+}
+void close_save_and_layout() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo;
+        int writes=0, closes=0;
+        demo.on_close([&] { ++closes; });
+        demo.on_save([&](const settings_demo::SettingsDocument& document) { ++writes; test::check(document.volume==65, "saved changed volume"); return std::u16string{}; });
+        test::check(bool(demo.volume.set_value(65)), "change before save");
+        test::check(!demo.request_close(), "prompt before save");
+        test::FakeMeasure measure; ScrollState scroll;
+        auto frame=arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+        auto has=[&](std::string_view id) { return std::any_of(frame.overlays.begin(), frame.overlays.end(), [&](const auto& item) { return item.id==id; }); };
+        test::check(has("app.close_dialog.save") && !has("items.dialog.ok"), "MD04 active close dialog only");
+        test::check(bool(demo.close_save.invoke()) && writes==1 && closes==1, "save closes after successful write");
+    }
+    settings_demo::Demo failed; int closed=0;
+    failed.on_close([&] { ++closed; }); failed.on_save([](const auto&) { return std::u16string(u"disk full"); });
+    test::check(bool(failed.volume.set_value(65)) && !failed.request_close(), "prepare failed save");
+    test::check(!failed.close_save.invoke() && closed==0 && failed.is_dirty(), "failed save keeps changes and window");
+    test::check(failed.ui.semantics().get({"app.error_dialog.ok"}).status==Status::ok, "error dialog available");
+}
+void close_item_draft() {
+    settings_demo::Demo demo;
+    test::check(bool(demo.volume.set_value(65)), "dirty document");
+    test::check(bool(demo.nav.select({"items"})), "items page");
+    auto before=demo.document();
+    test::check(bool(demo.items_add.invoke()), "open item dialog");
+    test::check(bool(demo.item_name.set_value(u"discard me")), "type item draft");
+    test::check(!demo.request_close(), "dirty close vetoed");
+    test::check(!demo.item_dialog.is_open().value.value() && demo.close_dialog.is_open().value.value(), "item canceled before close prompt");
+    test::check(demo.document()==before, "item draft discarded");
+    test::check(!demo.request_close() && !demo.close_dialog.is_open().value.value(), "second close cancels close dialog");
+}
+void close_dialog_flow() {
+    settings_demo::Demo demo;
+    int closed = 0; demo.on_close([&] { ++closed; });
+    test::check(bool(demo.volume.set_value(65)), "dirty volume");
+    test::check(!demo.request_close(), "dirty close is vetoed");
+    test::check(demo.close_dialog.is_open().value == true, "close dialog opened");
+    test::check(bool(demo.close_cancel.invoke()), "cancel close");
+    test::check(!demo.close_dialog.is_open().value.value() && closed == 0, "cancel keeps application open");
+    test::check(!demo.request_close(), "second request vetoed");
+    test::check(bool(demo.close_discard.invoke()) && closed == 1, "discard closes");
+}
+int main() { const test::Case cases[] = {{"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

@@ -1,4 +1,5 @@
 #include "settings_demo.hpp"
+#include "failure_flow.hpp"
 #include "lcars/desktop.hpp"
 #include "about_desktop.hpp"
 #include "settings_store.hpp"
@@ -8,6 +9,22 @@
 #include <filesystem>
 #include <iostream>
 namespace {
+class WindowsPrompt : public settings_demo::NativePrompt {
+    HWND owner_;
+    static std::wstring wide(std::u16string_view s) { return {s.begin(), s.end()}; }
+public:
+    explicit WindowsPrompt(void* owner) : owner_(static_cast<HWND>(owner)) {}
+    bool retry(std::u16string_view reason) override {
+        auto message = L"???????" + wide(reason) + L"??????????????????????????????????????";
+        return MessageBoxW(owner_, message.c_str(), L"??????", MB_RETRYCANCEL | MB_ICONERROR) == IDRETRY;
+    }
+    settings_demo::SaveChoice save(bool blank) override {
+        auto message = blank ? L"????????????????????" : L"???????";
+        int result = MessageBoxW(owner_, message, L"???????", MB_YESNOCANCEL | MB_ICONWARNING);
+        return result == IDYES ? settings_demo::SaveChoice::save : result == IDNO ? settings_demo::SaveChoice::discard : settings_demo::SaveChoice::cancel;
+    }
+    void error(std::u16string_view message) override { auto text=wide(message); MessageBoxW(owner_, text.c_str(), L"????", MB_OK | MB_ICONERROR); }
+};
 settings_demo::Demo* pending_demo = nullptr;
 std::u16string pending_title, pending_message;
 void CALLBACK show_pending_notice(HWND, UINT, UINT_PTR timer, DWORD) {
@@ -41,8 +58,26 @@ int wmain(int argc, wchar_t** argv) {
         demo.on_save([&store](const auto& document) { return store.save(document); },path_text);
         lcars::DesktopOptions options;
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
+        bool failure_prompt_active = false;
+        options.on_close_requested = [&](lcars::Desktop& desktop) {
+            if (!desktop.renderer_failed()) return demo.request_close() ? lcars::CloseDecision::close : lcars::CloseDecision::keep_open;
+            if (failure_prompt_active) return lcars::CloseDecision::keep_open;
+            failure_prompt_active = true;
+            WindowsPrompt prompt(desktop.native_window());
+            bool close = settings_demo::failure_close(prompt, demo.is_dirty(), demo.blank_name_draft(), [&] { return demo.save_failed_renderer(); });
+            failure_prompt_active = false;
+            return close ? lcars::CloseDecision::close : lcars::CloseDecision::keep_open;
+        };
+        options.on_renderer_failed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
+            if (failure_prompt_active) return;
+            failure_prompt_active = true;
+            WindowsPrompt prompt(desktop.native_window());
+            settings_demo::failure_flow(prompt, failure.message, [&] { return demo.is_dirty(); }, [&] { return bool(desktop.rebuild_renderer()); }, [&] { return demo.save_failed_renderer(); }, [&] { desktop.close(); }, [&] { return demo.blank_name_draft(); });
+            failure_prompt_active = false;
+        };
         auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) return 1;
+        demo.on_close([&] { creation.desktop->close(); });
         demo.on_dirty_changed([&](bool dirty) { creation.desktop->set_title((dirty ? u"*" : u"") + options.title); });
         if (loaded.kind==settings_demo::LoadKind::corrupt) {
             auto message=u"無法讀取 " + path_text + u"（" + loaded.reason + u"）。已改用預設值啟動，";

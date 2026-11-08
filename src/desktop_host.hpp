@@ -91,6 +91,8 @@ public:
     void on_renderer_failure(std::function<void(const RendererFailure&)> callback) { failure_callback_ = std::move(callback); }
     Result rebuild_renderer();
     void close() { release(); }
+    void request_quit() { quit_ = true; }
+    void on_close_request(std::function<CloseDecision()> callback) { close_callback_ = std::move(callback); }
     RendererCapabilities capabilities() const { return renderer_ ? renderer_->capabilities() : capabilities_; }
     std::vector<std::wstring>& ime_log() { return ime_log_; }
     std::vector<std::wstring>& trace() { return trace_; }  // verification mode: input messages as handled
@@ -125,6 +127,8 @@ private:
     bool failed_ = false;
     bool painting_ = false;
     bool quit_ = false;
+    bool closing_request_ = false;
+    std::function<CloseDecision()> close_callback_;
     std::thread::id owner_ = std::this_thread::get_id();
     RendererTestHooks* hooks_ = nullptr;
     DebugContext debug_context_ = DebugContext::build_default;

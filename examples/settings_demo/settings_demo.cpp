@@ -159,6 +159,15 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (auto r=refresh_items(); !r) return r;
         dirty(); return Result{};
     });
+    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=Kind::label,.value=u"???????"}).value.value();
+    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=Kind::label,.value=u"??????????????????"}).value.value();
+    close_save = ui.add_button({.id="app.close_dialog.save",.kind=Kind::button,.label=u"??"}).value.value();
+    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=Kind::button,.label=u"???"}).value.value();
+    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=Kind::button,.label=u"??"}).value.value();
+    close_dialog = ui.add_dialog("app.close_dialog", {close_title_,close_message_,close_save,close_discard,close_cancel}, close_save, save_, [](bool) {}).value.value();
+    close_cancel.bind([this] { return close_dialog.settle(false); });
+    close_discard.bind([this] { auto result=close_dialog.settle(true); if (result && close_handler_) close_handler_(); return result; });
+    close_save.bind([this] { auto result=close_dialog.settle(true); if (!result) return result; result=save_document(); if (result && close_handler_) close_handler_(); return result; });
     load_title_ = ui.add_label({.id="app.load_dialog.title",.kind=Kind::label}).value.value();
     load_message_ = ui.add_label({.id="app.load_dialog.message",.kind=Kind::label}).value.value();
     load_ok_ = ui.add_button({.id="app.load_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
@@ -193,25 +202,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         auto next = redo_history_.back(); redo_history_.pop_back();
         apply(next); return Result{};
     });
-    save_.bind([this] {
-        auto draft = name.draft();
-        if (!draft) return Result{draft.status, draft.message};
-        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
-            nav.select({"general"}); name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); name.focus();
-            return Result{Status::invalid_value, u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"};
-        }
-        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
-        if (save_handler_) {
-            auto error=save_handler_(snapshot());
-            if (!error.empty()) {
-                save_failed_=true; update_history_controls();
-                auto message=u"無法寫入 " + settings_path_ + u"：" + error + u"。修改仍保留，尚未儲存。";
-                error_message_.connect_source([message] { return message; }); error_dialog_.open();
-                return Result{Status::invalid_value, error};
-            }
-        }
-        save_failed_=false; saved_ = snapshot(); saved_once_ = true; update_history_controls(); return Result{};
-    });
+    save_.bind([this] { return save_document(); });
     revert_.bind([this] {
         name.reset_to_source();
         if (saved_ && snapshot() != *saved_) { auto target=*saved_; auto before=snapshot(); apply(target); current_=before; dirty(); }
@@ -278,6 +269,47 @@ void Demo::show_load_notice(std::u16string title, std::u16string message) {
     load_title_.connect_source([title] { return title; }); load_message_.connect_source([message] { return message; }); load_dialog_.open();
 }
 void Demo::set_renderer(std::u16string value) { about_.renderer = std::move(value); }
+Result Demo::save_document() {
+        auto draft = name.draft();
+        if (!draft) return Result{draft.status, draft.message};
+        if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
+            nav.select({"general"}); name.set_error(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); name.focus();
+            return Result{Status::invalid_value, u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"};
+        }
+        if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
+        if (save_handler_) {
+            auto error=save_handler_(snapshot());
+            if (!error.empty()) {
+                save_failed_=true; update_history_controls();
+                auto message=u"無法寫入 " + settings_path_ + u"：" + error + u"。修改仍保留，尚未儲存。";
+                error_message_.connect_source([message] { return message; }); error_dialog_.open();
+                return Result{Status::invalid_value, error};
+            }
+        }
+        save_failed_=false; saved_ = snapshot(); saved_once_ = true; update_history_controls(); return Result{};
+}
+bool Demo::request_close() {
+    if (close_dialog.is_open().value.value_or(false)) { close_dialog.settle(false); return false; }
+    for (auto dialog : {item_dialog, delete_dialog, load_dialog_, error_dialog_})
+        if (dialog.is_open().value.value_or(false)) dialog.settle(false);
+    if (!is_dirty()) return true;
+    close_dialog.open(); return false;
+}
+bool Demo::is_dirty() const {
+    auto draft = name.draft();
+    return dirty_state_ || (draft && *draft != name_value_);
+}
+bool Demo::blank_name_draft() const {
+    auto draft = name.draft();
+    return draft && std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; });
+}
+std::u16string Demo::save_failed_renderer() {
+    auto draft = name.draft();
+    auto document = snapshot();
+    if (draft && !std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) document.name = *draft;
+    if (!save_handler_) return {};
+    return save_handler_(document);
+}
 layout::Node Demo::page() const {
     using namespace layout;
     std::vector<Node> content{control(title_,24)};
@@ -300,6 +332,7 @@ layout::Node Demo::page() const {
         {item_dialog,column({control(item_title_,24),control(item_name),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
         {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
         {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
+        {close_dialog,column({control(close_title_,24),control(close_message_),row({control(close_save),control(close_discard),control(close_cancel)},8)},12)},
         {error_dialog_,column({control(error_title_,24),control(error_message_),control(error_ok_)},12)}
     });
 }

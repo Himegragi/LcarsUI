@@ -46,6 +46,41 @@ static void startup(const Appearance& appearance) {
     auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
     check(created.desktop && !created.desktop->capabilities().reset_detection, "RF05 unavailable reset detection");
 }
+static void close_request(const Appearance& appearance) {
+    edit_form::Form form;
+    int calls = 0;
+    DesktopOptions options;
+    options.on_close_requested = [&](Desktop& desktop) {
+        ++calls;
+        SendMessageW(static_cast<HWND>(desktop.native_window()), WM_CLOSE, 0, 0);
+        return CloseDecision::keep_open;
+    };
+    auto created = Desktop::create(form.ui, appearance, [&]{ return form.page(); }, form.scroll, options);
+    check(bool(created.desktop), "close desktop creation");
+    auto hwnd = static_cast<HWND>(created.desktop->native_window());
+    SendMessageW(hwnd, WM_CLOSE, 0, 0);
+    check(calls == 1 && IsWindow(hwnd), "veto and reentrant close");
+    SendMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0);
+    check(calls == 2 && IsWindow(hwnd), "system close goes through same veto");
+    SendMessageW(hwnd, WM_SYSKEYDOWN, VK_F4, 1LL << 29);
+    check(calls == 3 && IsWindow(hwnd), "Alt F4 goes through same veto");
+    Status status = Status::ok;
+    std::thread worker([&] { status = created.desktop->close().status; }); worker.join();
+    check(status == Status::wrong_thread, "close requires UI thread");
+    check(bool(created.desktop->close()), "explicit close");
+    check(created.desktop->run().status == Status::ok, "explicit close run result");
+    edit_form::Form default_form;
+    auto automatic=Desktop::create(default_form.ui, appearance, [&]{ return default_form.page(); }, default_form.scroll);
+    check(bool(automatic.desktop), "default close desktop");
+    PostMessageW(static_cast<HWND>(automatic.desktop->native_window()), WM_CLOSE, 0, 0);
+    check(automatic.desktop->run().status==Status::ok, "default request closes");
+    edit_form::Form callback_form; DesktopOptions callback_options;
+    callback_options.on_close_requested=[](Desktop& desktop) { desktop.close(); return CloseDecision::keep_open; };
+    auto callback=Desktop::create(callback_form.ui, appearance, [&]{ return callback_form.page(); }, callback_form.scroll, callback_options);
+    check(bool(callback.desktop), "callback close desktop");
+    PostMessageW(static_cast<HWND>(callback.desktop->native_window()), WM_CLOSE, 0, 0);
+    check(callback.desktop->run().status==Status::ok, "close inside callback takes effect");
+}
 static void title_updates(const Appearance& appearance) {
     edit_form::Form form;
     DesktopOptions options; options.title = u"Initial title for test";
@@ -205,7 +240,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         for (auto appearance : {&web_appearance(), &material_appearance()}) {
-            title_updates(*appearance); startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
+            close_request(*appearance); title_updates(*appearance); startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
             public_lifecycle(*appearance,true); public_lifecycle(*appearance,false);
         }
         std::cout << "RF01-RF05, RF07 failure seam checks passed\n"; return 0;

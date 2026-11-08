@@ -640,12 +640,15 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         info->ptMinTrackSize = {static_cast<LONG>(400 * scale()), static_cast<LONG>(300 * scale())};
         return 0;
     }
-    case WM_CLOSE:
-        if (renderer_failure_) { quit_ = true; return 0; }
-        // Use the same IME completion policy as a focus transition before the host is torn down.
-        log_ime(L"host:close");
-        finish_composition();
-        quit_ = true; return 0;
+    case WM_CLOSE: {
+        if (closing_request_) return 0;
+        closing_request_ = true;
+        if (!renderer_failure_) { log_ime(L"host:close"); finish_composition(); }
+        auto decision = close_callback_ ? close_callback_() : CloseDecision::close;
+        if (decision == CloseDecision::close) quit_ = true;
+        closing_request_ = false;
+        return 0;
+    }
     case WM_SETFOCUS: {
         detail::access(ui_).window_active(true);
         POINT point{};
@@ -868,6 +871,10 @@ DesktopCreation create_desktop_for_test(Ui& ui, const Appearance& appearance, st
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
         impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
         auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
+        if (desktop->impl_->options.on_close_requested) {
+            auto ptr = desktop.get();
+            ptr->impl_->host->on_close_request([ptr] { return ptr->impl_->options.on_close_requested(*ptr); });
+        }
         if (desktop->impl_->options.on_renderer_failed) {
             auto ptr=desktop.get();
             ptr->impl_->host->on_renderer_failure([ptr](const RendererFailure& failure) { ptr->impl_->options.on_renderer_failed(*ptr,failure); });
@@ -891,6 +898,11 @@ Result Desktop::set_title(std::u16string title) {
     if (!SetWindowTextW(impl_->host->window(), detail::wide(title).c_str())) return {Status::failed, u"Unable to set window title"};
     return {};
 }
+Result Desktop::close() {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    impl_->host->request_quit(); return {};
+}
+void* Desktop::native_window() const { return impl_->host->window(); }
 Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
 bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
 RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
