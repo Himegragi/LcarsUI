@@ -73,6 +73,31 @@ bool command_ink(const DrawList& list, std::size_t begin, std::size_t end, Rect 
     return false;
 }
 
+ImageComparison compare_images(const Image& expected, const Image& actual, const std::vector<Rect>& regions) {
+    ImageComparison result;
+    if (expected.width != actual.width || expected.height != actual.height || expected.pixels.size() != actual.pixels.size()) {
+        result.regions_ok = false; result.different_pixels = expected.pixels.size(); return result;
+    }
+    std::vector<bool> different(static_cast<std::size_t>(expected.width) * expected.height);
+    for (std::size_t pixel = 0; pixel < different.size(); ++pixel) {
+        for (int c = 0; c < 4; ++c) {
+            int delta = std::abs(int(expected.pixels[pixel*4+c]) - int(actual.pixels[pixel*4+c]));
+            result.maximum_difference = std::max(result.maximum_difference, delta);
+            different[pixel] = different[pixel] || delta > 8;
+        }
+        result.different_pixels += different[pixel];
+    }
+    for (auto region : regions) {
+        bool passed = true;
+        region = intersect({region.x-1, region.y-1, region.w+2, region.h+2}, {0,0,expected.width,expected.height});
+        for (int y=region.y; y<region.y+region.h; ++y) for(int x=region.x; x<region.x+region.w; ++x)
+            if (different[static_cast<std::size_t>(y)*expected.width+x]) passed=false;
+        result.region_pass.push_back(passed);
+        result.regions_ok = result.regions_ok && passed;
+    }
+    return result;
+}
+
 Image render_cpu(const DrawList& list, int width, int height) {
     Image image{width, height, std::vector<unsigned char>(static_cast<std::size_t>(width) * height * 4)};
     // Preflight once; if accumulated entries filled the atlas, retry from a clean

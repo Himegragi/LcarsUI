@@ -1,8 +1,9 @@
 id	item	role	name	value	hidden	visible	blocked_by_modal	bounds
 form.title.pages.tabs		tabs	Showcase	Confirm	0	1	0	0,0,960,72
-form.title.pages.tabs	v01	tab_item	Edit form		0	1	0	0,28,320,44
-form.title.pages.tabs	v02	tab_item	List		0	1	0	320,28,320,44
-form.title.pages.tabs	v03	tab_item	Confirm		0	1	0	640,28,320,44
+form.title.pages.tabs	v01	tab_item	Edit form		0	1	0	0,28,240,44
+form.title.pages.tabs	v02	tab_item	List		0	1	0	240,28,240,44
+form.title.pages.tabs	v03	tab_item	Confirm		0	1	0	480,28,240,44
+form.title.pages.tabs	v04	tab_item	呈現設定		0	1	0	720,28,240,44
 form.title.pages.v03.title		label		確認與說明	0	1	0	24,96,912,36
 form.title.pages.v03.progress		progress	示範進度	50%	0	1	0	24,148,912,40
 form.title.pages.v03.source		label		來源值：50	0	1	0	24,204,912,24
@@ -80,6 +81,10 @@ form.title.pages.v02.list	T019	list_item	範本 19		1	0	0	-
 form.title.pages.v02.list	T020	list_item	範本 20		1	0	0	-
 form.title.pages.v02.erase		button	刪除選中項		1	0	0	-
 form.title.pages.v02.detail		label		尚未選取範本	1	0	0	-
+form.title.pages.v04.title		label		呈現設定	1	0	0	-
+form.title.pages.v04.text_size		slider	文字大小	16	1	0	0	-
+form.title.pages.v04.dark		checkbox	深色	false	1	0	0	-
+form.title.pages.v04.preview		text	預覽	繁中 English 😀 𠀀 ❤️	1	0	0	-
 form.title.pages.dialog		dialog			1	0	0	-
 form.title.pages.dialog.title		label		重設示範進度	1	0	0	-
 form.title.pages.dialog.body		label		將進度改為 0%。其他頁面資料會保留。	1	0	0	-

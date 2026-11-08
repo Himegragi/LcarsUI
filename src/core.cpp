@@ -2577,7 +2577,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
             if (id != tooltip_ids_.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semantic_bounds_[id->second] = r; }
         } else store(p);
     }
-    if (frame.modal) for (const auto& [id, type] : overlay_ids_) if (type == "dialog") semantic_bounds_[id] = frame.modal_panel;
+    if (frame.modal && !active_dialog_.empty()) semantic_bounds_[active_dialog_] = frame.modal_panel;
 #ifndef NDEBUG
     for (const auto& id : semantic_order_) {
         auto c = find(id); auto s = describe(id);
@@ -2619,7 +2619,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
         SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
-        if (n.role == Role::dialog) n.hidden = !u.modal_;
+        if (n.role == Role::dialog) n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
         else for (const auto& [source, id] : u.tooltip_ids_) if (id == ref.id) {
             auto tip = u.tooltips_.find(source);
             if (tip != u.tooltips_.end()) { n.name = tip->second.text; n.hidden = !tip->second.visible; }
@@ -2634,8 +2634,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
-    auto member = u.page_members_.find(ref.id);
-    n.hidden = (member != u.page_members_.end() && u.tabs_.at(member->second.first).active != member->second.second) || (c->page == "dialog" && !u.modal_);
+    n.hidden = u.available(ref.id).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
@@ -2673,7 +2672,9 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
     } else {
         auto node = get(parent); if (!node) return {node.status, node.message, {}};
         if (!parent.item && node->role == Role::dialog) {
-            for (const auto& c : u.controls_) if (c.page == "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
+            const auto& members = u.dialogs_.at(parent.id).members;
+            for (const auto& c : u.controls_)
+                if (std::find(members.begin(), members.end(), c.id) != members.end() && !u.removal_pending(c.id)) result.push_back({c.id});
         } else if (!parent.item) {
             auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
         }
