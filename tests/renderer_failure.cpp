@@ -38,9 +38,14 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
         ++callbacks;
         check(failure.kind==RendererFailureKind::frame_error, "public failure kind");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");
+        check(form.ui.semantics().text(form.ids().name).value == u"workstation A" &&
+              form.ui.semantics().perform({form.ids().apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
+              "SEM12 semantic read and admission during renderer failure");
         check(desktop.rebuild_renderer().status==Status::failed && desktop.renderer_failed(), "public rebuild failure");
         hooks.gl_error_at_frame=0;
         check(bool(desktop.rebuild_renderer()), "public rebuild succeeds");
+        check(bool(form.ui.semantics().perform({form.ids().apply}, Verb::invoke)) && form.applies() == 1,
+              "SEM12 semantic invoke resumes after renderer rebuild");
         PostQuitMessage(0);
     };
     auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,options,&hooks);

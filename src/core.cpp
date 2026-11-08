@@ -53,11 +53,22 @@ std::u16string EditSession::visible() const {
 }
 detail::UiState::OperationScope::OperationScope(UiState* state)
     : state_(state && std::this_thread::get_id() == state->owner_ ? state : nullptr) {
-    if (state_) ++state_->operation_depth_;
+    if (state_ && ++state_->operation_depth_ == 1 && !state_->semantic_subscribers_.empty() &&
+        !state_->semantic_inspecting_ && !state_->committing_removals_) {
+        state_->semantic_inspecting_ = true;
+        state_->semantic_before_ = state_->semantic_snapshot();
+        state_->semantic_inspecting_ = false;
+    }
 }
 detail::UiState::OperationScope::~OperationScope() {
-    if (state_ && --state_->operation_depth_ == 0 && !state_->committing_removals_)
+    if (state_ && --state_->operation_depth_ == 0 && !state_->committing_removals_) {
         state_->commit_removals();
+        if (!state_->semantic_subscribers_.empty() && !state_->semantic_inspecting_) {
+            state_->semantic_inspecting_ = true;
+            state_->semantic_diff();
+            state_->semantic_inspecting_ = false;
+        }
+    }
 }
 bool detail::UiState::removal_pending(std::string_view id) const {
     return retiring_ == id || std::find(pending_removals_.begin(), pending_removals_.end(), id) != pending_removals_.end();
@@ -373,13 +384,13 @@ Result ListHandle::connect_immediate(std::function<Result(std::optional<OptionVa
 Result ListHandle::select(OptionValue value) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
+    if (auto r = ui_->available_option(id_, value); !r) return r;
     auto& f = ui_->lists_.at(id_);
+    auto item = std::find_if(f.items.begin(), f.items.end(), [&](const auto& row) { return row.value == value; });
+    if (item == f.items.end()) return ui_->find(id_)->read_only ? Result{Status::read_only, u"List is read only"} : Result{Status::invalid_value, u"Invalid list item"};
+    if (!item->enabled) return {Status::disabled, u"List item is disabled"};
     if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
     if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
-    auto item = std::find_if(f.items.begin(), f.items.end(), [&](const auto& row) { return row.value == value; });
-    if (item == f.items.end()) return {Status::invalid_value, u"Invalid list item"};
-    if (!item->enabled) return {Status::disabled, u"List item is disabled"};
     if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
     if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
     f.writing = true; Result r;
@@ -387,6 +398,21 @@ Result ListHandle::select(OptionValue value) const {
     catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
     f.writing = false;
     if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
+}
+Result ListHandle::focus(OptionValue value) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, {}};
+    if (auto result = ui_->configuration_access(id_, true); !result) return result;
+    auto& list = ui_->lists_.at(id_);
+    auto item = std::find_if(list.items.begin(), list.items.end(), [&](const auto& row) { return row.value == value; });
+    if (item == list.items.end()) return {Status::not_found, {}};
+    if (auto result = ui_->available_option(id_, value); !result) return result;
+    if (!item->enabled) return {Status::disabled, {}};
+    if (auto result = ui_->focus(id_); !result) return result;
+    list.cursor = std::move(value);
+    if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
+    if (ui_->invalidate_) ui_->invalidate_();
+    return {};
 }
 Result detail::UiState::list_key_down(KeyPress key) {
     OperationScope operation(this);
@@ -528,7 +554,7 @@ Result RadioGroupHandle::select(OptionValue value) const {
 }
 Result detail::UiState::select_option(const Id& id, OptionValue value) {
     OperationScope operation(this);
-    if (auto r = available(id); !r) return r;
+    if (auto r = available_option(id, value); !r) return r;
     auto& field = radios_.at(id);
     auto it = std::find_if(field.options.begin(), field.options.end(), [&](const auto& o) { return o.value == value; });
     if (it == field.options.end()) return {Status::invalid_value, u"Unknown option"};
@@ -701,7 +727,7 @@ Result DropdownHandle::select(OptionValue value) const {
 }
 Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     OperationScope operation(this);
-    if (auto r = available(id); !r) return r;
+    if (auto r = available_option(id, value); !r) return r;
     auto& f = dropdowns_.at(id);
     auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.value == value; });
     if (it == f.options.end()) return {Status::invalid_value, u"Unknown option"};
@@ -1087,7 +1113,7 @@ bool detail::UiState::dialog_member(std::string_view id) const {
         if (std::find(dialog.members.begin(), dialog.members.end(), id) != dialog.members.end()) return true;
     return false;
 }
-DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name) {
     OperationScope operation(this);
     auto first = layout_id(initial), backup = layout_id(fallback);
     if (!first || !backup || !find(*first) || !find(*backup) || removal_pending(*first) || removal_pending(*backup) || !result || members.empty() || !component_type(find(*first)->kind).can_focus()) throw std::invalid_argument("Invalid dialog");
@@ -1098,9 +1124,12 @@ DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHa
             throw std::invalid_argument("Invalid dialog member");
     }
     if (!unique.contains(*first) || unique.contains(*backup)) throw std::invalid_argument("Invalid dialog focus targets");
+    auto name_id = name ? layout_id(*name) : std::optional<Id>{};
+    if (name && (!name_id || !unique.contains(*name_id))) throw std::invalid_argument("Dialog name must be a member label");
     DialogState dialog;
     dialog.members.assign(unique.begin(), unique.end());
     dialog.initial = *first; dialog.fallback = *backup; dialog.result = std::move(result); dialog.configured = true;
+    if (name_id) dialog.name_label = *name_id;
     for (const auto& member : dialog.members) const_cast<Control*>(find(member))->page = "dialog";
     dialogs_.emplace(id, std::move(dialog));
     return DialogHandle(this, lifetime_, std::move(id));
@@ -1142,7 +1171,7 @@ Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
     if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
-    if (!modal_ || active_dialog_ != id) return {Status::invalid_value, u"Dialog is not open"};
+    if (!modal_ || active_dialog_ != id) return {Status::hidden, u"Dialog is not open"};
     dialog.transitioning = true; dialog_transitioning_ = true;
     struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     modal(false); active_dialog_.clear();
@@ -1177,7 +1206,7 @@ Query<bool> DialogHandle::is_open() const {
 }
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     OperationScope operation(this);
-    if (auto r = available(id); !r) return r;
+    if (auto r = available_option(id, page); !r) return r;
     auto& t = tabs_.at(id);
     if (t.switching) return {Status::busy, u"Page change is already in progress"};
     t.switching = true;
@@ -1916,6 +1945,17 @@ Result detail::UiState::available(std::string_view id, bool ignore_renderer_fail
     if (modal_ && control->page != "dialog") return {Status::blocked_by_modal, u"請先關閉對話框"};
     return {};
 }
+Result detail::UiState::available_option(std::string_view id, const OptionValue& value) const {
+    auto result = available(id);
+    if (result.status == Status::blocked_by_modal) {
+        auto snapshot = describe(id);
+        if (snapshot) {
+            auto option = std::find_if(snapshot->options.begin(), snapshot->options.end(), [&](const auto& o) { return o.value == value; });
+            if (option != snapshot->options.end() && !option->enabled) return {Status::disabled, {}};
+        }
+    }
+    return result;
+}
 Result detail::UiState::set_value(std::string_view id, std::u16string value) {
     OperationScope operation(this);
     Field* field = nullptr;
@@ -2067,6 +2107,12 @@ Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned ca
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
     if (it->second.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    const auto& text = it->second.session.text;
+    auto boundary = [&](unsigned pos) {
+        return pos <= text.size() && !(pos > 0 && pos < text.size() &&
+            text[pos] >= 0xdc00 && text[pos] <= 0xdfff && text[pos - 1] >= 0xd800 && text[pos - 1] <= 0xdbff);
+    };
+    if (!boundary(anchor) || !boundary(caret)) return {Status::invalid_value, {}};
     it->second.session.select(anchor, caret);
     return {};
 }
@@ -2566,11 +2612,11 @@ Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid tooltip", std::nullopt}; }
 }
-Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result) {
+Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     try {
-        auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result));
+        auto handle = state_->add_dialog(id, std::move(members), initial, fallback, std::move(result), std::move(name));
         state_->overlay_ids_.emplace(std::move(id), "dialog");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid dialog", std::nullopt}; }
@@ -2596,6 +2642,7 @@ const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
 namespace lcars {
 void detail::UiState::semantic_frame(const Frame& frame) {
+    OperationScope operation(this);
     semantic_bounds_.clear(); semantic_options_.clear(); semantic_order_.clear(); semantic_positions_.clear();
     auto store = [&](const Placement& p) {
         auto rect = intersect(p.bounds, p.clip);
@@ -2671,13 +2718,18 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
         SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
-        if (n.role == Role::dialog) n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
+        if (n.role == Role::dialog) {
+            n.hidden = !u.modal_ || u.active_dialog_ != ref.id;
+            const auto& label = u.dialogs_.at(ref.id).name_label;
+            if (!label.empty() && u.find(label)) { n.name = u.text(label); n.labelled_by.push_back({label}); }
+        }
         else for (const auto& [source, id] : u.tooltip_ids_) if (id == ref.id) {
             auto tip = u.tooltips_.find(source);
             if (tip != u.tooltips_.end()) { n.name = tip->second.text; n.hidden = !tip->second.visible; }
         }
         auto bounds = u.semantic_bounds_.find(ref.id);
         if (!n.hidden && bounds != u.semantic_bounds_.end()) { n.bounds = bounds->second; n.visible = true; }
+        if (n.role == Role::dialog && !n.hidden && !u.renderer_failed_) n.verbs.push_back(Verb::cancel);
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
@@ -2701,9 +2753,37 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         else if (c->kind == Kind::tabs) n.role = Role::tab_item;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
+        n.focused = n.role == Role::list_item && s.focused && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
+    }
+    auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
+    if (n.enabled && !n.hidden && !n.blocked_by_modal) {
+        auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
+        if (ref.item) {
+            add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
+            add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
+        } else {
+            add(Verb::focus, admits(Operation::focus));
+            add(Verb::invoke, n.role == Role::button && admits(Operation::activate));
+            add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
+            add(Verb::set_value, (n.role == Role::text || n.role == Role::slider) && admits(Operation::edit));
+            add(Verb::select, n.role == Role::text && admits(Operation::select));
+            add(Verb::open, n.role == Role::dropdown && admits(Operation::select));
+            add(Verb::cancel, n.role == Role::dropdown && admits(Operation::select));
+            add(Verb::undo, n.role == Role::text && admits(Operation::undo));
+            add(Verb::redo, n.role == Role::text && admits(Operation::redo));
+            add(Verb::copy, n.role == Role::text && admits(Operation::copy));
+            add(Verb::cut, n.role == Role::text && admits(Operation::cut));
+            add(Verb::paste, n.role == Role::text && admits(Operation::paste));
+            bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
+                (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
+                (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
+                (u.dropdowns_.contains(ref.id) && bool(u.dropdowns_.at(ref.id).confirmed)) ||
+                (u.numerics_.contains(ref.id) && bool(u.numerics_.at(ref.id).confirmed));
+            add(Verb::confirm, confirmed && !n.read_only);
+        }
     }
     return {Status::ok, {}, n};
 }
@@ -2737,5 +2817,153 @@ Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
     return {Status::ok, {}, n->value};
+}
+std::vector<SemanticNode> detail::UiState::semantic_snapshot() {
+    SemanticTree tree(*this); std::vector<SemanticNode> nodes;
+    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+        auto children = tree.children(parent); if (!children) return;
+        for (const auto& ref : *children) {
+            auto node = tree.get(ref); if (!node) continue;
+            nodes.push_back(*node); self(self, ref);
+        }
+    };
+    visit(visit, {}); return nodes;
+}
+void detail::UiState::semantic_diff() {
+    const bool was_empty = semantic_pending_.empty();
+    auto after = semantic_snapshot();
+    std::vector<SemanticEvent> changes;
+    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}) {
+        auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
+        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property)});
+    };
+    auto find = [](const auto& nodes, const NodeRef& ref) -> const SemanticNode* {
+        auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
+        return i == nodes.end() ? nullptr : &*i;
+    };
+    for (const auto& old : semantic_before_) if (!find(after, old.ref))
+        emit(SemanticEventKind::structure_changed, old.ref.item ? NodeRef{old.ref.id} : NodeRef{});
+    for (const auto& node : after) if (!node.ref.item) {
+        std::vector<NodeRef> before_items, after_items;
+        for (const auto& old : semantic_before_) if (old.ref.item && old.ref.id == node.ref.id) before_items.push_back(old.ref);
+        for (const auto& current : after) if (current.ref.item && current.ref.id == node.ref.id) after_items.push_back(current.ref);
+        if (before_items != after_items) emit(SemanticEventKind::structure_changed, node.ref);
+    }
+    for (const auto& node : after) {
+        auto old = find(semantic_before_, node.ref);
+        if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }
+        if (node.hidden != old->hidden) emit(SemanticEventKind::structure_changed, {});
+        bool focused_item = !node.ref.item && std::any_of(after.begin(), after.end(), [&](const auto& child) {
+            return child.ref.id == node.ref.id && child.ref.item && child.focused;
+        });
+        if (node.focused && !old->focused && !focused_item) emit(SemanticEventKind::focus_changed, node.ref);
+        auto property = [&](bool changed, const char* name) { if (changed) emit(SemanticEventKind::property_changed, node.ref, name); };
+        property(node.name != old->name, "name"); property(node.value != old->value, "value");
+        property(node.enabled != old->enabled, "enabled"); property(node.read_only != old->read_only, "read_only");
+        property(node.checked != old->checked, "checked"); property(node.selected != old->selected, "selected");
+        property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
+        property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
+        property(node.numeric_value != old->numeric_value, "numeric_value");
+        if (node.role == Role::text && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
+        if (node.text_selection && old->text_selection && (node.text_selection->anchor != old->text_selection->anchor || node.text_selection->caret != old->text_selection->caret))
+            emit(SemanticEventKind::text_selection_changed, node.ref);
+        if (node.bounds != old->bounds) emit(SemanticEventKind::layout_changed, {});
+    }
+    semantic_before_.clear();
+    semantic_pending_.insert(semantic_pending_.end(), std::make_move_iterator(changes.begin()), std::make_move_iterator(changes.end()));
+    if (was_empty && !semantic_pending_.empty() && semantic_schedule_) semantic_schedule_();
+}
+Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> callback) {
+    if (std::this_thread::get_id() != state_->owner_ || !callback) return Subscription{};
+    auto id = ++state_->next_semantic_subscriber_; state_->semantic_subscribers_.emplace(id, std::move(callback));
+    std::weak_ptr<void> lifetime = state_->lifetime_; auto state = state_;
+    return Subscription([state, lifetime, id] { if (!lifetime.expired()) state->semantic_subscribers_.erase(id); });
+}
+void SemanticTree::dispatch_events() {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_ || u.semantic_dispatching_) return;
+    u.semantic_dispatching_ = true;
+    for (unsigned round = 0; round < 64 && !u.semantic_pending_.empty(); ++round) {
+        auto batch = std::exchange(u.semantic_pending_, {});
+        for (const auto& event : batch) {
+            auto subscribers = u.semantic_subscribers_;
+            for (const auto& [id, callback] : subscribers) if (u.semantic_subscribers_.contains(id)) {
+                try { callback(event); } catch (...) { u.stopped_ = true; }
+            }
+        }
+        u.commit_removals();
+    }
+    u.semantic_dispatching_ = false;
+    if (!u.semantic_pending_.empty() && u.semantic_schedule_) u.semantic_schedule_();
+}
+Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
+    auto node = get(ref);
+    if (!node) return {node.status, node.message};
+    if (state_->renderer_failed_) return {Status::renderer_failed, {}};
+    auto invalid_argument = [&]() -> Result {
+        if (auto result = state_->available(ref.id); !result) return result;
+        if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
+        if (auto it = state_->edits_.find(ref.id); it != state_->edits_.end() && it->second.session.composing)
+            return {Status::busy, {}};
+        return {Status::invalid_value, {}};
+    };
+    if (!ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) &&
+        (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
+        return invalid_argument();
+    if (ref.item && node->role == Role::list_item && state_->lists_.contains(ref.id) && verb == Verb::focus) {
+        auto handle = state_->layout_handle(ref.id);
+        return std::get<ListHandle>(handle).focus(*ref.item);
+    }
+    if (!ref.item && verb == Verb::focus && node->role != Role::label && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
+        return state_->focus(ref.id);
+    if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
+    if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (node->role == Role::text && verb == Verb::set_value) {
+        if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
+        return invalid_argument();
+    }
+    if (node->role == Role::text) {
+        if (verb == Verb::select) {
+            if (auto selection = std::get_if<Selection>(&argument)) return state_->select(ref.id, selection->anchor, selection->caret);
+            return invalid_argument();
+        }
+        if (verb == Verb::undo) return state_->undo(ref.id);
+        if (verb == Verb::redo) return state_->redo(ref.id);
+        if (verb == Verb::copy) return state_->copy(ref.id);
+        if (verb == Verb::cut) return state_->cut(ref.id);
+        if (verb == Verb::paste) {
+            if (auto value = std::get_if<std::u16string>(&argument)) return state_->paste(ref.id, *value);
+            return invalid_argument();
+        }
+    }
+    auto handle = state_->layout_handle(ref.id);
+    if (!ref.item && verb == Verb::confirm) {
+        if (auto text = std::get_if<TextHandle>(&handle); text && state_->edits_.at(ref.id).confirmed) return text->confirm();
+        if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && state_->bools_.at(ref.id).confirmed) return checkbox->confirm();
+        if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && state_->radios_.at(ref.id).confirmed) return radio->confirm();
+        if (auto slider = std::get_if<SliderHandle>(&handle); slider && state_->numerics_.at(ref.id).confirmed) return slider->confirm();
+        if (auto dropdown = std::get_if<DropdownHandle>(&handle); dropdown && state_->dropdowns_.at(ref.id).confirmed) return dropdown->confirm();
+    }
+    if (auto tabs = std::get_if<TabsHandle>(&handle); tabs && ref.item && verb == Verb::select) return tabs->activate(*ref.item);
+    if (auto nav = std::get_if<NavigationListHandle>(&handle); nav && ref.item && verb == Verb::select) return nav->select(*ref.item);
+    if (auto list = std::get_if<ListHandle>(&handle); list && ref.item && verb == Verb::select) {
+        detail::UiState::OperationScope operation(state_);
+        auto previous = state_->lists_.at(ref.id).cursor;
+        auto result = list->select(*ref.item);
+        if (auto it = state_->lists_.find(ref.id); it != state_->lists_.end()) it->second.cursor = previous;
+        return result;
+    }
+    if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && verb == Verb::toggle) return checkbox->toggle();
+    if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && ref.item && verb == Verb::select) return radio->select(*ref.item);
+    if (auto dropdown = std::get_if<DropdownHandle>(&handle)) {
+        if (ref.item && verb == Verb::select) return dropdown->select(*ref.item);
+        if (!ref.item && verb == Verb::open) return dropdown->open();
+        if (!ref.item && verb == Verb::cancel) return dropdown->cancel();
+    }
+    if (auto slider = std::get_if<SliderHandle>(&handle); slider && verb == Verb::set_value) {
+        if (auto value = std::get_if<int>(&argument)) return slider->set_value(*value);
+        return invalid_argument();
+    }
+    return {Status::not_supported, {}};
 }
 }
