@@ -1,5 +1,6 @@
 #pragma once
 #include "lcars/layout.hpp"
+#include "lcars/fonts.hpp"
 namespace settings_demo {
 struct Item { lcars::OptionValue id; std::u16string name, note; bool operator==(const Item&) const = default; };
 struct SettingsDocument {
@@ -15,6 +16,8 @@ struct SettingsDocument {
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
 struct AboutInfo {
     std::vector<AboutLicense> licenses;
+    std::vector<lcars::FontFamily> fonts;
+    std::function<lcars::FontResolution(const lcars::PresentationSettings&)> resolve_font;
     std::u16string appearance, renderer, settings_path, build;
 };
 class Demo {
@@ -55,7 +58,12 @@ class Demo {
     void dirty(bool coalesce = false);
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
-    bool saved_once_ = false, volume_group_ = false, dirty_state_ = false;
+    bool saved_once_ = false, volume_group_ = false, text_size_group_ = false, dirty_state_ = false;
+    std::function<void()> text_size_changed_, dark_changed_, compact_changed_;
+    lcars::LabelHandle preview_, font_status_;
+    std::function<void()> font_changed_;
+    void refresh_fonts();
+    lcars::ButtonHandle reset_appearance_;
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
 public:
@@ -75,17 +83,17 @@ public:
     bool is_dirty() const;
     bool blank_name_draft() const;
     std::u16string save_failed_renderer();
-    lcars::CheckboxHandle notices;
+    lcars::CheckboxHandle notices, dark, compact;
     lcars::RadioGroupHandle mode;
-    lcars::DropdownHandle region;
-    lcars::SliderHandle volume;
+    lcars::DropdownHandle region, font;
+    lcars::SliderHandle volume, text_size;
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
     void load_document(const SettingsDocument&);
     void show_load_notice(std::u16string title, std::u16string message);
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
-    lcars::Result set_presentation(const lcars::PresentationSettings& settings);
+    lcars::Result set_presentation(const lcars::PresentationSettings& settings, bool coalesce = false);
     explicit Demo(AboutInfo about = {});
     void set_renderer(std::u16string value);
     lcars::layout::Node page() const;

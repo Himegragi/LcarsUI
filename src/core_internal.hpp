@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <thread>
+#include <utility>
 
 namespace lcars {
 using Id = std::string;
@@ -57,6 +58,9 @@ public:
     void window_active(bool active);
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
+    ScrollState& dropdown_scroll(const Id& id) { return dropdowns_.at(id).scroll; }
+    bool dropdown_reveal(const Id& id) { return std::exchange(dropdowns_.at(id).reveal, false); }
+    void popup_scrolled() { if (invalidate_) invalidate_(); }
     DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
     Result open_dialog(const Id& id, const ComponentHandle* opener);
     Result settle_dialog(const Id& id, bool confirmed);
@@ -249,6 +253,7 @@ private:
         std::vector<RadioOption> options;
         std::optional<OptionValue> value, source_value, origin, candidate;
         bool connected = false, submitting = false, confirmation_member = false;
+        ScrollState scroll; bool reveal = true;
         std::function<Result(const DropdownChange&)> immediate, confirmed;
         std::function<void()> disconnect;
     };

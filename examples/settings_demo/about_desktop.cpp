@@ -8,6 +8,8 @@ namespace settings_demo {
 AboutInfo desktop_about_info(const lcars::Appearance& appearance) {
     auto name = appearance.name();
     AboutInfo about;
+    about.fonts = lcars::system_font_catalog().families();
+    about.resolve_font = [](const lcars::PresentationSettings& settings) { return lcars::system_font_catalog().resolve(settings); };
     about.appearance = std::u16string(name.begin(), name.end());
     std::string configuration = LCARS_DEMO_CONFIGURATION;
     about.build = std::u16string(LCARS_DEMO_REVISION) + u"、" + std::u16string(configuration.begin(), configuration.end());
