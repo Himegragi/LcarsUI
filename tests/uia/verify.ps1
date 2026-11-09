@@ -82,7 +82,7 @@ try {
         $output | Set-Content -Encoding UTF8 (Join-Path $OutDir 'client.log')
         if ($Mode -eq 'uia-dpi') {
             $state = if ($output -match 'BLOCKED') { 'BLOCKED' } elseif ($code -eq 0 -and $output -match 'UIA17-DPI physical transitions: PASS') { 'PASS' } else { 'FAIL' }
-            Record 'UIA17-DPI' '144 to 120 DPI and back; geometry and layout event' ($output -join '; ') $state
+            Record 'UIA17-DPI' 'Two distinct display DPIs and back; geometry and layout event' ($output -join '; ') $state
         } else {
             foreach ($line in $output) {
                 if ($line -match '^(UIA\d+[^:]*): (PASS|FAIL)') { Record $matches[1] 'PASS' $line $matches[2] }
