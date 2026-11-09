@@ -1628,12 +1628,30 @@ void dark_focus_inventory() {
 struct PaintTextProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
     std::u16string drawn;
+    int text_calls = 0;
     std::vector<Color> colors;
     void fill(Rect, Color color) override { colors.push_back(color); }
     void rounded(Rect, int, Color color) override { colors.push_back(color); }
     void clip(Rect) override {}
-    void text(std::u16string_view value, int, int, int, Color color) override { drawn += value; colors.push_back(color); }
+    void text(std::u16string_view value, int, int, int, Color color) override { ++text_calls; drawn += value; colors.push_back(color); }
 };
+void list_paints_only_visible_rows() {
+    edit_form::Form form(ids, true); auto& state=detail::access(form.ui);
+    form.handles.tabs.activate({"v02"}); form.list->handles.hundred.invoke();
+    test::FakeMeasure measure;
+    auto frame=arrange(form.page(), form.ui, *appearance, measure, 960, 4000, 1.f, form.scroll);
+    auto original=frame.find(form.list->handles.list);
+    check(original && original->options.size()==100, "100 list rows are arranged");
+    auto placement=*original; auto first=placement.options[0]; auto second=placement.options[1];
+    placement.clip={first.x, first.y, first.w, first.h+second.h/2};
+    auto semantic=form.list->handles.list.describe();
+    PaintTextProbe paint(state,placement,*semantic,*appearance,1.f,true);
+    detail::component_type(placement.kind).paint(paint);
+    check(paint.text_calls <= 3 && paint.drawn.find(semantic->options[0].label)!=std::u16string::npos &&
+          paint.drawn.find(semantic->options[1].label)!=std::u16string::npos &&
+          paint.drawn.find(semantic->options[99].label)==std::u16string::npos,
+          "Only the visible and partially visible rows produce text work");
+}
 // Model the core paint adapter's clipping, including associated-label text that is
 // emitted by the field rather than by a separate placement.
 struct ClippedPaintProbe : detail::ComponentPaint {
@@ -1672,7 +1690,9 @@ void painted_states_agree_with_semantics() {
         check(item != nullptr, "X04 state target is arranged");
         auto semantic = handle.describe();
         check(bool(semantic), "X04 state target has semantics");
-        PaintTextProbe paint(host, *item, *semantic, *appearance, 1.f, true);
+        auto all_rows = *item;
+        if (all_rows.kind == Kind::list) all_rows.clip = all_rows.bounds;
+        PaintTextProbe paint(host, all_rows, *semantic, *appearance, 1.f, true);
         detail::component_type(item->kind).paint(paint);
         return Observation{paint.drawn, paint.colors};
     };
@@ -2259,7 +2279,9 @@ void visible_text_agrees_with_semantics_on_each_page() {
         for (const auto& item : frame.items) {
             auto semantic = host.describe(item.id);
             check(bool(semantic), "X04 every arranged control has semantics");
-            PaintTextProbe paint(host, item, *semantic, *appearance, 1.f, true);
+            auto all_rows = item;
+            if (all_rows.kind == Kind::list) all_rows.clip = all_rows.bounds;
+            PaintTextProbe paint(host, all_rows, *semantic, *appearance, 1.f, true);
             detail::component_type(item.kind).paint(paint);
             auto contains = [&](std::u16string value) {
                 value.erase(std::remove(value.begin(), value.end(), u'\n'), value.end());
@@ -2901,6 +2923,7 @@ int main() {
         {"DL02 DL03 state matrix", draw_command_state_matrix},
         {"X04 painted text and semantic baseline", visible_text_agrees_with_semantics_on_each_page},
         {"X04 painted state and modal text", painted_states_agree_with_semantics},
+        {"Clipped list bounds paint work", list_paints_only_visible_rows},
         {"X04 hidden pages and clipped targets", hidden_and_clipped_components_are_not_visible_or_admitted},
         {"D01 text survives scale change", d01_text_survives_scale_change},
         {"D01 popup survives scale change", d01_popup_survives_scale_change},

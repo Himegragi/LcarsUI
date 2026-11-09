@@ -314,6 +314,9 @@ public:
         if (c.semantics.options.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
         for (std::size_t i = 0; i < p.options.size(); ++i) {
             const auto& item = c.semantics.options[i]; const auto& row = p.options[i];
+            // Avoid shaping and submitting text for rows entirely outside the viewport.
+            const auto visible = intersect(row, p.clip);
+            if (visible.w <= 0 || visible.h <= 0) continue;
             if (item.selected) marked(c, PaintRole::selection, [&] { c.fill(row, palette.selection); });
             if (c.semantics.focused && c.semantics.candidate == item.value)
                 marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), row.h}, palette.accent); });
