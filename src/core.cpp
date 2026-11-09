@@ -2693,8 +2693,10 @@ void detail::UiState::semantic_frame(const Frame& frame) {
     semantic_bounds_.clear(); semantic_options_.clear(); semantic_order_.clear(); semantic_positions_.clear();
     auto store = [&](const Placement& p) {
         auto rect = intersect(p.bounds, p.clip);
-        if (!p.popup && rect.w > 0 && rect.h > 0) semantic_bounds_[p.id] = rect;
-        if (!p.popup) { semantic_order_.push_back(p.id); semantic_positions_[p.id] = p.bounds; }
+        // An open dropdown panel repeats its dropdown's id; only its option rectangles are kept.
+        // Modal dialog members are popups too, but they are ordinary components with their own bounds.
+        if (!p.dropdown_panel && rect.w > 0 && rect.h > 0) semantic_bounds_[p.id] = rect;
+        if (!p.dropdown_panel) { semantic_order_.push_back(p.id); semantic_positions_[p.id] = p.bounds; }
         auto& options = semantic_options_[p.id];
         if (p.dropdown_panel) {
             options.assign(dropdowns_.at(p.id).options.size(), {});

@@ -571,6 +571,17 @@ void semantic_showcase_states_and_identity() {
     form.handles.dialog_open.invoke(); draw();
     auto background = tree.get({form.handles.progress_half.describe()->id});
     check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
+    std::optional<SemanticNode> dialog;
+    auto roots = tree.children({}); check(bool(roots), "SEM02 root children are readable with a dialog open");
+    for (const auto& ref : *roots) { auto n = tree.get(ref); if (n && n->role == Role::dialog && !n->hidden) dialog = *n; }
+    check(bool(dialog), "SEM02 open dialog is a visible root child");
+    check(dialog->bounds.has_value(), "SEM02 open dialog has bounds");
+    auto members = tree.children(dialog->ref); check(members && !members->empty(), "SEM02 open dialog has members");
+    for (const auto& ref : *members) {
+        auto n = tree.get(ref);
+        check(n && n->visible && n->bounds && test::inside(*n->bounds, *dialog->bounds),
+              "SEM02 every open dialog member is visible with bounds inside the dialog");
+    }
 }
 
 void semantic_unnamed_diagnostic() {
