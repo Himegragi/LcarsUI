@@ -206,10 +206,11 @@ static void frozen_overlays(const Appearance& appearance) {
     check(bool(host.rebuild_renderer()), "overlay test recovery");
     edit_form::Form dropdown_form(edit_form::default_ids(), true);
     RendererTestHooks wheel_hooks; wheel_hooks.gl_error_at_frame = 1;
-    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return dropdown_form.page(); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
+    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::control(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
     check(bool(dropdown_form.handles.region.open()), "dropdown opened before failure");
     wheel_host.paint();
     check(wheel_host.renderer_failed(), "wheel test failure");
+    check(dropdown_form.handles.region.describe()->expanded, "dropdown remains open immediately after failure");
     SendMessageW(wheel_host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
     check(dropdown_form.handles.region.describe()->expanded, "wheel preserves dropdown during failure");
 }
