@@ -11,6 +11,8 @@ struct RendererTestHooks {
     std::string fragment_shader_override;
     std::string startup_resource_error;
     int gl_error_at_frame = 0, reset_at_frame = 0;
+    // From this frame on the backend reports a lost device on every error query, as after a real TDR.
+    int context_lost_at_frame = 0;
     int rebuild_attempts = 0;
     unsigned injected_error = 0x0505;
 };

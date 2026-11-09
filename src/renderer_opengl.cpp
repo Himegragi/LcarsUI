@@ -340,12 +340,22 @@ struct Renderer::Impl {
             g.DrawArrays(GL_TRIANGLES,0,6);
         }
         if (hooks && hooks->misuse_once) { hooks->misuse_once=false; g.Enable(0xffffffffu); (void)g.GetError(); }
+        // After a device reset the error query keeps answering GL_CONTEXT_LOST, so draining
+        // "until GL_NO_ERROR" never ends; stop at a lost context and bound the drain anyway.
+        constexpr GLenum context_lost=0x0507;  // GL_CONTEXT_LOST
+        const bool simulate_lost=hooks && hooks->context_lost_at_frame && hooks->context_lost_at_frame<=frames+1;
         GLenum error=GL_NO_ERROR, first=GL_NO_ERROR;
         std::vector<unsigned> errors;
-        while ((error=g.GetError())!=GL_NO_ERROR) { if (first==GL_NO_ERROR) first=error; errors.push_back(error); }
+        for (int i=0; i<64 && (error=simulate_lost ? context_lost : g.GetError())!=GL_NO_ERROR; ++i) {
+            if (first==GL_NO_ERROR) first=error;
+            errors.push_back(error);
+            if (error==context_lost) break;
+        }
         ++frames;
+        if (simulate_lost) hooks->context_lost_at_frame=0;
         if (hooks && hooks->reset_at_frame==frames) { hooks->reset_at_frame=0; throw FrameError{{RendererFailureKind::device_reset,0x8253,u"Graphics reset"}}; }
         if (reset_status) { auto reset=reset_status(); if (reset!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::device_reset,reset,u"Graphics reset"}}; }
+        if (error==context_lost) throw FrameError{{RendererFailureKind::device_reset,context_lost,u"Graphics reset"},std::move(errors)};
         if (hooks && hooks->gl_error_at_frame==frames) { first=hooks->injected_error; errors.push_back(first); hooks->gl_error_at_frame=0; }
         if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"},std::move(errors)};
     }

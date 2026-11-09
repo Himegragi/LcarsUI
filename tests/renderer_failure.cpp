@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <cstdlib>
+#include <optional>
 #include <thread>
 using namespace lcars;
 using namespace lcars::detail;
@@ -278,6 +279,24 @@ static void presentation_during_failure(const Appearance& appearance) {
     auto comparison = host.compare_gpu(960, 720, 1.f);
     check(bool(comparison), "PS10 recovered CPU/GPU frame comparison");
 }
+// A real TDR without a robust context: every error query afterwards answers GL_CONTEXT_LOST.
+// The frame must end as a device reset (not spin collecting errors) and the host must recover.
+static void context_lost(const Appearance& appearance) {
+    edit_form::Form form(edit_form::default_ids(), true);
+    RendererTestHooks hooks; hooks.hide_khr_debug=true; hooks.hide_robustness=true; hooks.context_lost_at_frame=2;
+    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,false,&hooks);
+    check(host.compare_gpu(640,480,1.f).passed, "context-lost pre-failure comparison");
+    std::optional<RendererFailure> seen;
+    host.on_renderer_failure([&](const RendererFailure& f) { seen=f; });
+    auto start=std::chrono::steady_clock::now();
+    host.paint();
+    check(std::chrono::steady_clock::now()-start < std::chrono::seconds(5), "TD01 a lost context ends the frame promptly");
+    check(host.renderer_failed() && host.renderer_failure()->kind==RendererFailureKind::device_reset &&
+          host.renderer_failure()->native_code==0x0507, "TD01 a lost context is reported as a device reset");
+    host.pump(); check(seen && seen->kind==RendererFailureKind::device_reset, "TD01 the application is told once");
+    check(bool(host.rebuild_renderer()) && !host.renderer_failed(), "TD01 rebuild after a lost context");
+    host.paint(); check(!host.renderer_failed(), "TD01 recovered paint");
+}
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--ps10") {
@@ -292,7 +311,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         for (auto appearance : {&web_appearance(), &material_appearance()}) {
-            close_request(*appearance); title_updates(*appearance); startup(*appearance); frozen_overlays(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
+            close_request(*appearance); title_updates(*appearance); startup(*appearance); frozen_overlays(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false); context_lost(*appearance);
             public_lifecycle(*appearance,true); public_lifecycle(*appearance,false);
         }
         std::cout << "RF01-RF05, RF07 failure seam checks passed\n"; return 0;
