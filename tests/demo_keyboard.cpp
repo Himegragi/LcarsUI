@@ -62,10 +62,12 @@ struct Walk {
         PostMessageW(window,WM_KEYDOWN,key,1); PostMessageW(window,WM_KEYUP,key,0xc0000001); host.pump(); SetKeyboardState(original);
     }
     void text(std::u16string_view value) {
-        if (real_input && value==u"???? A") {
+        if (real_input && value==u"共用範本 A") {
             check(profiles->chinese(),"Microsoft Bopomofo unavailable"); wait(300);
             if (auto imc=ImmGetContext(window)) { DWORD conversion=0,sentence=0; ImmGetConversionStatus(imc,&conversion,&sentence); ImmSetConversionStatus(imc,conversion|IME_CMODE_NATIVE,sentence); ImmReleaseContext(window,imc); }
-            for (auto key : std::string("EJ/4 M/4 Z04 153 ")) { SHORT vk=VkKeyScanA(key); check(vk!=-1,"Bopomofo key unavailable"); tap(LOBYTE(vk)); }
+            // ㄍㄨㄥˋ ㄩㄥˋ ㄈㄢˋ ㄅㄣˇ; Enter commits the composition (the same commit key as the showcase PR01 run).
+            for (auto key : std::string("EJ/4M/4Z04153")) { SHORT vk=VkKeyScanA(key); check(vk!=-1,"Bopomofo key unavailable"); tap(LOBYTE(vk)); }
+            tap(VK_RETURN); wait(250);
             profiles->us(); wait(200); send(' ',KEYEVENTF_UNICODE); send(' ',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); send('A',KEYEVENTF_UNICODE); send('A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); return;
         }
         for(auto c:value) { if(real_input) { send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); } else { PostMessageW(window,WM_CHAR,c,1); host.pump(); } }
