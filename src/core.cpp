@@ -1,5 +1,6 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
+#include "utf.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <cstdio>
@@ -12,8 +13,8 @@ namespace {
 #ifndef NDEBUG
 void output_diagnostic(const std::string& message) {
 #ifdef _WIN32
-    int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
-    if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
+    auto utf16 = detail::utf16_from_utf8(message);
+    std::wstring wide(utf16.begin(), utf16.end()); OutputDebugStringW(wide.c_str());
 #else
     std::fputs(message.c_str(), stderr);
 #endif
@@ -2125,6 +2126,14 @@ void detail::UiState::set_text_offset(std::string_view id, float offset) {
     OperationScope operation(this);
     if (auto it = edits_.find(id); it != edits_.end()) it->second.offset = std::max(0.f, offset);
 }
+unsigned detail::UiState::text_anchor(std::string_view id, int text_size) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.offset_text_size && it->second.offset_text_size != text_size
+        ? it->second.offset_anchor : 0;
+}
+void detail::UiState::set_text_anchor(std::string_view id, int text_size, unsigned anchor) {
+    if (auto it = edits_.find(id); it != edits_.end()) { it->second.offset_text_size = text_size; it->second.offset_anchor = anchor; }
+}
 Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned caret) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
@@ -2521,7 +2530,7 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     if (field.session.text != value) ++field.session.revision;
     field.session.text = std::move(value);
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
-    field.past.clear(); field.future.clear(); field.offset = 0;
+    field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
 }
 Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }

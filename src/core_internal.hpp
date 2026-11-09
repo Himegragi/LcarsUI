@@ -183,6 +183,8 @@ public:
     // Horizontal display offset of a field in DIP. View state owned here so owner resets clear it.
     float text_offset(std::string_view id) const;
     void set_text_offset(std::string_view id, float offset);
+    unsigned text_anchor(std::string_view id, int text_size) const;
+    void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
@@ -225,6 +227,8 @@ private:
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
+        int offset_text_size = 0;
+        unsigned offset_anchor = 0;
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;

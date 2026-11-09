@@ -109,6 +109,10 @@ public:
         const auto* session = c.ui.edit(control.id);
         p.run = c.measure.measure(session->visible(), p.text_size);
         float offset = c.ui.text_offset(control.id) * c.scale;
+        if (c.ui.focused() != control.id) {
+            auto anchor = c.ui.text_anchor(control.id, p.text_size);
+            if (anchor) offset = p.run.x(anchor);
+        }
         float room = static_cast<float>(p.field.editor.w - static_cast<int>(std::lround(c.appearance.component_presentation(c.ui.presentation().density).inset * c.scale)));
         if (c.ui.focused() == control.id) {
             float caret = p.run.x(session->visible_caret());
@@ -116,7 +120,11 @@ public:
             if (caret < offset) offset = caret;
         }
         offset = std::clamp(offset, 0.f, std::max(0.f, p.run.width - room));
-        if (c.settle) c.ui.set_text_offset(control.id, offset / c.scale);
+        if (c.settle) {
+            c.ui.set_text_offset(control.id, offset / c.scale);
+            auto stop = std::find_if(p.run.stops.begin(), p.run.stops.end(), [offset](const auto& item) { return item.second >= offset - 0.01f; });
+            c.ui.set_text_anchor(control.id, p.text_size, stop == p.run.stops.end() ? 0 : stop->first);
+        }
         p.offset = offset;
     }
     void paint(ComponentPaint& c) const override {

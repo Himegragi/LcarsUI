@@ -126,10 +126,11 @@ void exercise() {
     auto b = reentry.add_button({.id="b",.kind=Kind::button}).value.value();
     auto first_dialog = reentry.add_dialog("a-dialog", {a}, a, fallback2, [](bool) {}).value.value();
     auto second_dialog = reentry.add_dialog("b-dialog", {b}, b, fallback2, [](bool) {}).value.value();
-    Result nested;
-    source.on_blur([&] { nested=second_dialog.open(); });
+    Result nested, hidden_during_transition;
+    source.on_blur([&] { nested=second_dialog.open(); hidden_during_transition=second_dialog.settle(false); });
     source.focus();
     check(bool(first_dialog.open()) && nested.status==Status::busy && !*second_dialog.is_open(), "opening cannot reenter another dialog during blur");
+    check(hidden_during_transition.status==Status::hidden, "hidden dialog takes precedence over transition busy");
     Ui rapid_ui;
     auto rapid_background = rapid_ui.add_button({.id="background",.kind=Kind::button}).value.value();
     auto rapid_button = rapid_ui.add_button({.id="member",.kind=Kind::button}).value.value();
