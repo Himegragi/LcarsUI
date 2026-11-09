@@ -213,9 +213,9 @@ int main(int argc, char** argv) {
             auto& appearance=std::string_view(argv[2])=="web" ? web_appearance() : material_appearance();
             appearance_discard(appearance); return 0;
         }
-        for (int appearance=0;appearance<2;++appearance) {
-            const auto* appearance=appearance ? &material_appearance() : &web_appearance();
-            std::wstring name=appearance ? L"material" : L"web";
+        for (int index=0;index<2;++index) {
+            const auto* appearance=index ? &material_appearance() : &web_appearance();
+            std::wstring name=index ? L"material" : L"web";
             for (int choice=0;choice<3;++choice) run_process(L"--normal "+std::to_wstring(choice)+L" "+name);
             run_process(L"--appearance "+name);
             composition_close(*appearance); failure_retry(*appearance,false); failure_retry(*appearance,true);

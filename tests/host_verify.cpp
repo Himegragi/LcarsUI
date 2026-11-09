@@ -3270,9 +3270,9 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
-    const auto& appearance=appearance==L"web" ? web_appearance() : material_appearance();
+    const auto& selected_appearance=appearance==L"web" ? web_appearance() : material_appearance();
     edit_form::Form form(edit_form::default_ids(),true);
-    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,Fixture::options());
+    DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
     host.perf_enable(delay,offscreen);
     auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
