@@ -123,9 +123,15 @@ bool dpi_case(const wchar_t* host, const wchar_t* appearance) {
         SUCCEEDED(pattern->get_DocumentRange(&first)) && first && SUCCEEDED(first->ExpandToEnclosingUnit(TextUnit_Character));
     auto events=new TextEvents(); events->expected=UIA_LayoutInvalidatedEventId;
     HRESULT subscribed=ok ? automation->AddAutomationEventHandler(UIA_LayoutInvalidatedEventId,root,TreeScope_Element,nullptr,events) : E_FAIL;
-    int a=-1,b=-1;
-    for(size_t i=0;ok && i<displays.size();++i) { SetWindowPos(search.window,nullptr,displays[i].left+20,displays[i].top+20,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE); Sleep(700); UINT dpi=GetDpiForWindow(search.window); if(dpi==144)a=static_cast<int>(i); if(dpi==120)b=static_cast<int>(i); }
-    if(a<0 || b<0) { std::cout << "UIA17-DPI: BLOCKED requires 144 and 120 DPI displays\n"; ok=false; }
+    int a=-1,b=-1; UINT dpi_a=0,dpi_b=0;
+    for(size_t i=0;ok && i<displays.size();++i) {
+        SetWindowPos(search.window,nullptr,displays[i].left+20,displays[i].top+20,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE); Sleep(700);
+        UINT dpi=GetDpiForWindow(search.window);
+        std::cout << "UIA17-DPI display " << i << " work=" << displays[i].left << ',' << displays[i].top << ',' << displays[i].right << ',' << displays[i].bottom << " dpi=" << dpi << '\n';
+        if(a<0) { a=static_cast<int>(i); dpi_a=dpi; }
+        else if(b<0 && dpi!=dpi_a) { b=static_cast<int>(i); dpi_b=dpi; }
+    }
+    if(ok && b<0) { std::cout << "UIA17-DPI: BLOCKED fewer than two distinct display DPIs\n"; ok=false; }
     auto move=[&](int index, DpiGeometry& geometry) {
         ResetEvent(events->received); auto r=displays[index]; SetWindowPos(search.window,nullptr,r.left+20,r.top+20,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE); Sleep(700);
         bool matched=dpi_geometry(search.window,field,first,geometry); DWORD received=WaitForSingleObject(events->received,3000);
@@ -134,8 +140,8 @@ bool dpi_case(const wchar_t* host, const wchar_t* appearance) {
     DpiGeometry start{},next{},back{};
     if(ok) { auto r=displays[a]; SetWindowPos(search.window,nullptr,r.left+20,r.top+20,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE); Sleep(700); ok=dpi_geometry(search.window,field,first,start); }
     if(ok) ok=move(b,next) && move(a,back);
-    if(ok) ok=start.dpi==144 && next.dpi==120 && back.dpi==144 && std::abs(next.glyph[3]-start.glyph[3]*120./144.)<=2 && std::abs(back.glyph[3]-start.glyph[3])<=1 &&
-        std::abs((next.field.bottom-next.field.top)-(start.field.bottom-start.field.top)*120./144.)<=2 &&
+    if(ok) ok=start.dpi==dpi_a && next.dpi==dpi_b && back.dpi==dpi_a && std::abs(next.glyph[3]-start.glyph[3]*double(dpi_b)/dpi_a)<=2 && std::abs(back.glyph[3]-start.glyph[3])<=1 &&
+        std::abs((next.field.bottom-next.field.top)-(start.field.bottom-start.field.top)*double(dpi_b)/dpi_a)<=2 &&
         std::abs((back.field.bottom-back.field.top)-(start.field.bottom-start.field.top))<=1;
     std::cout << "UIA17-DPI physical transitions: " << (ok ? "PASS" : "FAIL") << " dpi=" << start.dpi << ',' << next.dpi << ',' << back.dpi
               << " field-height=" << start.field.bottom-start.field.top << ',' << next.field.bottom-next.field.top << ',' << back.field.bottom-back.field.top
@@ -234,6 +240,30 @@ int wmain(int argc, wchar_t** argv) {
     if (SUCCEEDED(hr)) hr = automation->CreatePropertyCondition(UIA_AutomationIdPropertyId, value, &condition);
     if (SUCCEEDED(hr)) hr = root->FindFirst(TreeScope_Descendants, condition, &element);
     bool pass = SUCCEEDED(hr) && element;
+    if (pass) {
+        RECT window_rect{}, root_rect{};
+        IUIAutomationCondition *title_condition=nullptr, *button_condition=nullptr;
+        IUIAutomationElement *title=nullptr, *close=nullptr; IUIAutomationElementArray* buttons=nullptr;
+        VARIANT type; VariantInit(&type); type.vt=VT_I4; type.lVal=UIA_TitleBarControlTypeId;
+        if (SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&title_condition)) &&
+            SUCCEEDED(root->FindFirst(TreeScope_Children,title_condition,&title)) && title) {
+            type.lVal=UIA_ButtonControlTypeId;
+            if (SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&button_condition)) &&
+                SUCCEEDED(title->FindAll(TreeScope_Children,button_condition,&buttons)) && buttons) {
+                int count=0; buttons->get_Length(&count); if(count>0) buttons->GetElement(count-1,&close);
+            }
+        }
+        RECT close_rect{};
+        bool root_bounds = GetWindowRect(search.window, &window_rect) &&
+            SUCCEEDED(root->get_CurrentBoundingRectangle(&root_rect)) && EqualRect(&window_rect, &root_rect);
+        bool close_bounds = close && SUCCEEDED(close->get_CurrentBoundingRectangle(&close_rect)) &&
+            close_rect.right > close_rect.left && close_rect.bottom > close_rect.top &&
+            close_rect.right <= window_rect.right && close_rect.top >= window_rect.top;
+        std::cout << "UIA native frame root_bounds=" << root_bounds << " close_bounds=" << close_bounds << '\n';
+        pass = root_bounds && close_bounds;
+        if (buttons) buttons->Release(); if (close) close->Release(); if (title) title->Release();
+        if (button_condition) button_condition->Release(); if (title_condition) title_condition->Release();
+    }
     auto focus_events = new FocusEvents(); auto focus_subscribed = pass ? automation->AddFocusChangedEventHandler(nullptr, focus_events) : E_FAIL;
     if (pass) {
         CONTROLTYPEID type = 0; BSTR name = nullptr, label_id = nullptr; RECT bounds{}, client{};

@@ -2731,13 +2731,17 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         live.type("JI3");
         auto page_before = live.state();
         live.host.paint();
-        live.click(live.form.handles.tabs.describe()->id);
+        const auto* tab_placement = detail::find_placement(live.host.frame(), live.form.handles.tabs.describe()->id);
+        if (!tab_placement || tab_placement->options.size() < 2) throw std::runtime_error("Second tab has no placement");
+        const auto target_tab = tab_placement->options[1];
+        live.click_point({target_tab.x + target_tab.w / 2, target_tab.y + target_tab.h / 2});
+        auto page_after = live.form.handles.tabs.active()->id;
         bool switched = *live.form.handles.tabs.active() == OptionValue{"v02"} && !session->composing &&
             session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && live.form.handles.tabs.describe()->focused && live.form.applies() == 0;
         live.form.handles.tabs.activate({"v01"});
         live.wait(100);
         record("E01-page-switch", switched && live.history() == 1,
-               "Real tab click during composition commits once, focuses tabs and switches page; before: " + page_before);
+               "Real tab click during composition commits once, focuses tabs and switches page; page=" + page_after + "; before: " + page_before);
 
         // The host seam opens the dialog while the real field is composing.
         live.start_in_name();

@@ -318,6 +318,21 @@ void composition_commits_once_and_never_applies() {
           "A commit with no composition and no focused field lands nowhere");
 }
 
+void composition_page_switch_pointer() {
+    Ui ui; populate(ui, form_with_buttons());
+    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+        {{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
+    auto& host = detail::access(ui);
+    host.focus("name"); host.select("name", 5, 5);
+    host.composition_update(u"\u6211", 1);
+    check(bool(host.pointer_down("tabs", 1)) && bool(host.pointer_up("tabs", 1)), "Tab pointer press succeeds during composition");
+    check(*tabs.active() == OptionValue{"two"} && tabs.describe()->focused &&
+          host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && !host.edit("name")->composing,
+          "Tab click commits composition once and switches page");
+    host.focus("name"); host.undo("name");
+    check(host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "Composition is one undo entry");
+}
+
 void focus_notifications_queue_instead_of_recursing() {
     Ui ui; populate(ui, form_with_buttons());
     std::vector<std::pair<Id, Id>> heard;
@@ -1369,6 +1384,7 @@ int main() {
         {"AC10 read-only allows viewing and copying only", read_only_allows_viewing_and_copying_only},
         {"AC10 disabled field refuses every entry and keeps data", disabled_field_refuses_every_entry_and_keeps_data},
         {"AC14 composition commits once and never applies", composition_commits_once_and_never_applies},
+        {"E01 composition page switch by pointer", composition_page_switch_pointer},
         {"G07 focus notifications queue instead of recursing", focus_notifications_queue_instead_of_recursing},
         {"AC10 keyboard editing obeys the same admission", keyboard_editing_obeys_the_same_admission},
         {"AC08 over-limit edit is rejected whole", over_limit_edit_is_rejected_whole},
