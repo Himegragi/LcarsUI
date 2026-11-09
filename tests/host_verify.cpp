@@ -3423,7 +3423,11 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         while(std::chrono::steady_clock::now()<end) { send(VK_DOWN,0); wait(33); } send(VK_DOWN,KEYEVENTF_KEYUP); host.pump();
     } else if(scenario==L"typing") {
         int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
-        while(std::chrono::steady_clock::now()<end) { WORD c=(i++%2)?0x4e2d:L'A'; send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(50); }
+        while(std::chrono::steady_clock::now()<end) {
+            // Keep producing edits after the demo name field reaches its 64-character limit.
+            if (i && i%50==0) { send(VK_CONTROL,0); send('A',0); send('A',KEYEVENTF_KEYUP); send(VK_CONTROL,KEYEVENTF_KEYUP); }
+            WORD c=(i++%2)?0x4e2d:L'A'; send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(50);
+        }
     }
     int paints=0,presents=0; double cpu_ms=0;
     if(scenario==L"idle") {
