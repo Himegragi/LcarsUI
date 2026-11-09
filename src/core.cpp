@@ -9,6 +9,16 @@
 #endif
 namespace lcars {
 namespace {
+#ifndef NDEBUG
+void output_diagnostic(const std::string& message) {
+#ifdef _WIN32
+    int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
+    if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
+#else
+    std::fputs(message.c_str(), stderr);
+#endif
+}
+#endif
 // Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
 std::u16string without_controls(std::u16string_view text) {
     std::u16string result;
@@ -2513,7 +2523,7 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0;
 }
-Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(std::make_unique<SemanticTree>(*state_)) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
@@ -2534,12 +2544,7 @@ bool detail::UiState::registerable(std::string_view id) {
     std::string type = existing ? (kind < std::size(names) ? names[kind] : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
     std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
     diagnostics_.push_back(message);
-#ifdef _WIN32
-    int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
-    if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
-#else
-    std::fputs(message.c_str(), stderr);
-#endif
+    output_diagnostic(message);
 #endif
     return false;
 }
@@ -2703,12 +2708,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         {
             auto message = id + " is focusable but has no name";
             diagnostics_.push_back(message);
-#ifdef _WIN32
-            int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
-            if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
-#else
-            std::fputs(message.c_str(), stderr);
-#endif
+            output_diagnostic(message);
         }
     }
 #endif
@@ -2794,7 +2794,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
-    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && label->role == TextRole::description) n.described_by.push_back({id}); }
+    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });

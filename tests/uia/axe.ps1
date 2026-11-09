@@ -1,6 +1,6 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('web','material')][string]$Skin,
+    [Parameter(Mandatory)][ValidateSet('web','material')][string]$Appearance,
     [Parameter(Mandatory)][string]$OutDir,
     [Parameter(Mandatory)][string]$AxeExe,
     [Parameter(Mandatory)][string]$HostExe
@@ -25,7 +25,7 @@ foreach ($state in @('v01','region','v02','v03','dialog')) {
     $artifact = Join-Path $folder "$state.a11ytest"
     if (Test-Path -LiteralPath $artifact) { Remove-Item -LiteralPath $artifact }
     try {
-        $proc = Start-Process -FilePath $HostExe -ArgumentList $Skin -PassThru -RedirectStandardOutput (Join-Path $folder 'host-stdout.log') -RedirectStandardError (Join-Path $folder 'host-stderr.log')
+        $proc = Start-Process -FilePath $HostExe -ArgumentList $Appearance -PassThru -RedirectStandardOutput (Join-Path $folder 'host-stdout.log') -RedirectStandardError (Join-Path $folder 'host-stderr.log')
         for ($i = 0; $i -lt 100 -and $proc.MainWindowHandle -eq [IntPtr]::Zero -and -not $proc.HasExited; $i++) { Start-Sleep -Milliseconds 100; $proc.Refresh() }
         if ($proc.MainWindowHandle -eq [IntPtr]::Zero) { throw 'Host window unavailable' }
         # Wait until the UIA host has completed initial rendering and tree publication.

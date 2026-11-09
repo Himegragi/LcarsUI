@@ -640,6 +640,10 @@ void about_page_content() {
         test::check(node && !node->value.empty(), (std::string("About value: ") + id).c_str());
     }
     test::check(tree.get({"about.renderer"})->value == u"繪製：GL version — renderer", "renderer reports supplied capabilities");
+    test::check(tree.get({"about.diagnostics"})->value == u"診斷：未選用", "diagnostics absent by default");
+    info.diagnostics = true;
+    settings_demo::Demo with_diagnostics(info);
+    test::check(with_diagnostics.ui.semantics().get({"about.diagnostics"})->value == u"診斷：已選用", "diagnostics present when selected");
     test::check(tree.get({"about.framework"})->value.find(lcars::framework_version) != std::u16string::npos, "framework version is shown");
 }
 void about_licenses() {

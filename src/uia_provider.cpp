@@ -196,6 +196,16 @@ public:
                 v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? n->enabled : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
             }
             else if (id == UIA_LabeledByPropertyId && !n->labelled_by.empty()) { v.vt=VT_UNKNOWN; v.punkVal=static_cast<IRawElementProviderSimple*>(ctx->provider(n->labelled_by.front())); v.punkVal->AddRef(); }
+            else if (id == UIA_DescribedByPropertyId && !n->described_by.empty()) {
+                auto array = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(n->described_by.size()));
+                if (!array) return E_OUTOFMEMORY;
+                for (LONG i = 0; i < static_cast<LONG>(n->described_by.size()); ++i) {
+                    auto provider = static_cast<IRawElementProviderSimple*>(ctx->provider(n->described_by[i]));
+                    auto result = SafeArrayPutElement(array, &i, provider);
+                    if (FAILED(result)) { SafeArrayDestroy(array); return result; }
+                }
+                v.vt = VT_ARRAY | VT_UNKNOWN; v.parray = array;
+            }
             return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; else VariantClear(result.get()); return hr;
     }

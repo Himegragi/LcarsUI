@@ -47,6 +47,7 @@ struct GpuComparison {
 };
 class DesktopHost {
 public:
+    static DesktopCreation create_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, RendererTestHooks*);
     DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                 const DesktopOptions& options, bool trace = false, bool background = false, RendererTestHooks* hooks = nullptr);
     ~DesktopHost();
@@ -163,7 +164,3 @@ private:
 };
 }
 
-namespace lcars {
-// Internal test factory: exercises the public desktop lifecycle with injected backend failures.
-DesktopCreation create_desktop_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, detail::RendererTestHooks*);
-}

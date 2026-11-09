@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$OutDir,
     [string[]]$Only = @('clipboard', 'ime', 'dpi'),
@@ -23,15 +23,15 @@ foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia'
     if ($name -notin $selected) { continue }
     $runs = if ($name -eq 'uia-stress') { 20 } else { 1 }
     for ($i = 1; $i -le $runs; $i++) {
-        foreach ($skin in @('web', 'material')) {
-            $relative = if ($name -eq 'uia-stress') { "$name/run-$i/$skin" } else { "$name/$skin" }
+        foreach ($appearance in @('web', 'material')) {
+            $relative = if ($name -eq 'uia-stress') { "$name/run-$i/$appearance" } else { "$name/$appearance" }
             $folder = Join-Path $OutDir $relative
             $tsv = Join-Path $(if ($DryRun) { Join-Path $EvidenceDir $relative } else { $folder }) "$name.tsv"
             $runFailure = $false
             if (-not $DryRun) {
                 New-Item -ItemType Directory -Force -Path $folder | Out-Null
                 if (Test-Path -LiteralPath $tsv) { Remove-Item -LiteralPath $tsv }
-                & (Join-Path $PSScriptRoot 'tests/uia/verify.ps1') -Mode $name -Skin $skin -OutDir $folder
+                & (Join-Path $PSScriptRoot 'tests/uia/verify.ps1') -Mode $name -Appearance $appearance -OutDir $folder
                 if ($LASTEXITCODE -ne 0) { $runFailure = $true }
             }
             if (-not (Test-Path -LiteralPath $tsv)) { Write-Warning "Missing TSV: $tsv"; $runFailure = $true }
@@ -56,19 +56,19 @@ if ('perf' -in $selected) {
         if ($LASTEXITCODE -ne 0 -or -not $revision) { throw 'Cannot record source revision' }
         @("commit=$revision", "configuration=Release", "duration_override_ms=$PerfDurationMs", '4k=window if available; otherwise offscreen FBO without compositor cost') | Set-Content -Encoding UTF8 (Join-Path $OutDir 'perf/metadata.txt')
     }
-    foreach ($skin in @('web', 'material')) {
+    foreach ($appearance in @('web', 'material')) {
         foreach ($size in @('1080', '4k')) {
             $scenarios = if ($size -eq '4k') { @('list-hold-down', 'typing', 'delay') } else { @('startup', 'list-hold-down', 'typing', 'idle', 'delay') }
             foreach ($scenario in $scenarios) {
-                $folder = Join-Path $OutDir "perf/$skin/$size/$scenario"
+                $folder = Join-Path $OutDir "perf/$appearance/$size/$scenario"
                 $tsv = Join-Path $folder 'perf.tsv'
                 $runFailure = $false
-                if ($DryRun) { $tsv = Join-Path $EvidenceDir "perf/$skin/$size/$scenario/perf.tsv" }
+                if ($DryRun) { $tsv = Join-Path $EvidenceDir "perf/$appearance/$size/$scenario/perf.tsv" }
                 else {
                     New-Item -ItemType Directory -Force -Path $folder | Out-Null
                     if (Test-Path -LiteralPath $tsv) { Remove-Item -LiteralPath $tsv }
                     $case = if ($scenario -eq 'delay') { 'list-hold-down' } else { $scenario }
-                    $runArgs = @('--perf', $case, '--perf-skin', $skin, '--evidence', $folder)
+                    $runArgs = @('--perf', $case, '--perf-appearance', $appearance, '--evidence', $folder)
                     if ($size -eq '4k') { $runArgs += '--perf-large' }
                     if ($scenario -eq 'delay') { $runArgs += @('--paint-delay-ms', '20') }
                     if ($PerfDurationMs) { $runArgs += @('--perf-duration-ms', "$PerfDurationMs") }
@@ -84,11 +84,11 @@ if ('perf' -in $selected) {
                     $rows = @(Import-Csv -Delimiter "`t" -LiteralPath $tsv)
                     $expectedCase = if ($scenario -eq 'delay') { 'list-hold-down' } else { $scenario }
                     $expectedSize = if ($size -eq '4k') { '3840x2160' } else { '1920x1080' }
-                    if ($rows.Count -ne 2 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.scenario -ne $expectedCase -or $_.appearance -ne $skin -or $_.resolution -ne $expectedSize }).Count -or @($rows | Where-Object { $_.phase -eq 'warmup' }).Count -ne 1 -or @($rows | Where-Object { $_.phase -eq 'steady' }).Count -ne 1) { $runFailure = $true }
+                    if ($rows.Count -ne 2 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.scenario -ne $expectedCase -or $_.appearance -ne $appearance -or $_.resolution -ne $expectedSize }).Count -or @($rows | Where-Object { $_.phase -eq 'warmup' }).Count -ne 1 -or @($rows | Where-Object { $_.phase -eq 'steady' }).Count -ne 1) { $runFailure = $true }
                 }
                 if ($runFailure) { $failed = $true }
                 $state = if ($runFailure) { 'FAIL' } else { 'PASS' }
-                Write-Host "perf/$skin/$size/${scenario}: $state"
+                Write-Host "perf/$appearance/$size/${scenario}: $state"
             }
         }
     }

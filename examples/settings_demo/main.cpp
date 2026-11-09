@@ -51,12 +51,19 @@ int wmain(int argc, wchar_t** argv) {
         settings_demo::SettingsStore store(directory);
         auto loaded=store.load();
         auto about=settings_demo::desktop_about_info(appearance);
+#ifdef LCARS_DEMO_DIAGNOSTICS
+        lcars::Diagnostics diagnostics;
+        about.diagnostics = true;
+#endif
         auto path=store.path().wstring(); about.settings_path.assign(path.begin(),path.end());
         settings_demo::Demo demo(std::move(about));
         if (loaded.document) demo.load_document(*loaded.document);
         std::u16string path_text(path.begin(),path.end());
         demo.on_save([&store](const auto& document) { return store.save(document); },path_text);
         lcars::DesktopOptions options;
+#ifdef LCARS_DEMO_DIAGNOSTICS
+        options.on_diagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
+#endif
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
         settings_demo::CloseController close_controller(demo);
         options.on_close_requested = [&](lcars::Desktop& desktop) {

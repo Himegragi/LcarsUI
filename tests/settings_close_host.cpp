@@ -1,4 +1,4 @@
-﻿#include "close_controller.hpp"
+#include "close_controller.hpp"
 #include "settings_store.hpp"
 #include "desktop_host.hpp"
 #include "core_internal.hpp"
@@ -59,7 +59,7 @@ struct Fixture {
         DesktopOptions options;
         options.on_close_requested=[this](Desktop& d) { ++requests; return controller.request(d,prompt); };
         if (fail) { hooks.gl_error_at_frame=1; options.on_renderer_failed=[this](Desktop& d, const RendererFailure& f) { controller.failure(d,f,prompt); }; }
-        auto created=create_desktop_for_test(demo.ui,appearance,[this]{return demo.page();},demo.scroll,options,fail ? &hooks : nullptr);
+        auto created=detail::DesktopHost::create_for_test(demo.ui,appearance,[this]{return demo.page();},demo.scroll,options,fail ? &hooks : nullptr);
         check(bool(created.desktop), "create host"); desktop=std::move(created.desktop);
         demo.on_close([this] { desktop->close(); });
     }
@@ -163,7 +163,7 @@ static void failure_close(const Appearance& appearance, SaveChoice choice, bool 
         if (choice==SaveChoice::cancel) f.controller.failure(d,failure,f.prompt);
     };
     f.hooks.gl_error_at_frame=1;
-    auto created=create_desktop_for_test(f.demo.ui,appearance,[&]{return f.demo.page();},f.demo.scroll,options,&f.hooks);
+    auto created=detail::DesktopHost::create_for_test(f.demo.ui,appearance,[&]{return f.demo.page();},f.demo.scroll,options,&f.hooks);
     check(bool(created.desktop),"failure host"); f.desktop=std::move(created.desktop);
     f.prompt.choices=choice==SaveChoice::cancel ? std::vector<SaveChoice>{choice,SaveChoice::discard} : std::vector<SaveChoice>{choice};
     if (choice==SaveChoice::cancel) f.prompt.retries={false};
@@ -213,9 +213,9 @@ int main(int argc, char** argv) {
             auto& appearance=std::string_view(argv[2])=="web" ? web_appearance() : material_appearance();
             appearance_discard(appearance); return 0;
         }
-        for (int skin=0;skin<2;++skin) {
-            const auto* appearance=skin ? &material_appearance() : &web_appearance();
-            std::wstring name=skin ? L"material" : L"web";
+        for (int appearance=0;appearance<2;++appearance) {
+            const auto* appearance=appearance ? &material_appearance() : &web_appearance();
+            std::wstring name=appearance ? L"material" : L"web";
             for (int choice=0;choice<3;++choice) run_process(L"--normal "+std::to_wstring(choice)+L" "+name);
             run_process(L"--appearance "+name);
             composition_close(*appearance); failure_retry(*appearance,false); failure_retry(*appearance,true);
@@ -226,3 +226,4 @@ int main(int argc, char** argv) {
         std::cout << "settings close host passed\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
+

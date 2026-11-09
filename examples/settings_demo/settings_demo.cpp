@@ -66,7 +66,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     about_labels_[2].connect_source([this] { return u"建置：" + about_.build; });
     about_labels_[3].connect_source([this] { return u"外觀：" + about_.appearance; });
     about_labels_[4].connect_source([this] { return u"繪製：" + about_.renderer; });
-    about_labels_[5].connect_source([] { return u"診斷：未選用"; });
+    about_labels_[5].connect_source([this] { return about_.diagnostics ? u"診斷：已選用" : u"診斷：未選用"; });
     about_labels_[6].connect_source([this] { return about_.settings_path; });
     std::vector<RadioOption> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});

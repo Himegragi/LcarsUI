@@ -8,6 +8,7 @@
 // Every case runs for both appearances and both the shipped and alternate ID sets (AC02).
 #include "check.hpp"
 #include "edit_form.hpp"
+#include "renderer_failure_checks.hpp"
 #include "fake_measure.hpp"
 #include "geometry.hpp"
 #include <cmath>
@@ -217,7 +218,7 @@ void semantic_renderer_failure() {
     check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "draft before renderer failure");
     detail::access(form.ui).renderer_failed(true);
     check(tree.text(ids.name).value == u"工作站 A" && tree.get({ids.name})->value == u"工作站 A", "renderer failure preserves semantic reads");
-    check(tree.perform({ids.apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
+    check(renderer_failure_rejects_invoke(tree, {ids.apply}, [&] { return form.applies(); }),
           "renderer failure rejects semantic invoke");
     check(tree.perform({ids.result}, Verb::invoke).status == Status::renderer_failed, "renderer failure precedes unsupported verb");
     detail::access(form.ui).renderer_failed(false);

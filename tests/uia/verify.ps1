@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia')][string]$Mode,
-    [Parameter(Mandatory)][ValidateSet('web', 'material')][string]$Skin,
+    [Parameter(Mandatory)][ValidateSet('web', 'material')][string]$Appearance,
     [Parameter(Mandatory)][string]$OutDir
 )
 $ErrorActionPreference = 'Stop'
@@ -14,7 +14,7 @@ function Record($case, $expected, $actual, $status) {
 }
 $revision = (& git -C $root rev-parse HEAD 2>$null)
 $dirty = @(& git -C $root status --porcelain 2>$null).Count -gt 0
-@("commit=$revision", "dirty=$dirty", 'build=Release', "appearance=$Skin", "environment=$(if ($env:GITHUB_ACTIONS) { 'GitHub' } else { 'author machine' })") | Set-Content -Encoding UTF8 (Join-Path $OutDir 'metadata.txt')
+@("commit=$revision", "dirty=$dirty", 'build=Release', "appearance=$Appearance", "environment=$(if ($env:GITHUB_ACTIONS) { 'GitHub' } else { 'author machine' })") | Set-Content -Encoding UTF8 (Join-Path $OutDir 'metadata.txt')
 $client = Join-Path $root 'build/Release/lcars_uia_client.exe'
 $hostExe = Join-Path $root 'build/Release/lcars_uia_host.exe'
 try {
@@ -31,7 +31,7 @@ try {
         if ($Mode -eq 'demo-uia') {
             $demoHost = Join-Path $root 'build/Release/lcars_uia_demo_host.exe'
             $demoClient = Join-Path $root 'build/Release/lcars_uia_demo_client.exe'
-            $demoOutput = @(& $demoClient $demoHost $Skin 2>&1 | ForEach-Object { "$_" })
+            $demoOutput = @(& $demoClient $demoHost $Appearance 2>&1 | ForEach-Object { "$_" })
             $demoExit = $LASTEXITCODE
             $demoOutput | Set-Content -Encoding UTF8 (Join-Path $OutDir 'client.log')
             if ($demoExit -ne 0) { throw 'Demo UIA cases failed' }
@@ -41,13 +41,13 @@ try {
             foreach ($id in @('UA01','UA02','UA03','UA04 item dialog','UA04 close dialog','UA05','UA06','UA07')) {
                 if (-not @($rows | Where-Object { $_.case -eq $id -and $_.status -eq 'PASS' }).Count) { throw "Missing demo case $id" }
             }
-            & (Join-Path $PSScriptRoot 'demo-axe.ps1') -Skin $Skin -OutDir $OutDir -AxeExe $axeExe -HostExe $demoHost
+            & (Join-Path $PSScriptRoot 'demo-axe.ps1') -Appearance $Appearance -OutDir $OutDir -AxeExe $axeExe -HostExe $demoHost
             if ($LASTEXITCODE -ne 0) { exit 1 }
             foreach ($scan in @(Import-Csv -Delimiter "`t" (Join-Path $OutDir 'axe.tsv'))) { $rows.Add($scan) }
             $rows | Export-Csv -Delimiter "`t" -NoTypeInformation -Encoding UTF8 (Join-Path $OutDir 'demo-uia.tsv')
             exit 0
         }
-        & (Join-Path $PSScriptRoot 'axe.ps1') -Skin $Skin -OutDir $OutDir -AxeExe $axeExe -HostExe $hostExe
+        & (Join-Path $PSScriptRoot 'axe.ps1') -Appearance $Appearance -OutDir $OutDir -AxeExe $axeExe -HostExe $hostExe
         if ($LASTEXITCODE -ne 0) { exit 1 }
         exit 0
     }
@@ -57,7 +57,7 @@ try {
         $previous = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
-            $output = @(& $verifier --uia-ime --perf-skin $Skin --evidence $OutDir 2>&1 | ForEach-Object { "$_" })
+            $output = @(& $verifier --uia-ime --perf-appearance $Appearance --evidence $OutDir 2>&1 | ForEach-Object { "$_" })
             $code = $LASTEXITCODE
         } finally { $ErrorActionPreference = $previous }
         $output | Set-Content -Encoding UTF8 (Join-Path $OutDir 'client.log')
@@ -71,7 +71,7 @@ try {
         if ($code -ne 0 -and -not @($rows | Where-Object { $_.status -ne 'PASS' }).Count) { Record 'UIA21' 'exit 0' "exit $code" 'FAIL' }
     } else {
         if (-not (Test-Path -LiteralPath $client) -or -not (Test-Path -LiteralPath $hostExe)) { throw 'UIA client or host missing' }
-        $argsForClient = @($hostExe, $Skin)
+        $argsForClient = @($hostExe, $Appearance)
         if ($Mode -eq 'uia-dpi') { $argsForClient += '--uia-dpi' }
         $previous = $ErrorActionPreference
         try {

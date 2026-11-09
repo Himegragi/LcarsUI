@@ -148,8 +148,8 @@ bool ime_probe(HWND window) {
     std::cout << "UIA21 cross-process value: " << (ok ? "PASS" : "FAIL") << " set=0x" << std::hex << change << '\n';
     SysFreeString(attempt); SysFreeString(before); SysFreeString(after); if(value)value->Release(); if(field)field->Release(); if(root)root->Release(); if(automation)automation->Release(); return ok;
 }
-bool ime_simulation(const wchar_t* host, const wchar_t* skin) {
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+bool ime_simulation(const wchar_t* host, const wchar_t* appearance) {
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) return false;
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for (int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); Sleep(100); }
@@ -181,10 +181,10 @@ bool dpi_geometry(HWND window, IUIAutomationElement* field, IUIAutomationTextRan
         result.glyph[0]+result.glyph[2]<=result.field.right && result.glyph[1]+result.glyph[3]<=result.field.bottom;
     return ok;
 }
-bool dpi_case(const wchar_t* host, const wchar_t* skin) {
+bool dpi_case(const wchar_t* host, const wchar_t* appearance) {
     std::vector<RECT> displays; EnumDisplayMonitors(nullptr,nullptr,collect_display,reinterpret_cast<LPARAM>(&displays));
     if (displays.size()<2) { std::cout << "UIA17-DPI: BLOCKED two monitors required\n"; return false; }
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) return false;
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for(int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); Sleep(100); }
@@ -216,11 +216,11 @@ bool dpi_case(const wchar_t* host, const wchar_t* skin) {
     if(first)first->Release(); if(pattern)pattern->Release(); if(field)field->Release(); if(root)root->Release(); if(automation)automation->Release();
     if(search.window)PostMessageW(search.window,WM_CLOSE,0,0); if(WaitForSingleObject(process.hProcess,5000)==WAIT_TIMEOUT) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); ok=false; } CloseHandle(process.hProcess); return ok;
 }
-bool preflight(const wchar_t* host, const wchar_t* skin) {
+bool preflight(const wchar_t* host, const wchar_t* appearance) {
     HDESK desktop=OpenInputDesktop(0,FALSE,DESKTOP_READOBJECTS); int width=GetSystemMetrics(SM_CXSCREEN), height=GetSystemMetrics(SM_CYSCREEN);
     std::cout << "Preflight screen=" << width << 'x' << height << " interactive=" << bool(desktop) << '\n';
     if(desktop) CloseDesktop(desktop); if(!desktop || width<=0 || height<=0) { std::cout << "Preflight: BLOCKED desktop unavailable\n"; return false; }
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) { std::cout << "Preflight: BLOCKED host did not start\n"; return false; }
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for(int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); if(WaitForSingleObject(process.hProcess,0)==WAIT_OBJECT_0) break; Sleep(100); }
@@ -232,8 +232,8 @@ bool preflight(const wchar_t* host, const wchar_t* skin) {
     if(search.window)PostMessageW(search.window,WM_CLOSE,0,0); if(WaitForSingleObject(process.hProcess,5000)==WAIT_TIMEOUT) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); ok=false; }
     CloseHandle(process.hProcess); return ok;
 }
-bool renderer_failure_case(const wchar_t* host, const wchar_t* skin, bool unhandled) {
-    std::wstring command = L"\"" + std::wstring(host) + L"\" " + skin + (unhandled ? L" --unhandled" : L"");
+bool renderer_failure_case(const wchar_t* host, const wchar_t* appearance, bool unhandled) {
+    std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance + (unhandled ? L" --unhandled" : L"");
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
     CloseHandle(process.hThread);
@@ -274,9 +274,9 @@ bool renderer_failure_case(const wchar_t* host, const wchar_t* skin, bool unhand
     SysFreeString(before); SysFreeString(count_before); if (apply) apply->Release(); if (count) count->Release(); if (value) value->Release(); if (field) field->Release(); if (root) root->Release(); if (automation) automation->Release();
     CloseHandle(process.hProcess); return ok;
 }
-bool renderer_failure_cases(const wchar_t* host, const wchar_t* skin) {
-    bool handled = renderer_failure_case(host, skin, false);
-    bool unhandled = renderer_failure_case(host, skin, true);
+bool renderer_failure_cases(const wchar_t* host, const wchar_t* appearance) {
+    bool handled = renderer_failure_case(host, appearance, false);
+    bool unhandled = renderer_failure_case(host, appearance, true);
     std::cout << "UIA18 renderer lifecycle: " << (handled && unhandled ? "PASS" : "FAIL") << " handled=" << handled << " unhandled=" << unhandled << '\n';
     return handled && unhandled;
 }
@@ -315,6 +315,18 @@ int wmain(int argc, wchar_t** argv) {
             SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"顯示名稱" &&
             SUCCEEDED(element->get_CurrentLabeledBy(&label)) && label && SUCCEEDED(label->get_CurrentAutomationId(&label_id)) &&
             label_id && std::wstring(label_id) == L"form.name.label" && SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds));
+        IUIAutomationElementArray* descriptions = nullptr;
+        int description_count = 0; bool described = false;
+        if (SUCCEEDED(element->get_CurrentDescribedBy(&descriptions)) && descriptions && SUCCEEDED(descriptions->get_Length(&description_count))) {
+            for (int i = 0; i < description_count; ++i) {
+                IUIAutomationElement* label_element = nullptr; BSTR id = nullptr;
+                if (SUCCEEDED(descriptions->GetElement(i, &label_element)) && label_element &&
+                    SUCCEEDED(label_element->get_CurrentAutomationId(&id)) && id && std::wstring(id) == L"form.name.error") described = true;
+                if (label_element) label_element->Release(); SysFreeString(id);
+            }
+        }
+        field = field && described;
+        if (descriptions) descriptions->Release();
         GetClientRect(search.window, &client); POINT origin{0, 0}; ClientToScreen(search.window, &origin);
         field = field && bounds.left >= origin.x && bounds.top >= origin.y && bounds.right <= origin.x + client.right && bounds.bottom <= origin.y + client.bottom && bounds.right > bounds.left && bounds.bottom > bounds.top && !hidden;
         if (hidden) hidden->Release(); if (label) label->Release(); SysFreeString(name); SysFreeString(label_id);

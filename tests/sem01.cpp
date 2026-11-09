@@ -21,6 +21,9 @@ int main() {
         auto field = probe.add_text({.id = "unconnected", .kind = Kind::text}).value.value();
         check(bool(field.read_only(true)));
         check(field.set_value(u"x").status == Status::read_only);
+        auto error = probe.add_label({.id = "unconnected.error", .kind = Kind::label, .target = "unconnected", .role = TextRole::error}).value.value();
+        auto described = probe.semantics().get({"unconnected"});
+        check(described->described_by.size() == 1 && described->described_by[0].id == "unconnected.error");
 #ifndef NDEBUG
         check(probe.diagnostics().size() == 1);
 #endif

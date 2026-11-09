@@ -201,11 +201,13 @@ Result DesktopHost::rebuild_renderer() {
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
       catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,std::u16string(text.begin(),text.end())}; }
     renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
+    schedule_tooltip();
     InvalidateRect(window_,nullptr,FALSE);
     return {};
 }
 void DesktopHost::fail_renderer(RendererFailure failure) {
     renderer_failure_=std::move(failure);
+    if (window_) KillTimer(window_, tooltip_timer);
     detail::access(ui_).renderer_failed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
@@ -272,6 +274,7 @@ void DesktopHost::dispatch(MSG& message) {
 void DesktopHost::schedule_tooltip() {
     if (!window_) return;
     KillTimer(window_, tooltip_timer);
+    if (renderer_failure_) return;
     if (auto deadline = detail::access(ui_).tooltip_deadline()) {
         auto now = static_cast<std::uint64_t>(GetTickCount64());
         auto wait = *deadline > now ? *deadline - now : 1;
@@ -888,9 +891,9 @@ struct Desktop::Impl {
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
 DesktopCreation Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
-    return create_desktop_for_test(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
+    return detail::DesktopHost::create_for_test(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
-DesktopCreation create_desktop_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options, detail::RendererTestHooks* hooks) {
+DesktopCreation detail::DesktopHost::create_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options, detail::RendererTestHooks* hooks) {
     try {
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
         impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
