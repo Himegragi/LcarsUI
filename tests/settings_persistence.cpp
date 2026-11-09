@@ -111,7 +111,7 @@ void load_failures() {
     settings_demo::SettingsStore denied(path,[](std::string_view step) { return step=="read" ? 5u : 0u; });
     test::check(denied.load().kind==settings_demo::LoadKind::unreadable && std::filesystem::exists(path/"settings.json"),"unreadable stays in place");
     settings_demo::SettingsStore rename_denied(path,[](std::string_view step) { return step=="rename" ? 5u : 0u; });
-    auto failed=rename_denied.load(); test::check(failed.kind==settings_demo::LoadKind::corrupt && !failed.renamed && !failed.reason.empty(),"failed rename reported");
+    auto failed=rename_denied.load(); test::check(failed.kind==settings_demo::LoadKind::corrupt && !failed.renamed && failed.reason.find(u"格式或欄位不合法") != std::u16string::npos && failed.reason.find(u"原檔無法改名") != std::u16string::npos && failed.reason.back() != u'\n' && failed.reason.back() != u'\r',"corruption and rename failure reported without trailing newline");
     { std::ofstream old(path/"settings.json.bad",std::ios::binary); old << "old"; }
     settings_demo::SettingsStore normal(path); auto result=normal.load();
     std::ifstream f(path/"settings.json.bad",std::ios::binary); std::string bytes((std::istreambuf_iterator<char>(f)),{});

@@ -9,6 +9,7 @@ std::u16string error_text(DWORD code) {
     auto n=FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,nullptr,code,0,reinterpret_cast<wchar_t*>(&text),0,nullptr);
     std::u16string result;
     if (n && text) { result.assign(reinterpret_cast<char16_t*>(text),reinterpret_cast<char16_t*>(text)+n); LocalFree(text); }
+    while (!result.empty() && (result.back() == u'\r' || result.back() == u'\n')) result.pop_back();
     if (result.empty()) { auto value=std::to_string(code); result.assign(value.begin(),value.end()); }
     return result;
 }
@@ -23,7 +24,9 @@ LoadResult SettingsStore::load() const {
     CloseHandle(h);
     if (!too_large) if (auto doc=parse_settings(bytes)) return {LoadKind::loaded,std::move(doc),{},false};
     auto bad=file; bad+=L".bad"; auto injected=fault("rename"); bool renamed=!injected && MoveFileExW(file.c_str(),bad.c_str(),MOVEFILE_REPLACE_EXISTING)!=0; if (injected) SetLastError(injected);
-    return {LoadKind::corrupt,{},renamed ? u"格式或欄位不合法" : error_text(GetLastError()),renamed};
+    std::u16string reason = u"格式或欄位不合法";
+    if (!renamed) reason += u"；原檔無法改名（" + error_text(GetLastError()) + u"）";
+    return {LoadKind::corrupt,{},std::move(reason),renamed};
 }
 std::u16string SettingsStore::save(const SettingsDocument& doc) const {
     if (auto e=fault("directory")) return error_text(e);
