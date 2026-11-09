@@ -1,4 +1,5 @@
 ﻿#include "diagnostic_queue.hpp"
+#include "utf.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <utility>
@@ -26,8 +27,8 @@ void DiagnosticQueue::drain() {
             std::wstring text(event.backend.begin(),event.backend.end());
             text += L" [" + std::to_wstring(event.native_code) + L"] ";
             text.append(event.code.begin(),event.code.end()); text += L" ";
-            auto size=MultiByteToWideChar(CP_UTF8,0,event.native_message.data(),static_cast<int>(event.native_message.size()),nullptr,0);
-            if (size>0) { std::wstring message(static_cast<std::size_t>(size),L'\0'); MultiByteToWideChar(CP_UTF8,0,event.native_message.data(),static_cast<int>(event.native_message.size()),message.data(),size); text+=message; }
+            auto message = utf16_from_utf8(event.native_message);
+            text.append(message.begin(), message.end());
             text += L"\n"; if(output_) output_(text); else OutputDebugStringW(text.c_str());
         }
 #endif
@@ -42,16 +43,9 @@ void enqueue_font_diagnostics(DiagnosticQueue& queue,long catalog_error,const Fo
         queue.push(std::move(event));
     }
     if(!resolution.requested_available) {
-        auto utf8=[](std::u16string_view value) {
-            auto data=reinterpret_cast<const wchar_t*>(value.data());
-            int n=WideCharToMultiByte(CP_UTF8,0,data,static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
-            std::string result(n,'\0');
-            if(n) WideCharToMultiByte(CP_UTF8,0,data,static_cast<int>(value.size()),result.data(),n,nullptr,nullptr);
-            return result;
-        };
         RenderDiagnostic event; event.backend=u"DirectWrite"; event.code="font.family_unavailable";
         event.severity=DiagnosticSeverity::warning; event.category=DiagnosticCategory::resource;
-        event.native_message="requested="+utf8(resolution.requested)+"; fallback="+utf8(resolution.primary);
+        event.native_message="requested="+utf8_from_utf16(resolution.requested)+"; fallback="+utf8_from_utf16(resolution.primary);
         queue.push(std::move(event));
     }
 }

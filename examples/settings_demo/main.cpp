@@ -1,3 +1,4 @@
+#include "../startup_report.hpp"
 #include "settings_demo.hpp"
 #include "close_controller.hpp"
 #include "lcars/desktop.hpp"
@@ -75,7 +76,7 @@ int wmain(int argc, wchar_t** argv) {
             close_controller.failure(desktop, failure, prompt);
         };
         auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
-        if (!creation.desktop) return 1;
+        if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }
         demo.on_close([&] { creation.desktop->close(); });
         demo.on_dirty_changed([&](bool dirty) { creation.desktop->set_title((dirty ? u"*" : u"") + options.title); });
         if (loaded.kind==settings_demo::LoadKind::corrupt) {

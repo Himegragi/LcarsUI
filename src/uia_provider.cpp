@@ -1,3 +1,4 @@
+#include "utf.hpp"
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
@@ -127,12 +128,7 @@ int control_type(Role r) {
     return UIA_CustomControlTypeId;
 }
 BSTR bstr(std::u16string_view s) { return SysAllocStringLen(reinterpret_cast<const wchar_t*>(s.data()), static_cast<UINT>(s.size())); }
-BSTR bstr_id(const std::string& s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    BSTR result = SysAllocStringLen(nullptr, n);
-    if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
-    return result;
-}
+BSTR bstr_id(const std::string& s) { return bstr(utf16_from_utf8(s)); }
 class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider {
     std::atomic<ULONG> refs_{1};
 public:

@@ -1,4 +1,5 @@
 #include "text.hpp"
+#include "utf.hpp"
 #include "glyph_atlas.hpp"
 #include "font_files.hpp"
 #include <windows.h>
@@ -16,10 +17,7 @@
 namespace lcars::detail {
 namespace {
 std::string utf8(std::wstring_view value) {
-    if(value.empty()) return {};
-    int size=WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
-    if(size<=0) return {};
-    std::string result(size,'\0'); WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),result.data(),size,nullptr,nullptr); return result;
+    return utf8_from_utf16(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));
 }
 bool first_unreadable_file(const std::filesystem::path& path) {
     static std::mutex mutex;

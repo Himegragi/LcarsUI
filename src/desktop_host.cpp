@@ -1,4 +1,5 @@
-﻿#include "core_internal.hpp"
+#include "utf.hpp"
+#include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
 #include "uia_provider.hpp"
@@ -130,15 +131,16 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = window_class;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Window registration failed");
+    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw StartupError{{StartupFailureKind::window, {}, {}, u"Window registration failed"}};
     auto title = wide(options.title);
     HWND window = CreateWindowExW(background ? WS_EX_NOACTIVATE : 0, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
                                   CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, nullptr, nullptr, wc.hInstance, this);
     if (!window) {
         window_ = nullptr;  // WM_NCCREATE may have attached a window that creation then destroyed
-        throw std::runtime_error("Window creation failed");
+        throw StartupError{{StartupFailureKind::window, {}, {}, u"Window creation failed"}};
     }
     try {
+        if (hooks_ && !hooks_->startup_resource_error.empty()) throw std::runtime_error(hooks_->startup_resource_error);
         uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
             RECT client{}; GetClientRect(window_, &client);
             if (client.right > 0 && client.bottom > 0) frame_ = arrange(client.right, client.bottom, scale());
@@ -199,7 +201,7 @@ Result DesktopHost::rebuild_renderer() {
         renderer_->restore_atlas(text_.atlas_pages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
-      catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,std::u16string(text.begin(),text.end())}; }
+      catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,utf16_from_utf8(text)}; }
     renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
     schedule_tooltip();
     InvalidateRect(window_,nullptr,FALSE);
@@ -340,7 +342,7 @@ void DesktopHost::paint() {
     catch (const std::exception& e) {
         std::string message=e.what();
         PostMessageW(window_,WM_APP+43,0,0);
-        fail_renderer({RendererFailureKind::resource_failed,0,std::u16string(message.begin(),message.end())}); return;
+        fail_renderer({RendererFailureKind::resource_failed,0,utf16_from_utf8(message)}); return;
     }
     auto end=std::chrono::steady_clock::now();
     if(perf_enabled_) {
@@ -908,7 +910,7 @@ DesktopCreation detail::DesktopHost::create_for_test(Ui& ui, const Appearance& a
         }
         return {Status::ok,{},std::move(desktop)};
     } catch (const detail::StartupError& e) { return {Status::failed,e.failure,{}}; }
-      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::window,{}, {},std::u16string(message.begin(),message.end())},{}}; }
+      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16_from_utf8(message)},{}}; }
 }
 RunResult Desktop::run() {
     auto& host=*impl_->host;

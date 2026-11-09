@@ -2,11 +2,16 @@
 #include "lcars/version.hpp"
 #include <algorithm>
 #include <cstdio>
-#include <codecvt>
-#include <locale>
+#include "utf.hpp"
 using namespace lcars;
 namespace settings_demo {
 namespace {
+auto subscribe_to(std::function<void()>& slot) {
+    return [&slot](std::function<void()> changed) {
+        slot = std::move(changed);
+        return [&slot] { slot = {}; };
+    };
+}
 std::u16string fold_ascii(std::u16string value) {
     for (auto& c : value) if (c >= u'A' && c <= u'Z') c += u'a' - u'A';
     return value;
@@ -34,11 +39,11 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
     refresh_fonts();
-    font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(value)}; }, [this](auto changed) { font_changed_=std::move(changed); return [this] { font_changed_={}; }; }});
-    font.connect_immediate([this](const DropdownChange& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.from_bytes(c.value->id.substr(7)); return set_presentation(settings); });
+    font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + lcars::detail::utf8_from_utf16(value)}; }, subscribe_to(font_changed_)});
+    font.connect_immediate([this](const DropdownChange& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
     text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.add_member({"appearance"}, text_size);
-    text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](auto changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
+    text_size.connect_source({[this] { return ui.presentation().text_size; }, subscribe_to(text_size_changed_)});
     text_size.connect_immediate([this](const NumericChange& change) {
         auto settings = ui.presentation(); settings.text_size = change.value;
         bool focused = text_size.describe()->focused;
@@ -52,8 +57,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
-    dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](auto changed) { dark_changed_=std::move(changed); return [this] { dark_changed_={}; }; }});
-    compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [this](auto changed) { compact_changed_=std::move(changed); return [this] { compact_changed_={}; }; }});
+    dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
+    compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
     dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
     compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
     reset_appearance_.bind([this] { return set_presentation(PresentationSettings{}); });
@@ -72,7 +77,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
     licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
     license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label}).value.value();
-    licenses.connect_source({[this] { return license_selection_; }, [this](auto changed) { license_selection_changed_ = std::move(changed); return [this] { license_selection_changed_ = {}; }; }});
+    licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
     licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
     nav.add_member({"about"}, licenses);
@@ -81,14 +86,14 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         char id[8], number[8]; std::snprintf(id,sizeof(id),"T%03d",n); std::snprintf(number,sizeof(number),"%02d",n);
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
-    items_search.connect_source({[this] { return search_value_; }, [this](auto changed) { search_changed_=std::move(changed); return [this] { search_changed_={}; }; }});
+    items_search.connect_source({[this] { return search_value_; }, subscribe_to(search_changed_)});
     items_search.connect_immediate([this](const TextChange& c) {
         search_value_=c.value;
         if (auto r=refresh_items(); !r) return r;
         if (search_changed_) search_changed_();
         return Result{};
     });
-    items_list.connect_source({[this] { return selection_; }, [this](auto changed) { selection_changed_=std::move(changed); return [this] { selection_changed_={}; }; }});
+    items_list.connect_source({[this] { return selection_; }, subscribe_to(selection_changed_)});
     items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
@@ -99,7 +104,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     save_ = ui.add_button({.id="app.save",.kind=Kind::button,.label=u"儲存",.enabled=false}).value.value();
     for (ComponentHandle member : {ComponentHandle{name_label_}, ComponentHandle{name}, ComponentHandle{name_help_}, ComponentHandle{name_error_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.add_member({"general"}, member);
     title_.connect_source([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
-    name.connect_source({[this] { return name_value_; }, [this](std::function<void()> notify) { name_changed_ = std::move(notify); return [this] { name_changed_ = {}; }; }});
+    name.connect_source({[this] { return name_value_; }, subscribe_to(name_changed_)});
     name.connect_confirmed([this](const TextChange& change) {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
@@ -113,13 +118,13 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (name_value_ != *draft) { name_value_=*draft; if (name_changed_) name_changed_(); dirty(); }
         name.reset_to_source(); update_history_controls();
     });
-    notices.connect_source({[this] { return notices_value_; }, [this](std::function<void()> notify) { notices_changed_ = std::move(notify); return [this] { notices_changed_ = {}; }; }});
+    notices.connect_source({[this] { return notices_value_; }, subscribe_to(notices_changed_)});
     notices.connect_immediate([this](const BoolChange& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
-    mode.connect_source({[this] { return mode_value_; }, [this](std::function<void()> notify) { mode_changed_ = std::move(notify); return [this] { mode_changed_ = {}; }; }});
+    mode.connect_source({[this] { return mode_value_; }, subscribe_to(mode_changed_)});
     mode.connect_immediate([this](const OptionChange& c) { mode_value_=c.value; if (mode_changed_) mode_changed_(); dirty(); return Result{}; });
-    region.connect_source({[this] { return region_value_; }, [this](std::function<void()> notify) { region_changed_ = std::move(notify); return [this] { region_changed_ = {}; }; }});
+    region.connect_source({[this] { return region_value_; }, subscribe_to(region_changed_)});
     region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
-    volume.connect_source({[this] { return volume_value_; }, [this](std::function<void()> notify) { volume_changed_ = std::move(notify); return [this] { volume_changed_ = {}; }; }});
+    volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
     volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); bool focused = volume.describe()->focused; dirty(focused && volume_group_); volume_group_ = focused; return Result{}; });
     volume.on_blur([this] { volume_group_ = false; });
     item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
@@ -136,8 +141,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=Kind::button,.label=u"\u522a\u9664"}).value.value();
     item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
-    item_name.connect_source({[this] { return item_name_source_; }, [this](auto changed) { item_name_changed_=std::move(changed); return [this] { item_name_changed_={}; }; }});
-    item_note.connect_source({[this] { return item_note_source_; }, [this](auto changed) { item_note_changed_=std::move(changed); return [this] { item_note_changed_={}; }; }});
+    item_name.connect_source({[this] { return item_name_source_; }, subscribe_to(item_name_changed_)});
+    item_note.connect_source({[this] { return item_note_source_; }, subscribe_to(item_note_changed_)});
     auto open_item = [this](bool edit) -> Result {
         editing_=edit;
         auto found=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
@@ -263,10 +268,10 @@ void Demo::refresh_fonts() {
     auto key = ui.presentation().font_family;
     bool found = key.empty();
     for (const auto& family : about_.fonts) {
-        options.push_back({{"family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(family.key)}, family.display_name});
+        options.push_back({{"family:" + lcars::detail::utf8_from_utf16(family.key)}, family.display_name});
         found = found || family.key == key;
     }
-    if (!found) options.push_back({{"family:" + std::wstring_convert<std::codecvt_utf8_utf16<char16_t>,char16_t>{}.to_bytes(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
+    if (!found) options.push_back({{"family:" + lcars::detail::utf8_from_utf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
     font.set_options(std::move(options));
     auto resolution = about_.resolve_font ? about_.resolve_font(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";

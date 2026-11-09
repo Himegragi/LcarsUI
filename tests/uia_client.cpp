@@ -1,3 +1,4 @@
+#include "uia_client_helpers.hpp"
 #include <windows.h>
 #include <UIAutomation.h>
 #include <iostream>
@@ -7,80 +8,41 @@
 #include <vector>
 #include "uia_pattern_drivers.hpp"
 
-class PropertyEvents final : public IUIAutomationPropertyChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class PropertyEvents final : public UiaEventHandler<PropertyEvents, IUIAutomationPropertyChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     PROPERTYID expected = UIA_ToggleToggleStatePropertyId;
     LONG expected_value = ToggleState_Off;
     bool double_value = false; double expected_double = 0;
     bool string_value = false; std::wstring expected_string;
-    ~PropertyEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationPropertyChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationPropertyChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { ULONG n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override {
         if (id == expected && ((string_value && value.vt == VT_BSTR && value.bstrVal && expected_string == value.bstrVal) || (!string_value && !double_value && value.vt == VT_I4 && value.lVal == expected_value) || (double_value && value.vt == VT_R8 && value.dblVal == expected_double))) SetEvent(received);
         return S_OK;
     }
 };
 
-class SelectionEvents final : public IUIAutomationEventHandler {
-    std::atomic<ULONG> refs_{1};
+class SelectionEvents final : public UiaEventHandler<SelectionEvents, IUIAutomationEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     EVENTID expected = UIA_SelectionItem_ElementSelectedEventId;
-    ~SelectionEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override {
         if (id == expected) SetEvent(received); return S_OK;
     }
 };
 
-class StructureEvents final : public IUIAutomationStructureChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class StructureEvents final : public UiaEventHandler<StructureEvents, IUIAutomationStructureChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    ~StructureEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationStructureChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override {
         if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK;
     }
 };
 
-class FocusEvents final : public IUIAutomationFocusChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class FocusEvents final : public UiaEventHandler<FocusEvents, IUIAutomationFocusChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     std::wstring expected = L"T004";
     std::mutex mutex; std::vector<std::wstring> observed;
     HANDLE apply_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE name_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE opener_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    ~FocusEvents() { CloseHandle(received); CloseHandle(apply_received); CloseHandle(name_received); CloseHandle(opener_received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationFocusChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationFocusChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    ~FocusEvents() { CloseHandle(apply_received); CloseHandle(name_received); CloseHandle(opener_received); }
     HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override {
         BSTR id = nullptr; if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && id) {
             std::wstring value(id); if (value == L"T003" || value == L"T004") { std::lock_guard lock(mutex); observed.push_back(value); }
@@ -90,46 +52,12 @@ public:
     }
 };
 
-class TextEvents final : public IUIAutomationEventHandler {
-    std::atomic<ULONG> refs_{1};
+class TextEvents final : public UiaEventHandler<TextEvents, IUIAutomationEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     EVENTID expected = UIA_Text_TextSelectionChangedEventId;
-    ~TextEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override { if (!out) return E_POINTER; *out = nullptr; if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE; *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK; }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n=--refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override { if (id==expected) SetEvent(received); return S_OK; }
 };
 
-struct Search { DWORD pid; HWND window = nullptr; };
-BOOL CALLBACK find_window(HWND window, LPARAM data) {
-    auto& search = *reinterpret_cast<Search*>(data);
-    DWORD pid = 0; GetWindowThreadProcessId(window, &pid);
-    if (pid == search.pid && IsWindowVisible(window) && GetWindow(window, GW_OWNER) == nullptr) {
-        search.window = window; return FALSE;
-    }
-    return TRUE;
-}
-IUIAutomationElement* find_id(IUIAutomation* automation, IUIAutomationElement* root, const wchar_t* id) {
-    if (!root) return nullptr;
-    VARIANT value; VariantInit(&value); value.vt = VT_BSTR; value.bstrVal = SysAllocString(id);
-    IUIAutomationCondition* condition = nullptr; IUIAutomationElement* element = nullptr;
-    if (SUCCEEDED(automation->CreatePropertyCondition(UIA_AutomationIdPropertyId, value, &condition))) {
-        root->FindFirst(TreeScope_Descendants, condition, &element); condition->Release();
-    }
-    VariantClear(&value); return element;
-}
-HRESULT invoke_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationInvokePattern* p = nullptr;
-    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p)) : E_FAIL;
-    if (SUCCEEDED(hr) && p) hr = p->Invoke(); if (p) p->Release(); if (e) e->Release(); return hr;
-}
-HRESULT select_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationSelectionItemPattern* p = nullptr;
-    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&p)) : E_FAIL;
-    if (SUCCEEDED(hr) && p) hr = p->Select(); if (p) p->Release(); if (e) e->Release(); return hr;
-}
 bool selected_id_is(IUIAutomationElement* container, const wchar_t* expected) {
     IUIAutomationSelectionPattern* p = nullptr; IUIAutomationElementArray* selected = nullptr; IUIAutomationElement* item = nullptr; BSTR id = nullptr; int n = 0;
     bool ok = container && SUCCEEDED(container->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&p))) && p && SUCCEEDED(p->GetCurrentSelection(&selected)) && selected && SUCCEEDED(selected->get_Length(&n)) && n == 1 && SUCCEEDED(selected->GetElement(0, &item)) && item && SUCCEEDED(item->get_CurrentAutomationId(&id)) && id && std::wstring(id) == expected;

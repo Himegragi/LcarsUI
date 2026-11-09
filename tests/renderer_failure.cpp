@@ -31,6 +31,12 @@ static void diagnostics(const Appearance& appearance) {
 }
 static void startup(const Appearance& appearance) {
     diagnostics(appearance);
+    {
+        edit_form::Form form;
+        RendererTestHooks hooks; hooks.startup_resource_error = "resource \xe4\xb8\xad\xe6\x96\x87";
+        auto result = DesktopHost::create_for_test(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, &hooks);
+        check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::resource && result.failure->message == u"resource 中文", "startup resource error preserves kind and UTF-8");
+    }
     for (int mode=0; mode<2; ++mode) {
         edit_form::Form form;
         RendererTestHooks hooks; hooks.hide_khr_debug=true;
