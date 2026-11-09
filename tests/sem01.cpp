@@ -3,6 +3,7 @@
 #include "lcars/layout.hpp"
 #include "fake_measure.hpp"
 #include <stdexcept>
+#include <algorithm>
 #include <string>
 using namespace lcars;
 static void check(bool ok) { if (!ok) throw std::runtime_error("SEM01 failed"); }
@@ -14,6 +15,12 @@ int main() {
         arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
         arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
         check(probe.semantics().get({"probe.unnamed"})->name.empty());
+        auto node = probe.semantics().get({"probe.unnamed"});
+        check(std::find(node->verbs.begin(), node->verbs.end(), Verb::invoke) == node->verbs.end());
+        check(probe.semantics().perform({"probe.unnamed"}, Verb::invoke).status == Status::not_supported);
+        auto field = probe.add_text({.id = "unconnected", .kind = Kind::text}).value.value();
+        check(bool(field.read_only(true)));
+        check(field.set_value(u"x").status == Status::read_only);
 #ifndef NDEBUG
         check(probe.diagnostics().size() == 1);
 #endif

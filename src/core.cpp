@@ -1174,8 +1174,8 @@ Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
-    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     if (!modal_ || active_dialog_ != id) return {Status::hidden, u"Dialog is not open"};
+    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     dialog.transitioning = true; dialog_transitioning_ = true;
     struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     modal(false); active_dialog_.clear();
@@ -1981,9 +1981,9 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (!it->second.has_source_value || (!it->second.confirmation_member && !it->second.immediate && !it->second.confirmed))
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
-    if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
     field = &it->second;
     return {};
@@ -2137,7 +2137,7 @@ Result detail::UiState::invoke(std::string_view id) {
     for (const auto& [key, field] : edits_)
         if (field.session.composing) return {Status::busy, u"請先完成文字組字"};
     auto it = actions_.find(id);
-    if (it == actions_.end()) return {Status::not_found, u"元件沒有此動作"};
+    if (it == actions_.end()) return {Status::not_supported, u"元件沒有此動作"};
     invoking_ = true;
     executing_ = id;
     try { auto result = it->second(); invoking_ = false; executing_.clear(); return result; }
@@ -2818,7 +2818,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
         } else {
             add(Verb::focus, admits(Operation::focus));
-            add(Verb::invoke, n.role == Role::button && admits(Operation::activate));
+            add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
             add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
             add(Verb::set_value, (n.role == Role::text || n.role == Role::slider) && admits(Operation::edit));
             add(Verb::select, n.role == Role::text && admits(Operation::select));
