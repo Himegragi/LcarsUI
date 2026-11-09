@@ -196,7 +196,7 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
-    void renderer_failed(bool failed) { renderer_failed_ = failed; }
+    void renderer_failed(bool failed);
 private:
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
@@ -290,6 +290,7 @@ private:
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     std::uint64_t tooltip_now_ = 0;
+    std::optional<std::uint64_t> tooltip_paused_at_;
     std::function<std::uint64_t()> tooltip_clock_;
     bool window_active_ = false, pointer_focus_ = false;
     Id popup_source_;

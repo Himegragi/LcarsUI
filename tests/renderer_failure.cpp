@@ -208,6 +208,8 @@ static void frozen_overlays(const Appearance& appearance) {
     check(host.renderer_failed(), "overlay test failure");
     SendMessageW(host.window(), WM_TIMER, 1, 0);
     check(*form.handles.progress_tip.visible(), "tooltip remains visible during failure");
+    auto presentation = form.ui.presentation(); presentation.text_size = 28;
+    check(bool(form.ui.set_presentation(presentation)) && *form.handles.progress_tip.visible(), "presentation reflow keeps tooltip frozen during failure");
     hooks.gl_error_at_frame = 0;
     check(bool(host.rebuild_renderer()), "overlay test recovery");
     edit_form::Form dropdown_form(edit_form::default_ids(), true);
@@ -219,6 +221,19 @@ static void frozen_overlays(const Appearance& appearance) {
     check(dropdown_form.handles.region.describe()->expanded, "dropdown remains open immediately after failure");
     SendMessageW(wheel_host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
     check(dropdown_form.handles.region.describe()->expanded, "wheel preserves dropdown during failure");
+    Ui pending_ui;
+    auto button = pending_ui.add_button({.id="pending", .kind=Kind::button, .label=u"Pending"}).value.value();
+    auto tip = pending_ui.add_tooltip("pending.tip", button, u"Help", 1000).value.value();
+    ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
+    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);
+    auto& pending = access(pending_ui); std::uint64_t pending_now = 1000;
+    pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true);
+    check(bool(button.focus()) && pending.tooltip_deadline() == 2000, "pending tooltip starts delay");
+    pending_host.paint(); check(pending_host.renderer_failed(), "pending tooltip failure");
+    pending_now = 6000; pending_hooks.gl_error_at_frame = 0;
+    check(bool(pending_host.rebuild_renderer()) && pending.tooltip_deadline() == 7000, "recovery resumes remaining tooltip delay");
+    pending_now = 6999; pending.tooltip_time(pending_now); check(!*tip.visible(), "tooltip delay remains pending");
+    pending_now = 7000; pending.tooltip_time(pending_now); check(*tip.visible(), "tooltip appears after remaining delay");
 }
 static void presentation_during_failure(const Appearance& appearance) {
     edit_form::Form form(edit_form::default_ids(), true);

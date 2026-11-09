@@ -1044,6 +1044,7 @@ TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16strin
 }
 void detail::UiState::refresh_tooltips() {
     OperationScope operation(this);
+    if (renderer_failed_) return;
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1062,6 +1063,22 @@ void detail::UiState::refresh_tooltips() {
         }
     }
     if (changed && invalidate_) invalidate_();
+}
+void detail::UiState::renderer_failed(bool failed) {
+    if (renderer_failed_ == failed) return;
+    if (failed) {
+        if (tooltip_clock_) tooltip_paused_at_ = tooltip_clock_();
+        renderer_failed_ = true;
+        return;
+    }
+    if (tooltip_paused_at_ && tooltip_clock_) {
+        auto now = tooltip_clock_();
+        auto elapsed = now >= *tooltip_paused_at_ ? now - *tooltip_paused_at_ : 0;
+        for (auto& [id, tip] : tooltips_) if (tip.eligible && !tip.visible && !tip.dismissed) tip.deadline += elapsed;
+        tooltip_now_ = now;
+    }
+    tooltip_paused_at_.reset();
+    renderer_failed_ = false;
 }
 void detail::UiState::frame_visibility(std::map<Id, bool, std::less<>> visibility) {
     visibility_ = std::move(visibility);
