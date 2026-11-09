@@ -15,11 +15,16 @@ if ($Only.Count -eq 1 -and $Only[0] -eq 'v1-final') {
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
 if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia') }).Count) {
+if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia', 'demo') }).Count) {
     throw '-Only contains an unknown verification selection'
 }
 if (@($selected | Select-Object -Unique).Count -ne $selected.Count) { throw '-Only must not contain duplicates' }
 Write-Host 'Precondition: stop using the computer; set the displays to the required scales before running.'
+if ('demo' -in $selected) {
+    & (Join-Path $PSScriptRoot 'tests/v1-final/demo.ps1') -OutDir (Join-Path $OutDir 'demo') -DryRun:$DryRun
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 $exe = Join-Path $PSScriptRoot 'build/Release/lcars_host_verify.exe'
 if (-not $DryRun -and @($selected | Where-Object { $_ -in @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count -and -not (Test-Path -LiteralPath $exe)) { throw "Verifier not found: $exe" }
 $failed = $false
