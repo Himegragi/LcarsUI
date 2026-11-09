@@ -8,6 +8,10 @@ param(
     [string]$EvidenceDir
 )
 $ErrorActionPreference = 'Stop'
+if ($Only.Count -eq 1 -and $Only[0] -eq 'v1-final') {
+    & "$PSScriptRoot/verify-v1-final.ps1" -OutDir $OutDir -DryRun:$DryRun
+    exit $LASTEXITCODE
+}
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
 if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })

@@ -321,3 +321,7 @@ if(LCARS_BUILD_TESTS)
   target_link_libraries(lcars_settings_persistence_tests PRIVATE lcars_settings_demo)
   add_test(NAME settings_persistence COMMAND lcars_settings_persistence_tests)
 endif()
+
+if(LCARS_BUILD_TESTS AND WIN32)
+  add_test(NAME v1_final_plan COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/dry-run.ps1")
+endif()
