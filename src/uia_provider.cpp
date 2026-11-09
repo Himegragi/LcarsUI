@@ -1,3 +1,4 @@
+#include "utf.hpp"
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
@@ -127,12 +128,7 @@ int control_type(Role r) {
     return UIA_CustomControlTypeId;
 }
 BSTR bstr(std::u16string_view s) { return SysAllocStringLen(reinterpret_cast<const wchar_t*>(s.data()), static_cast<UINT>(s.size())); }
-BSTR bstr_id(const std::string& s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    BSTR result = SysAllocStringLen(nullptr, n);
-    if (result && n) MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result, n);
-    return result;
-}
+BSTR bstr_id(const std::string& s) { return bstr(utf16_from_utf8(s)); }
 class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider {
     std::atomic<ULONG> refs_{1};
 public:
@@ -196,6 +192,16 @@ public:
                 v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? n->enabled : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
             }
             else if (id == UIA_LabeledByPropertyId && !n->labelled_by.empty()) { v.vt=VT_UNKNOWN; v.punkVal=static_cast<IRawElementProviderSimple*>(ctx->provider(n->labelled_by.front())); v.punkVal->AddRef(); }
+            else if (id == UIA_DescribedByPropertyId && !n->described_by.empty()) {
+                auto array = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(n->described_by.size()));
+                if (!array) return E_OUTOFMEMORY;
+                for (LONG i = 0; i < static_cast<LONG>(n->described_by.size()); ++i) {
+                    auto provider = static_cast<IRawElementProviderSimple*>(ctx->provider(n->described_by[i]));
+                    auto result = SafeArrayPutElement(array, &i, provider);
+                    if (FAILED(result)) { SafeArrayDestroy(array); return result; }
+                }
+                v.vt = VT_ARRAY | VT_UNKNOWN; v.parray = array;
+            }
             return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; else VariantClear(result.get()); return hr;
     }

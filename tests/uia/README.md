@@ -12,7 +12,7 @@ The additional idle-desktop selections are:
 
 Each formal record includes commit, dirty state, Release build, appearance, environment, case, expected, actual and PASS/FAIL/BLOCKED. Missing TSV, blocked cases, failed processes, and missing case results fail the command. The defaults remain `clipboard,ime,dpi`; dry runs only inspect existing evidence. UIA16 was removed from the specification and is not run.
 
-## Settings demo (UA01?UA07 and AX01)
+## Settings demo (UA01–UA07 and AX01)
 
 `./verify-idle.ps1 -Only demo-uia` runs the same cross-process client and eight Axe states for Web and Material. The fixture uses the shared demo logic, a deterministic 150-family font catalog, and a save callback that fails the run if discard attempts a save. It checks both modal Window patterns, window title and close behavior, navigation events, hidden cached elements, shortcut metadata and font option visibility. The CI trial runs the same entry point.
 

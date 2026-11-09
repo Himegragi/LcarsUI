@@ -1,3 +1,4 @@
+#include "utf.hpp"
 #include "renderer_opengl.hpp"
 #include "glcorearb.h"
 #include <stdexcept>
@@ -183,7 +184,7 @@ struct Renderer::Impl {
             auto version = reinterpret_cast<const char*>(get_string(GL_VERSION));
             auto vendor = reinterpret_cast<const char*>(get_string(GL_RENDERER));
             std::string actual = std::string(version ? version : "unknown") + " / " + (vendor ? vendor : "unknown");
-            auto to16=[](const std::string& v) { return std::u16string(v.begin(), v.end()); };
+            auto to16=[](const std::string& v) { return utf16_from_utf8(v); };
             if (hooks && hooks->fail_context_33) throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
             Create create = nullptr;
             try { create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB")); } catch (...) { throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}}; }
@@ -247,7 +248,7 @@ struct Renderer::Impl {
         } catch (const StartupError&) { release(); throw; }
           catch (const std::exception& e) {
             std::string message=e.what(); release();
-            throw StartupError{{StartupFailureKind::context_creation,{}, {},std::u16string(message.begin(),message.end())}};
+            throw StartupError{{StartupFailureKind::context_creation,{}, {},utf16_from_utf8(message)}};
         } catch (...) { release(); throw; }
     }
     void release(){if(context && dc)wglMakeCurrent(dc,context);if(debug_callback)debug_callback(nullptr,nullptr);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}

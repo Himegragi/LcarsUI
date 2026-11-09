@@ -183,6 +183,8 @@ public:
     // Horizontal display offset of a field in DIP. View state owned here so owner resets clear it.
     float text_offset(std::string_view id) const;
     void set_text_offset(std::string_view id, float offset);
+    unsigned text_anchor(std::string_view id, int text_size) const;
+    void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
@@ -194,7 +196,7 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
-    void renderer_failed(bool failed) { renderer_failed_ = failed; }
+    void renderer_failed(bool failed);
 private:
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
@@ -225,6 +227,8 @@ private:
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
+        int offset_text_size = 0;
+        unsigned offset_anchor = 0;
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;
@@ -286,6 +290,7 @@ private:
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     std::uint64_t tooltip_now_ = 0;
+    std::optional<std::uint64_t> tooltip_paused_at_;
     std::function<std::uint64_t()> tooltip_clock_;
     bool window_active_ = false, pointer_focus_ = false;
     Id popup_source_;

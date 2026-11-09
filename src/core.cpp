@@ -1,5 +1,6 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
+#include "utf.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <cstdio>
@@ -9,6 +10,16 @@
 #endif
 namespace lcars {
 namespace {
+#ifndef NDEBUG
+void output_diagnostic(const std::string& message) {
+#ifdef _WIN32
+    auto utf16 = detail::utf16_from_utf8(message);
+    std::wstring wide(utf16.begin(), utf16.end()); OutputDebugStringW(wide.c_str());
+#else
+    std::fputs(message.c_str(), stderr);
+#endif
+}
+#endif
 // Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
 std::u16string without_controls(std::u16string_view text) {
     std::u16string result;
@@ -1033,6 +1044,7 @@ TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16strin
 }
 void detail::UiState::refresh_tooltips() {
     OperationScope operation(this);
+    if (renderer_failed_) return;
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1051,6 +1063,22 @@ void detail::UiState::refresh_tooltips() {
         }
     }
     if (changed && invalidate_) invalidate_();
+}
+void detail::UiState::renderer_failed(bool failed) {
+    if (renderer_failed_ == failed) return;
+    if (failed) {
+        if (tooltip_clock_) tooltip_paused_at_ = tooltip_clock_();
+        renderer_failed_ = true;
+        return;
+    }
+    if (tooltip_paused_at_ && tooltip_clock_) {
+        auto now = tooltip_clock_();
+        auto elapsed = now >= *tooltip_paused_at_ ? now - *tooltip_paused_at_ : 0;
+        for (auto& [id, tip] : tooltips_) if (tip.eligible && !tip.visible && !tip.dismissed) tip.deadline += elapsed;
+        tooltip_now_ = now;
+    }
+    tooltip_paused_at_.reset();
+    renderer_failed_ = false;
 }
 void detail::UiState::frame_visibility(std::map<Id, bool, std::less<>> visibility) {
     visibility_ = std::move(visibility);
@@ -1174,8 +1202,8 @@ Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     if (it == dialogs_.end()) return {Status::not_found, u"Dialog not found"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     auto& dialog = it->second;
-    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     if (!modal_ || active_dialog_ != id) return {Status::hidden, u"Dialog is not open"};
+    if (dialog_transitioning_) return {Status::busy, u"Dialog is transitioning"};
     dialog.transitioning = true; dialog_transitioning_ = true;
     struct Guard { bool& local; bool& global; ~Guard() { local = false; global = false; } } guard{dialog.transitioning, dialog_transitioning_};
     modal(false); active_dialog_.clear();
@@ -1981,9 +2009,9 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (!it->second.has_source_value || (!it->second.confirmation_member && !it->second.immediate && !it->second.confirmed))
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
-    if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
     field = &it->second;
     return {};
@@ -2115,6 +2143,14 @@ void detail::UiState::set_text_offset(std::string_view id, float offset) {
     OperationScope operation(this);
     if (auto it = edits_.find(id); it != edits_.end()) it->second.offset = std::max(0.f, offset);
 }
+unsigned detail::UiState::text_anchor(std::string_view id, int text_size) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.offset_text_size && it->second.offset_text_size != text_size
+        ? it->second.offset_anchor : 0;
+}
+void detail::UiState::set_text_anchor(std::string_view id, int text_size, unsigned anchor) {
+    if (auto it = edits_.find(id); it != edits_.end()) { it->second.offset_text_size = text_size; it->second.offset_anchor = anchor; }
+}
 Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned caret) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
@@ -2137,7 +2173,7 @@ Result detail::UiState::invoke(std::string_view id) {
     for (const auto& [key, field] : edits_)
         if (field.session.composing) return {Status::busy, u"請先完成文字組字"};
     auto it = actions_.find(id);
-    if (it == actions_.end()) return {Status::not_found, u"元件沒有此動作"};
+    if (it == actions_.end()) return {Status::not_supported, u"元件沒有此動作"};
     invoking_ = true;
     executing_ = id;
     try { auto result = it->second(); invoking_ = false; executing_.clear(); return result; }
@@ -2511,9 +2547,9 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     if (field.session.text != value) ++field.session.revision;
     field.session.text = std::move(value);
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
-    field.past.clear(); field.future.clear(); field.offset = 0;
+    field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
 }
-Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(std::make_unique<SemanticTree>(*state_)) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
@@ -2534,12 +2570,7 @@ bool detail::UiState::registerable(std::string_view id) {
     std::string type = existing ? (kind < std::size(names) ? names[kind] : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
     std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
     diagnostics_.push_back(message);
-#ifdef _WIN32
-    int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
-    if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
-#else
-    std::fputs(message.c_str(), stderr);
-#endif
+    output_diagnostic(message);
 #endif
     return false;
 }
@@ -2703,12 +2734,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         {
             auto message = id + " is focusable but has no name";
             diagnostics_.push_back(message);
-#ifdef _WIN32
-            int count = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
-            if (count > 0) { std::wstring wide(count, L'\0'); MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), count); OutputDebugStringW(wide.c_str()); }
-#else
-            std::fputs(message.c_str(), stderr);
-#endif
+            output_diagnostic(message);
         }
     }
 #endif
@@ -2794,7 +2820,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
-    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && label->role == TextRole::description) n.described_by.push_back({id}); }
+    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
@@ -2818,7 +2844,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
         } else {
             add(Verb::focus, admits(Operation::focus));
-            add(Verb::invoke, n.role == Role::button && admits(Operation::activate));
+            add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
             add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
             add(Verb::set_value, (n.role == Role::text || n.role == Role::slider) && admits(Operation::edit));
             add(Verb::select, n.role == Role::text && admits(Operation::select));

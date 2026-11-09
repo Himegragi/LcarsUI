@@ -8,13 +8,14 @@
 // Every case runs for both appearances and both the shipped and alternate ID sets (AC02).
 #include "check.hpp"
 #include "edit_form.hpp"
+#include "renderer_failure_checks.hpp"
 #include "fake_measure.hpp"
 #include "geometry.hpp"
 #include <cmath>
 #include <thread>
 #include <set>
 #include <fstream>
-#include <codecvt>
+#include "utf.hpp"
 #include <locale>
 #include <stdexcept>
 using namespace lcars;
@@ -217,7 +218,7 @@ void semantic_renderer_failure() {
     check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "draft before renderer failure");
     detail::access(form.ui).renderer_failed(true);
     check(tree.text(ids.name).value == u"工作站 A" && tree.get({ids.name})->value == u"工作站 A", "renderer failure preserves semantic reads");
-    check(tree.perform({ids.apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
+    check(renderer_failure_rejects_invoke(tree, {ids.apply}, [&] { return form.applies(); }),
           "renderer failure rejects semantic invoke");
     check(tree.perform({ids.result}, Verb::invoke).status == Status::renderer_failed, "renderer failure precedes unsupported verb");
     detail::access(form.ui).renderer_failed(false);
@@ -502,8 +503,7 @@ void write_semantic_tsv(edit_form::Form& form, const char* state) {
     const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
     auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
     std::ofstream out(filename, std::ios::binary);
-    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
-    auto clean = [&](const std::u16string& text) { auto str = convert.to_bytes(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
+    auto clean = [&](const std::u16string& text) { auto str = detail::utf8_from_utf16(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
     out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
     auto visit = [&](auto&& self, const NodeRef& parent) -> void {
         auto children = form.ui.semantics().children(parent);
@@ -744,6 +744,24 @@ void presentation_reflow_preserves_edit_and_popup() {
     state.composition_cancel(); h.region.focus(); draw(ids.region); h.region.open(); state.key_down({Key::down}); state.key_down({Key::down});
     settings.text_size = 12; form.ui.set_presentation(settings); draw(ids.region); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(ids.region);
     check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"} && bool(test::popup_in_client(frame, {0,0,640,480}, ids.region)), "PS04 popup follows reflow");
+}
+void unfocused_field_preserves_visible_character() {
+    edit_form::Form form(ids, true); auto& h = form.handles;
+    test::FakeMeasure measure;
+    check(bool(h.name.set_value(u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")), "prepare long text");
+    check(bool(h.name.focus()) && bool(h.name.select(30, 30)), "place caret inside long text");
+    auto draw = [&] { return arrange(layout::control(h.name), form.ui, *appearance, measure, 220, 400, 1.f, form.scroll); };
+    auto before = draw();
+    auto first = [](const Placement& p) {
+        for (const auto& [index, x] : p.run.stops) if (x >= p.offset - 0.01f) return index;
+        return p.run.stops.back().first;
+    };
+    auto anchor = first(*before.find(h.name));
+    check(anchor > 0 && bool(h.name_label.describe()) && bool(h.notices.focus()), "unfocus scrolled field");
+    auto settings = form.ui.presentation(); settings.text_size = 28;
+    check(bool(form.ui.set_presentation(settings)), "change text size");
+    auto after = draw();
+    check(first(*after.find(h.name)) == anchor, "text size keeps the first visible character");
 }
 
 void presentation_reflow_keeps_tooltip_and_modal() {
@@ -2840,6 +2858,7 @@ int main() {
         {"PS01 presentation settings", presentation_settings_are_atomic},
         {"PS size scaling", presentation_size_scales_explicit_and_default_text},
         {"PS02-04 reflow", presentation_reflow_preserves_edit_and_popup},
+        {"PS unfocused field anchor", unfocused_field_preserves_visible_character},
         {"PS03 font reflow", font_switch_reflows_active_composition},
         {"PS05-06 reflow", presentation_reflow_keeps_tooltip_and_modal},
         {"PS07 scroll anchor", ps07_list_anchor_survives_size_change},

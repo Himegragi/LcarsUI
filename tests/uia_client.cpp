@@ -1,3 +1,4 @@
+#include "uia_client_helpers.hpp"
 #include <windows.h>
 #include <UIAutomation.h>
 #include <iostream>
@@ -7,80 +8,41 @@
 #include <vector>
 #include "uia_pattern_drivers.hpp"
 
-class PropertyEvents final : public IUIAutomationPropertyChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class PropertyEvents final : public UiaEventHandler<PropertyEvents, IUIAutomationPropertyChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     PROPERTYID expected = UIA_ToggleToggleStatePropertyId;
     LONG expected_value = ToggleState_Off;
     bool double_value = false; double expected_double = 0;
     bool string_value = false; std::wstring expected_string;
-    ~PropertyEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationPropertyChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationPropertyChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { ULONG n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override {
         if (id == expected && ((string_value && value.vt == VT_BSTR && value.bstrVal && expected_string == value.bstrVal) || (!string_value && !double_value && value.vt == VT_I4 && value.lVal == expected_value) || (double_value && value.vt == VT_R8 && value.dblVal == expected_double))) SetEvent(received);
         return S_OK;
     }
 };
 
-class SelectionEvents final : public IUIAutomationEventHandler {
-    std::atomic<ULONG> refs_{1};
+class SelectionEvents final : public UiaEventHandler<SelectionEvents, IUIAutomationEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     EVENTID expected = UIA_SelectionItem_ElementSelectedEventId;
-    ~SelectionEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override {
         if (id == expected) SetEvent(received); return S_OK;
     }
 };
 
-class StructureEvents final : public IUIAutomationStructureChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class StructureEvents final : public UiaEventHandler<StructureEvents, IUIAutomationStructureChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    ~StructureEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationStructureChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override {
         if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK;
     }
 };
 
-class FocusEvents final : public IUIAutomationFocusChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class FocusEvents final : public UiaEventHandler<FocusEvents, IUIAutomationFocusChangedEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     std::wstring expected = L"T004";
     std::mutex mutex; std::vector<std::wstring> observed;
     HANDLE apply_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE name_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE opener_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    ~FocusEvents() { CloseHandle(received); CloseHandle(apply_received); CloseHandle(name_received); CloseHandle(opener_received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationFocusChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationFocusChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
+    ~FocusEvents() { CloseHandle(apply_received); CloseHandle(name_received); CloseHandle(opener_received); }
     HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override {
         BSTR id = nullptr; if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && id) {
             std::wstring value(id); if (value == L"T003" || value == L"T004") { std::lock_guard lock(mutex); observed.push_back(value); }
@@ -90,46 +52,12 @@ public:
     }
 };
 
-class TextEvents final : public IUIAutomationEventHandler {
-    std::atomic<ULONG> refs_{1};
+class TextEvents final : public UiaEventHandler<TextEvents, IUIAutomationEventHandler> {
 public:
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     EVENTID expected = UIA_Text_TextSelectionChangedEventId;
-    ~TextEvents() { CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override { if (!out) return E_POINTER; *out = nullptr; if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationEventHandler)) return E_NOINTERFACE; *out = static_cast<IUIAutomationEventHandler*>(this); AddRef(); return S_OK; }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n=--refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override { if (id==expected) SetEvent(received); return S_OK; }
 };
 
-struct Search { DWORD pid; HWND window = nullptr; };
-BOOL CALLBACK find_window(HWND window, LPARAM data) {
-    auto& search = *reinterpret_cast<Search*>(data);
-    DWORD pid = 0; GetWindowThreadProcessId(window, &pid);
-    if (pid == search.pid && IsWindowVisible(window) && GetWindow(window, GW_OWNER) == nullptr) {
-        search.window = window; return FALSE;
-    }
-    return TRUE;
-}
-IUIAutomationElement* find_id(IUIAutomation* automation, IUIAutomationElement* root, const wchar_t* id) {
-    if (!root) return nullptr;
-    VARIANT value; VariantInit(&value); value.vt = VT_BSTR; value.bstrVal = SysAllocString(id);
-    IUIAutomationCondition* condition = nullptr; IUIAutomationElement* element = nullptr;
-    if (SUCCEEDED(automation->CreatePropertyCondition(UIA_AutomationIdPropertyId, value, &condition))) {
-        root->FindFirst(TreeScope_Descendants, condition, &element); condition->Release();
-    }
-    VariantClear(&value); return element;
-}
-HRESULT invoke_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationInvokePattern* p = nullptr;
-    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p)) : E_FAIL;
-    if (SUCCEEDED(hr) && p) hr = p->Invoke(); if (p) p->Release(); if (e) e->Release(); return hr;
-}
-HRESULT select_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationSelectionItemPattern* p = nullptr;
-    HRESULT hr = e ? e->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&p)) : E_FAIL;
-    if (SUCCEEDED(hr) && p) hr = p->Select(); if (p) p->Release(); if (e) e->Release(); return hr;
-}
 bool selected_id_is(IUIAutomationElement* container, const wchar_t* expected) {
     IUIAutomationSelectionPattern* p = nullptr; IUIAutomationElementArray* selected = nullptr; IUIAutomationElement* item = nullptr; BSTR id = nullptr; int n = 0;
     bool ok = container && SUCCEEDED(container->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&p))) && p && SUCCEEDED(p->GetCurrentSelection(&selected)) && selected && SUCCEEDED(selected->get_Length(&n)) && n == 1 && SUCCEEDED(selected->GetElement(0, &item)) && item && SUCCEEDED(item->get_CurrentAutomationId(&id)) && id && std::wstring(id) == expected;
@@ -148,8 +76,8 @@ bool ime_probe(HWND window) {
     std::cout << "UIA21 cross-process value: " << (ok ? "PASS" : "FAIL") << " set=0x" << std::hex << change << '\n';
     SysFreeString(attempt); SysFreeString(before); SysFreeString(after); if(value)value->Release(); if(field)field->Release(); if(root)root->Release(); if(automation)automation->Release(); return ok;
 }
-bool ime_simulation(const wchar_t* host, const wchar_t* skin) {
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+bool ime_simulation(const wchar_t* host, const wchar_t* appearance) {
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) return false;
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for (int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); Sleep(100); }
@@ -181,10 +109,10 @@ bool dpi_geometry(HWND window, IUIAutomationElement* field, IUIAutomationTextRan
         result.glyph[0]+result.glyph[2]<=result.field.right && result.glyph[1]+result.glyph[3]<=result.field.bottom;
     return ok;
 }
-bool dpi_case(const wchar_t* host, const wchar_t* skin) {
+bool dpi_case(const wchar_t* host, const wchar_t* appearance) {
     std::vector<RECT> displays; EnumDisplayMonitors(nullptr,nullptr,collect_display,reinterpret_cast<LPARAM>(&displays));
     if (displays.size()<2) { std::cout << "UIA17-DPI: BLOCKED two monitors required\n"; return false; }
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) return false;
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for(int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); Sleep(100); }
@@ -216,11 +144,11 @@ bool dpi_case(const wchar_t* host, const wchar_t* skin) {
     if(first)first->Release(); if(pattern)pattern->Release(); if(field)field->Release(); if(root)root->Release(); if(automation)automation->Release();
     if(search.window)PostMessageW(search.window,WM_CLOSE,0,0); if(WaitForSingleObject(process.hProcess,5000)==WAIT_TIMEOUT) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); ok=false; } CloseHandle(process.hProcess); return ok;
 }
-bool preflight(const wchar_t* host, const wchar_t* skin) {
+bool preflight(const wchar_t* host, const wchar_t* appearance) {
     HDESK desktop=OpenInputDesktop(0,FALSE,DESKTOP_READOBJECTS); int width=GetSystemMetrics(SM_CXSCREEN), height=GetSystemMetrics(SM_CYSCREEN);
     std::cout << "Preflight screen=" << width << 'x' << height << " interactive=" << bool(desktop) << '\n';
     if(desktop) CloseDesktop(desktop); if(!desktop || width<=0 || height<=0) { std::cout << "Preflight: BLOCKED desktop unavailable\n"; return false; }
-    std::wstring command=L"\""+std::wstring(host)+L"\" "+skin; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    std::wstring command=L"\""+std::wstring(host)+L"\" "+appearance; STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&startup,&process)) { std::cout << "Preflight: BLOCKED host did not start\n"; return false; }
     CloseHandle(process.hThread); Search search{process.dwProcessId};
     for(int i=0;i<100 && !search.window;++i) { EnumWindows(find_window,reinterpret_cast<LPARAM>(&search)); if(WaitForSingleObject(process.hProcess,0)==WAIT_OBJECT_0) break; Sleep(100); }
@@ -232,8 +160,8 @@ bool preflight(const wchar_t* host, const wchar_t* skin) {
     if(search.window)PostMessageW(search.window,WM_CLOSE,0,0); if(WaitForSingleObject(process.hProcess,5000)==WAIT_TIMEOUT) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); ok=false; }
     CloseHandle(process.hProcess); return ok;
 }
-bool renderer_failure_case(const wchar_t* host, const wchar_t* skin, bool unhandled) {
-    std::wstring command = L"\"" + std::wstring(host) + L"\" " + skin + (unhandled ? L" --unhandled" : L"");
+bool renderer_failure_case(const wchar_t* host, const wchar_t* appearance, bool unhandled) {
+    std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance + (unhandled ? L" --unhandled" : L"");
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
     CloseHandle(process.hThread);
@@ -274,9 +202,9 @@ bool renderer_failure_case(const wchar_t* host, const wchar_t* skin, bool unhand
     SysFreeString(before); SysFreeString(count_before); if (apply) apply->Release(); if (count) count->Release(); if (value) value->Release(); if (field) field->Release(); if (root) root->Release(); if (automation) automation->Release();
     CloseHandle(process.hProcess); return ok;
 }
-bool renderer_failure_cases(const wchar_t* host, const wchar_t* skin) {
-    bool handled = renderer_failure_case(host, skin, false);
-    bool unhandled = renderer_failure_case(host, skin, true);
+bool renderer_failure_cases(const wchar_t* host, const wchar_t* appearance) {
+    bool handled = renderer_failure_case(host, appearance, false);
+    bool unhandled = renderer_failure_case(host, appearance, true);
     std::cout << "UIA18 renderer lifecycle: " << (handled && unhandled ? "PASS" : "FAIL") << " handled=" << handled << " unhandled=" << unhandled << '\n';
     return handled && unhandled;
 }
@@ -315,6 +243,18 @@ int wmain(int argc, wchar_t** argv) {
             SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"顯示名稱" &&
             SUCCEEDED(element->get_CurrentLabeledBy(&label)) && label && SUCCEEDED(label->get_CurrentAutomationId(&label_id)) &&
             label_id && std::wstring(label_id) == L"form.name.label" && SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds));
+        IUIAutomationElementArray* descriptions = nullptr;
+        int description_count = 0; bool described = false;
+        if (SUCCEEDED(element->get_CurrentDescribedBy(&descriptions)) && descriptions && SUCCEEDED(descriptions->get_Length(&description_count))) {
+            for (int i = 0; i < description_count; ++i) {
+                IUIAutomationElement* label_element = nullptr; BSTR id = nullptr;
+                if (SUCCEEDED(descriptions->GetElement(i, &label_element)) && label_element &&
+                    SUCCEEDED(label_element->get_CurrentAutomationId(&id)) && id && std::wstring(id) == L"form.name.error") described = true;
+                if (label_element) label_element->Release(); SysFreeString(id);
+            }
+        }
+        field = field && described;
+        if (descriptions) descriptions->Release();
         GetClientRect(search.window, &client); POINT origin{0, 0}; ClientToScreen(search.window, &origin);
         field = field && bounds.left >= origin.x && bounds.top >= origin.y && bounds.right <= origin.x + client.right && bounds.bottom <= origin.y + client.bottom && bounds.right > bounds.left && bounds.bottom > bounds.top && !hidden;
         if (hidden) hidden->Release(); if (label) label->Release(); SysFreeString(name); SysFreeString(label_id);

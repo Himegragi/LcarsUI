@@ -15,7 +15,7 @@ static void check(bool value, const char* what) { if (!value) throw std::runtime
 static void diagnostics(const Appearance& appearance) {
     edit_form::Form form;
     RendererTestHooks hooks; hooks.hide_khr_debug=true;
-    auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
+    auto created=DesktopHost::create_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
     check(created.desktop && !created.desktop->capabilities().debug_messages, "DG02 hidden debug");
     edit_form::Form debug_form;
     RendererTestHooks debug_hooks; debug_hooks.misuse_once=true;
@@ -31,11 +31,17 @@ static void diagnostics(const Appearance& appearance) {
 }
 static void startup(const Appearance& appearance) {
     diagnostics(appearance);
+    {
+        edit_form::Form form;
+        RendererTestHooks hooks; hooks.startup_resource_error = "resource \xe4\xb8\xad\xe6\x96\x87";
+        auto result = DesktopHost::create_for_test(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, &hooks);
+        check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::resource && result.failure->message == u"resource 中文", "startup resource error preserves kind and UTF-8");
+    }
     for (int mode=0; mode<2; ++mode) {
         edit_form::Form form;
         RendererTestHooks hooks; hooks.hide_khr_debug=true;
         if (mode==0) hooks.fragment_shader_override="invalid shader"; else hooks.fail_context_33=true;
-        auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
+        auto created=DesktopHost::create_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
         auto e=created.failure;
         bool rejected = !created.desktop && e && (mode==0 ? e->kind==StartupFailureKind::shader && !e->message.empty()
                 : e->kind==StartupFailureKind::context_version && e->required==u"OpenGL 3.3 core" && !e->actual.empty());
@@ -43,7 +49,7 @@ static void startup(const Appearance& appearance) {
     }
     edit_form::Form form;
     RendererTestHooks hooks; hooks.hide_robustness=true;
-    auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
+    auto created=DesktopHost::create_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,{},&hooks);
     check(created.desktop && !created.desktop->capabilities().reset_detection, "RF05 unavailable reset detection");
 }
 static void close_request(const Appearance& appearance) {
@@ -113,7 +119,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
         check(bool(desktop.set_title(u"Title during failure")), "title works during renderer failure");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "public draft protected");
         check(form.ui.semantics().text(form.ids().name).value == u"workstation A" &&
-              form.ui.semantics().perform({form.ids().apply}, Verb::invoke).status == Status::renderer_failed && form.applies() == 0,
+              renderer_failure_rejects_invoke(form.ui.semantics(), {form.ids().apply}, [&] { return form.applies(); }),
               "SEM12 semantic read and admission during renderer failure");
         check(desktop.rebuild_renderer().status==Status::failed && desktop.renderer_failed(), "public rebuild failure");
         hooks.gl_error_at_frame=0;
@@ -122,7 +128,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
               "SEM12 semantic invoke resumes after renderer rebuild");
         PostQuitMessage(0);
     };
-    auto created=create_desktop_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,options,&hooks);
+    auto created=DesktopHost::create_for_test(form.ui,appearance,[&]{return form.page();},form.scroll,options,&hooks);
     check(bool(created.desktop), "public desktop creation");
     auto result=created.desktop->run();
     check(handled ? result.status==Status::ok && callbacks==1 : result.status==Status::renderer_failed && result.failure && result.failure->kind==RendererFailureKind::frame_error, "public run result");
@@ -186,6 +192,49 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     }
     else { host.run(); check(host.renderer_failure()->kind==RendererFailureKind::frame_error, "RF04 result"); host.close(); check(form.handles.name.describe()->value==u"workstation A", "RF04 retained draft"); }
 }
+static void frozen_overlays(const Appearance& appearance) {
+    edit_form::Form form(edit_form::default_ids(), true);
+    RendererTestHooks hooks; hooks.gl_error_at_frame = 1;
+    DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, false, true, &hooks);
+    auto& state = access(form.ui);
+    std::uint64_t now = 1000;
+    state.tooltip_clock([&] { return now; });
+    state.window_active(true);
+    check(bool(form.handles.tabs.activate({"v03"})), "tooltip page");
+    check(bool(form.handles.progress_half.focus()), "tooltip source focus");
+    now += 10000; state.tooltip_time(now);
+    check(*form.handles.progress_tip.visible(), "tooltip shown before failure");
+    host.paint();
+    check(host.renderer_failed(), "overlay test failure");
+    SendMessageW(host.window(), WM_TIMER, 1, 0);
+    check(*form.handles.progress_tip.visible(), "tooltip remains visible during failure");
+    auto presentation = form.ui.presentation(); presentation.text_size = 28;
+    check(bool(form.ui.set_presentation(presentation)) && *form.handles.progress_tip.visible(), "presentation reflow keeps tooltip frozen during failure");
+    hooks.gl_error_at_frame = 0;
+    check(bool(host.rebuild_renderer()), "overlay test recovery");
+    edit_form::Form dropdown_form(edit_form::default_ids(), true);
+    RendererTestHooks wheel_hooks; wheel_hooks.gl_error_at_frame = 1;
+    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::control(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
+    check(bool(dropdown_form.handles.region.open()), "dropdown opened before failure");
+    wheel_host.paint();
+    check(wheel_host.renderer_failed(), "wheel test failure");
+    check(dropdown_form.handles.region.describe()->expanded, "dropdown remains open immediately after failure");
+    SendMessageW(wheel_host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
+    check(dropdown_form.handles.region.describe()->expanded, "wheel preserves dropdown during failure");
+    Ui pending_ui;
+    auto button = pending_ui.add_button({.id="pending", .kind=Kind::button, .label=u"Pending"}).value.value();
+    auto tip = pending_ui.add_tooltip("pending.tip", button, u"Help", 1000).value.value();
+    ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
+    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);
+    auto& pending = access(pending_ui); std::uint64_t pending_now = 1000;
+    pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true);
+    check(bool(button.focus()) && pending.tooltip_deadline() == 2000, "pending tooltip starts delay");
+    pending_host.paint(); check(pending_host.renderer_failed(), "pending tooltip failure");
+    pending_now = 6000; pending_hooks.gl_error_at_frame = 0;
+    check(bool(pending_host.rebuild_renderer()) && pending.tooltip_deadline() == 7000, "recovery resumes remaining tooltip delay");
+    pending_now = 6999; pending.tooltip_time(pending_now); check(!*tip.visible(), "tooltip delay remains pending");
+    pending_now = 7000; pending.tooltip_time(pending_now); check(*tip.visible(), "tooltip appears after remaining delay");
+}
 static void presentation_during_failure(const Appearance& appearance) {
     edit_form::Form form(edit_form::default_ids(), true);
     check(bool(form.handles.name.set_value(u"Station W")), "PS10 prepare Latin text");
@@ -243,7 +292,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         for (auto appearance : {&web_appearance(), &material_appearance()}) {
-            close_request(*appearance); title_updates(*appearance); startup(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
+            close_request(*appearance); title_updates(*appearance); startup(*appearance); frozen_overlays(*appearance); failure(*appearance,false,true); failure(*appearance,false,true,true); failure(*appearance,true,true); failure(*appearance,false,false);
             public_lifecycle(*appearance,true); public_lifecycle(*appearance,false);
         }
         std::cout << "RF01-RF05, RF07 failure seam checks passed\n"; return 0;

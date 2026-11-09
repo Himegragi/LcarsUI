@@ -19,7 +19,7 @@ struct RendererCapabilities { std::u16string version, vendor, renderer; bool deb
 enum class CloseDecision { close, keep_open };
 class Desktop;
 struct DesktopCreation;
-namespace detail { struct RendererTestHooks; }
+namespace detail { class DesktopHost; }
 struct DesktopOptions {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
@@ -42,7 +42,7 @@ public:
     bool renderer_failed() const;
     RendererCapabilities capabilities() const;
 private:
-    friend DesktopCreation create_desktop_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, detail::RendererTestHooks*);
+    friend class detail::DesktopHost;
     struct Impl;
     explicit Desktop(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> impl_;

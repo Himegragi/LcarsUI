@@ -2570,13 +2570,13 @@ struct Profiles {
 };
 }
 
-int run_uia_ime(const std::filesystem::path& folder, const std::wstring& skin) {
+int run_uia_ime(const std::filesystem::path& folder, const std::wstring& appearance) {
     std::filesystem::create_directories(folder); Report report(folder / "uia-ime.tsv");
-    report.appearance = skin == L"material" ? "material" : "web";
+    report.appearance = appearance == L"material" ? "material" : "web";
     HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(init)) { report.check("UIA21", false, "COM initialization failed"); return 1; }
     try {
-        Live live(skin == L"material" ? material_appearance() : web_appearance());
+        Live live(appearance == L"material" ? material_appearance() : web_appearance());
         Profiles profiles;
         if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated");
         live.start_in_name();
@@ -3264,15 +3264,15 @@ int trial_screenshots(const std::filesystem::path& folder) {
 }
 
 // A fresh process is used for each run so startup age and warmup share one origin.
-int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& skin,
+int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& appearance,
              bool large, int delay, int duration_ms) {
     if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
         throw std::runtime_error("Unknown perf scenario");
-    if (skin!=L"web" && skin!=L"material") throw std::runtime_error("Unknown perf appearance");
+    if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
-    const auto& appearance=skin==L"web" ? web_appearance() : material_appearance();
+    const auto& selected_appearance=appearance==L"web" ? web_appearance() : material_appearance();
     edit_form::Form form(edit_form::default_ids(),true);
-    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,Fixture::options());
+    DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
     host.perf_enable(delay,offscreen);
     auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
@@ -3315,7 +3315,7 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
     out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
-        out << narrow(scenario) << '\t' << narrow(skin) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
+        out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
 #ifdef NDEBUG
             << "Release"
 #else
@@ -3344,11 +3344,11 @@ int wmain(int argc, wchar_t** argv) {
         bool uia_ime = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
-        std::wstring perf, perf_skin=L"web";
+        std::wstring perf, perf_appearance=L"web";
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
             if (arg == L"--perf" && i+1<argc) perf=argv[++i];
-            else if (arg == L"--perf-skin" && i+1<argc) perf_skin=argv[++i];
+            else if (arg == L"--perf-appearance" && i+1<argc) perf_appearance=argv[++i];
             else if (arg == L"--perf-large") perf_large=true;
             else if (arg == L"--paint-delay-ms" && i+1<argc) perf_delay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perf_duration=std::stoi(argv[++i]);
@@ -3373,7 +3373,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
-        if (uia_ime) return run_uia_ime(evidence, perf_skin);
+        if (uia_ime) return run_uia_ime(evidence, perf_appearance);
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
@@ -3406,7 +3406,7 @@ int wmain(int argc, wchar_t** argv) {
             }
             return 0;
         }
-        if (!perf.empty()) return run_perf(evidence,perf,perf_skin,perf_large,perf_delay,perf_duration);
+        if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
             throw std::runtime_error("Invalid verification options");

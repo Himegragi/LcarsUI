@@ -43,7 +43,6 @@ struct SemanticNode {
 // UI-thread-only live queries; the tree does not own its Ui.
 class SemanticTree {
 public:
-    explicit SemanticTree(detail::UiState& state) : state_(&state) {}
     Query<SemanticNode> get(const NodeRef& ref) const;
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
@@ -53,6 +52,9 @@ public:
     Subscription subscribe(std::function<void(const SemanticEvent&)> callback);
     void dispatch_events();
 private:
+    friend class Ui;
+    friend class detail::UiState;
+    explicit SemanticTree(detail::UiState& state) : state_(&state) {}
     detail::UiState* state_;
 };
 }

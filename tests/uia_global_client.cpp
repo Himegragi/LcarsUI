@@ -1,22 +1,13 @@
+#include "uia_client_helpers.hpp"
 #include <windows.h>
 #include <UIAutomation.h>
 #include <atomic>
 #include <iostream>
 #include <string>
 
-class GlobalToggleHandler final : public IUIAutomationPropertyChangedEventHandler {
-    std::atomic<ULONG> refs_{1};
+class GlobalToggleHandler final : public UiaEventHandler<GlobalToggleHandler, IUIAutomationPropertyChangedEventHandler> {
 public:
     std::atomic<DWORD> expected_pid{0};
-    HANDLE received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    ~GlobalToggleHandler() { if (received) CloseHandle(received); }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) return E_POINTER; *out = nullptr;
-        if (iid != __uuidof(IUnknown) && iid != __uuidof(IUIAutomationPropertyChangedEventHandler)) return E_NOINTERFACE;
-        *out = static_cast<IUIAutomationPropertyChangedEventHandler*>(this); AddRef(); return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
-    ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement* sender, PROPERTYID property, VARIANT value) override {
         if (property != UIA_ToggleToggleStatePropertyId || value.vt != VT_I4 || value.lVal != ToggleState_Off) return S_OK;
         const DWORD expected = expected_pid.load();
@@ -24,12 +15,6 @@ public:
         return S_OK;
     }
 };
-struct Search { DWORD pid; HWND window = nullptr; };
-BOOL CALLBACK find_window(HWND window, LPARAM data) {
-    auto& search = *reinterpret_cast<Search*>(data); DWORD pid = 0; GetWindowThreadProcessId(window, &pid);
-    if (pid == search.pid && IsWindowVisible(window) && !GetWindow(window, GW_OWNER)) { search.window = window; return FALSE; }
-    return TRUE;
-}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3 || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
     IUIAutomation* automation = nullptr; IUIAutomationElement* desktop = nullptr; auto handler = new GlobalToggleHandler();

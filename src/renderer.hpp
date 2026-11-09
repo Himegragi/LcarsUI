@@ -9,6 +9,7 @@ namespace lcars::detail {
 struct RendererTestHooks {
     bool fail_context_33 = false, fail_rebuild_once = false, hide_robustness = false, hide_khr_debug = false, misuse_once = false;
     std::string fragment_shader_override;
+    std::string startup_resource_error;
     int gl_error_at_frame = 0, reset_at_frame = 0;
     int rebuild_attempts = 0;
     unsigned injected_error = 0x0505;

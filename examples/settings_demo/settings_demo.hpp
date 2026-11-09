@@ -15,6 +15,7 @@ struct SettingsDocument {
 };
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
 struct AboutInfo {
+    bool diagnostics = false;
     std::vector<AboutLicense> licenses;
     std::vector<lcars::FontFamily> fonts;
     std::function<lcars::FontResolution(const lcars::PresentationSettings&)> resolve_font;

@@ -4,6 +4,9 @@
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
+static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 2 && LCARS_VERSION_PATCH == 0);
+static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 2 && lcars::framework_version_patch == 0);
+static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
 #include <cstdio>
 #include <string>
 #include <type_traits>
