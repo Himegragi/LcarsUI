@@ -5,11 +5,11 @@ Status: **pending**. Do not declare v1 complete while any required row is pendin
 | Acceptance group | Cases | Status | Evidence path |
 | --- | --- | --- | --- |
 | Demo behavior | NL, MD, KS, IT, HS, ST, AP, DD, AB | pending | pending |
-| Close requests | CR01–CR15 including real entry points and IME | pending | pending |
-| Keyboard walkthrough | KW01, KW02 | pending | pending |
-| Screenshot comparison | VC01 llvmpipe and real GPU | pending | pending |
+| Close requests | CR01–CR15 including real entry points and IME | real SendInput and IME pending | idle evidence real-close/real-close.tsv |
+| Keyboard walkthrough | KW01, KW02 | KW01 uses Space in step 6 as directed; CI and KW02 pending | build/Release/Testing/Temporary/LastTest.log |
+| Screenshot comparison | VC01 llvmpipe and real GPU | author GPU pending; CI pending | build/Release/evidence/demo-render/demo-render-compare.tsv |
 | Semantics and accessibility | SX01, UA01–UA07, AX01 | pending | pending |
-| Performance | PF01–PF05 | pending | pending |
+| Performance | PF01–PF05 | idle measurement pending; startup smoke only | build/Release/evidence/demo-perf-smoke/demo-perf.tsv; idle evidence demo-perf/summary.tsv |
 | Diagnostics | ND01, TD01, RD01 | pending | pending |
 | Upstream specifications | Specs 1–3 and 5 completion criteria | pending | pending |
 | Evidence gaps | EG01 | pending review | evidence-gaps.md |

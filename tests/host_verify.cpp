@@ -1,4 +1,5 @@
 #include "presentation_matrix.hpp"
+#include "settings_demo.hpp"
 #include "core_internal.hpp"
 // Native verification of the V01 form in a real Win32 window for both appearances.
 // Keyboard and mouse cases are posted to the window queue and pumped through the host's own
@@ -345,6 +346,54 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
             emit_failure_if_needed(evidence,key,comparison,pass);
         }
     }
+}
+
+
+int demo_compare(const std::filesystem::path& evidence) {
+    std::filesystem::create_directories(evidence);
+    std::ofstream out(evidence / "demo-render-compare.tsv");
+    out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
+    int failures=0, rows=0;
+    for (const auto* appearance : {&web_appearance(), &material_appearance()})
+    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<8; ++scenario) {
+        settings_demo::AboutInfo info;
+        info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
+        for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
+        settings_demo::Demo demo(std::move(info));
+        DesktopOptions options; options.title=u"Demo comparison";
+        DesktopHost host(demo.ui,*appearance,[&]{return demo.page();},demo.scroll,options,false,true);
+        ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(scale); host.client_size(scale==1.f?960:640,scale==1.f?720:480);
+        SendMessageW(host.window(),WM_SETFOCUS,0,0); host.pump();
+        auto settings=demo.ui.presentation(); settings.variant=dark?ThemeVariant::dark():ThemeVariant::light();
+        bool setup=bool(demo.ui.set_presentation(settings));
+        auto tap=[&](WPARAM key){ PostMessageW(host.window(),WM_KEYDOWN,key,key_lparam(key,false,false)); PostMessageW(host.window(),WM_KEYUP,key,key_lparam(key,false,true)); host.pump(); };
+        if(scenario==0) setup &= bool(demo.name.focus());
+        if(scenario==1) { setup &= bool(demo.name.focus()) && bool(demo.name.set_value(u"")); tap(VK_TAB); setup &= demo.name.describe()->invalid; }
+        if(scenario==2 || scenario==3) {
+            setup &= bool(demo.nav.select({"items"})) && bool(demo.items_list.select({"T003"})) && bool(demo.items_list.focus());
+            if(scenario==3) setup &= bool(demo.items_edit.invoke()) && demo.item_dialog.is_open().value.value_or(false);
+        }
+        if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
+        if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
+        if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.is_open().value.value_or(false); }
+        if(scenario==7) setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+        host.pump(); auto result=host.compare_gpu(960,720,scale);
+        auto has_role=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
+        bool cues=true;
+        if(scenario==0) cues=has_role("general.name",1) && has_role("general.name",2);
+        if(scenario==1) cues=has_role("general.name",32) && (has_role("general.name",16) || has_role("general.name.error",16));
+        if(scenario==2) cues=has_role("items.list",1) && has_role("items.list",4);
+        if(scenario==7) cues=has_role("app.nav",1);
+        bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
+        std::string name="SD-"+std::string(1,char('a'+scenario));
+        std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
+        write_comparison_bmp(evidence/(key+"-cpu.bmp"),result.reference); emit_failure_if_needed(evidence,key,result,pass);
+        out << name << '\t' << (appearance==&web_appearance()?"web":"material") << '\t' << (dark?"dark":"light") << '\t' << (scale==1.f?"960x720":"640x480") << '\t' << scale << '\t' << host.renderer_name() << '\t' << double(result.comparison.different_pixels)/(960*720) << '\t' << result.comparison.maximum_difference << '\t' << result.roles << '\t' << result.failed_roles << '\t';
+        for(const auto& region:result.regions) out << region.owner << ':' << region.role << ':' << (region.passed?"PASS":"FAIL") << ',';
+        out << '\t' << (pass?"PASS":"FAIL") << '\n';
+        std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
+    }
+    return out && rows==64 && !failures ? 0 : 1;
 }
 
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -3328,6 +3377,82 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
     return ok?0:1;
 }
 
+int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& appearance,
+             bool large, int delay, int duration_ms, bool alternate_font) {
+    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
+        throw std::runtime_error("Unknown perf scenario");
+    if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
+    if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
+    const auto& selected_appearance=appearance==L"web" ? web_appearance() : material_appearance();
+    settings_demo::Demo form;
+    if (alternate_font) {
+        auto document=form.document();
+        const auto& fonts=system_font_catalog().families();
+        auto found=std::find_if(fonts.begin(),fonts.end(),[](const auto& family) { return family.key!=u"Segoe UI" && !family.key.empty(); });
+        if(found==fonts.end()) throw std::runtime_error("No non-default font available");
+        document.presentation.font_family=found->key; form.load_document(document);
+    }
+    if (scenario==L"list-hold-down") {
+        auto document=form.document();
+        while(document.items.size()<100) { int n=int(document.items.size())+1; auto id=std::to_string(1000+n); document.items.push_back({OptionValue{"T"+id},u"Performance item",u""}); }
+        document.next_item_id=1101; form.load_document(document);
+    }
+    DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
+    const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
+    host.perf_enable(delay,offscreen);
+    auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
+    x04_original_procs.emplace(host.window(),previous_proc);
+    if (!SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(&x04_window_proc))) throw std::runtime_error("Perf sizing fixture failed");
+    host.force_scale(large && !offscreen ? 2.f : 1.f); host.client_size(1920,1080);
+    RECT actual{}; GetClientRect(host.window(),&actual);
+    if(actual.right!=(large && !offscreen ? 3840 : 1920) || actual.bottom!=(large && !offscreen ? 2160 : 1080)) throw std::runtime_error("Perf client size mismatch");
+    ShowWindow(host.window(),SW_SHOW); SetForegroundWindow(host.window()); SetFocus(host.window()); host.pump();
+    if (GetForegroundWindow()!=host.window() || GetFocus()!=host.window()) throw std::runtime_error("Perf window did not acquire foreground focus");
+    if (scenario==L"list-hold-down") {
+        if (!form.nav.select({"items"}) || !form.items_list.focus())
+            throw std::runtime_error("Perf list setup failed");
+    } else if (scenario==L"typing" || scenario==L"idle") {
+        if (!form.nav.select({"general"}) || !form.name.focus()) throw std::runtime_error("Perf typing setup failed");
+    }
+    host.pump();
+    if(scenario!=L"startup") host.perf_reset();
+    auto send=[&](WORD key, DWORD flags) { if(GetForegroundWindow()!=host.window() || GetFocus()!=host.window()) throw std::runtime_error("Perf window lost foreground focus"); INPUT input{}; input.type=INPUT_KEYBOARD; input.ki.wVk=(flags & KEYEVENTF_UNICODE)?0:key; input.ki.wScan=(flags & KEYEVENTF_UNICODE)?key:0; input.ki.dwFlags=flags; if(SendInput(1,&input,sizeof(input))!=1) throw std::runtime_error("SendInput failed"); };
+    auto wait=[&](int milliseconds) { auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(milliseconds); while(std::chrono::steady_clock::now()<end) { host.pump(); auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(end-std::chrono::steady_clock::now()).count(); if(remaining>0) MsgWaitForMultipleObjectsEx(0,nullptr,static_cast<DWORD>(remaining),QS_ALLINPUT,MWMO_INPUTAVAILABLE); } host.pump(); };
+    if(scenario==L"list-hold-down") {
+        int duration=duration_ms ? duration_ms : 5000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration);
+        while(std::chrono::steady_clock::now()<end) { send(VK_DOWN,0); wait(33); } send(VK_DOWN,KEYEVENTF_KEYUP); host.pump();
+    } else if(scenario==L"typing") {
+        int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
+        while(std::chrono::steady_clock::now()<end) { WORD c=(i++%2)?0x4e2d:L'A'; send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(50); }
+    }
+    int paints=0,presents=0; double cpu_ms=0;
+    if(scenario==L"idle") {
+        send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500);
+        int before_paints=host.paint_messages(), before_frames=host.frames(); FILETIME c{},e{},k1{},u1{},k2{},u2{};
+        GetProcessTimes(GetCurrentProcess(),&c,&e,&k1,&u1); wait(duration_ms ? duration_ms : 10000); GetProcessTimes(GetCurrentProcess(),&c,&e,&k2,&u2);
+        auto ticks=[](FILETIME t){ULARGE_INTEGER x{}; x.LowPart=t.dwLowDateTime; x.HighPart=t.dwHighDateTime; return x.QuadPart;};
+        cpu_ms=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paint_messages()-before_paints; presents=host.frames()-before_frames;
+    }
+    auto warm=host.perf_samples().summary(true), steady=host.perf_samples().summary(false);
+    bool ok=scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
+    PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
+    if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
+    std::filesystem::create_directories(evidence); std::ofstream out(evidence/"demo-perf.tsv");
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
+    for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
+        out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (alternate_font?"non-default":"default") << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
+#ifdef NDEBUG
+            << "Release"
+#else
+            << "Debug"
+#endif
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << '\n';
+    }
+    if(!out) throw std::runtime_error("Cannot write perf report");
+    SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previous_proc)); x04_original_procs.erase(host.window());
+    return ok?0:1;
+}
+
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     auto address = reinterpret_cast<std::uintptr_t>(info->ExceptionRecord->ExceptionAddress);
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -3341,19 +3466,22 @@ int wmain(int argc, wchar_t** argv) {
     try {
         std::filesystem::path evidence = "host-evidence";
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
-        bool uia_ime = false;
+        bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_appearance=L"web";
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
-            if (arg == L"--perf" && i+1<argc) perf=argv[++i];
+            if (arg == L"--demo-perf" && i+1<argc) { demo_perf=true; perf=argv[++i]; }
+            else if (arg == L"--perf" && i+1<argc) perf=argv[++i];
+            else if (arg == L"--demo-perf-font") demo_perf_font=true;
             else if (arg == L"--perf-appearance" && i+1<argc) perf_appearance=argv[++i];
             else if (arg == L"--perf-large") perf_large=true;
             else if (arg == L"--paint-delay-ms" && i+1<argc) perf_delay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perf_duration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01_only = true;
+            else if (arg == L"--demo-compare") demo_comparison = true;
             else if (arg == L"--trial-screenshots") trial = true;
             else if (arg == L"--presentation-matrix") matrix = true;
             else if (arg == L"--presentation-idle") presentation = true;
@@ -3373,6 +3501,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
             else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
+        if (demo_comparison) return demo_compare(evidence);
         if (uia_ime) return run_uia_ime(evidence, perf_appearance);
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
@@ -3406,6 +3535,7 @@ int wmain(int argc, wchar_t** argv) {
             }
             return 0;
         }
+        if (demo_perf) return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,demo_perf_font);
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)

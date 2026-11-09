@@ -5,11 +5,11 @@ if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot ('build/Release/evidence/v
 $plan = @(
     'clipboard, IME, DPI (user configures Microsoft Bopomofo and two displays at 100% and 150%)',
     'Release and Debug host_native CTest',
-    'perf (PM01-PM05 showcase; demo PF01-PF06 pending: no demo performance driver)',
+    'perf (PM01-PM05 showcase and demo startup, hold-down, typing, idle and delay self-check)',
     'presentation (PR01-PR04 automated parts)',
     'uia, uia-ime, uia-dpi, uia-stress and demo-uia',
-    'real close controls via SendInput: pending (driver not implemented)',
-    'render / GC01 real GPU showcase comparison; VC01 demo matrix pending',
+    'real close controls via SendInput: title-bar X, Alt+F4 and taskbar',
+    'render / GC01 real GPU showcase and VC01 demo matrix',
     'RenderDoc DG05/RD01: user capture and inspect groups; N/A if not installed',
     'TDR RF06/TD01: user runs dxcap -forcetdr, retries, saves diagnostics and screenshots',
     'OutputDebugStringW DG03: user observes Debug output in a debugger',
@@ -48,6 +48,9 @@ foreach ($configuration in @('Release','Debug')) {
 foreach ($name in @('perf','presentation','uia','uia-ime','uia-dpi','uia-stress','demo-uia')) {
     Run-Step $name { & powershell -NoProfile -File "$PSScriptRoot/verify-idle.ps1" -Only $name -OutDir (Join-Path $OutDir $name) }
 }
+Run-Step 'demo-keyboard' { & $ctest --test-dir "$PSScriptRoot/build/Release" -R '^demo_keyboard$' --output-on-failure }
+Run-Step 'demo-perf' { & powershell -NoProfile -File "$PSScriptRoot/tests/v1-final/demo-perf.ps1" -OutDir (Join-Path $OutDir 'demo-perf') }
+Run-Step 'real-close' { & powershell -NoProfile -File "$PSScriptRoot/tests/v1-final/real-close.ps1" -OutDir (Join-Path $OutDir 'real-close') }
 Run-Step 'render-real-gpu' {
     $renderDir = Join-Path $OutDir 'render-real-gpu'
     & "$PSScriptRoot/build/Release/lcars_host_verify.exe" --render-compare --evidence $renderDir
@@ -57,7 +60,13 @@ Run-Step 'render-real-gpu' {
         throw 'Expected 40 passing showcase rows on a real GPU.'
     }
 }
-foreach ($name in @('demo-keyboard','demo-perf','real-close','VC01')) { Record $name 'PENDING' 'Driver or orchestration is not yet implemented.' }
+Run-Step 'VC01' {
+    $demoDir=Join-Path $OutDir 'demo-render'
+    & "$PSScriptRoot/build/Release/lcars_host_verify.exe" --demo-compare --evidence $demoDir
+    if ($LASTEXITCODE -ne 0) { throw "comparison exited $LASTEXITCODE" }
+    $rows=@(Import-Csv -Delimiter "`t" -LiteralPath (Join-Path $demoDir 'demo-render-compare.tsv'))
+    if ($rows.Count -ne 64 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.renderer -match 'llvmpipe|softpipe|GDI Generic' }).Count) { throw 'Expected 64 passing demo rows on a real GPU.' }
+}
 $renderdoc = Get-Command renderdoccmd.exe -ErrorAction SilentlyContinue
 $renderdocPath = if ($renderdoc) { $renderdoc.Source } else { @("${env:ProgramFiles}/RenderDoc/renderdoccmd.exe", "${env:ProgramFiles(x86)}/RenderDoc/renderdoccmd.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 }
 if ($renderdocPath) { Record 'RenderDoc' 'PENDING' "Found $renderdocPath; capture Debug showcase and demo frames and inspect component ID groups including app.nav and general.name." }
