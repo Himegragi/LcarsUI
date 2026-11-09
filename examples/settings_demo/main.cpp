@@ -4,6 +4,8 @@
 #include "lcars/desktop.hpp"
 #include "about_desktop.hpp"
 #include "settings_store.hpp"
+#include "failure_diagnostic.hpp"
+#include <fstream>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
@@ -42,10 +44,17 @@ int wmain(int argc, wchar_t** argv) {
         const auto& appearance = lcars::web_appearance();
 #endif
         auto name = appearance.name();
-        std::filesystem::path directory;
-        if (argc==3 && std::wstring_view(argv[1])==L"--settings-dir") directory=argv[2];
-        else if (argc!=1) { std::cerr << "Usage: --settings-dir <directory>\n"; return 1; }
-        else {
+        std::filesystem::path directory, diagnostics_out;
+        for (int i = 1; i < argc; i += 2) {
+            std::wstring_view flag(argv[i]);
+            if (i + 1 < argc && flag == L"--settings-dir" && directory.empty()) directory = argv[i + 1];
+            else if (i + 1 < argc && flag == L"--diagnostics-out" && diagnostics_out.empty()) diagnostics_out = argv[i + 1];
+            else { std::cerr << "Usage: [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
+        }
+#ifndef LCARS_DEMO_DIAGNOSTICS
+        if (!diagnostics_out.empty()) { std::cerr << "--diagnostics-out needs a build with LcarsUI::Diagnostics\n"; return 1; }
+#endif
+        if (directory.empty()) {
             PWSTR raw=nullptr; if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData,0,nullptr,&raw))) throw std::runtime_error("Cannot locate Roaming AppData");
             directory=std::filesystem::path(raw)/L"LcarsUI"/L"SettingsDemo"; CoTaskMemFree(raw);
         }
@@ -64,6 +73,12 @@ int wmain(int argc, wchar_t** argv) {
         lcars::DesktopOptions options;
 #ifdef LCARS_DEMO_DIAGNOSTICS
         options.on_diagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
+        // Evidence runs (TD01) save the in-memory record; normal runs never write it.
+        auto export_diagnostics = [&] {
+            if (diagnostics_out.empty()) return;
+            std::ofstream out(diagnostics_out, std::ios::binary | std::ios::trunc);
+            if (!out || !diagnostics.save(out)) std::cerr << "Cannot write diagnostics export\n";
+        };
 #endif
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
         settings_demo::CloseController close_controller(demo);
@@ -72,6 +87,10 @@ int wmain(int argc, wchar_t** argv) {
             return close_controller.request(desktop, prompt);
         };
         options.on_renderer_failed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
+#ifdef LCARS_DEMO_DIAGNOSTICS
+            diagnostics.record_failure(settings_demo::failure_diagnostic(failure));
+            export_diagnostics();
+#endif
             WindowsPrompt prompt(desktop.native_window());
             close_controller.failure(desktop, failure, prompt);
         };
@@ -92,6 +111,9 @@ int wmain(int argc, wchar_t** argv) {
         auto result=creation.desktop->run();
         if (notice_timer) KillTimer(nullptr, notice_timer);
         pending_demo=nullptr;
+#ifdef LCARS_DEMO_DIAGNOSTICS
+        export_diagnostics();
+#endif
         return result.status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

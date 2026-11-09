@@ -194,7 +194,7 @@ if(LCARS_BUILD_DESKTOP)
     lcars_target(lcars_about_executable_tests)
     target_compile_definitions(lcars_about_executable_tests PRIVATE UNICODE _UNICODE)
     target_link_libraries(lcars_about_executable_tests PRIVATE uiautomationcore ole32 oleaut32 user32)
-    add_test(NAME about_executable_diagnostics COMMAND lcars_about_executable_tests $<TARGET_FILE:lcars_settings_demo_web> 已選用)
+    add_test(NAME about_executable_diagnostics COMMAND lcars_about_executable_tests $<TARGET_FILE:lcars_settings_demo_web> 基本診斷（只存記憶體）)
     add_test(NAME about_executable_nodiag COMMAND lcars_about_executable_tests $<TARGET_FILE:lcars_settings_demo_web_nodiag> 未選用)
   endif()
   # Native verification: real window, real message translation/dispatch, offscreen evidence.
