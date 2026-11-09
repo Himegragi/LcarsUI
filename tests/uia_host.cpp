@@ -6,6 +6,7 @@
 #include <UIAutomation.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 namespace {
 WNDPROC original_proc = nullptr;
 edit_form::Form* active_form = nullptr;
@@ -68,6 +69,47 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             if (!region) return 1;
             active_form->scroll.offset = std::max(0, active_form->scroll.offset + region->bounds.y - active_host->frame().viewport.y - 100);
             active_host->paint(); return 0;
+        }
+        case 36: {
+            // The UIA range describes an advance cell, not the black-pixel box.
+            // Infer that cell from GPU ink and an independently rasterized glyph's bearings.
+            if (!active_form->handles.name.select(2, 2)) return -1;
+            active_host->paint();
+            RECT client{}; GetClientRect(window, &client);
+            auto image = active_host->compare_gpu(client.right, client.bottom, active_host->scale()).actual;
+            const auto* field = lcars::detail::find_placement(active_host->frame(), "form.name");
+            if (!field) return -1;
+            lcars::detail::Text text;
+            auto glyph = text.shape(u"\u5de5", field->text_size);
+            lcars::detail::Canvas sample(128, 128, {255,255,255});
+            text.draw(sample, glyph, 32, 32 + lcars::detail::ShapedMeasure::baseline(field->text_size), {0,0,0});
+            int sample_left = 128, sample_right = -1;
+            for (int y = 0; y < 128; ++y) for (int x = 0; x < 128; ++x) {
+                auto i = (static_cast<std::size_t>(y) * 128 + x) * 4;
+                if (sample.pixels[i] != 255 || sample.pixels[i+1] != 255 || sample.pixels[i+2] != 255) {
+                    sample_left = std::min(sample_left, x); sample_right = std::max(sample_right, x);
+                }
+            }
+            auto editor = field->field.editor;
+            editor.x += field->bounds.x; editor.y += field->bounds.y;
+            int left = image.width, right = -1;
+            int start = std::max(editor.x, field->caret_x(0) - 2);
+            int end = std::min(editor.x + editor.w, field->caret_x(1));
+            for (int y = std::max(0, editor.y); y < std::min(image.height, editor.y + editor.h); ++y) {
+                int bgx = std::min(image.width - 1, editor.x + editor.w - 2);
+                if (bgx < 0) return -1;
+                auto bg = (static_cast<std::size_t>(y) * image.width + bgx) * 4;
+                for (int x = std::max(0, start); x < std::min(image.width, end); ++x) {
+                    auto i = (static_cast<std::size_t>(y) * image.width + x) * 4;
+                    if (image.pixels[i] != image.pixels[bg] || image.pixels[i+1] != image.pixels[bg+1] || image.pixels[i+2] != image.pixels[bg+2]) {
+                        left = std::min(left, x); right = std::max(right, x);
+                    }
+                }
+            }
+            if (right < left || sample_right < sample_left || std::abs((right-left)-(sample_right-sample_left)) > 1) return -1;
+            int cell_left = left - (sample_left - 32);
+            POINT origin{cell_left, 0}; ClientToScreen(window, &origin);
+            return MAKELPARAM(origin.x, origin.x + static_cast<int>(std::lround(glyph.width)));
         }
         case 35: {
             const auto* field = lcars::detail::find_placement(active_host->frame(), "form.name");

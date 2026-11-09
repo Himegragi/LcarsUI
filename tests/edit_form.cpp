@@ -729,12 +729,21 @@ void font_switch_reflows_active_composition() {
     form.handles.name.set_value(u"ABCDE"); form.handles.name.focus(); form.handles.name.select(1, 3);
     check(bool(state.composition_update(u"\u6e2c", 1)), "PS03 composition starts");
     auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name); };
-    auto before = draw(); auto previous = before.find(form.handles.name)->caret_x(2);
-    auto settings = form.ui.presentation(); settings.font_family = u"MingLiU"; measure.wider = true;
-    check(bool(form.ui.set_presentation(settings)), "PS03 font change accepted");
-    auto after = draw(); auto* field = after.find(form.handles.name); auto* edit = state.edit(ids.name);
-    check(field && edit->composing && edit->preedit == u"\u6e2c" && edit->preedit_caret == 1 && form.handles.name.describe()->focused, "PS03 composition and focus survive font switch");
-    check(field->caret_x(2) != previous && after.text_offset(form.handles.name, field->caret_x(2)) == 2, "PS03 caret and hit testing use new font metrics");
+    auto settings = form.ui.presentation();
+    for (int change = 0; change != 4; ++change) {
+        auto previous = draw().find(form.handles.name)->caret_x(2);
+        if (change == 0) settings.text_size = 28;
+        if (change == 1) { settings.font_family = u"MingLiU"; measure.wider = true; }
+        if (change == 2) settings.variant = ThemeVariant::dark();
+        if (change == 3) settings.density = Density::compact;
+        check(bool(form.ui.set_presentation(settings)), "PS03 presentation change accepted");
+        auto frame = draw(); auto* field = frame.find(form.handles.name); auto* edit = state.edit(ids.name);
+        check(field && edit && edit->composing && edit->preedit == u"\u6e2c" && edit->preedit_caret == 1 && form.handles.name.describe()->focused, "PS03 composition and focus survive presentation change");
+        check(field && edit && frame.text_offset(form.handles.name, field->caret_x(edit->begin())) == 1 &&
+              frame.text_offset(form.handles.name, field->caret_x(edit->visible_caret())) == 2,
+              "PS03 composition start and candidate caret hit their characters");
+        if (change < 2) check(field && field->caret_x(2) != previous, "PS03 size and font change metrics");
+    }
 }
 
 void presentation_reflow_preserves_edit_and_popup() {

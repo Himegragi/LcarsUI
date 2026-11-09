@@ -400,7 +400,11 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "rect=" << rect[0] << "," << rect[1] << "," << rect[2] << "," << rect[3] << " paint=" << static_cast<short>(LOWORD(pos0)) << "," << static_cast<short>(HIWORD(pos0)) << "," << static_cast<short>(LOWORD(pos1)) << " cmp=" << cmp << "\n";
         RECT field_bounds{}; element->get_CurrentBoundingRectangle(&field_bounds);
         bool inside = rect[0] >= field_bounds.left && rect[1] >= field_bounds.top && rect[0]+rect[2] <= field_bounds.right && rect[1]+rect[3] <= field_bounds.bottom;
-        bool geometry = inside && matches_paint && SUCCEEDED(expand) && SUCCEEDED(rect_hr) && hi-lo+1==4 && rect[2]>0 && rect[3]>0 && SUCCEEDED(hit_hr) && cmp==0;
+        auto ink_cell = SendMessageW(search.window, WM_APP + 80, 36, 0);
+        bool matches_pixels = ink_cell != -1 && std::abs(rect[0] - static_cast<short>(LOWORD(ink_cell))) <= 1 &&
+            std::abs(rect[0] + rect[2] - static_cast<short>(HIWORD(ink_cell))) <= 1;
+        std::cout << "GPU ink-derived advance cell=" << static_cast<short>(LOWORD(ink_cell)) << "," << static_cast<short>(HIWORD(ink_cell)) << " matches=" << matches_pixels << "\n";
+        bool geometry = inside && matches_paint && matches_pixels && SUCCEEDED(expand) && SUCCEEDED(rect_hr) && hi-lo+1==4 && rect[2]>0 && rect[3]>0 && SUCCEEDED(hit_hr) && cmp==0;
         if (rects) SafeArrayDestroy(rects); rects=nullptr;
         auto layout_events = new TextEvents(); layout_events->expected = UIA_LayoutInvalidatedEventId;
         HRESULT layout_subscribed = automation->AddAutomationEventHandler(UIA_LayoutInvalidatedEventId, root, TreeScope_Element, nullptr, layout_events);
