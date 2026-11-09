@@ -2927,7 +2927,21 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         detail::access(ui).select(ids.name, 1, 3);
         live.host.paint();
         int before = dpi_messages;
+        auto atlas_before_forward = live.host.atlas_clears();
         UINT second = move(monitors[1]);
+        auto atlas_after_forward = live.host.atlas_clears();
+        auto sharp_text = [&] {
+            RECT client{}; GetClientRect(live.host.window(), &client);
+            auto comparison = live.host.compare_gpu(client.right, client.bottom, live.host.scale());
+            const auto* text_field = live.host.frame().find(live.form.handles.name);
+            Rect text_area{};
+            if (text_field) text_area = {text_field->bounds.x + text_field->field.editor.x,
+                text_field->bounds.y + text_field->field.editor.y,
+                text_field->field.editor.w, text_field->field.editor.h};
+            auto text_compare = compare_images(comparison.reference, comparison.actual, {text_area});
+            return text_field && text_area.w > 0 && text_area.h > 0 && bool(comparison) && text_compare.regions_ok;
+        };
+        bool forward_sharp = !presentation && first == 96 && second == 144 && sharp_text();
         if (presentation && !((first == 96 && second == 144) || (first == 144 && second == 96)))
             throw Blocked("PR02 requires one 100% and one 150% monitor");
         if (presentation && first == 96) {
@@ -2956,7 +2970,9 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
 
         detail::access(ui).select(ids.name, 1, 3);
         before = dpi_messages;
+        auto atlas_before_return = live.host.atlas_clears();
         UINT selection_return = move(monitors[0]);
+        auto atlas_after_return = live.host.atlas_clears();
         field = live.host.frame().find(live.form.handles.name);
         bool selection_back = field && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005" &&
                               session->selection.anchor == 1 && session->selection.caret == 3 &&
@@ -2970,6 +2986,17 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         pointer = hit && session->selection.anchor == expected_caret && session->selection.caret == expected_caret;
         report.check("D01-selection-return", selection_return == first && dpi_messages > before && selection_back && hit && pointer,
                      "Return: selection/focus=" + std::to_string(selection_back) + "; physical click caret=" + std::to_string(pointer));
+        // GA05 uses the actual 100% -> 150% leg, irrespective of monitor ordering.
+        if (!presentation) {
+            bool forward = first == 96 && second == 144;
+            bool backward = first == 144 && second == 96;
+            unsigned clears_before = forward ? atlas_before_forward : atlas_before_return;
+            unsigned clears_after = forward ? atlas_after_forward : atlas_after_return;
+            bool sharp = forward ? forward_sharp : (backward && sharp_text());
+            report.check("GA05", (forward || backward) && clears_after == clears_before + 1 && sharp,
+                "100% to 150%; atlas clears=" + std::to_string(clears_before) + " -> " + std::to_string(clears_after) +
+                "; GPU/CPU text region=" + std::to_string(sharp));
+        }
         detail::access(ui).select(ids.name, 1, 3);
 
         Profiles profiles;
