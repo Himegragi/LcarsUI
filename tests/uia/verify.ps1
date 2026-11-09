@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia')][string]$Mode,
     [Parameter(Mandatory)][ValidateSet('web', 'material')][string]$Skin,
     [Parameter(Mandatory)][string]$OutDir
 )
@@ -18,7 +18,7 @@ $dirty = @(& git -C $root status --porcelain 2>$null).Count -gt 0
 $client = Join-Path $root 'build/Release/lcars_uia_client.exe'
 $hostExe = Join-Path $root 'build/Release/lcars_uia_host.exe'
 try {
-    if ($Mode -eq 'axe') {
+    if ($Mode -in @('axe', 'demo-uia')) {
         $axeExe = $env:LCARS_AXE_EXE
         if (-not $axeExe) {
             $toolDir = Join-Path $OutDir ('tool-' + [guid]::NewGuid().ToString('N'))
@@ -28,6 +28,25 @@ try {
         if (-not (Test-Path -LiteralPath $axeExe) -or -not (Test-Path -LiteralPath $hostExe)) { throw 'Axe executable or UIA host missing' }
         $archive = Join-Path (Split-Path -Parent (Split-Path -Parent $axeExe)) 'axe.zip'
         if (-not (Test-Path -LiteralPath $archive) -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne 'AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64' -or (Get-FileHash -LiteralPath $axeExe -Algorithm SHA256).Hash -ne '46DC0AB9282B89ACCF8E03F7C445877693FA257F7B716321F79AD5AF9D3F997C') { throw 'Axe 2.4.2 archive or executable SHA256 mismatch' }
+        if ($Mode -eq 'demo-uia') {
+            $demoHost = Join-Path $root 'build/Release/lcars_uia_demo_host.exe'
+            $demoClient = Join-Path $root 'build/Release/lcars_uia_demo_client.exe'
+            $demoOutput = @(& $demoClient $demoHost $Skin 2>&1 | ForEach-Object { "$_" })
+            $demoExit = $LASTEXITCODE
+            $demoOutput | Set-Content -Encoding UTF8 (Join-Path $OutDir 'client.log')
+            if ($demoExit -ne 0) { throw 'Demo UIA cases failed' }
+            foreach ($line in $demoOutput) {
+                if ($line -match '^(UA\d+[^:]*): (PASS|FAIL)$') { Record $matches[1] 'PASS' $line $matches[2] }
+            }
+            foreach ($id in @('UA01','UA02','UA03','UA04 item dialog','UA04 close dialog','UA05','UA06','UA07')) {
+                if (-not @($rows | Where-Object { $_.case -eq $id -and $_.status -eq 'PASS' }).Count) { throw "Missing demo case $id" }
+            }
+            & (Join-Path $PSScriptRoot 'demo-axe.ps1') -Skin $Skin -OutDir $OutDir -AxeExe $axeExe -HostExe $demoHost
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            foreach ($scan in @(Import-Csv -Delimiter "`t" (Join-Path $OutDir 'axe.tsv'))) { $rows.Add($scan) }
+            $rows | Export-Csv -Delimiter "`t" -NoTypeInformation -Encoding UTF8 (Join-Path $OutDir 'demo-uia.tsv')
+            exit 0
+        }
         & (Join-Path $PSScriptRoot 'axe.ps1') -Skin $Skin -OutDir $OutDir -AxeExe $axeExe -HostExe $hostExe
         if ($LASTEXITCODE -ne 0) { exit 1 }
         exit 0

@@ -49,7 +49,7 @@ jobs:
         shell: pwsh
         env:
           LCARS_AXE_EXE: ${{ runner.temp }}\lcars-axe\unpacked\AxeWindowsCLI.exe
-        run: ./verify-idle.ps1 -Only uia,axe -OutDir build/evidence/uia
+        run: ./verify-idle.ps1 -Only uia,axe,demo-uia -OutDir build/evidence/uia
       - name: Upload UIA evidence and diagnostics
         if: always()
         uses: actions/upload-artifact@v4

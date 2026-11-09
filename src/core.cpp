@@ -2760,6 +2760,31 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
     n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
+    if (!ref.item && c->kind == Kind::button) {
+        for (const auto& binding : u.shortcuts_) {
+            if (binding.target != ref.id) continue;
+            const auto& chord = binding.chord;
+            if (chord.ctrl) n.accelerator_key += u"Ctrl+";
+            if (chord.shift) n.accelerator_key += u"Shift+";
+            if (chord.letter) n.accelerator_key += chord.letter;
+            else {
+                switch (chord.key) {
+                case Key::enter: n.accelerator_key += u"Enter"; break;
+                case Key::space: n.accelerator_key += u"Space"; break;
+                case Key::left: n.accelerator_key += u"Left"; break;
+                case Key::right: n.accelerator_key += u"Right"; break;
+                case Key::up: n.accelerator_key += u"Up"; break;
+                case Key::down: n.accelerator_key += u"Down"; break;
+                case Key::home: n.accelerator_key += u"Home"; break;
+                case Key::end: n.accelerator_key += u"End"; break;
+                case Key::backspace: n.accelerator_key += u"Backspace"; break;
+                case Key::del: n.accelerator_key += u"Delete"; break;
+                default: break;
+                }
+            }
+            break;
+        }
+    }
     if (n.role == Role::label) n.name = s.value;
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;

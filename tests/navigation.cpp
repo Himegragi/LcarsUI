@@ -71,6 +71,7 @@ void exercise() {
     int saves = 0;
     save.bind([&] { ++saves; return Result{}; });
     check(bool(shortcuts.add_shortcut({.letter=u'S',.ctrl=true}, save)), "register shortcut");
+    check(shortcuts.semantics().get({"save"})->accelerator_key == u"Ctrl+S", "semantic shortcut for Save");
     check(bool(text.focus()), "focus text for shortcut");
     check(bool(detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'})) && saves == 1, "unhandled text chord reaches shortcut");
     detail::access(shortcuts).key_down({.ctrl=true,.repeat=true,.letter=u'S'});
@@ -83,6 +84,7 @@ void exercise() {
     auto scoped = shortcuts.add_button({.id="scoped",.kind=Kind::button}).value.value();
     int edits = 0; scoped.bind([&] { ++edits; return Result{}; });
     check(bool(shortcuts.add_shortcut({.key=Key::del}, scoped, list)), "register scoped Delete");
+    check(shortcuts.semantics().get({"scoped"})->accelerator_key == u"Delete", "semantic scoped shortcut");
     list.focus(); detail::access(shortcuts).key_down({.key=Key::del});
     check(edits==1, "focused list routes Delete to scoped target");
     text.focus(); detail::access(shortcuts).key_down({.key=Key::del});
