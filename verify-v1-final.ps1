@@ -59,9 +59,10 @@ Run-Step 'render-real-gpu' {
 }
 foreach ($name in @('demo-keyboard','demo-perf','real-close','VC01')) { Record $name 'PENDING' 'Driver or orchestration is not yet implemented.' }
 $renderdoc = Get-Command renderdoccmd.exe -ErrorAction SilentlyContinue
-if ($renderdoc) { Record 'RenderDoc' 'PENDING' "Installed at $($renderdoc.Source); capture a Debug demo frame and inspect app.nav and general.name groups." }
-else { Record 'RenderDoc' 'N/A' 'RenderDoc not found on PATH; install it, capture a Debug demo frame, and inspect component ID groups.' }
-Pause-User 'TDR: open the demo, save a before screenshot, run dxcap -forcetdr with required administrator rights, choose Retry, and save diagnostics and an after screenshot. Do not report PASS without evidence.'
+$renderdocPath = if ($renderdoc) { $renderdoc.Source } else { @("${env:ProgramFiles}/RenderDoc/renderdoccmd.exe", "${env:ProgramFiles(x86)}/RenderDoc/renderdoccmd.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 }
+if ($renderdocPath) { Record 'RenderDoc' 'PENDING' "Found $renderdocPath; capture Debug showcase and demo frames and inspect component ID groups including app.nav and general.name." }
+else { Record 'RenderDoc' 'N/A' 'RenderDoc not found on PATH or in standard install locations; install it, capture Debug showcase and demo frames, and inspect component ID groups.' }
+Pause-User 'TDR: for the showcase and demo, save a before screenshot, run dxcap -forcetdr with required administrator rights, choose Retry, and save diagnostics and an after screenshot. Do not report PASS without evidence.'
 Record 'TDR' 'PENDING' 'Record RF06/TD01 outcome and evidence paths in the completion report.'
 Pause-User 'Inspect Debug OutputDebugStringW in a debugger and record the result. Then complete the hands-on trial for both appearances.'
 Record 'OutputDebugStringW' 'PENDING' 'Record debugger output and evidence path.'
