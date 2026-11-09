@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$OutDir,
     [string[]]$Only = @('clipboard', 'ime', 'dpi'),
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
 if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress') }).Count) {
+if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia') }).Count) {
     throw '-Only contains an unknown verification selection'
 }
 if (@($selected | Select-Object -Unique).Count -ne $selected.Count) { throw '-Only must not contain duplicates' }
@@ -19,7 +19,7 @@ Write-Host 'Precondition: stop using the computer; set the displays to the requi
 $exe = Join-Path $PSScriptRoot 'build/Release/lcars_host_verify.exe'
 if (-not $DryRun -and @($selected | Where-Object { $_ -in @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count -and -not (Test-Path -LiteralPath $exe)) { throw "Verifier not found: $exe" }
 $failed = $false
-foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress')) {
+foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia')) {
     if ($name -notin $selected) { continue }
     $runs = if ($name -eq 'uia-stress') { 20 } else { 1 }
     for ($i = 1; $i -le $runs; $i++) {
