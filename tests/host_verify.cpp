@@ -352,7 +352,7 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
 int demo_compare(const std::filesystem::path& evidence) {
     std::filesystem::create_directories(evidence);
     std::ofstream out(evidence / "demo-render-compare.tsv");
-    out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
+    out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
     int failures=0, rows=0;
     for (const auto* appearance : {&web_appearance(), &material_appearance()})
     for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<8; ++scenario) {
@@ -388,7 +388,13 @@ int demo_compare(const std::filesystem::path& evidence) {
         std::string name="SD-"+std::string(1,char('a'+scenario));
         std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
         write_comparison_bmp(evidence/(key+"-cpu.bmp"),result.reference); emit_failure_if_needed(evidence,key,result,pass);
-        out << name << '\t' << (appearance==&web_appearance()?"web":"material") << '\t' << (dark?"dark":"light") << '\t' << (scale==1.f?"960x720":"640x480") << '\t' << scale << '\t' << host.renderer_name() << '\t' << double(result.comparison.different_pixels)/(960*720) << '\t' << result.comparison.maximum_difference << '\t' << result.roles << '\t' << result.failed_roles << '\t';
+        out << name << '\t' << (appearance==&web_appearance()?"web":"material") << '\t' << (dark?"dark":"light") << '\t' << (scale==1.f?"960x720":"640x480") << '\t' << scale << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
+#ifdef NDEBUG
+            << "Release"
+#else
+            << "Debug"
+#endif
+            << '\t' << double(result.comparison.different_pixels)/(960*720) << '\t' << result.comparison.maximum_difference << '\t' << result.roles << '\t' << result.failed_roles << '\t';
         for(const auto& region:result.regions) out << region.owner << ':' << region.role << ':' << (region.passed?"PASS":"FAIL") << ',';
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
