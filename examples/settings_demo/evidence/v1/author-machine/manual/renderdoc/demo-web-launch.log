@@ -1,0 +1,9 @@
+﻿Launching 'E:\LcarsUI\.scratch\worktrees\v1-integration\build\Debug\lcars_settings_demo_web.exe' with params: --settings-dir C:\Users\user\AppData\Local\Temp\rd-62c9c6c9df2e42868aa1bc437448c0d8
+renderdoccmd.exe : Launched as ID 38920
+At C:\Users\user\AppData\Local\Temp\claude\f18703c726ed87dd\826403a4-3861-4d35-a482-eb26d9ae26e5\scratchpad\rdoc-captur
+e.ps1:19 char:38
++ ... 'Continue'; & $rdoc capture -c $template -d (Split-Path $Exe) $Exe @E ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Launched as ID 38920:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

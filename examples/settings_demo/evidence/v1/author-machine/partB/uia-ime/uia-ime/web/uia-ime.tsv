@@ -1,0 +1,2 @@
+﻿"case"	"expected"	"actual"	"status"
+"UIA21"	"SetValue rejected; committed Value and Bopomofo preedit unchanged"	"UIA SetValue rejected; committed Value unchanged; Bopomofo preedit intact; client exit=0"	"PASS"

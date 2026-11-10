@@ -1,14 +1,19 @@
+#include "utf.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
+#include "uia_provider.hpp"
 #include <windowsx.h>
 #include <imm.h>
+#include <objbase.h>
+#include <UIAutomation.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
 
 namespace lcars::detail {
 namespace {
@@ -113,8 +118,11 @@ Query<std::u16string> WindowsClipboard::read() {
 }
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                         const DesktopOptions& options, bool trace, bool background)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll) {
+                         const DesktopOptions& options, bool trace, bool background, RendererTestHooks* hooks)
+    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
+      text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
+    hooks_ = hooks; debug_context_ = options.debug_context;
+    configure_font(ui.presentation().font_family);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW wc{};
@@ -123,43 +131,119 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = window_class;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw std::runtime_error("Window registration failed");
+    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) throw StartupError{{StartupFailureKind::window, {}, {}, u"Window registration failed"}};
     auto title = wide(options.title);
     HWND window = CreateWindowExW(background ? WS_EX_NOACTIVATE : 0, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
                                   CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, nullptr, nullptr, wc.hInstance, this);
     if (!window) {
         window_ = nullptr;  // WM_NCCREATE may have attached a window that creation then destroyed
-        throw std::runtime_error("Window creation failed");
+        throw StartupError{{StartupFailureKind::window, {}, {}, u"Window creation failed"}};
     }
     try {
+        if (hooks_ && !hooks_->startup_resource_error.empty()) throw std::runtime_error(hooks_->startup_resource_error);
+        uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
+            RECT client{}; GetClientRect(window_, &client);
+            if (client.right > 0 && client.bottom > 0) frame_ = arrange(client.right, client.bottom, scale());
+            return frame_;
+        });
         input_context_ = ImmGetContext(window_);
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
+        detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        atlas_text_size_ = ui_.presentation().text_size;
+        atlas_font_family_ = ui_.presentation().font_family;
+        detail::access(ui_).on_presentation([this] {
+            const auto& settings = ui_.presentation();
+            const auto clears = text_.atlas_clears();
+            configure_font(settings.font_family);
+            if ((settings.text_size != atlas_text_size_ || settings.font_family != atlas_font_family_) && text_.atlas_clears() == clears)
+                text_.clear_atlas();
+            atlas_text_size_ = settings.text_size;
+            atlas_font_family_ = settings.font_family;
+            if (!window_) return;
+            RECT client{}; GetClientRect(window_, &client);
+            if (client.right <= 0 || client.bottom <= 0) return;
+            reveal_ = detail::access(ui_).focused();
+            frame_ = arrange(client.right, client.bottom, scale());
+            reveal_.clear();
+            sync_ime();
+        });
         detail::access(ui_).before_focus([this] { finish_composition(); });
-        renderer_ = std::make_unique<Renderer>(window_);
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        capabilities_ = renderer_->capabilities();
         client_size(options.width, options.height);
+        PostMessageW(window_,WM_APP+43,0,0);
     } catch (...) {
         release();  // the destructor will not run for a half-built host
         throw;
     }
 }
+Result DesktopHost::rebuild_renderer() {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (painting_) return {Status::busy, u"Painting in progress"};
+    if (!renderer_failure_) return {Status::invalid_value, u"Renderer is not failed"};
+    if (hooks_) ++hooks_->rebuild_attempts;
+    renderer_.reset();
+    struct ShaderOverride {
+        RendererTestHooks* hooks;
+        std::string previous;
+        explicit ShaderOverride(RendererTestHooks* value): hooks(value) {
+            if (hooks) { previous=hooks->fragment_shader_override; if (hooks->fail_rebuild_once) { hooks->fail_rebuild_once=false; hooks->fragment_shader_override="invalid shader"; } }
+        }
+        ~ShaderOverride() { if (hooks) hooks->fragment_shader_override=std::move(previous); }
+    } shader_override(hooks_);
+    try {
+        renderer_ = std::make_unique<Renderer>(window_, hooks_, debug_context_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        renderer_->restore_atlas(text_.atlas_pages());
+        capabilities_=renderer_->capabilities();
+    } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
+      catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,utf16_from_utf8(text)}; }
+    renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
+    schedule_tooltip();
+    InvalidateRect(window_,nullptr,FALSE);
+    return {};
+}
+void DesktopHost::fail_renderer(RendererFailure failure) {
+    renderer_failure_=std::move(failure);
+    if (window_) KillTimer(window_, tooltip_timer);
+    detail::access(ui_).renderer_failed(true);
+    if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
+        if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
+        detail::access(ui_).composition_cancel();
+    }
+    PostMessageW(window_,WM_APP+44,0,0);
+}
+void DesktopHost::configure_font(std::u16string_view family) {
+    if(font_configured_ && requested_font_==family) return;
+    PresentationSettings settings; settings.font_family=family;
+    auto resolution=system_font_catalog().resolve(settings);
+    enqueue_font_diagnostics(diagnostics_,font_configured_?0:system_font_catalog_error(),resolution);
+    requested_font_=family; font_configured_=true;
+    text_.set_primary_family(!family.empty() && resolution.requested_available ? resolution.primary : std::u16string{}, true);
+    if(window_) PostMessageW(window_,WM_APP+43,0,0);
+}
 DesktopHost::~DesktopHost() { release(); }
 void DesktopHost::release() {
+    if (uia_) { uia_->close(); uia_.reset(); }
     // A host may be destroyed while its Ui remains alive. Discard an unfinished
     // preedit on both sides before detaching the window; closing must not leave
     // an orphaned composition in the retained text session.
     const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
-    if (window_ && session && session->composing) {
+    if (window_ && session && session->composing && !renderer_failure_) {
         if (auto imc = ImmGetContext(window_)) {
             ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
             ImmReleaseContext(window_, imc);
         }
         detail::access(ui_).composition_cancel();
     }
+    detail::access(ui_).on_presentation({});
     detail::access(ui_).on_invalidate({});
+    detail::access(ui_).on_semantic_pending({});
+    detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
     if (window_) KillTimer(window_, tooltip_timer);
     detail::access(ui_).before_focus({});
@@ -180,9 +264,9 @@ void DesktopHost::client_size(int width_dip, int height_dip) {
 }
 int DesktopHost::run() {
     MSG msg{};
-    BOOL result;
-    while ((result = GetMessageW(&msg, nullptr, 0, 0)) > 0) dispatch(msg);
-    return result < 0 || failed_ ? 1 : static_cast<int>(msg.wParam);
+    BOOL result = 0;
+    while (!quit_ && (result = GetMessageW(&msg, nullptr, 0, 0)) > 0) dispatch(msg);
+    return result < 0 || failed_ ? 1 : quit_ ? 0 : static_cast<int>(msg.wParam);
 }
 void DesktopHost::dispatch(MSG& message) {
     TranslateMessage(&message);
@@ -192,6 +276,7 @@ void DesktopHost::dispatch(MSG& message) {
 void DesktopHost::schedule_tooltip() {
     if (!window_) return;
     KillTimer(window_, tooltip_timer);
+    if (renderer_failure_) return;
     if (auto deadline = detail::access(ui_).tooltip_deadline()) {
         auto now = static_cast<std::uint64_t>(GetTickCount64());
         auto wait = *deadline > now ? *deadline - now : 1;
@@ -215,86 +300,189 @@ void DesktopHost::pump() {
         if (msg.message == WM_QUIT) { failed_ = true; break; }
         dispatch(msg);
     }
+    diagnostics_.drain();
 }
 
 Frame DesktopHost::arrange(int width, int height, float scale) {
+    if (atlas_scale_ && atlas_scale_ != scale) text_.clear_atlas();
+    atlas_scale_ = scale;
     return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
+    if (renderer_failure_ || painting_) return;
+    struct Guard { bool& flag; explicit Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard(painting_);
+    auto start=std::chrono::steady_clock::now();
     RECT r{};
     GetClientRect(window_, &r);
     if (!renderer_ || r.right <= 0 || r.bottom <= 0) return;
     float s = scale();
+    if(perf_enabled_ && perf_offscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
-    Canvas canvas(r.right, r.bottom, appearance_.palette().background);
+    RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
     paint_observations_.clear();
-    canvas.count_ink = observe_paint_;
-    draw(canvas, frame_, s, GetFocus() == window_);
-    renderer_->draw(canvas);
+    recording.count_ink = observe_paint_;
+    draw(recording, frame_, s, GetFocus() == window_);
+    for (const auto& observation : recording.list.observations) {
+        paint_observations_.push_back({static_cast<PaintObservation::Type>(observation.type), observation.owner, observation.text,
+            observation.bounds, observation.clip, observation.color,
+            command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
+            observation.popup, observation.tooltip});
+    }
+    if(perf_enabled_ && perf_delay_) Sleep(static_cast<DWORD>(perf_delay_));
+    auto before_gpu=std::chrono::steady_clock::now();
+    double submission=0; std::chrono::steady_clock::time_point presented;
+    double gpu=0;
+    try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perf_enabled_, perf_offscreen_, &submission, &presented); }
+    catch (const FrameError& e) {
+        for (auto code : e.codes) diagnostics_.push(frame_diagnostic(code));
+        PostMessageW(window_,WM_APP+43,0,0);
+        fail_renderer(e.failure); return;
+    }
+    catch (const std::exception& e) {
+        std::string message=e.what();
+        PostMessageW(window_,WM_APP+43,0,0);
+        fail_renderer({RendererFailureKind::resource_failed,0,utf16_from_utf8(message)}); return;
+    }
+    auto end=std::chrono::steady_clock::now();
+    if(perf_enabled_) {
+        FILETIME created{},exited{},kernel{},user{},now{}; GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user); GetSystemTimeAsFileTime(&now);
+        ULARGE_INTEGER c{},n{}; c.LowPart=created.dwLowDateTime; c.HighPart=created.dwHighDateTime; n.LowPart=now.dwLowDateTime; n.HighPart=now.dwHighDateTime;
+        double age=double(n.QuadPart-c.QuadPart)/10000. - std::chrono::duration<double,std::milli>(end-presented).count();
+        if(first_present_ms_<0) first_present_ms_=age;
+        double cpu=std::chrono::duration<double,std::milli>(before_gpu-start).count();
+        perf_samples_.add(age-std::chrono::duration<double,std::milli>(presented-start).count(),cpu+submission+gpu);
+        if(input_time_.time_since_epoch().count()) { input_present_ms_=std::chrono::duration<double,std::milli>(presented-input_time_).count(); input_time_={}; }
+    }
     ++frames_;
     sync_ime();
+    PostMessageW(window_,WM_APP+43,0,0);
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
-    return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
+    auto frame=lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
+    diagnostics_.drain(); return frame;
 }
-Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Canvas* copy) {
+Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    Canvas canvas(width, height, appearance_.palette().background);
-    draw(canvas, frame, s, true);
-    if (copy) *copy = canvas;
-    std::vector<unsigned char> pixels(canvas.pixels);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    draw(recording, frame, s, true);
+    auto image = render_cpu(recording.list, width, height);
+    if (copy) *copy = image;
+    std::vector<unsigned char> pixels(image.pixels);
     for (std::size_t i = 0; i < pixels.size(); i += 4) std::swap(pixels[i], pixels[i + 2]);
     BITMAPFILEHEADER file{};
     BITMAPINFOHEADER info{};
     file.bfType = 0x4d42;
     file.bfOffBits = sizeof(file) + sizeof(info);
     file.bfSize = file.bfOffBits + static_cast<DWORD>(pixels.size());
-    info.biSize = sizeof(info); info.biWidth = width; info.biHeight = height; info.biPlanes = 1; info.biBitCount = 32;
+    info.biSize = sizeof(info); info.biWidth = width; info.biHeight = -height; info.biPlanes = 1; info.biBitCount = 32;
     info.biSizeImage = static_cast<DWORD>(pixels.size());
     std::ofstream out(bmp, std::ios::binary);
     out.write(reinterpret_cast<const char*>(&file), sizeof(file));
     out.write(reinterpret_cast<const char*>(&info), sizeof(info));
     out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
     if (!out) throw std::runtime_error("Screenshot write failed");
-    return frame;
+    diagnostics_.drain(); return frame;
 }
 
-void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_focused) {
+GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
+    auto frame = arrange(width, height, s);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    draw(recording, frame, s, true);
+    auto reference = render_cpu(recording.list, width, height);
+    std::vector<Rect> regions;
+    std::vector<GpuRegion> observed;
+    std::string owner; bool popup=false;
+    unsigned roles=0;
+    Rect clip{0,0,width,height};
+    for (std::size_t i=0;i<recording.list.commands.size();++i) {
+        const auto& command=recording.list.commands[i];
+        if(command.type==DrawCommand::Type::clip){clip=intersect(command.rect,{0,0,width,height});continue;}
+        if(command.type==DrawCommand::Type::begin_group){owner=command.owner;popup=command.popup;continue;}
+        if(command.type==DrawCommand::Type::end_group){owner.clear();popup=false;continue;}
+        if(command.role==PaintRole::content)continue;
+        auto glyph=command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage};
+        auto bounds=intersect(glyph.rect,clip);
+        if(bounds.w>0 && bounds.h>0){
+            bool ink=command_ink(recording.list,i,i+1,clip,width,height);
+            regions.push_back(bounds); observed.push_back({bounds,owner,static_cast<unsigned>(command.role),popup,ink,false});
+            if(ink)roles |= static_cast<unsigned>(command.role);
+        }
+    }
+    auto gpu_list=recording.list;
+    for(auto& command:gpu_list.commands){
+        unsigned role=static_cast<unsigned>(command.role);
+        if(fault==1 && (role & static_cast<unsigned>(PaintRole::caret))) ++command.rect.x;
+        if(fault==2 && (role & static_cast<unsigned>(PaintRole::focus_indicator))) command.color.a=0;
+    }
+    auto actual = renderer_->read_back(gpu_list, width, height);
+    auto result=compare_images(reference,actual,regions);
+    unsigned failed_roles=0;
+    for(std::size_t i=0;i<observed.size();++i){
+        observed[i].passed=observed[i].ink && result.region_pass[i];
+        if(!observed[i].passed)failed_roles |= observed[i].role;
+    }
+    bool passed=!failed_roles && result.regions_ok && result.different_pixels*200<=static_cast<std::size_t>(width)*height;
+    return {std::move(reference),std::move(actual),std::move(result),roles,failed_roles,std::move(observed),passed};
+}
+std::string DesktopHost::renderer_name() const { return renderer_->name(); }
+
+bool DesktopHost::compare_legacy(int width, int height, float s) {
+    auto frame = arrange(width, height, s);
+    Canvas old(width, height, appearance_.palette(ui_.presentation().variant).background);
+    draw(old, frame, s, true);
+    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    draw(recording, frame, s, true);
+    return old.pixels == render_cpu(recording.list, width, height).pixels;
+}
+
+template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
-    const auto p = appearance_.palette();
+    const auto p = appearance_.palette(ui_.presentation().variant);
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
-        Canvas& canvas;
+        Target& canvas;
         Text& renderer;
         std::vector<PaintObservation>* observations;
         PaintAdapter(UiState& ui, const Placement& item, const Semantics& semantics, const Appearance& appearance,
-                     float scale, bool window_focused, Canvas& target, Text& text, std::vector<PaintObservation>* events)
+                     float scale, bool window_focused, Target& target, Text& text, std::vector<PaintObservation>* events)
             : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
+        void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.current_role=value; }
+        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                if (observations) canvas.list.observations.push_back({type, placement.id, std::move(text), bounds,
+                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size()});
+            }
+        }
+        std::size_t cursor() const {
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+            return 0;
+        }
         void fill(Rect rect, Color color) override {
-            auto before = canvas.ink; canvas.fill(rect, color);
-            if (observations) observations->push_back({PaintObservation::Type::fill, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+            auto begin=cursor(); canvas.fill(rect, color);
+            observe(DrawObservation::Type::fill, {}, rect, color, begin);
         }
         void rounded(Rect rect, int radius, Color color) override {
-            auto before = canvas.ink; canvas.rounded(rect, radius, color);
-            if (observations) observations->push_back({PaintObservation::Type::rounded, placement.id, {}, rect, canvas.clip, color, canvas.ink != before, placement.popup, placement.tooltip});
+            auto begin=cursor(); canvas.rounded(rect, radius, color);
+            observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
             auto layout = renderer.shape(value, pixels);
-            auto before = canvas.ink;
+            auto begin=cursor();
             renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
-            if (observations) observations->push_back({PaintObservation::Type::text, placement.id, std::u16string(value),
-                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, canvas.clip, color,
-                canvas.ink != before, placement.popup, placement.tooltip});
+            observe(DrawObservation::Type::text, std::u16string(value),
+                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin);
         }
     };
     for (const auto& item : frame.items) {
         canvas.clip = intersect(item.clip, whole);
         auto semantics = detail::access(ui_).describe(item.id);
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
     }
     for (const auto& region : frame.regions) {
         canvas.clip = intersect(region.clip, whole);
@@ -305,38 +493,58 @@ void DesktopHost::draw(Canvas& canvas, const Frame& frame, float s, bool window_
     }
     if (frame.modal) {
         canvas.clip = whole;
-        for (int y = 0; y < canvas.height; ++y)
-            for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, {0, 0, 0}, 110);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {p.scrim.r, p.scrim.g, p.scrim.b, p.scrim_alpha});
+        } else {
+            for (int y = 0; y < canvas.height; ++y)
+                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, p.scrim, p.scrim_alpha);
+        }
         canvas.rounded(frame.modal_panel, static_cast<int>(appearance_.radius() * s), p.surface);
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
         if (item.tooltip) {
-            auto before_border = canvas.ink;
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,true,true);
+            auto observe_tooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                    if (observe_paint_ && canvas.count_ink) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
+                        canvas.clip, color, true, true, begin, canvas.list.commands.size()});
+                }
+            };
+            auto cursor = [&]() -> std::size_t {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+                return 0;
+            };
+            auto begin = cursor();
             canvas.rounded(item.bounds, static_cast<int>(appearance_.radius() * s), p.border);
-            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
-                item.id, {}, item.bounds, canvas.clip, p.border, canvas.ink != before_border, true, true});
+            observe_tooltip(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
             int inset = std::max(1, static_cast<int>(std::lround(1 * s)));
             Rect inner{item.bounds.x + inset, item.bounds.y + inset,
                        std::max(0, item.bounds.w - 2 * inset), std::max(0, item.bounds.h - 2 * inset)};
-            auto before_surface = canvas.ink;
+            begin = cursor();
             canvas.rounded(inner, static_cast<int>(appearance_.radius() * s), p.surface);
-            if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::rounded,
-                item.id, {}, inner, canvas.clip, p.surface, canvas.ink != before_surface, true, true});
+            observe_tooltip(DrawObservation::Type::rounded, {}, inner, p.surface, begin);
             canvas.clip = intersect(canvas.clip, inner);
             for (const auto& line : item.lines) {
-                auto before = canvas.ink;
+                begin = cursor();
                 text_.draw(canvas, text_.shape(line.text, item.text_size), line.bounds.x,
                            line.bounds.y + ShapedMeasure::baseline(item.text_size), p.text);
-                if (observe_paint_ && canvas.count_ink) paint_observations_.push_back({PaintObservation::Type::text,
-                    item.id, line.text, line.bounds, canvas.clip, p.text, canvas.ink != before, true, true});
+                observe_tooltip(DrawObservation::Type::text, line.text, line.bounds, p.text, begin);
             }
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
             continue;
         }
         auto semantics = detail::access(ui_).describe(item.id);
         if (!semantics || (!frame.modal && !semantics->expanded)) continue;
         PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, window_focused, canvas, text_, observe_paint_ && canvas.count_ink ? &paint_observations_ : nullptr};
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
+        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
+        if (item.dropdown_panel) for (const auto& region : frame.regions) {
+            if (region.state != &detail::access(ui_).dropdown_scroll(item.id) || !region.thumb.h) continue;
+            canvas.rounded(region.track, region.track.w / 2, p.panel);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+        }
     }
     canvas.clip = whole;
 }
@@ -406,6 +614,11 @@ void DesktopHost::after_input(const Id& focus_before) {
 }
 
 LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
+    const bool close_key = msg == WM_SYSKEYDOWN && w == VK_F4 && (l & (1LL << 29));
+    if (renderer_failure_ && !close_key && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
+        (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || (msg >= WM_IME_STARTCOMPOSITION && msg <= WM_IME_COMPOSITION) ||
+        msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_TIMER || msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE)) return 0;
+    if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));
     if (tracing_) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
                             : msg == WM_LBUTTONDOWN ? L"WM_LBUTTONDOWN" : msg == WM_LBUTTONUP ? L"WM_LBUTTONUP" : nullptr;
@@ -416,7 +629,24 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
     }
     switch (msg) {
+    case WM_GETOBJECT:
+        if (uia_ && static_cast<LONG>(l) == UiaRootObjectId) return uia_->get_object(w, l);
+        break;
+    case uia_dispatch_message:
+        if (uia_) uia_->dispatch();
+        return 0;
+    case WM_APP+44:
+        if (renderer_failure_) {
+            if (failure_callback_) { auto failure = *renderer_failure_; failure_callback_(failure); }
+            else { quit_ = true; release(); }
+        }
+        return 0;
+    case WM_APP+43:
+        diagnostics_.drain(); return 0;
+    case WM_APP+45:
+        ui_.semantics().dispatch_events(); return 0;
     case WM_PAINT: {
+        ++paint_messages_;
         PAINTSTRUCT ps{};
         BeginPaint(window_, &ps);
         try { paint(); } catch (...) { EndPaint(window_, &ps); throw; }
@@ -436,11 +666,15 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         info->ptMinTrackSize = {static_cast<LONG>(400 * scale()), static_cast<LONG>(300 * scale())};
         return 0;
     }
-    case WM_CLOSE:
-        // Use the same IME completion policy as a focus transition before the host is torn down.
-        log_ime(L"host:close");
-        finish_composition();
-        PostQuitMessage(0); return 0;
+    case WM_CLOSE: {
+        if (closing_request_) return 0;
+        closing_request_ = true;
+        if (!renderer_failure_) { log_ime(L"host:close"); finish_composition(); }
+        auto decision = close_callback_ ? close_callback_() : CloseDecision::close;
+        if (decision == CloseDecision::close) quit_ = true;
+        closing_request_ = false;
+        return 0;
+    }
     case WM_SETFOCUS: {
         detail::access(ui_).window_active(true);
         POINT point{};
@@ -474,7 +708,6 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
         return 0;
     case WM_MOUSEWHEEL: {
-        if (frame_.modal) return 0;
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
@@ -488,10 +721,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
-        if (!hit || !hit->popup) detail::access(ui_).close_popup();
-        if (!frame_.modal && (!hit || !hit->popup)) {
+        if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
+        if (!frame_.modal || (hit && hit->kind == Kind::dropdown && hit->popup)) {
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
+                if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
                 drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
                 drag_scroll_ = it->state;
@@ -565,6 +799,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         after_input(before);
         return 0;
     }
+    case WM_SYSKEYDOWN:
+        if (w == VK_F4 && (l & (1LL << 29))) { SendMessageW(window_, WM_CLOSE, 0, 0); return 0; }
+        break;
     case WM_KEYDOWN: {
         if (w == VK_PROCESSKEY || w == VK_PACKET) break;  // owned by the IME / injected text
         bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0, shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -648,11 +885,59 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
 }
 
 namespace lcars {
-int run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
-    detail::DesktopHost host(ui, appearance, std::move(page), scroll, options);
-    ShowWindow(host.window(), SW_SHOW);
-    SetFocus(host.window());
-    UpdateWindow(host.window());
-    return host.run();
+struct Desktop::Impl {
+    std::unique_ptr<detail::DesktopHost> host;
+    DesktopOptions options;
+    std::thread::id owner = std::this_thread::get_id();
+};
+Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
+Desktop::~Desktop() = default;
+DesktopCreation Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+    return detail::DesktopHost::create_for_test(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
+}
+DesktopCreation detail::DesktopHost::create_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options, detail::RendererTestHooks* hooks) {
+    try {
+        auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
+        impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
+        auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
+        if (desktop->impl_->options.on_close_requested) {
+            auto ptr = desktop.get();
+            ptr->impl_->host->on_close_request([ptr] { return ptr->impl_->options.on_close_requested(*ptr); });
+        }
+        if (desktop->impl_->options.on_renderer_failed) {
+            auto ptr=desktop.get();
+            ptr->impl_->host->on_renderer_failure([ptr](const RendererFailure& failure) { ptr->impl_->options.on_renderer_failed(*ptr,failure); });
+        }
+        return {Status::ok,{},std::move(desktop)};
+    } catch (const detail::StartupError& e) { return {Status::failed,e.failure,{}}; }
+      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16_from_utf8(message)},{}}; }
+}
+RunResult Desktop::run() {
+    auto& host=*impl_->host;
+    ShowWindow(host.window(),SW_SHOW); SetFocus(host.window()); UpdateWindow(host.window());
+    int result=host.run();
+    auto failure=host.renderer_failure();
+    host.close();
+    if (failure) return {Status::renderer_failed,failure,{}};
+    return {result ? Status::failed : Status::ok,{}, {}};
+}
+Result Desktop::set_title(std::u16string title) {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (!valid_single_line(title, title.size())) return {Status::invalid_value, u"Invalid title"};
+    if (!SetWindowTextW(impl_->host->window(), detail::wide(title).c_str())) return {Status::failed, u"Unable to set window title"};
+    return {};
+}
+Result Desktop::close() {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    impl_->host->request_quit(); return {};
+}
+void* Desktop::native_window() const { return impl_->host->window(); }
+Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
+bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
+RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
+RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+    auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(options));
+    if (!creation.desktop) return {creation.status,{},creation.failure};
+    return creation.desktop->run();
 }
 }

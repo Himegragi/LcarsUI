@@ -1,0 +1,120 @@
+{
+  "format": "lcars-settings-demo",
+  "version": 1,
+  "general": {
+    "name": "測試使用者",
+    "notices": false,
+    "mode": "normal",
+    "region": "north",
+    "volume": 15
+  },
+  "items": [
+    {
+      "id": "T001",
+      "name": "範本 01",
+      "note": ""
+    },
+    {
+      "id": "T002",
+      "name": "範本 02",
+      "note": ""
+    },
+    {
+      "id": "T003",
+      "name": "範本 03",
+      "note": ""
+    },
+    {
+      "id": "T004",
+      "name": "範本 04",
+      "note": ""
+    },
+    {
+      "id": "T005",
+      "name": "共用範本",
+      "note": ""
+    },
+    {
+      "id": "T006",
+      "name": "共用範本",
+      "note": ""
+    },
+    {
+      "id": "T007",
+      "name": "範本 07",
+      "note": ""
+    },
+    {
+      "id": "T008",
+      "name": "範本 08",
+      "note": ""
+    },
+    {
+      "id": "T009",
+      "name": "範本 09",
+      "note": ""
+    },
+    {
+      "id": "T010",
+      "name": "範本 10",
+      "note": ""
+    },
+    {
+      "id": "T011",
+      "name": "範本 11",
+      "note": ""
+    },
+    {
+      "id": "T012",
+      "name": "範本 12",
+      "note": ""
+    },
+    {
+      "id": "T013",
+      "name": "範本 13",
+      "note": ""
+    },
+    {
+      "id": "T014",
+      "name": "範本 14",
+      "note": ""
+    },
+    {
+      "id": "T015",
+      "name": "範本 15",
+      "note": ""
+    },
+    {
+      "id": "T016",
+      "name": "範本 16",
+      "note": ""
+    },
+    {
+      "id": "T017",
+      "name": "範本 17",
+      "note": ""
+    },
+    {
+      "id": "T018",
+      "name": "範本 18",
+      "note": ""
+    },
+    {
+      "id": "T019",
+      "name": "範本 19",
+      "note": ""
+    },
+    {
+      "id": "T020",
+      "name": "範本 20",
+      "note": ""
+    }
+  ],
+  "next_item_id": 21,
+  "presentation": {
+    "font_family": "",
+    "text_size": 16,
+    "variant": "light",
+    "density": "standard"
+  }
+}

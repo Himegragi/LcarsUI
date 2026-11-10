@@ -1,0 +1,19 @@
+#pragma once
+#include <windows.h>
+#include <memory>
+#include <functional>
+namespace lcars { class Ui; struct Frame; }
+namespace lcars::detail {
+class UiaBridge {
+public:
+    struct Impl;
+    UiaBridge(Ui&, HWND, std::function<const Frame&()>);
+    ~UiaBridge();
+    LRESULT get_object(WPARAM, LPARAM);
+    void dispatch();
+    void close();
+private:
+    std::shared_ptr<Impl> impl_;
+};
+constexpr UINT uia_dispatch_message = WM_APP + 46;
+}

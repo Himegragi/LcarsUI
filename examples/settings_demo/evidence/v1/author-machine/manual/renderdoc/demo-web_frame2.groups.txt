@@ -1,0 +1,12 @@
+﻿app.nav
+app.page_title
+general.name
+general.notices
+general.mode
+general.region
+general.volume
+app.status
+app.undo
+app.redo
+app.revert
+app.save

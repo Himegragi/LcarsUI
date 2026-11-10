@@ -1,0 +1,3 @@
+scenario	appearance	font_mode	resolution	scale	renderer_driver	windows_build	configuration	mode	phase	count	p50_ms	p95_ms	p99_ms	max_ms	over_16_7	startup_ms	input_present_ms	presents	wm_paint	cpu_ms	delay_ms	peak_working_set_bytes	run_kind	status
+startup	web	default	1920x1080	1	NVIDIA GeForce RTX 3060/PCIe/SSE2 / 3.3.0 NVIDIA 610.88	26300	Release	window	warmup	1	17.2036	17.2036	17.2036	17.2036	1	464.132	0	0	0	0	0	69083136	measurement	PASS
+startup	web	default	1920x1080	1	NVIDIA GeForce RTX 3060/PCIe/SSE2 / 3.3.0 NVIDIA 610.88	26300	Release	window	steady	0	0	0	0	0	0	464.132	0	0	0	0	0	69083136	measurement	PASS

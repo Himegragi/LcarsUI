@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // State transitions used by both the assembled core and native X04 checks.
 // Each driver starts with a fresh Form and restores its application model afterwards.
 #include "edit_form.hpp"
@@ -6,26 +6,41 @@
 #include <algorithm>
 
 namespace x04 {
-// The inventory uses the application's typed handles and explicit page membership. It is
-// shared by the core and native checks so adding a component changes both sweeps.
-struct Entry { std::string_view page; lcars::ComponentHandle handle; };
-inline std::vector<Entry> inventory(edit_form::Form& form) {
-    auto& h = form.handles; auto& l = form.list->handles;
-    return {
-        {"shared", h.tabs},
-        {"v01", h.title}, {"v01", h.intro}, {"v01", h.state}, {"v01", h.draft}, {"v01", h.result}, {"v01", h.count},
-        {"v01", h.name_label}, {"v01", h.name_help}, {"v01", h.name_error}, {"v01", h.name},
-        {"v01", h.normal}, {"v01", h.read_only}, {"v01", h.disabled}, {"v01", h.error}, {"v01", h.long_text},
-        {"v01", h.offline_disabled}, {"v01", h.region_empty}, {"v01", h.reset}, {"v01", h.apply}, {"v01", h.latest},
-        {"v01", h.notices_latest}, {"v01", h.mode_latest}, {"v01", h.region_latest}, {"v01", h.volume_latest},
-        {"v01", h.notices}, {"v01", h.mode}, {"v01", h.region}, {"v01", h.volume},
-        {"v02", l.title}, {"v02", l.detail}, {"v02", l.search}, {"v02", l.list}, {"v02", l.zero}, {"v02", l.one},
-        {"v02", l.twenty}, {"v02", l.hundred}, {"v02", l.sort}, {"v02", l.erase}, {"v02", l.disable_eight}, {"v02", l.reset},
-        {"v03", h.v03_title}, {"v03", h.progress_source}, {"v03", h.dialog_result}, {"v03", h.progress},
-        {"v03", h.progress_zero}, {"v03", h.progress_half}, {"v03", h.progress_full}, {"v03", h.progress_below},
-        {"v03", h.progress_above}, {"v03", h.reset_v03}, {"v03", h.dialog_open}, {"v03", h.dialog_temporary},
-        {"modal", h.dialog_title}, {"modal", h.dialog_body}, {"modal", h.dialog_cancel}, {"modal", h.dialog_confirm}
+// Enumerate the semantic tree; the existing typed drivers still exercise each component.
+struct Entry { std::string page; lcars::ComponentHandle handle; };
+inline std::vector<Entry> inventory(lcars::Ui& ui) {
+    std::vector<Entry> result;
+    auto& state = lcars::detail::access(ui);
+    auto visit = [&](auto&& self, const lcars::NodeRef& parent) -> void {
+        auto children = ui.semantics().children(parent);
+        if (!children) return;
+        for (const auto& ref : *children) {
+            auto node = ui.semantics().get(ref);
+            if (!node) continue;
+            const auto page = state.semantic_page(ref.id);
+            if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
+                result.push_back({page, state.layout_handle(ref.id)});
+            if (node->role == lcars::Role::dialog) self(self, ref);
+        }
     };
+    visit(visit, {});
+    // Drivers compare independently constructed fixtures by index; keep that order stable
+    // even when the semantic tree's reading order changes with the arranged page.
+    const auto& controls = state.controls();
+    auto ordinal = [&](const Entry& entry) {
+        auto id = state.layout_id(entry.handle);
+        return std::find_if(controls.begin(), controls.end(), [&](const auto& c) { return id && c.id == *id; }) - controls.begin();
+    };
+    std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) { return ordinal(a) < ordinal(b); });
+    return result;
+}
+inline std::vector<Entry> inventory(edit_form::Form& form) { return inventory(form.ui); }
+inline std::vector<std::string> pages(edit_form::Form& form) {
+    std::vector<std::string> result;
+    auto tabs = form.handles.tabs.describe();
+    auto children = form.ui.semantics().children({tabs->id});
+    if (children) for (const auto& ref : *children) if (ref.item) result.push_back(ref.item->id);
+    return result;
 }
 inline std::optional<lcars::Semantics> describe(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& handle) -> std::optional<lcars::Semantics> {
@@ -117,11 +132,12 @@ inline bool set_enabled(const lcars::ComponentHandle& value, bool enabled) {
         else return false;
     }, value);
 }
-inline bool focus(const lcars::ComponentHandle& value) {
-    return std::visit([](const auto& h) {
-        if constexpr (requires { h.focus(); }) return bool(h.focus());
-        else return false;
-    }, value);
+inline bool focus_applicable(const lcars::Semantics& semantic) {
+    return semantic.enabled && semantic.focusable;
+}
+inline bool focus(lcars::Ui& ui, const lcars::ComponentHandle& value) {
+    auto id = lcars::detail::access(ui).layout_id(value);
+    return id && bool(ui.semantics().perform({*id}, lcars::Verb::focus));
 }
 inline bool disabled_retry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {
@@ -178,25 +194,32 @@ inline bool same_model(const std::vector<lcars::Semantics>& a, const std::vector
             a[i].source_conflict != b[i].source_conflict || !same_selection(a[i], b[i])) return false;
     return true;
 }
-inline bool restore_selected(edit_form::Form& form, const Entry& entry) {
+inline bool restore_selected(edit_form::Form& form, const Entry& entry, const lcars::Semantics& before, const lcars::PresentationSettings& presentation) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
+        if constexpr (std::is_same_v<T, CheckboxHandle>) {
+            auto current = h.draft();
+            return current && before.checked && (*current == *before.checked || bool(h.toggle()));
+        } else if constexpr (std::is_same_v<T, RadioGroupHandle>) return bool(form.handles.reset.invoke());
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
     }, entry.handle);
-    return restored && baseline_context(form);
+    return restored && bool(form.ui.set_presentation(presentation)) && baseline_context(form);
 }
 // Applicability follows the application-owned connection, not component IDs.
 inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
     auto field = std::get_if<lcars::TextHandle>(&entry.handle);
-    return field && form.list && form.list->search_connection().owns(*field);
+    if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
+    auto semantic = describe(entry.handle);
+    return semantic && (semantic->kind == lcars::Kind::slider || semantic->kind == lcars::Kind::checkbox) &&
+        !lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, semantic->id);
 }
-inline bool group_conflict_supported(const lcars::Semantics& s) {
+inline bool group_conflict_supported(edit_form::Form& form, const lcars::Semantics& s) {
     using lcars::Kind;
-    return s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
+    bool type_supported = s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
+    return type_supported && lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, s.id);
 }
 inline bool drive_group_conflict(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
@@ -266,11 +289,12 @@ inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
     if (entry.page == "shared" || entry.page == "modal" || !form.handles.tabs.activate({std::string(entry.page)})) return false;
     auto target = describe(entry.handle);
     std::u16string padding;
-    for (int i = 0; i < 60; ++i) padding += u"\n";
+    for (int i = 0; i < 60; ++i) padding += u"X04 padding\n";
     lcars::LabelHandle filler;
     if (entry.page == "v01") filler = target->id == form.handles.intro.describe()->id ? form.handles.title : form.handles.intro;
     else if (entry.page == "v02") filler = target->id == form.list->handles.title.describe()->id ? form.list->handles.detail : form.list->handles.title;
-    else filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
+    else if (entry.page == "v03") filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
+    else filler = form.handles.v04_title;
     if (!form.set_clip_padding(filler, std::move(padding))) return false;
     if (target->kind == lcars::Kind::label && target->role == lcars::TextRole::error && !target->target.empty())
         return bool(form.handles.name.set_error(u"X04 clipped error"));
@@ -332,8 +356,7 @@ inline bool drive_error(edit_form::Form& form, const Entry& entry) {
         else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(error_message));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) {
-            form.reject_next_apply_for(ConfirmField{h}, error_message);
-            return form.handles.apply.invoke().status == Status::invalid_value;
+            return bool(detail::access(form.ui).set_error(h.describe()->id, error_message));
         } else return false;
     }, entry.handle);
 }
@@ -359,7 +382,7 @@ inline bool restore_error(edit_form::Form& form, const Entry& entry) {
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(u""));
         else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(u""));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
-                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(form.handles.reset.invoke());
+                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(detail::access(form.ui).set_error(h.describe()->id, u""));
         else return false;
     }, entry.handle);
     return restored && baseline_context(form);
@@ -438,3 +461,4 @@ inline const TextStateDriver name_conflict{
     [](edit_form::Form& form) { return form.handles.latest.invoke(); }
 };
 }
+

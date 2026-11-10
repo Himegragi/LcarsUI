@@ -1,0 +1,6 @@
+﻿font options: 104
+listed: Atkinson Hyperlegible
+selected: Atkinson Hyperlegible
+status: 目前字型：Atkinson Hyperlegible
+screenshot: E:\LcarsUI\.scratch\v1-final\manual\pr03\demo-appearance-atkinson.png
+alive: True responding: True

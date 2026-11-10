@@ -1,4 +1,5 @@
 #include "core_internal.hpp"
+#include "renderer_failure_checks.hpp"
 #include "lcars/appearance.hpp"
 #include <chrono>
 #include <fstream>
@@ -10,11 +11,11 @@ namespace {
 int checks=0;
 void check(bool condition,const char* name){++checks;if(!condition)throw std::runtime_error(name);}
 void core_behavior(){
-    Ui ui({});
-    auto name = ui.add_text({.id = "name", .kind = Kind::text, .value = u"\u7e41\u9ad4\u4e2d\u6587"});
-    auto locked = ui.add_text({.id = "locked", .kind = Kind::text, .value = u"keep", .read_only = true});
-    auto run = ui.add_button({.id = "run", .kind = Kind::button});
-    ui.add_button({.id = "cancel", .kind = Kind::button, .page = "dialog"});
+    Ui ui;
+    auto name = ui.add_text({.id = "name", .kind = Kind::text, .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
+    auto locked = ui.add_text({.id = "locked", .kind = Kind::text, .value = u"keep", .read_only = true}).value.value();
+    auto run = ui.add_button({.id = "run", .kind = Kind::button}).value.value();
+    ui.add_button({.id = "cancel", .kind = Kind::button, .page = "dialog"}).value.value();
     name.connect_source({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
     name.connect_confirmed([](const TextChange&) { return Result{}; });
     locked.connect_source({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});
@@ -51,8 +52,36 @@ void core_behavior(){
     run.bind([]{throw std::runtime_error("extension");return Result{};});
     check(run.invoke().status==Status::failed&&detail::access(ui).stopped(),"Throwing extension stops the affected UI");
     check(name.set_value(u"unsafe").status==Status::failed,"Stopped UI rejects new work");
-    bool duplicate=false;try{Ui bad({{"x",Kind::button,u"","",{}},{"x",Kind::button,u"","",{}}});}catch(const std::invalid_argument&){duplicate=true;}
+    Ui bad; bad.add_button({.id="x", .kind=Kind::button}); bool duplicate = bad.add_button({.id="x", .kind=Kind::button}).status == Status::invalid_value;
     check(duplicate,"Duplicate IDs must be rejected");
+}
+void renderer_failure_admission() {
+    Ui ui;
+    auto name = ui.add_text({.id="name", .kind=Kind::text, .value=u"draft"}).value.value();
+    name.connect_source({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
+    name.connect_confirmed([](const TextChange&) { return Result{}; });
+    check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
+    detail::access(ui).renderer_failed(true);
+    check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");
+    check(detail::access(ui).set_value("missing", u"x").status == Status::not_found, "Missing ID precedes failure");
+    check(detail::access(ui).key_down({.key=Key::tab}).status == Status::renderer_failed, "Failure rejects focus traversal");
+    check(name.enable(false).status == Status::renderer_failed, "Failure rejects disabling focused control");
+    check(name.reset_to_source().status == Status::renderer_failed, "Failure rejects resetting draft");
+    check(detail::access(ui).focused() == "name", "Failure freezes focus");
+    check(ui.add_button({.id="new",.kind=Kind::button}).status == Status::renderer_failed, "Failure rejects adding controls");
+    Status background=Status::ok;
+    std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
+    check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
+    check(name.describe()->operations.empty(), "Failure advertises no operations");
+    auto settings = ui.presentation(); settings.text_size = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
+    check(bool(ui.set_presentation(settings)) && ui.presentation() == settings, "PS10 presentation accepted while failed");
+    auto invalid = settings; invalid.text_size = 29;
+    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == settings, "PS10 invalid presentation stays atomic");
+    Status other_thread = Status::ok;
+    std::thread presentation_worker([&] { other_thread = ui.set_presentation(settings).status; }); presentation_worker.join();
+    check(other_thread == Status::wrong_thread, "PS10 presentation remains UI-thread only");
+    detail::access(ui).renderer_failed(false);
+    check(bool(name.set_value(u"recovered")), "Recovery permits edits");
 }
 void appearances(){
     auto& a=web_appearance();auto& b=material_appearance();
@@ -69,7 +98,7 @@ void appearances(){
 }
 int main(){
     try {
-        core_behavior(); appearances();
+        core_behavior(); renderer_failure_admission(); appearances();
         std::cout << "PASS " << checks << " checks: core admission and appearance geometry\n"; return 0;
     } catch (const std::exception& e) {
         std::cerr << "FAIL after " << checks << " checks: " << e.what() << '\n'; return 1;

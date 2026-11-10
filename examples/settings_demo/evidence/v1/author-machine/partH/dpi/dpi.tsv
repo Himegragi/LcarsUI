@@ -1,0 +1,15 @@
+appearance	case	status	evidence
+web	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+web	D01-selection-return	PASS	Return: selection/focus=1; physical click caret=1
+web	GA05	PASS	100% to 150%; atlas clears=2 -> 3; GPU/CPU text region=1
+web	D01-composition-forward	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+web	D01-composition-return	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+web	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=24,350 737x96 viewport=0,68 799x530 client=799x598 inside=1 hit=1
+web	D01-popup-return	PASS	Return: popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=36,660 1108x144 viewport=0,102 1201x798 client=1201x900 inside=1 hit=1
+material	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+material	D01-selection-return	PASS	Return: selection/focus=1; physical click caret=1
+material	GA05	PASS	100% to 150%; atlas clears=2 -> 3; GPU/CPU text region=1
+material	D01-composition-forward	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+material	D01-composition-return	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+material	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=24,499 737x96 viewport=0,72 799x526 client=799x598 inside=1 hit=1
+material	D01-popup-return	PASS	Return: popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=36,654 1108x144 viewport=0,108 1201x792 client=1201x900 inside=1 hit=1

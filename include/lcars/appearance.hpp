@@ -1,4 +1,5 @@
 #pragma once
+#include "lcars/presentation.hpp"
 #include <string_view>
 #include <string>
 namespace lcars {
@@ -14,7 +15,7 @@ inline Rect intersect(Rect a, Rect b) {
     return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
 }
 struct FieldParts { Rect label, surface, editor; bool underline = false; };
-struct Palette { Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; };
+struct Palette { Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110; };
 // Measured text blocks a field must host. Heights are physical pixels from the text backend.
 struct FieldText {
     int label = 0, description = 0, error = 0;  // wrapped block heights; 0 when absent
@@ -48,6 +49,8 @@ public:
     virtual ~Appearance() = default;
     virtual std::string_view name() const = 0;
     virtual Palette palette() const = 0;
+    virtual bool supports(const ThemeVariant& variant) const { return variant == ThemeVariant::light(); }
+    virtual Palette palette(const ThemeVariant&) const { return palette(); }
     virtual FieldParts field(Rect bounds, int text_size) const = 0;
     virtual int radius() const = 0;
     // S1 form arrangement. scale converts the appearance's DIP spacing to physical pixels;
@@ -58,6 +61,16 @@ public:
     virtual const ComponentPresentation& component_presentation() const {
         static const ComponentPresentation defaults;
         return defaults;
+    }
+    virtual FieldLayout arrange_field(int width, const FieldText& text, float scale, Density) const { return arrange_field(width, text, scale); }
+    virtual int button_height(int line_height, float scale, Density) const { return button_height(line_height, scale); }
+    virtual int button_padding(float scale, Density) const { return button_padding(scale); }
+    virtual ComponentPresentation component_presentation(Density density) const {
+        auto p = component_presentation();
+        if (density == Density::compact) {
+            p.gap = 4; p.gap_small = 2; p.row_padding = 6; p.body_spacing = 8; p.slider_pad = 6;
+        }
+        return p;
     }
     virtual int text_size() const { return 16; }  // body text in DIP
 };

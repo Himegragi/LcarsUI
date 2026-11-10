@@ -22,9 +22,9 @@ Applications retain the handles returned by `Ui::add_text`, `add_button` and `ad
 ```cpp
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
-lcars::Ui ui({});
-auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text});
-auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button});
+lcars::Ui ui;
+auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text}).value.value();
+auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button}).value.value();
 name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
@@ -41,8 +41,84 @@ auto description = name.describe();
 
 Check `Result::status` and query status before using results. Read-only, disabled, expired, wrong-thread and other refusals are observable. Drafts and field history are separate from applied application data. See the consumer for complete connection setup and the [verification record](examples/edit_form/evidence/rework-verification.md) for test scope and platform limits.
 
-## Earlier settings prototype
+## Desktop support
 
-The earlier settings MVP is preserved unchanged on the **local** branch `prototype/mvp-settings` at `e6d3fb3`. Its sources, targets, persistence and smoke tests are not part of this S1 branch. Applicable core and host regressions remain in the S1 tests.
+The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
-The native host currently targets Windows and OpenGL 3.3. Full grapheme, RTL, UIA, MCP, multi-page and cross-monitor DPI coverage are outside S1; see the form documentation for the supported text and IME boundaries. Third-party sources and licenses are listed in [third_party/SOURCES.md](third_party/SOURCES.md).
+The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+## Presentation verification
+
+The presentation matrix runs in `edit_form` with fake measurement and in
+`presentation_matrix_native` with shaped Windows text. Sizes are in DIP; each
+is converted to physical pixels at the requested scale. Both use the same
+component inventory and drivers. Native comparison uses the CPU reference and
+GPU backend; failures save CPU, GPU and difference images.
+
+On an idle author desktop, run `./verify-idle.ps1 -Only presentation`. PR01
+requires Microsoft Bopomofo, Microsoft JhengHei and MingLiU; PR02 requires 100%
+and 150% monitors. The report keeps PR03 and PR04 open: install a per-user font
+and record its catalog entry, file path and display (PR03), then collect user
+feedback and the first frame time after changing fonts (PR04). Generate the
+16 V01 trial images and manifest with:
+
+```powershell
+./build/Release/lcars_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
+```
+
+PR04 requires coordinator review and is not marked as passed by the generator.
+PS10 runs automatically in the `presentation_recovery` CTest. A report with open or failed cases causes the idle
+script to return a failure status.
+
+## Using LcarsUI from another CMake project
+
+LcarsUI ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating LcarsUI. Install both configurations into one prefix:
+
+```powershell
+.\build.ps1 -Configuration Release -Install C:\sdk\LcarsUI
+.\build.ps1 -Configuration Debug -Install C:\sdk\LcarsUI
+```
+
+Then in your project:
+
+```cmake
+cmake_minimum_required(VERSION 3.25)
+project(StationApp LANGUAGES CXX)
+find_package(LcarsUI 0.2 REQUIRED COMPONENTS Desktop AppearanceWeb)
+add_executable(station_app main.cpp)
+target_link_libraries(station_app PRIVATE LcarsUI::Desktop LcarsUI::AppearanceWeb)
+install(FILES "${LcarsUI_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)
+```
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\sdk\LcarsUI
+cmake --build build
+```
+
+Run these commands in a Visual Studio x64 developer environment. Without `build.ps1`, the equivalent framework build and install for each configuration is:
+
+```powershell
+cmake -S . -B build/Release -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+ctest --test-dir build/Release --output-on-failure
+cmake --install build/Release --prefix C:\sdk\LcarsUI
+```
+
+Repeat with `Debug` in the build directory and build type. Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build LcarsUI. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. LcarsUI itself builds with clang-cl and Ninja.
+
+Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `Desktop`, and `Diagnostics`. Each appearance and Desktop automatically imports Core. Desktop includes the Windows host, OpenGL, text, UI Automation, FreeType and HarfBuzz. Diagnostics is available in a full desktop build. Without `COMPONENTS`, only Core is imported. All public headers are installed regardless of the selected component; using a Desktop or Diagnostics API requires linking its corresponding target. Draw lists and the rendering backend are internal.
+
+If you link Desktop, credit FreeType in your product documentation: show `lcars::third_party_notices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `LcarsUI_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
+
+## Updating third-party dependencies
+
+1. Replace the relevant vendored archive or Khronos header under `third_party/`, retaining the exact upstream bytes. Review the new source and license files, including any added or changed license obligations.
+2. Update version, commit, URL, SHA256 and, where applicable, license-file and credit metadata in `cmake/ThirdPartyManifest.cmake`; update the matching human-readable entries in `third_party/SOURCES.md`. Preserve the binary attributes in `.gitattributes`.
+3. Configure a build with the updated manifest, then regenerate the checked-in notices:
+
+   ```powershell
+   cmake --build build/Release --target update_third_party_notices
+   ctest --test-dir build/Release -R third_party_notices --output-on-failure
+   ```
+
+4. Review `THIRD_PARTY_NOTICES.txt`, rebuild and run the full tests and installed-package verification. Commit the vendored files, manifest, source descriptions and regenerated notices together. CI-only tools and example-only dependencies do not belong in the shipped notices.

@@ -3,6 +3,7 @@
 // apply action, and assembles C01-C03 only through public LcarsUI headers. Logical IDs come
 // from the caller so the framework never depends on these names.
 #include "lcars/core.hpp"
+#include "lcars/fonts.hpp"
 #include "lcars/layout.hpp"
 #include "list_page.hpp"
 #include <array>
@@ -23,6 +24,7 @@ private:
     enum class Mode { normal, read_only, disabled };
     Ids ids_;
     std::u16string applied_;
+    std::u16string preview_ = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f";
     int applies_ = 0;
     int volume_applied_ = 40;
     int progress_ = 50;
@@ -41,15 +43,22 @@ private:
     std::u16string clip_padding_text_;
     std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
     std::function<void()> next_apply_observer_;
+    std::function<lcars::FontResolution(std::u16string_view)> resolve_font_;
     bool pages_ = false;
-    std::array<int, 3> page_offsets_{};
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_;
+    std::array<int, 4> page_offsets_{};
+    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_, font_changed_, text_size_changed_, dark_changed_;
 public:
-    explicit Form(Ids ids = default_ids(), bool pages = false);
+    explicit Form(Ids ids = default_ids(), bool pages = false,
+                  std::function<lcars::FontResolution(std::u16string_view)> resolve_font = {});
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
-        lcars::TextHandle name;
+        lcars::TextHandle name, preview;
+        lcars::SliderHandle text_size;
+        lcars::LabelHandle v04_title, font_status;
+        lcars::DropdownHandle font;
+        lcars::ButtonHandle reset_v04;
+        lcars::CheckboxHandle dark;
         lcars::TabsHandle tabs;
         lcars::ButtonHandle reset_v03;
         lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;
@@ -58,7 +67,7 @@ public:
         lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_body, dialog_result;
         lcars::ProgressHandle progress;
         lcars::TooltipHandle progress_tip;
-        lcars::CheckboxHandle notices;
+        lcars::CheckboxHandle notices, compact;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
         lcars::DropdownHandle region;

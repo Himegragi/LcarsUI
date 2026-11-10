@@ -1,0 +1,11 @@
+﻿17:25:24.292 commit faf7785; exe E:\LcarsUI\.scratch\worktrees\v1-integration\build\Release\lcars_settings_demo_web.exe
+17:25:27.447 screenshot E:\LcarsUI\.scratch\v1-final\manual\tdr\web-before.png
+17:25:27.450 requesting dxcap -forcetdr (administrator approval needed)
+17:30:03.064 commit faf7785; exe E:\LcarsUI\.scratch\worktrees\v1-integration\build\Release\lcars_settings_demo_web.exe
+17:30:05.949 screenshot E:\LcarsUI\.scratch\v1-final\manual\tdr\web-before.png
+17:30:05.950 requesting dxcap -forcetdr (administrator approval needed)
+17:30:25.794 dxcap exit=0
+17:38:10.636 FAIL demo exited with code -1
+17:53:28.233 commit dd33b85; exe E:\LcarsUI\.scratch\worktrees\v1-integration\build\Release\lcars_settings_demo_web.exe
+17:53:31.243 screenshot E:\LcarsUI\.scratch\v1-final\manual\tdr\web-before.png
+17:53:31.244 requesting dxcap -forcetdr (administrator approval needed)

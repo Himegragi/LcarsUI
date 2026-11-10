@@ -1,6 +1,12 @@
 // A consumer form unrelated to the shipped edit form: its own IDs, data model, validation
 // and callback, composed from C01-C03 and laid out with its own text measurement.
 #include "lcars/layout.hpp"
+#include "lcars/semantics.hpp"
+#include "lcars/version.hpp"
+static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
+static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 2 && LCARS_VERSION_PATCH == 0);
+static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 2 && lcars::framework_version_patch == 0);
+static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
 #include <cstdio>
 #include <string>
 #include <type_traits>
@@ -10,7 +16,7 @@ static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
-// An application sees only typed handles; string IDs cannot operate or look up components.
+// Applications use typed handles; string operations belong to the semantic layer, not Ui.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);
 template <class T> concept HasText = requires(T& ui, std::string_view id) { ui.text(id); };
@@ -88,12 +94,12 @@ int main() {
     using namespace lcars;
     Profile profile;
     std::function<void()> changed;
-    Ui ui({});
-    ui.add_label({.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name});
-    auto alias = ui.add_text({.id = "profile.alias", .kind = Kind::text, .max_length = 12});
-    ui.add_label({.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error});
-    auto save = ui.add_button({.id = "profile.save", .kind = Kind::button, .label = u"Save alias"});
-    auto summary = ui.add_label({.id = "profile.summary", .kind = Kind::label});
+    Ui ui;
+    ui.add_label({.id = "profile.alias.caption", .kind = Kind::label, .value = u"Alias", .target = "profile.alias", .role = TextRole::name}).value.value();
+    auto alias = ui.add_text({.id = "profile.alias", .kind = Kind::text, .max_length = 12}).value.value();
+    ui.add_label({.id = "profile.alias.problem", .kind = Kind::label, .target = "profile.alias", .role = TextRole::error}).value.value();
+    auto save = ui.add_button({.id = "profile.save", .kind = Kind::button, .label = u"Save alias"}).value.value();
+    auto summary = ui.add_label({.id = "profile.summary", .kind = Kind::label}).value.value();
     alias.connect_source({[&] { return profile.alias; }, [&](std::function<void()> callback) {
         changed = std::move(callback);
         return [&] { changed = {}; };
@@ -111,9 +117,17 @@ int main() {
 
     alias.focus();
     alias.set_value(u"ab");
-    expect(save.invoke().status == Status::invalid_value && profile.saves == 0, "consumer validation rejects a short alias");
+    auto handle_status = save.invoke().status;
+    auto semantic_status = ui.semantics().perform({"profile.save"}, Verb::invoke).status;
+    expect(handle_status == Status::invalid_value && semantic_status == handle_status && profile.saves == 0, "consumer validation agrees through both interfaces");
     expect(alias.describe()->error == u"At least three characters", "consumer error is attached to its own field");
-    alias.set_value(u"abcdef");
+    expect(ui.semantics().perform({"profile.alias"}, Verb::set_value, std::u16string(u"abcdef")).status == Status::ok &&
+           ui.semantics().text("profile.alias").value == u"abcdef", "semantic editing updates the draft");
+    expect(ui.semantics().perform({"profile.alias"}, Verb::select, Selection{1, 3}).status == Status::ok &&
+           ui.semantics().perform({"profile.alias"}, Verb::undo).status == Status::ok &&
+           ui.semantics().text("profile.alias").value == u"ab" &&
+           ui.semantics().perform({"profile.alias"}, Verb::redo).status == Status::ok,
+           "semantic selection and history use the field behavior");
     save.focus();
     save.invoke();
     expect(profile.alias == u"abcdef" && profile.saves == 1, "consumer callback writes its existing data model once");

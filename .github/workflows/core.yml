@@ -5,13 +5,39 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and test core
+      - name: Build, test and install Release core
         shell: pwsh
-        run: ./build.ps1 -Configuration Release -CoreOnly
+        run: ./build.ps1 -Configuration Release -CoreOnly -Install "$env:RUNNER_TEMP/lcars-prefix"
+      - name: Build, test and install Debug core
+        shell: pwsh
+        run: ./build.ps1 -Configuration Debug -CoreOnly -Install "$env:RUNNER_TEMP/lcars-prefix"
+      - name: Verify installed package
+        shell: pwsh
+        run: ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP/lcars-prefix" -Configurations Debug,Release -Generators Ninja,VS -Toolchain build/Release-core/lcars-visual-studio.json -Evidence build/evidence/package
+      - name: Record package prefix on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/evidence/package | Out-Null
+          $prefix = "$env:RUNNER_TEMP/lcars-prefix"
+          if (Test-Path -LiteralPath $prefix) {
+            Get-ChildItem -LiteralPath $prefix -Recurse -File | ForEach-Object { $_.FullName.Substring($prefix.Length).TrimStart('\', '/') } | Sort-Object | Set-Content build/evidence/package/prefix-files.txt
+          } else {
+            'Package prefix was not created.' | Set-Content build/evidence/package/prefix-files.txt
+          }
+      - name: Upload package evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-package-evidence
+          path: build/evidence/package/
+          if-no-files-found: warn
       - name: Upload CTest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: core-ctest-logs
-          path: build/Release-core/Testing/Temporary/
+          path: |
+            build/Release-core/Testing/Temporary/
+            build/Debug-core/Testing/Temporary/
           if-no-files-found: warn

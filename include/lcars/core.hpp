@@ -1,4 +1,5 @@
 #pragma once
+#include "lcars/presentation.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -11,11 +12,11 @@
 #include <variant>
 
 namespace lcars {
-// label is C01 display text: never focusable, may span lines, may describe another control.
-enum class Kind { text, toggle, button, navigation, label, checkbox, radio_group, slider, dropdown, list, tabs, progress };
+// Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
+enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
-enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden };
+enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
 struct Result {
     Status status = Status::ok;
     std::u16string message;
@@ -77,6 +78,7 @@ struct KeyPress {
     bool shift = false, ctrl = false, repeat = false;
     char16_t letter = 0;  // uppercase ASCII letter for Ctrl shortcuts, e.g. u'Z'
 };
+struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
 struct Selection { unsigned anchor = 0, caret = 0; };
 // Host-provided system clipboard. Core never touches OS services directly.
 class Clipboard {
@@ -93,6 +95,7 @@ std::u16string paste_as_single_line(std::u16string_view text);
 class EditSession {
 public:
     std::u16string text;
+    std::uint64_t revision = 0; // committed content changes, independent of layout and composition
     Selection selection;
     bool composing = false;
     std::u16string preedit;
@@ -136,6 +139,7 @@ struct OptionSource {
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
+class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
@@ -264,6 +268,7 @@ struct NumericChange;
 class SliderHandle {
 public:
     SliderHandle() = default;
+    Result on_blur(std::function<void()> callback) const;
     Result set_value(int value) const;
     Result use_latest() const;
     Result focus() const;
@@ -328,7 +333,8 @@ private:
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
 class ListHandle;
 class TabsHandle;
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle>;
+class NavigationListHandle;
+using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
 class TabsHandle {
 public:
     TabsHandle() = default;
@@ -349,12 +355,33 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
+class NavigationListHandle {
+public:
+    NavigationListHandle() = default;
+    Result select(OptionValue page) const;
+    Result enable_page(OptionValue page, bool enabled) const;
+    // Owner configuration: attach an existing component to a page.
+    Result add_member(OptionValue page, ComponentHandle member) const;
+    Result focus() const;
+    Query<OptionValue> selected() const;
+    Query<Semantics> describe() const;
+    Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    NavigationListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
 class ListHandle {
 public:
     ListHandle() = default;
     Result select(OptionValue value) const;
     Result set_items(std::vector<RadioOption> items) const;
     Result focus() const;
+    Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
     Result connect_source(OptionSource source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
@@ -374,13 +401,15 @@ class DialogHandle {
 public:
     DialogHandle() = default;
     Result open(ComponentHandle opener) const;
+    Result open() const;
     Result settle(bool confirmed) const;
     Query<bool> is_open() const;
 private:
     friend class detail::UiState;
-    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime) : ui_(ui), lifetime_(std::move(lifetime)) {}
+    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id) : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
     detail::UiState* ui_ = nullptr;
     std::weak_ptr<void> lifetime_;
+    std::string id_;
 };
 // Non-owning reference to explanatory content attached to a source component.
 class TooltipHandle {
@@ -397,6 +426,7 @@ private:
 };
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
+using NavigationPage = TabPage;
 struct TextChange {
     TextHandle field;
     std::u16string value, origin;
@@ -413,33 +443,40 @@ struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> err
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
-    explicit Ui(std::vector<Control> controls);
+    Ui();
     ~Ui();
     Ui(const Ui&) = delete;
     Ui& operator=(const Ui&) = delete;
-    TextHandle add_text(Control control);
-    ButtonHandle add_button(Control control);
-    LabelHandle add_label(Control control);
-    CheckboxHandle add_checkbox(Control control);
-    RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
+    Query<TextHandle> add_text(Control control);
+    Query<ButtonHandle> add_button(Control control);
+    Query<LabelHandle> add_label(Control control);
+    Query<CheckboxHandle> add_checkbox(Control control);
+    Query<RadioGroupHandle> add_radio_group(Control control, std::vector<RadioOption> options);
     // Invalid ranges and steps return invalid_value without creating a component.
     Query<SliderHandle> add_slider(Control control, SliderRange range);
-    ProgressHandle add_progress(Control control);
-    DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
-    TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
-    ListHandle add_list(Control control, std::vector<RadioOption> items);
+    Query<ProgressHandle> add_progress(Control control);
+    Query<DropdownHandle> add_dropdown(Control control, std::vector<RadioOption> options);
+    Query<TabsHandle> add_tabs(Control control, std::vector<TabPage> pages);
+    Query<NavigationListHandle> add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
+    Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
-    TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
-    DialogHandle add_dialog(std::vector<ComponentHandle> members, ButtonHandle initial_focus,
-                            ButtonHandle fallback, std::function<void(bool)> result);
+    Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
+    Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
+                            ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
+    Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     void on_change(std::function<void()> callback);
+    Result set_presentation(const PresentationSettings& settings);
+    const PresentationSettings& presentation() const;
+    const std::vector<std::string>& diagnostics() const;
+    SemanticTree& semantics();
 private:
     friend detail::UiState& detail::access(Ui&);
     friend const detail::UiState& detail::access(const Ui&);
     std::unique_ptr<detail::UiState> state_;
+    std::unique_ptr<SemanticTree> semantics_;
 };
 }

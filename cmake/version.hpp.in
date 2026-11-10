@@ -1,0 +1,11 @@
+#pragma once
+#include <string_view>
+#define LCARS_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define LCARS_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define LCARS_VERSION_PATCH @PROJECT_VERSION_PATCH@
+namespace lcars {
+inline constexpr std::u16string_view framework_version = u"@PROJECT_VERSION@";
+inline constexpr int framework_version_major = LCARS_VERSION_MAJOR;
+inline constexpr int framework_version_minor = LCARS_VERSION_MINOR;
+inline constexpr int framework_version_patch = LCARS_VERSION_PATCH;
+}

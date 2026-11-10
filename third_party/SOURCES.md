@@ -28,4 +28,11 @@ The small local GL symbol table is probe code, not a production loader dependenc
 
 MVP reuse: source archives and GL headers copied unchanged from prototype branch codex/prototype-selfdraw-editing, commit 7950cab4d81f8c4b57d3368fa8e77a0faee16020. The MVP extracts and adapts the GL bootstrap, shaping and rasterization approach; it does not include prototype entry points, UIA providers or benchmark fixtures.
 
-Convenience copies of upstream licenses are retained under licenses/: HarfBuzz-COPYING.txt, FreeType-FTL.txt and FreeType-GPLv2.txt. The original source archives remain unchanged.
+The generated [third-party notices](../THIRD_PARTY_NOTICES.txt) contain the shipped licenses. The original source archives remain unchanged.
+
+# CI-only tools
+
+- mesa-dist-win 26.2.5 MSVC, used only for Windows llvmpipe CI, not distributed with LcarsUI:
+  https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
+  SHA256 `997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2`
+  Version 26.2.6's MSVC package omits OpenGL because of its documented build regression.

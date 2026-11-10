@@ -1,0 +1,13 @@
+﻿12:07:23	perf	PASS	128s
+12:07:39	presentation	FAIL	exit 1 16s
+12:09:24	uia	PASS	105s
+12:09:30	uia-ime	PASS	6s
+12:09:35	uia-dpi	FAIL	exit 1 6s
+12:43:52	uia-stress	PASS	2056s
+12:46:45	demo-uia	PASS	173s
+12:46:48	demo-keyboard	PASS	4s
+12:49:06	demo-perf	FAIL	exit 1 137s
+12:49:18	real-close	FAIL	exit 1 13s
+12:49:24	render-real-gpu	PASS	5s
+12:49:31	VC01	PASS	8s
+12:49:31	DONE	-	E:\LcarsUI\.scratch\v1-final\partB

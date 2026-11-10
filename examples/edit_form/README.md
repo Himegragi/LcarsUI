@@ -34,7 +34,7 @@ Applications create a non-focusable `ProgressHandle` with `Ui::add_progress` and
 
 The V03 **50%** button has explanatory text. Hover over it or give it keyboard focus and wait 500 ms; the tooltip does not take focus or intercept pointer input. Escape hides it for the current visit, and leaving and returning starts a fresh delay. Opening the dialog, hiding or disabling the source, or deactivating the window closes it. Reactivating the window recalculates eligibility and starts a new delay. The tooltip follows the source's selected appearance, wraps and stays inside the window; the source exposes its text as a semantic description.
 
-Applications attach a tooltip using `Ui::add_tooltip(source_handle, text, delay_ms)`. The source is a non-owning typed handle; the returned `TooltipHandle::visible()` reports whether the tooltip is shown. The delay defaults to 500 ms and can be shortened in tests. Removing the source invalidates the tooltip handle and cancels its pending display. In V03 the existing button still updates the application-owned progress model only when activated.
+Applications attach a tooltip using `Ui::add_tooltip(id, source_handle, text, delay_ms)`. The source is a non-owning typed handle; the returned `TooltipHandle::visible()` reports whether the tooltip is shown. The delay defaults to 500 ms and can be shortened in tests. Removing the source invalidates the tooltip handle and cancels its pending display. In V03 the existing button still updates the application-owned progress model only when activated.
 
 ## S4: modal dialog (#23)
 
@@ -109,3 +109,5 @@ The V01 behavior cases drive the assembled form through public handles; native k
 | 真實 DPI | `lcars_host_verify --dpi --evidence DIR`：使用前兩個依水平位置排序的螢幕，移動前景視窗並觀察實際 `WM_DPICHANGED`、選取、實體點擊、組字、游標查詢、候選窗定位請求及下拉彈出層。需要不同縮放的螢幕及微軟注音；這會移動視窗並短暫操作鍵盤與指標。候選窗的實際畫面位置仍需目視驗證。 |
 
 驗收紀錄、工具鏈與代表畫面見 [evidence/rework-verification.md](evidence/rework-verification.md)。
+
+Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.
