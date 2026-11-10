@@ -9,8 +9,8 @@ function Find-Id($root,$id) { $root.FindFirst([System.Windows.Automation.TreeSco
 function Wait-Id($root,$id) { for($i=0;$i -lt 100;$i++){ $v=Find-Id $root $id; if($v){return $v}; Start-Sleep -Milliseconds 100 }; throw "Element not found: $id" }
 function Start-Demo($appearance) {
  $p=Start-Process -FilePath (Join-Path $PSScriptRoot "../../build/Release/lcars_settings_demo_$appearance.exe") -PassThru
- for($i=0;$i -lt 100 -and !$p.MainWindowHandle;$i++){Start-Sleep -Milliseconds 100;$p.Refresh()}
- if(!$p.MainWindowHandle){ if(!$p.HasExited){Stop-Process -Id $p.Id -Force}; throw 'Demo window unavailable' }
+ for($i=0;$i -lt 100 -and $p.MainWindowHandle -eq [IntPtr]::Zero;$i++){Start-Sleep -Milliseconds 100;$p.Refresh()}
+ if($p.MainWindowHandle -eq [IntPtr]::Zero){ if(!$p.HasExited){Stop-Process -Id $p.Id -Force}; throw 'Demo window unavailable' }
  return $p
 }
 Use-SettingsSandbox $directory {

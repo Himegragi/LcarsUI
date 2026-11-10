@@ -38,7 +38,7 @@ foreach($appearance in @('web','material')) { foreach($method in @('x','alt-f4',
   $exe=Join-Path $PSScriptRoot "../../build/Release/lcars_settings_demo_$appearance.exe"
   $process=Start-Process -FilePath $exe -ArgumentList @('--settings-dir', ('"' + $dir + '"')) -PassThru
   for($i=0;$i -lt 100 -and $process.MainWindowHandle -eq 0;$i++){ Start-Sleep -Milliseconds 100; $process.Refresh() }
-  if(!$process.MainWindowHandle){ throw 'Demo window did not appear' }
+  if($process.MainWindowHandle -eq [IntPtr]::Zero){ throw 'Demo window did not appear' }
   [CloseInput]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
   $root=[System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
   [CloseInput]::Key(9); [CloseInput]::Key(9,$true); [CloseInput]::Key(65); [CloseInput]::Key(65,$true); [CloseInput]::Key(9); [CloseInput]::Key(9,$true)

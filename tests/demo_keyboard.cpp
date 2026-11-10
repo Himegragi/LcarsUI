@@ -66,7 +66,7 @@ struct Walk {
             check(profiles->chinese(),"Microsoft Bopomofo unavailable"); wait(300);
             if (auto imc=ImmGetContext(window)) { DWORD conversion=0,sentence=0; ImmGetConversionStatus(imc,&conversion,&sentence); ImmSetConversionStatus(imc,conversion|IME_CMODE_NATIVE,sentence); ImmReleaseContext(window,imc); }
             // ㄍㄨㄥˋ ㄩㄥˋ ㄈㄢˋ ㄅㄣˇ; Enter commits the composition (the same commit key as the showcase PR01 run).
-            for (auto key : std::string("EJ/4M/4Z04153")) { SHORT vk=VkKeyScanA(key); check(vk!=-1,"Bopomofo key unavailable"); tap(LOBYTE(vk)); }
+            for (auto key : std::string("EJ/4M/4Z041P3")) { SHORT vk=VkKeyScanA(key); check(vk!=-1,"Bopomofo key unavailable"); tap(LOBYTE(vk)); }
             tap(VK_RETURN); wait(250);
             profiles->us(); wait(200); send(' ',KEYEVENTF_UNICODE); send(' ',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); send('A',KEYEVENTF_UNICODE); send('A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); return;
         }
@@ -116,7 +116,8 @@ int wmain(int argc,wchar_t** argv) {
             catch(const std::exception& e) { if(real_input) { kw<<"KW02\t"<<appearance->name()<<"\tFAIL\t"<<e.what()<<"\n"; events<<e.what()<<'\n'; } throw; }
             if(real_input) try {
                 Walk w(*appearance,base/(std::string(appearance->name())+"-close")); w.demo.name.focus(); w.demo.name.set_value(u"Before"); check(profiles->chinese(),"Microsoft Bopomofo unavailable"); w.wait(300); if(auto imc=ImmGetContext(w.window)) { DWORD c=0,s=0; ImmGetConversionStatus(imc,&c,&s); ImmSetConversionStatus(imc,c|IME_CMODE_NATIVE,s); ImmReleaseContext(w.window,imc); }
-                w.tap('J'); w.tap('I'); w.tap('3'); auto* edit=detail::access(w.demo.ui).edit("general.name"); check(edit && edit->composing && !edit->preedit.empty(),"composition did not start"); w.observe_close=true; w.alt_f4(); check(!w.callback_composing && w.callback_draft==u"Before","CR09 E01 result mismatch"); cr<<"CR09-real\t"<<appearance->name()<<"\tPASS\tcomposition ended before callback\n"; profiles->us();
+                w.tap('J'); w.tap('I'); w.tap('3'); auto* edit=detail::access(w.demo.ui).edit("general.name"); check(edit && edit->composing && !edit->preedit.empty(),"composition did not start"); w.observe_close=true; w.alt_f4(); // E01: the host asks the IME to complete; Microsoft Bopomofo delivers 我 synchronously, so the handler reads the committed draft.
+                check(!w.callback_composing && w.callback_draft==u"Before我","CR09 E01 result mismatch"); cr<<"CR09-real\t"<<appearance->name()<<"\tPASS\tcomposition completed before callback; draft=Before我\n"; profiles->us();
             } catch (const std::exception& e) { cr << "CR09-real\t" << appearance->name() << "\tFAIL\t" << e.what() << "\n"; throw; }
         }
         std::filesystem::remove_all(base); event_log=nullptr; delete profiles; if(com) CoUninitialize(); return 0;
