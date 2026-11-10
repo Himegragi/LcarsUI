@@ -1,3 +1,4 @@
+# Cases: CR05 (spec 4 real close entry points)
 [CmdletBinding()]
 param([switch]$List, [string]$OutDir = "$PSScriptRoot/../../build/Release/evidence/real-close")
 $ErrorActionPreference = 'Stop'
