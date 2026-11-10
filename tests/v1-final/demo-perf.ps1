@@ -1,4 +1,5 @@
-﻿[CmdletBinding()]
+﻿# Cases: PF01-PF05 (spec 4 demo performance)
+[CmdletBinding()]
 param([string]$OutDir = "$PSScriptRoot/../../build/Release/evidence/demo-perf", [switch]$List)
 $cases=@('startup','startup-font','list-hold-down','typing','idle','delay')
 if ($List) { 'Demo performance: web/material, 1080p/4K, startup, hold-down, typing, idle, 20 ms self-check'; exit 0 }

@@ -55,6 +55,7 @@ foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia'
     }
 }
 if ('perf' -in $selected) {
+    # Cases: PM01-PM05 (spec 1 showcase performance)
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'perf') | Out-Null
         $gitEntry = Join-Path $PSScriptRoot '.git'

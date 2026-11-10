@@ -8,16 +8,22 @@ $plan = @(
     'perf (PM01-PM05 showcase and demo startup, hold-down, typing, idle and delay self-check)',
     'presentation (PR01-PR04 automated parts)',
     'uia, uia-ime, uia-dpi, uia-stress and demo-uia',
-    'real close controls via SendInput: title-bar X, Alt+F4 and taskbar',
+    'demo via SendInput: KW02 real keys with Microsoft Bopomofo, CR09-real, APPDATA default settings path, CR05 real close entry points (title-bar X, Alt+F4, taskbar)',
     'render / GC01 real GPU showcase and VC01 demo matrix',
     'RenderDoc DG05/RD01: user capture and inspect groups; N/A if not installed',
     'TDR RF06/TD01: user runs dxcap -forcetdr, retries, saves diagnostics and screenshots',
     'OutputDebugStringW DG03: user observes Debug output in a debugger',
-    'hands-on trial: user completes both appearances'
+    'hands-on trial UT01: user completes both appearances'
 )
+# Every automated step this script runs; tests/v1-final/cases.tsv maps each required case to one of these (or manual).
+$steps = @('clipboard', 'ime', 'dpi', 'host_native-Release', 'host_native-Debug', 'perf', 'presentation', 'uia', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia', 'demo', 'demo-keyboard', 'demo-perf', 'render-real-gpu', 'VC01')
 Write-Output 'Estimated duration: 2-4 hours plus user setup, TDR, RenderDoc and hands-on trial; Debug UIA and desktop contention may take longer.'
 $plan | ForEach-Object { Write-Output " - $_" }
-if ($DryRun) { exit 0 }
+if ($DryRun) {
+    Write-Output "Steps: $($steps -join ',')"
+    Import-Csv -Delimiter "`t" -LiteralPath "$PSScriptRoot/tests/v1-final/cases.tsv" | Group-Object step | ForEach-Object { Write-Output " * $($_.Name): $(($_.Group | ForEach-Object case) -join ', ')" }
+    exit 0
+}
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $results = [System.Collections.Generic.List[object]]::new()
 function Record([string]$Name, [string]$Status, [string]$Detail) {
@@ -26,6 +32,7 @@ function Record([string]$Name, [string]$Status, [string]$Detail) {
     Write-Host "${Name}: $Status - $Detail"
 }
 function Run-Step([string]$Name, [scriptblock]$Action) {
+    if ($Name -notin $steps) { throw "Run-Step $Name is missing from `$steps" }
     try {
         $global:LASTEXITCODE = 0
         & $Action *>&1 | Out-File -Encoding UTF8 -LiteralPath (Join-Path $OutDir "$Name.log")
@@ -45,12 +52,11 @@ foreach ($name in @('clipboard','ime','dpi')) {
 foreach ($configuration in @('Release','Debug')) {
     Run-Step "host_native-$configuration" { & powershell -NoProfile -File "$PSScriptRoot/build.ps1" -Configuration $configuration -SkipTests; if ($LASTEXITCODE -ne 0) { throw 'build failed' }; & $ctest --test-dir "$PSScriptRoot/build/$configuration" -R '^host_native$' --output-on-failure --timeout 900 }
 }
-foreach ($name in @('perf','presentation','uia','uia-ime','uia-dpi','uia-stress','demo-uia')) {
+foreach ($name in @('perf','presentation','uia','uia-ime','uia-dpi','uia-stress','demo-uia','demo')) {
     Run-Step $name { & powershell -NoProfile -File "$PSScriptRoot/verify-idle.ps1" -Only $name -OutDir (Join-Path $OutDir $name) }
 }
 Run-Step 'demo-keyboard' { & $ctest --test-dir "$PSScriptRoot/build/Release" -R '^demo_keyboard$' --output-on-failure }
 Run-Step 'demo-perf' { & powershell -NoProfile -File "$PSScriptRoot/tests/v1-final/demo-perf.ps1" -OutDir (Join-Path $OutDir 'demo-perf') }
-Run-Step 'real-close' { & powershell -NoProfile -File "$PSScriptRoot/tests/v1-final/real-close.ps1" -OutDir (Join-Path $OutDir 'real-close') }
 Run-Step 'render-real-gpu' {
     $renderDir = Join-Path $OutDir 'render-real-gpu'
     & "$PSScriptRoot/build/Release/lcars_host_verify.exe" --render-compare --evidence $renderDir

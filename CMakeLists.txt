@@ -330,6 +330,7 @@ if(LCARS_BUILD_TESTS)
 endif()
 
 if(LCARS_BUILD_TESTS AND WIN32)
+  add_test(NAME source_text COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/source_text.ps1")
   add_test(NAME v1_final_plan COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/dry-run.ps1")
   add_test(NAME demo_perf_list COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/demo-perf.ps1" -List)
   add_test(NAME real_close_list COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/real-close.ps1" -List)
@@ -338,4 +339,8 @@ endif()
 if(WIN32 AND LCARS_BUILD_DESKTOP)
   add_test(NAME demo_dry_run COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/demo-dry-run.ps1")
   add_test(NAME demo_backup_restore COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/demo-backup-test.ps1")
+  # The idle APPDATA smoke without the real %APPDATA% folder: launch, wait for the window, save over UIA, reload.
+  add_test(NAME demo_settings_smoke COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/appdata-smoke.ps1"
+    -OutDir "${CMAKE_BINARY_DIR}/evidence/demo-settings-smoke" -SettingsDir "${CMAKE_BINARY_DIR}/evidence/demo-settings-smoke/settings"
+    -BinDir "$<TARGET_FILE_DIR:lcars_settings_demo_web>")
 endif()

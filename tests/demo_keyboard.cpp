@@ -104,7 +104,7 @@ static void run(const Appearance& appearance, const std::filesystem::path& path)
     { Walk w(appearance,path); check(w.demo.document().volume==65,"step 12: reload saved volume"); }
 }
 int wmain(int argc,wchar_t** argv) {
-    std::filesystem::path evidence; bool com=false;
+    std::filesystem::path evidence; bool com=false, failed=false;
     try {
         if(argc>1) { check(argc==4 && std::wstring_view(argv[1])==L"--real" && std::wstring_view(argv[2])==L"--evidence","Usage: lcars_demo_keyboard [--real --evidence DIR]"); real_input=true; evidence=argv[3]; std::filesystem::create_directories(evidence); check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,"DPI awareness unavailable"); check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed"); com=true; profiles=new Profiles; profiles->us(); }
         auto base=std::filesystem::temp_directory_path()/("lcars-keyboard-"+std::to_string(GetCurrentProcessId()));
@@ -113,14 +113,14 @@ int wmain(int argc,wchar_t** argv) {
         for(auto* appearance:{&web_appearance(),&material_appearance()}) {
             auto path=base/appearance->name(); std::filesystem::create_directories(path);
             try { run(*appearance,path); if(real_input) kw<<"KW02\t"<<appearance->name()<<"\tPASS\t12 steps\n"; }
-            catch(const std::exception& e) { if(real_input) { kw<<"KW02\t"<<appearance->name()<<"\tFAIL\t"<<e.what()<<"\n"; events<<e.what()<<'\n'; } throw; }
+            catch(const std::exception& e) { if(!real_input) throw; kw<<"KW02\t"<<appearance->name()<<"\tFAIL\t"<<e.what()<<"\n"; events<<e.what()<<'\n'; failed=true; profiles->us(); }  // real runs record every case in one idle session
             if(real_input) try {
                 Walk w(*appearance,base/(std::string(appearance->name())+"-close")); w.demo.name.focus(); w.demo.name.set_value(u"Before"); check(profiles->chinese(),"Microsoft Bopomofo unavailable"); w.wait(300); if(auto imc=ImmGetContext(w.window)) { DWORD c=0,s=0; ImmGetConversionStatus(imc,&c,&s); ImmSetConversionStatus(imc,c|IME_CMODE_NATIVE,s); ImmReleaseContext(w.window,imc); }
                 w.tap('J'); w.tap('I'); w.tap('3'); auto* edit=detail::access(w.demo.ui).edit("general.name"); check(edit && edit->composing && !edit->preedit.empty(),"composition did not start"); w.observe_close=true; w.alt_f4(); // E01: the host asks the IME to complete; Microsoft Bopomofo delivers 我 synchronously, so the handler reads the committed draft.
                 check(!w.callback_composing && w.callback_draft==u"Before我","CR09 E01 result mismatch"); cr<<"CR09-real\t"<<appearance->name()<<"\tPASS\tcomposition completed before callback; draft=Before我\n"; profiles->us();
-            } catch (const std::exception& e) { cr << "CR09-real\t" << appearance->name() << "\tFAIL\t" << e.what() << "\n"; throw; }
+            } catch (const std::exception& e) { cr << "CR09-real\t" << appearance->name() << "\tFAIL\t" << e.what() << "\n"; failed=true; profiles->us(); }
         }
-        std::filesystem::remove_all(base); event_log=nullptr; delete profiles; if(com) CoUninitialize(); return 0;
+        std::filesystem::remove_all(base); event_log=nullptr; delete profiles; if(com) CoUninitialize(); return failed ? 1 : 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; delete profiles; if(com) CoUninitialize(); return 1; }
 }
 

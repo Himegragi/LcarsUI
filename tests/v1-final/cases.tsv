@@ -1,0 +1,31 @@
+case	step	driver	evidence
+KW02	demo	tests/demo_keyboard.cpp	demo/demo/KW02.tsv
+CR09-real	demo	tests/demo_keyboard.cpp	demo/demo/CR09-real.tsv
+APPDATA	demo	tests/v1-final/appdata-smoke.ps1	demo/demo/APPDATA.tsv
+CR05	demo	tests/v1-final/real-close.ps1	demo/demo/CR05/real-close.tsv
+VC01	VC01	verify-v1-final.ps1	demo-render/demo-render-compare.tsv
+UA01	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA02	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA03	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA04	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA05	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA06	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+UA07	demo-uia	tests/uia_demo_client.cpp	demo-uia/demo-uia/{web,material}/demo-uia.tsv
+AX01	demo-uia	tests/uia/demo-axe.ps1	demo-uia/demo-uia/{web,material}/axe.tsv
+PF01-PF05	demo-perf	tests/v1-final/demo-perf.ps1	demo-perf/summary.tsv
+GC01	render-real-gpu	tests/host_verify.cpp	render-real-gpu/render-compare.tsv
+GA05	dpi	tests/host_verify.cpp	dpi/dpi/dpi.tsv
+D01	dpi	tests/host_verify.cpp	dpi/dpi/dpi.tsv
+E01	ime	tests/host_verify.cpp	ime/ime/ime.tsv
+PM01-PM05	perf	verify-idle.ps1	perf/perf/
+PR01	presentation	tests/host_verify.cpp	presentation/presentation/presentation.tsv
+PR03	presentation	tests/host_verify.cpp	presentation/presentation/presentation.tsv (OPEN: manual per-user font)
+PR04	presentation	tests/host_verify.cpp	presentation/presentation/trial/
+UIA17	uia-dpi	tests/uia_client.cpp	uia-dpi/uia-dpi/{web,material}/uia-dpi.tsv
+UIA18	uia	tests/uia_client.cpp	uia/uia/{web,material}/uia.tsv
+RD01	manual	verify-v1-final.ps1	RenderDoc capture with component groups
+DG05	manual	verify-v1-final.ps1	RenderDoc capture with component groups
+DG03	manual	verify-v1-final.ps1	Debugger output of OutputDebugStringW
+TD01	manual	verify-v1-final.ps1	TDR screenshots and diagnostics
+RF06	manual	verify-v1-final.ps1	TDR screenshots and diagnostics
+UT01	manual	verify-v1-final.ps1	examples/settings_demo/evidence/v1/trial-*.md
