@@ -1,0 +1,7 @@
+﻿"appearance"	"method"	"status"	"detail"
+"web"	"x"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."
+"web"	"alt-f4"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."
+"web"	"taskbar"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."
+"material"	"x"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."
+"material"	"alt-f4"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."
+"material"	"taskbar"	"PASS"	"Unsaved-change prompt appeared; cancel kept process open."

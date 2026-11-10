@@ -1,0 +1,6 @@
+﻿11:53:05	clipboard	PASS	111s
+11:53:45	ime	FAIL	exit 1 40s
+11:53:57	dpi	PASS	11s
+11:57:38	host_native-Release	PASS	221s
+12:04:57	host_native-Debug	PASS	440s
+12:04:57	DONE	-	E:\LcarsUI\.scratch\v1-final\partA

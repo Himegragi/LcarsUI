@@ -1,0 +1,1089 @@
+IMTCTIP.DLL 6.2.26100.9711
+PASS	could not bring test window to foreground
+PASS	step 1: navigation
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 2: name and dirty title
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 3: general values
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 4: undo
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 4: redo
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 5: save
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Microsoft Bopomofo unavailable
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 6: edit and focus
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: cancel deletion
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: delete
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: undo deletion
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 8: appearance
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 9: about
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 10: save
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 10: close
+IME	wm:ime-start		focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	wm:ime-compose	ㄍ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍ
+IME	wm:ime-compose	ㄍㄨ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍㄨ
+IME	wm:ime-compose	ㄍㄨㄥ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍㄨㄥ
+IME	wm:ime-compose	共	focus=items.dialog.name	text=共用範本	composing=1	preedit=共
+IME	wm:ime-compose	共ㄩ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共ㄩ
+IME	wm:ime-compose	共ㄩㄥ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共ㄩㄥ
+IME	wm:ime-compose	共用	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用
+IME	wm:ime-compose	共用ㄈ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用ㄈ
+IME	wm:ime-compose	共用ㄈㄢ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用ㄈㄢ
+IME	wm:ime-compose	共用泛	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛
+IME	wm:ime-compose	共用泛ㄅ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛ㄅ
+IME	wm:ime-compose	共用泛ㄅㄣ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛ㄅㄣ
+IME	wm:ime-compose	共用範本	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用範本
+IME	wm:ime-result	共用範本	focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	wm:ime-end		focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	host:close		focus=about.licenses
+PASS	could not bring test window to foreground
+PASS	step 11: reload
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: edit
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: prompt
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: cancel
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: discard
+IME	host:close		focus=general.volume
+IME	host:close		focus=general.volume
+PASS	could not bring test window to foreground
+PASS	step 12: reload saved volume
+PASS	could not bring test window to foreground
+PASS	Microsoft Bopomofo unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	composition did not start
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	CR09 E01 result mismatch
+IME	wm:ime-start		focus=general.name	text=Before	composing=0	preedit=
+IME	wm:ime-compose	ㄨ	focus=general.name	text=Before	composing=1	preedit=ㄨ
+IME	wm:ime-compose	ㄨㄛ	focus=general.name	text=Before	composing=1	preedit=ㄨㄛ
+IME	wm:ime-compose	我	focus=general.name	text=Before	composing=1	preedit=我
+IME	host:close		focus=general.name	text=Before	composing=1	preedit=我
+IME	host:complete-request		focus=general.name	text=Before	composing=1	preedit=我
+IME	wm:ime-result	我	focus=general.name	text=Before我	composing=0	preedit=
+IME	wm:ime-end		focus=general.name	text=Before我	composing=0	preedit=
+PASS	could not bring test window to foreground
+PASS	step 1: navigation
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 2: name and dirty title
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 3: general values
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 4: undo
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 4: redo
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 5: save
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Microsoft Bopomofo unavailable
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	Bopomofo key unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 6: edit and focus
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: cancel deletion
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: delete
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 7: undo deletion
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 8: appearance
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 9: about
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 10: save
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 10: close
+IME	wm:ime-start		focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	wm:ime-compose	ㄍ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍ
+IME	wm:ime-compose	ㄍㄨ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍㄨ
+IME	wm:ime-compose	ㄍㄨㄥ	focus=items.dialog.name	text=共用範本	composing=1	preedit=ㄍㄨㄥ
+IME	wm:ime-compose	共	focus=items.dialog.name	text=共用範本	composing=1	preedit=共
+IME	wm:ime-compose	共ㄩ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共ㄩ
+IME	wm:ime-compose	共ㄩㄥ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共ㄩㄥ
+IME	wm:ime-compose	共用	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用
+IME	wm:ime-compose	共用ㄈ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用ㄈ
+IME	wm:ime-compose	共用ㄈㄢ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用ㄈㄢ
+IME	wm:ime-compose	共用泛	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛
+IME	wm:ime-compose	共用泛ㄅ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛ㄅ
+IME	wm:ime-compose	共用泛ㄅㄣ	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用泛ㄅㄣ
+IME	wm:ime-compose	共用範本	focus=items.dialog.name	text=共用範本	composing=1	preedit=共用範本
+IME	wm:ime-result	共用範本	focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	wm:ime-end		focus=items.dialog.name	text=共用範本	composing=0	preedit=
+IME	host:close		focus=about.licenses
+PASS	could not bring test window to foreground
+PASS	step 11: reload
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: edit
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: prompt
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: cancel
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	step 12: discard
+IME	host:close		focus=general.volume
+IME	host:close		focus=general.volume
+PASS	could not bring test window to foreground
+PASS	step 12: reload saved volume
+PASS	could not bring test window to foreground
+PASS	Microsoft Bopomofo unavailable
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	composition did not start
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	foreground moved away; input stopped
+PASS	SendInput failed
+PASS	CR09 E01 result mismatch
+IME	wm:ime-start		focus=general.name	text=Before	composing=0	preedit=
+IME	wm:ime-compose	ㄨ	focus=general.name	text=Before	composing=1	preedit=ㄨ
+IME	wm:ime-compose	ㄨㄛ	focus=general.name	text=Before	composing=1	preedit=ㄨㄛ
+IME	wm:ime-compose	我	focus=general.name	text=Before	composing=1	preedit=我
+IME	host:close		focus=general.name	text=Before	composing=1	preedit=我
+IME	host:complete-request		focus=general.name	text=Before	composing=1	preedit=我
+IME	wm:ime-result	我	focus=general.name	text=Before我	composing=0	preedit=
+IME	wm:ime-end		focus=general.name	text=Before我	composing=0	preedit=

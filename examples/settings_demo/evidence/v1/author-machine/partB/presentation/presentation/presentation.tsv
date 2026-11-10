@@ -1,0 +1,19 @@
+appearance	case	status	evidence
+web	PR01	PASS	langid=0x0404 Microsoft Bopomofo TIP; IMTCTIP 6.2.26100.9711; candidates and caret=1; single commit and undo=1
+web	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+web	D01-selection-return	PASS	Return: selection/focus=1; physical click caret=1
+web	D01-composition-forward	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+web	D01-composition-return	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+web	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=24,275 737x150 viewport=0,104 799x494 client=799x598 inside=1 hit=1
+web	D01-popup-return	PASS	Return: popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=36,525 1108x225 viewport=0,156 1201x744 client=1201x900 inside=1 hit=1
+web	PR03	OPEN	Install a font for the current user, confirm its catalog entry and local path, and inspect its display in V04; record the evidence manually.
+web	PR04	OPEN	Generate trial screenshots and record first-frame font-switch timing and user feedback.
+material	PR01	PASS	langid=0x0404 Microsoft Bopomofo TIP; IMTCTIP 6.2.26100.9711; candidates and caret=1; single commit and undo=1
+material	D01-selection-forward	PASS	\\.\DISPLAY1 144 -> \\.\DISPLAY2 96; WM_DPICHANGED=1; selection/focus=1; field hit=1; physical click caret=1
+material	D01-selection-return	PASS	Return: selection/focus=1; physical click caret=1
+material	D01-composition-forward	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+material	D01-composition-return	PASS	WM_DPICHANGED=1; composition=1; IMR caret=1; candidate placement request=1
+material	D01-popup-forward	PASS	Open dropdown across monitor move: WM_DPICHANGED=1; popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=24,264 737x150 viewport=0,108 799x490 client=799x598 inside=1 hit=1
+material	D01-popup-return	PASS	Return: popup inside window and hit=1; overlays=1 expanded=1 dropdown=1 bounds=36,519 1108x225 viewport=0,162 1201x738 client=1201x900 inside=1 hit=1
+material	PR03	OPEN	Install a font for the current user, confirm its catalog entry and local path, and inspect its display in V04; record the evidence manually.
+material	PR04	OPEN	Generate trial screenshots and record first-frame font-switch timing and user feedback.

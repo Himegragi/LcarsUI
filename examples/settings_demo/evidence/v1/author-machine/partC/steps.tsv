@@ -1,0 +1,5 @@
+﻿16:14:10	ime	FAIL	exit 1 6s
+16:14:21	uia-dpi	PASS	11s
+16:14:45	real-close	FAIL	exit 1 24s
+16:17:03	demo-perf	PASS	138s
+16:17:03	DONE	-	E:\LcarsUI\.scratch\v1-final\partC

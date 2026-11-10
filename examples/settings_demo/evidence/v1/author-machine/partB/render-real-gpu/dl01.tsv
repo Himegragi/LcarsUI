@@ -1,0 +1,94 @@
+appearance	case	status	evidence
+web	DL01	PASS	v01-a scale=1.000000 setup=1
+web	GC01	PASS	v01-a scale=1.000000 roles=7
+web	DL01	PASS	v01-a scale=1.500000 setup=1
+web	GC01	PASS	v01-a scale=1.500000 roles=7
+web	DL01	PASS	v01-b scale=1.000000 setup=1
+web	GC01	PASS	v01-b scale=1.000000 roles=7
+web	DL01	PASS	v01-b scale=1.500000 setup=1
+web	GC01	PASS	v01-b scale=1.500000 roles=7
+web	DL01	PASS	v01-c scale=1.000000 setup=1
+web	GC01	PASS	v01-c scale=1.000000 roles=15
+web	DL01	PASS	v01-c scale=1.500000 setup=1
+web	GC01	PASS	v01-c scale=1.500000 roles=15
+web	DL01	PASS	v01-d scale=1.000000 setup=1
+web	GC01	PASS	v01-d scale=1.000000 roles=55
+web	DL01	PASS	v01-d scale=1.500000 setup=1
+web	GC01	PASS	v01-d scale=1.500000 roles=55
+web	DL01	PASS	v01-e scale=1.000000 setup=1
+web	GC01	PASS	v01-e scale=1.000000 roles=5
+web	DL01	PASS	v01-e scale=1.500000 setup=1
+web	GC01	PASS	v01-e scale=1.500000 roles=5
+web	DL01	PASS	v02-a scale=1.000000 setup=1
+web	GC01	PASS	v02-a scale=1.000000 roles=5
+web	DL01	PASS	v02-a scale=1.500000 setup=1
+web	GC01	PASS	v02-a scale=1.500000 roles=5
+web	DL01	PASS	v02-b scale=1.000000 setup=1
+web	GC01	PASS	v02-b scale=1.000000 roles=5
+web	DL01	PASS	v02-b scale=1.500000 setup=1
+web	GC01	PASS	v02-b scale=1.500000 roles=5
+web	DL01	PASS	v02-c scale=1.000000 setup=1
+web	GC01	PASS	v02-c scale=1.000000 roles=4
+web	DL01	PASS	v02-c scale=1.500000 setup=1
+web	GC01	PASS	v02-c scale=1.500000 roles=4
+web	DL01	PASS	v03-a scale=1.000000 setup=1
+web	GC01	PASS	v03-a scale=1.000000 roles=5
+web	DL01	PASS	v03-a scale=1.500000 setup=1
+web	GC01	PASS	v03-a scale=1.500000 roles=5
+web	DL01	PASS	v03-b scale=1.000000 setup=1
+web	GC01	PASS	v03-b scale=1.000000 roles=5
+web	DL01	PASS	v03-b scale=1.500000 setup=1
+web	GC01	PASS	v03-b scale=1.500000 roles=5
+web	GPU-draw-list	PASS	offscreen GPU execution agrees with the CPU reference
+web	GPU-dark-background	PASS	comparison uses the selected dark background
+web	GC03-caret	PASS	one-pixel caret shift is detected in the caret region
+web	GC03-focus	PASS	missing focus indicator is detected in the focus region
+web	GC05-images	PASS	failed comparison writes reference, GPU and difference images
+web	GA03-GPU	PASS	bounded atlas segmentation preserves GPU output
+material	DL01	PASS	v01-a scale=1.000000 setup=1
+material	GC01	PASS	v01-a scale=1.000000 roles=7
+material	DL01	PASS	v01-a scale=1.500000 setup=1
+material	GC01	PASS	v01-a scale=1.500000 roles=7
+material	DL01	PASS	v01-b scale=1.000000 setup=1
+material	GC01	PASS	v01-b scale=1.000000 roles=7
+material	DL01	PASS	v01-b scale=1.500000 setup=1
+material	GC01	PASS	v01-b scale=1.500000 roles=7
+material	DL01	PASS	v01-c scale=1.000000 setup=1
+material	GC01	PASS	v01-c scale=1.000000 roles=15
+material	DL01	PASS	v01-c scale=1.500000 setup=1
+material	GC01	PASS	v01-c scale=1.500000 roles=15
+material	DL01	PASS	v01-d scale=1.000000 setup=1
+material	GC01	PASS	v01-d scale=1.000000 roles=55
+material	DL01	PASS	v01-d scale=1.500000 setup=1
+material	GC01	PASS	v01-d scale=1.500000 roles=55
+material	DL01	PASS	v01-e scale=1.000000 setup=1
+material	GC01	PASS	v01-e scale=1.000000 roles=5
+material	DL01	PASS	v01-e scale=1.500000 setup=1
+material	GC01	PASS	v01-e scale=1.500000 roles=5
+material	DL01	PASS	v02-a scale=1.000000 setup=1
+material	GC01	PASS	v02-a scale=1.000000 roles=5
+material	DL01	PASS	v02-a scale=1.500000 setup=1
+material	GC01	PASS	v02-a scale=1.500000 roles=5
+material	DL01	PASS	v02-b scale=1.000000 setup=1
+material	GC01	PASS	v02-b scale=1.000000 roles=5
+material	DL01	PASS	v02-b scale=1.500000 setup=1
+material	GC01	PASS	v02-b scale=1.500000 roles=5
+material	DL01	PASS	v02-c scale=1.000000 setup=1
+material	GC01	PASS	v02-c scale=1.000000 roles=4
+material	DL01	PASS	v02-c scale=1.500000 setup=1
+material	GC01	PASS	v02-c scale=1.500000 roles=4
+material	DL01	PASS	v03-a scale=1.000000 setup=1
+material	GC01	PASS	v03-a scale=1.000000 roles=5
+material	DL01	PASS	v03-a scale=1.500000 setup=1
+material	GC01	PASS	v03-a scale=1.500000 roles=5
+material	DL01	PASS	v03-b scale=1.000000 setup=1
+material	GC01	PASS	v03-b scale=1.000000 roles=5
+material	DL01	PASS	v03-b scale=1.500000 setup=1
+material	GC01	PASS	v03-b scale=1.500000 roles=5
+material	GPU-draw-list	PASS	offscreen GPU execution agrees with the CPU reference
+material	GPU-dark-background	PASS	comparison uses the selected dark background
+material	GC03-caret	PASS	one-pixel caret shift is detected in the caret region
+material	GC03-focus	PASS	missing focus indicator is detected in the focus region
+material	GC05-images	PASS	failed comparison writes reference, GPU and difference images
+material	GA03-GPU	PASS	bounded atlas segmentation preserves GPU output
+material	GC05-tsv	PASS	complete comparison table has 40 rows and required columns

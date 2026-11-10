@@ -1,0 +1,3 @@
+﻿families: 103
+key=Atkinson Hyperlegible display=Atkinson Hyperlegible path=C:\USERS\USER\APPDATA\LOCAL\MICROSOFT\WINDOWS\FONTS\ATKINSONHYPERLEGIBLE-REGULAR.TTF face=0
+matches: 1

@@ -1,0 +1,18 @@
+﻿Visual Studio: C:\Program Files\Microsoft Visual Studio\2022\Community (17.14.37827.9); MSVC toolset: 14.44.35207
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+CMake Warning at build/Release/sources/harfbuzz-c7a7457b7385f33178e8cf87615ca077a810bbe7/CMakeLists.txt:4 (message):
+  The main build system for HarfBuzz is Meson.  CMake build support is
+  community-maintained and is not actively supported by HarfBuzz developers.
+Building introspection files on Windows requires BUILD_SHARED_LIBS to be enabled.
+-- Configuring done (0.7s)
+-- Generating done (0.2s)
+-- Build files have been written to: E:/LcarsUI/.scratch/worktrees/v1-integration/build/Release
+[1/7] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\LcarsUI\.scratch\worktrees\v1-integration\build\Release && "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -DSOURCE_DIR=E:/LcarsUI/.scratch/worktrees/v1-integration -DOUTPUT_FILE=E:/LcarsUI/.scratch/worktrees/v1-integration/build/Release/generated/demo_revision.hpp -P E:/LcarsUI/.scratch/worktrees/v1-integration/examples/settings_demo/build_revision.cmake"
+Internal ctest changing into directory: E:/LcarsUI/.scratch/worktrees/v1-integration/build/Release
+Test project E:/LcarsUI/.scratch/worktrees/v1-integration/build/Release
+    Start 36: host_native
+1/1 Test #36: host_native ......................   Passed  218.45 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) = 218.46 sec

@@ -1,0 +1,3 @@
+scenario	appearance	font_mode	resolution	scale	renderer_driver	windows_build	configuration	mode	phase	count	p50_ms	p95_ms	p99_ms	max_ms	over_16_7	startup_ms	input_present_ms	presents	wm_paint	cpu_ms	delay_ms	peak_working_set_bytes	run_kind	status
+list-hold-down	web	default	3840x2160	2	NVIDIA GeForce RTX 3060/PCIe/SSE2 / 3.3.0 NVIDIA 610.88	26300	Release	offscreen-no-compositor	warmup	13	5.4472	7.02294	7.02294	7.02294	0	424.472	5.9516	0	0	0	0	84189184	measurement	PASS
+list-hold-down	web	default	3840x2160	2	NVIDIA GeForce RTX 3060/PCIe/SSE2 / 3.3.0 NVIDIA 610.88	26300	Release	offscreen-no-compositor	steady	97	8.82777	11.7588	14.8069	14.8069	0	424.472	5.9516	0	0	0	0	84189184	measurement	PASS
