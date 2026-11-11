@@ -193,8 +193,8 @@ void the_distribute_alignment_stretches_the_last_line_and_a_single_line() {
     }
     {
         Laid laid(ui, spaced);
-        // Three characters (the middle one a full-width space) in 100 px: 26 px per gap.
-        check(same_pieces(pieces_of(laid.frame.find(spaced)->lines[0]), {{0, 1, 0}, {1, 2, 42}, {2, 3, 84}}), "A full-width space is one more character");
+        // 姓, a full-width space, 名: like an ASCII space the blank stays with the character before it and the 52 px go after it.
+        check(same_pieces(pieces_of(laid.frame.find(spaced)->lines[0]), {{0, 2, 0}, {2, 3, 84}}), "A full-width space is a blank: it is never drawn as a piece of its own");
     }
     {
         Laid laid(ui, plain);

@@ -44,6 +44,9 @@ bool safe_cut(std::u16string_view text, std::size_t offset) {
     return true;
 }
 bool is_space(char32_t c) { return c == u' '; }
+// A blank in the sense of the automatic method: an ASCII space or an ideographic one (U+3000). Like a space it belongs to the
+// character before it, and the added width goes after it, so a blank is never drawn as a piece of its own.
+bool is_blank(char32_t c) { return c == u' ' || c == 0x3000; }
 }
 bool is_wide_character(char32_t c) {
     return (c >= 0x1100 && c <= 0x11ff) || (c >= 0x2e80 && c <= 0x303f) || (c >= 0x3040 && c <= 0x33ff) || (c >= 0x3400 && c <= 0x4dbf) ||
@@ -53,7 +56,7 @@ bool is_wide_character(char32_t c) {
 }
 std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view text, int pixels, const TextRun& natural, float width, JustifyMethod method) {
     std::size_t content_end = text.size();
-    while (content_end > 0 && text[content_end - 1] == u' ') --content_end;  // spaces at the end never stretch
+    while (content_end > 0 && (text[content_end - 1] == u' ' || text[content_end - 1] == 0x3000)) --content_end;  // blanks at the end never stretch
     if (content_end == 0) return std::nullopt;
     // Whole characters. Normally the measuring backend's own stops (its shaping clusters), minus any that would
     // split a character. A per-character line cuts at every character instead: a ligature such as ffi is one
@@ -77,7 +80,7 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
         const char32_t a = code_point_at(text, cuts[j - 1]), b = code_point_at(text, cuts[j]);
         bool gap = false;
         switch (method) {
-        case JustifyMethod::automatic: gap = is_space(a) || (!is_space(b) && (is_wide_character(a) || is_wide_character(b))); break;
+        case JustifyMethod::automatic: gap = is_blank(a) || (!is_blank(b) && (is_wide_character(a) || is_wide_character(b))); break;
         case JustifyMethod::spaces: gap = is_space(a); break;
         case JustifyMethod::per_character: gap = true; break;
         }
