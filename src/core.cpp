@@ -133,7 +133,8 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
-        (settings.density != Density::standard && settings.density != Density::compact))
+        (settings.density != Density::standard && settings.density != Density::compact) ||
+        (settings.motion != Motion::automatic && settings.motion != Motion::off))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
     if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};

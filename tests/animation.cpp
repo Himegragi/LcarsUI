@@ -223,6 +223,17 @@ void motion_off_and_system_setting_play_nothing() {
         check(near_px(v.paint().center(), v.tick(65)) && !v.ui.animating().value.value(), "switching off ends the running slide at its end");
     }
 }
+void presentation_motion_is_validated_and_compared() {
+    Ui ui;
+    PresentationSettings settings = ui.presentation();
+    check(settings.motion == Motion::automatic, "the default follows the system");
+    settings.motion = static_cast<Motion>(7);
+    check(ui.set_presentation(settings).status == Status::invalid_value, "an unknown motion value is refused");
+    check(ui.presentation().motion == Motion::automatic, "and nothing changed");
+    settings.motion = Motion::off;
+    check(!(settings == ui.presentation()), "motion takes part in settings equality");
+    check(bool(ui.set_presentation(settings)) && ui.presentation().motion == Motion::off, "off is accepted");
+}
 void switching_off_asks_for_a_final_frame() {
     Volume v; int invalidations = 0;
     v.state().on_invalidate([&] { ++invalidations; });
@@ -292,6 +303,7 @@ int main() {
         {"interrupted drag slides back", interrupted_drag_slides_back},
         {"other value changes land at once", other_value_changes_land_at_once},
         {"motion off and system setting play nothing", motion_off_and_system_setting_play_nothing},
+        {"presentation motion is validated", presentation_motion_is_validated_and_compared},
         {"switching off asks for a final frame", switching_off_asks_for_a_final_frame},
         {"hidden window ends and prevents slides", hidden_window_ends_and_prevents_slides},
         {"no time source means instant", without_a_time_source_changes_are_instant},

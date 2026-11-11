@@ -24,7 +24,10 @@ public:
         return 1.0 - rest * rest * rest;
     }
     // Without a time source nothing can be animated: callers see instant changes.
-    void time_source(std::function<Time()> source) { source_ = std::move(source); }
+    void time_source(std::function<Time()> source) {
+        source_ = std::move(source);
+        if (!source_) tracks_.clear();  // without a timeline nothing can still be running
+    }
     bool has_time_source() const { return static_cast<bool>(source_); }
     Time now() const { return source_ ? source_() : 0; }
     // Register or retarget. The caller passes where the property is displayed right now, so a

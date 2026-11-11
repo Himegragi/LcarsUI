@@ -93,6 +93,13 @@ public:
     const std::optional<RendererFailure>& renderer_failure() const { return renderer_failure_; }
     void on_renderer_failure(std::function<void(const RendererFailure&)> callback) { failure_callback_ = std::move(callback); }
     Result rebuild_renderer();
+    // #75: the system "Show animations in Windows" preference, re-read on WM_SETTINGCHANGE. Tests may
+    // replace the reader to simulate it being on or off (and flip it while running).
+    void system_animation_source(std::function<bool()> reader) { animation_reader_ = std::move(reader); refresh_system_animations(); }
+    // Tests replace the minimized / not shown / cloaked / covered check so another window on a shared
+    // desktop cannot decide the outcome; with no reader the real window state is used.
+    void hidden_source(std::function<bool()> reader) { hidden_reader_ = std::move(reader); refresh_visibility(); }
+    bool window_hidden() const { return hidden_; }
     void close() { release(); }
     void request_quit() { quit_ = true; }
     void on_close_request(std::function<CloseDecision()> callback) { close_callback_ = std::move(callback); }
@@ -161,6 +168,11 @@ private:
     void update_hover(int x, int y);
     void follow_focus();               // notice focus moved by application or semantic calls
     std::string synced_focus_;
+    std::function<bool()> animation_reader_, hidden_reader_;
+    bool hidden_ = false;
+    void refresh_system_animations();
+    void refresh_visibility();         // minimized / not shown / cloaked / fully covered: motion ends at once
+    void schedule_animation();         // next frame while a transition runs, nothing otherwise
     void after_input(const std::string& focus_before);
     void log_ime(const wchar_t* event, std::u16string_view detail = {});
 };
