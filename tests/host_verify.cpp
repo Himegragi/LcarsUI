@@ -999,6 +999,107 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     detail::access(ui).composition_cancel();
 }
 
+// #84 twin of tests/justify.cpp on a real window with the real shaper: justified lines end flush at the
+// edge, real clicks and drags land on the characters as drawn, and the user's "justified text as left"
+// setting draws everything left. The glyph pixels themselves and a real input method need the author's
+// machine (see the author-run list).
+void justify_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    const std::u16string text =
+        u"LcarsUI 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
+        u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>(text);
+    auto sample = ui.add_label({.id = "sample", .kind = Kind::label, .value = text, .text_align = TextAlign::justify}).value.value();
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
+    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    DesktopOptions options; options.title = u"LcarsUI justified text verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(sample), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(560, 460);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
+    auto caret = [&]() { return detail::access(ui).edit("note")->selection; };
+    detail::Text shaper; detail::ShapedMeasure measure(shaper);
+
+    // JU01: the label. Every line but the last is stretched, its visible text ends at the label's right edge.
+    auto label = placed("sample");
+    bool label_flush = label.lines.size() > 2;
+    std::string label_detail;
+    for (std::size_t i = 0; i < label.lines.size(); ++i) {
+        const auto& line = label.lines[i];
+        const bool last = i + 1 == label.lines.size();
+        if (last) { label_flush &= line.segments.empty(); continue; }
+        if (line.segments.empty()) { label_flush = false; label_detail += " line " + std::to_string(i) + " not stretched;"; continue; }
+        const auto content_end = static_cast<unsigned>(line.text.find_last_not_of(u' ') + 1);
+        float right = 0;
+        for (const auto& piece : line.segments)
+            if (piece.begin < content_end) right = static_cast<float>(line.bounds.x - label.bounds.x) + piece.x + measure.measure(line.text.substr(piece.begin, std::min(piece.end, content_end) - piece.begin), label.text_size).width;
+        label_flush &= std::abs(right - static_cast<float>(label.bounds.w)) <= 2.f;
+        label_detail += " line " + std::to_string(i) + " right=" + std::to_string(right) + ";";
+    }
+    report.check("JU01-label-flush", label_flush, "A justified label's lines end at its width (" + std::to_string(label.bounds.w) + " px), the last stays left;" + label_detail);
+
+    // JU02: the multi-line field, same rule at the wrap edge; caret stops equal what is drawn.
+    auto field = placed("note");
+    bool field_flush = field.multiline && field.view.lines.size() > 2;
+    float edge = 0; std::string field_detail; int stretched_lines = 0;
+    for (unsigned i = 0; i < field.view.lines.size(); ++i) {
+        const auto& line = field.view.lines[i];
+        const auto visible = std::u16string_view(text).substr(line.begin, line.end - line.begin);
+        const auto content_end = line.begin + static_cast<unsigned>(visible.find_last_not_of(u' ') + 1);
+        const float right = field.view.x_in_line(i, content_end); field_detail += " [" + std::to_string(i) + ": soft=" + std::to_string(line.soft) + " pieces=" + std::to_string(line.segments.size()) + " right=" + std::to_string(right) + "]";
+        // A line that happens to fill the width exactly (31 wide characters) needs no stretching and has no pieces.
+        if (line.soft) { if (edge == 0) edge = right; stretched_lines += line.segments.size() > 1; field_flush &= std::abs(right - edge) <= 2.f; }
+        else field_flush &= line.segments.empty();
+    }
+    report.check("JU02-field-flush", field_flush && stretched_lines > 0 && edge > 0.8f * static_cast<float>(field.view.text.w), "Wrapped lines of the field end at one edge (" + std::to_string(edge) + " px of " + std::to_string(field.view.text.w) + ")" + field_detail);
+
+    // JU03: a real click at every drawn caret stop of line 0 puts the caret there.
+    detail::access(ui).focus("note"); host.pump(); host.paint();
+    field = placed("note");
+    const int y0 = field.view.row_y(0) + field.view.row_height / 2;
+    unsigned wrong = 0, probed = 0;
+    std::string wrong_detail;
+    const int y_reset = field.view.row_y(3) + field.view.row_height / 2;
+    const auto first_stops = field.view.lines[0].run.stops;  // a copy: repainting replaces the view
+    for (const auto& stop : first_stops) {
+        const unsigned offset = field.view.lines[0].begin + stop.first;
+        const int x = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(0, offset)));
+        // A click elsewhere first, so two probes close together are never taken for a double click.
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y_reset)); post(WM_LBUTTONUP, 0, MAKELPARAM(field.view.text.x + 1, y_reset));
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y0)); post(WM_LBUTTONUP, 0, MAKELPARAM(x, y0));
+        ++probed;
+        if (caret().caret != offset) { ++wrong; if (wrong <= 5) wrong_detail += " offset " + std::to_string(offset) + " at x=" + std::to_string(x) + " got " + std::to_string(caret().caret) + ";"; }
+        field = placed("note");
+    }
+    report.check("JU03-click-on-stops", probed > 8 && wrong == 0, "Clicking each drawn stop of the first line puts the caret there; probed " + std::to_string(probed) + ", wrong " + std::to_string(wrong) + wrong_detail);
+
+    // JU04: a drag into the second line selects up to the character under the pointer.
+    const auto& second = field.view.lines[1];
+    const unsigned target = second.begin + second.run.stops[second.run.stops.size() / 2].first;
+    const int y1 = field.view.row_y(1) + field.view.row_height / 2;
+    const int x1 = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(1, target)));
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y0));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x1, y1));
+    const auto dragged = caret();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(x1, y1));
+    if (!folder.empty()) host.render(560, 460, 1.f, folder / (report.appearance + "-justify.bmp"));
+    report.check("JU04-drag-select", dragged.anchor == 0 && dragged.caret == target, "A drag into the second line selects to the drawn character; selection=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) + ", expected " + std::to_string(target));
+
+    // JU05: the user's setting draws both left-aligned and changes no property; the UIA-facing node still says justify.
+    auto settings = ui.presentation(); settings.justify_as_left = true;
+    ui.set_presentation(settings); host.pump(); host.paint();
+    label = placed("sample"); field = placed("note");
+    bool left = std::all_of(label.lines.begin(), label.lines.end(), [](const Line& l) { return l.segments.empty(); }) &&
+                std::all_of(field.view.lines.begin(), field.view.lines.end(), [](const FieldLine& l) { return l.segments.empty() && l.shift == 0; });
+    report.check("JU05-user-setting", left && *sample.text_align() == TextAlign::justify && *note.text_align() == TextAlign::justify,
+                 "With 'justified text as left' on both draw left-aligned and keep their property");
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -3248,6 +3349,7 @@ int run(const std::filesystem::path& folder) {
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
         multiline_native(*appearance, report, folder);
+        justify_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3693,7 +3795,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool multiline_only = false;
+        bool multiline_only = false, justify_only = false;
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
@@ -3718,6 +3820,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--justify-only") justify_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3746,6 +3849,14 @@ int wmain(int argc, wchar_t** argv) {
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 multiline_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (justify_only) {  // #84 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "justify.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                justify_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
