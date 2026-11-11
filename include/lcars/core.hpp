@@ -471,6 +471,10 @@ public:
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
+    // True while any on-screen transition (for example a slider thumb sliding to its new value) is
+    // still running. Values and semantics never wait for it, so this only says the picture has not
+    // settled; wait until it is false before comparing screenshots.
+    Query<bool> animating() const;
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:

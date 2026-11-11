@@ -4,6 +4,7 @@
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
+#include "animation.hpp"
 #include <array>
 #include <map>
 #include <set>
@@ -77,6 +78,21 @@ public:
     Result slider_pointer_down(const Id& id, int x, Rect track);
     Result slider_pointer(const Id& id, int x);
     std::optional<int> slider_drag_x(std::string_view id) const;
+    // #75 shared animation clock. The host (or a test) supplies the time source in milliseconds; with
+    // none installed every change is instant. Motion plays only when the source exists, presentation
+    // motion is automatic, the system animation preference is on and the window is visible.
+    void animation_time(std::function<std::uint64_t()> source) { animations_.time_source(std::move(source)); }
+    void set_system_animations(bool enabled);  // Windows "Show animations in Windows"; false ends running ones
+    void set_window_hidden(bool hidden);       // minimized / fully covered; true ends running ones
+    bool motion_enabled() const;
+    void finish_animations();                  // every running animation jumps to its end
+    // The one query behind Ui::animating and SemanticTree::animating (same admission and statuses).
+    Query<bool> animating() const;
+    bool animation_running() const;            // host: schedule the next frame only while true
+    // Thumb position as a 0..1 share of the track while a transition runs; nothing otherwise.
+    std::optional<double> slider_animated_ratio(std::string_view id) const;
+    // Pointer x the thumb is drawn at while the pointer holds it (a drag, or any press with motion off).
+    std::optional<int> slider_held_x(std::string_view id) const;
     ComponentHandle radio_layout_handle(const Control& control);
     Result radio_key_down(KeyPress key);
     ComponentHandle checkbox_layout_handle(const Control& control);
@@ -359,8 +375,16 @@ private:
     struct ShortcutBinding { Shortcut chord; Id target, scope; };
     std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
-    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0; };
+    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, press_x = 0; bool held = false; };
     std::optional<SliderDrag> slider_drag_;
+    AnimationClock animations_;
+    bool system_animations_ = true, window_hidden_ = false;
+    std::map<Id, int, std::less<>> slider_targets_;  // value each running thumb transition is heading to
+    static std::string slider_animation_key(std::string_view id) { return "slider:" + std::string(id); }
+    bool slider_transition_live(std::string_view id) const;
+    double slider_display_ratio(std::string_view id) const;
+    void slider_started_moving(const Id& id, double from, int value_before);
+    void end_slider_drag();
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;
