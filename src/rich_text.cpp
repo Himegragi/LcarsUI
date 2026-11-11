@@ -1,4 +1,5 @@
 #include "rich_text.hpp"
+#include "utf.hpp"
 #include <algorithm>
 
 namespace lcars {
@@ -116,6 +117,62 @@ bool all_have(const std::vector<StyleSpan>& spans, std::u16string_view text, uns
 }
 std::vector<StyleSpan> composition_spans(const std::vector<StyleSpan>& spans, unsigned begin, unsigned end, unsigned preedit_size, const TextStyle& style) {
     return splice_spans(spans, begin, end - begin, preedit_size, uniform_spans(preedit_size, style));
+}
+std::string serialize_rich_payload(const RichText& value) {
+    const auto text = utf8_from_utf16(value.text);
+    std::string out = "LcarsUI.RichText.1\n" + std::to_string(text.size()) + "\n" + text + "\n" + std::to_string(value.spans.size()) + "\n";
+    for (const auto& span : value.spans) {
+        const unsigned flags = (span.bold ? 1u : 0u) | (span.italic ? 2u : 0u) | (span.underline ? 4u : 0u);
+        out += std::to_string(span.start) + " " + std::to_string(span.length) + " " + std::to_string(flags) + " " + std::to_string(span.color.size()) + ":" + span.color + "\n";
+    }
+    return out;
+}
+namespace {
+// A reader over the payload that fails closed: any malformed number or short read ends the parse.
+struct Reader {
+    std::string_view rest;
+    bool failed = false;
+    bool expect(std::string_view literal) { if (rest.substr(0, literal.size()) != literal) return failed = true, false; rest.remove_prefix(literal.size()); return true; }
+    unsigned long number(char stop) {
+        unsigned long long value = 0; std::size_t used = 0;
+        while (used < rest.size() && rest[used] >= '0' && rest[used] <= '9' && used < 10) value = value * 10 + static_cast<unsigned>(rest[used++] - '0');
+        if (used == 0 || used >= rest.size() || rest[used] != stop || value > 0xffffffffull) { failed = true; return 0; }
+        rest.remove_prefix(used + 1);
+        return static_cast<unsigned long>(value);
+    }
+    std::string_view bytes(std::size_t count) {
+        if (count > rest.size()) { failed = true; return {}; }
+        auto out = rest.substr(0, count); rest.remove_prefix(count); return out;
+    }
+};
+}
+std::optional<RichText> parse_rich_payload(std::string_view payload) {
+    try {
+        Reader in{payload};
+        if (!in.expect("LcarsUI.RichText.1\n")) return std::nullopt;
+        const auto text_size = in.number('\n');
+        if (in.failed) return std::nullopt;
+        RichText value;
+        value.text = utf16_from_utf8(in.bytes(text_size));
+        if (in.failed || !in.expect("\n")) return std::nullopt;
+        const auto count = in.number('\n');
+        if (in.failed || count > payload.size()) return std::nullopt;
+        for (unsigned long i = 0; i < count; ++i) {
+            StyleSpan span;
+            span.start = static_cast<unsigned>(in.number(' '));
+            span.length = static_cast<unsigned>(in.number(' '));
+            const auto flags = in.number(' ');
+            const auto color_size = in.number(':');
+            if (in.failed || flags > 7) return std::nullopt;
+            span.bold = flags & 1; span.italic = flags & 2; span.underline = flags & 4;
+            span.color = std::string(in.bytes(color_size));
+            if (in.failed || !in.expect("\n")) return std::nullopt;
+            value.spans.push_back(std::move(span));
+        }
+        if (!in.rest.empty()) return std::nullopt;
+        auto normal = normalize_rich_text(std::move(value), static_cast<std::size_t>(-1));
+        return normal ? std::optional<RichText>(std::move(*normal)) : std::nullopt;
+    } catch (const std::exception&) { return std::nullopt; }
 }
 }
 }

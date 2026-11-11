@@ -2,6 +2,9 @@
 // Internal helpers for rich text: the span arithmetic the field editing, layout and semantic layer share.
 // Span lists passed in are canonical (sorted, non-overlapping, no plain or empty spans); results are too.
 #include "lcars/core.hpp"
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace lcars::detail {
 // Sorted, non-overlapping input: drops empty and plain spans and merges adjacent spans of equal style.
@@ -24,4 +27,12 @@ bool all_have(const std::vector<StyleSpan>& spans, std::u16string_view text, uns
 TextStyle changed(TextStyle style, const StyleChange& change);
 // The spans of the text as displayed while an IME composition replaces [begin, end) with preedit_size units of `style`.
 std::vector<StyleSpan> composition_spans(const std::vector<StyleSpan>& spans, unsigned begin, unsigned end, unsigned preedit_size, const TextStyle& style);
+}
+
+namespace lcars::detail {
+// The framework-private clipboard payload of a copied range: the text, its spans and a version tag, as bytes.
+// A host stores the bytes under one private format next to the plain text and returns them unchanged.
+std::string serialize_rich_payload(const RichText& value);
+// nullopt for anything that is not a payload of this version or that does not describe a valid value.
+std::optional<RichText> parse_rich_payload(std::string_view payload);
 }

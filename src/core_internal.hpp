@@ -185,6 +185,7 @@ public:
     Result undo(std::string_view id);
     Result redo(std::string_view id);
     Result paste(std::string_view id, std::u16string_view text);
+    Result paste_clipboard(std::string_view id);  // Ctrl+V: styles come along when the clipboard holds a matching payload
     Result copy(std::string_view id);  // writes the selection to the clipboard
     Result cut(std::string_view id);
     void set_clipboard(Clipboard* clipboard) { clipboard_ = clipboard; }

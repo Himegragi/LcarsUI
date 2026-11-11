@@ -143,6 +143,13 @@ public:
     virtual bool write(std::u16string_view text) = 0;
     // not_supported means no text; failed means the clipboard could not be read.
     virtual Query<std::u16string> read() = 0;
+    // Rich text. A copy from a rich field hands the plain text (CRLF) together with an opaque payload that
+    // carries the styles; the host stores the payload under one private format beside the plain text and
+    // returns it unchanged. A host that does not know the format keeps these defaults, so only plain text
+    // moves. A plain write replaces every format, as on Windows, so a stale payload never outlives its text.
+    virtual bool write_rich(std::u16string_view text, std::string_view payload) { (void)payload; return write(text); }
+    // not_supported means no payload is on the clipboard.
+    virtual Query<std::string> read_rich() { return {Status::not_supported, u"No rich text", std::nullopt}; }
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);

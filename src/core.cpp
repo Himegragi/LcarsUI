@@ -1640,7 +1640,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate || it->second.confirmed || !members.insert(field.id_).second)
+            it->second.confirmation_member || it->second.immediate || it->second.confirmed || it->second.rich || !members.insert(field.id_).second)
             return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -1723,7 +1723,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
+            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}}); else changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); changes.emplace_back(DropdownChange{h, f.value, f.origin}); f.submitting = true; }
@@ -1744,7 +1744,13 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         }
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
+            if constexpr (std::is_same_v<T, TextHandle>) {
+                auto& f = edits_.at(h.id_); f.submitting = false;
+                if (outcome.result) {
+                    if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
+                    else f.origin = std::get<TextChange>(changes[i]).value;
+                }
+            }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<DropdownChange>(changes[i]).value; }
@@ -2527,9 +2533,31 @@ Result detail::UiState::copy(std::string_view id) {
         for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
         selected = std::move(crlf);
     }
-    if (!clipboard_ || !clipboard_->write(selected))
-        return {Status::failed, u"無法寫入剪貼簿"};
+    // A rich field also hands over the styles of the selection, beside the plain text.
+    const bool written = it->second.rich && clipboard_
+        ? clipboard_->write_rich(selected, detail::serialize_rich_payload(RichText{std::u16string(session.text, session.begin(), session.end() - session.begin()),
+                                                                                    detail::slice_spans(it->second.spans, session.begin(), session.end())}))
+        : clipboard_ && clipboard_->write(selected);
+    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
     return {};
+}
+// A paste from the clipboard: a rich field takes the styles of a payload that belongs to the plain text it
+// came with; anything else (another program's text, a payload left from another copy, a plain field) is plain text.
+Result detail::UiState::paste_clipboard(std::string_view id) {
+    OperationScope operation(this);
+    if (!clipboard_) return {Status::not_supported, u"剪貼簿不可用"};
+    auto content = clipboard_->read();
+    if (!content) return {content.status, content.message};
+    if (is_rich(id)) {
+        auto payload = clipboard_->read_rich();
+        auto rich = payload ? detail::parse_rich_payload(*payload) : std::nullopt;
+        if (rich && rich->text == paste_as_multi_line(*content)) {
+            Field* field = nullptr;
+            if (auto result = writable(id, field); !result) return result;
+            return replace_range(id, *field, field->session.begin(), field->session.end(), rich->text, &rich->spans);
+        }
+    }
+    return paste(id, *content);
 }
 Result detail::UiState::cut(std::string_view id) {
     OperationScope operation(this);
@@ -2810,7 +2838,9 @@ Result detail::UiState::key_down(KeyPress key) {
         if (control->kind == Kind::text) {
             // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
             const bool multi = control->multiline;
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' ||
+            // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
+            const bool style_key = control->rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
                                   (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
                 (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
                  (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
@@ -2879,11 +2909,9 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (key.letter == u'A') { session.select(0, size); return {}; }
         if (key.letter == u'C') return copy(focus_);
         if (key.letter == u'X') return cut(focus_);
-        if (key.letter == u'V') {
-            if (!clipboard_) return {Status::not_supported, u"\u526a\u8cbc\u7c3f\u4e0d\u53ef\u7528"};
-            auto content = clipboard_->read();
-            return content ? paste(focus_, *content) : Result{content.status, content.message};
-        }
+        if (is_rich(focus_) && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U'))
+            return toggle_style(focus_, key.letter == u'B' ? StyleAttribute::bold : key.letter == u'I' ? StyleAttribute::italic : StyleAttribute::underline);
+        if (key.letter == u'V') return paste_clipboard(focus_);
         return {};
     }
     switch (key.key) {
