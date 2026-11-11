@@ -48,6 +48,9 @@ public:
     Query<std::u16string> text(std::string_view id) const;
     // Same answer and admission as Ui::animating: is any on-screen transition still running?
     Query<bool> animating() const;
+    // Read-only: the colors currently painted for the bound appearance and the current theme variant,
+    // overrides applied. not_found until an appearance is bound (see Ui::bind_appearance).
+    Query<Palette> effective_palette() const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
     // Callbacks run on the UI thread. The desktop host dispatches queued notifications;
     // core-only hosts call dispatch_events() at their own safe event-loop boundary.

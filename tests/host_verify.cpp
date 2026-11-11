@@ -272,6 +272,24 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
                  "bounded atlas segmentation preserves GPU output");
 }
 
+// #78: the desktop host paints with the Ui's palette overrides, and the semantic layer reads the same colors.
+void palette_override_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    f.host.force_scale(1.f);
+    f.settle();
+    auto original = appearance.palette().background;
+    const Color changed{240, 240, 240};
+    auto first_pixel = [](const auto& image) { return Color{image.reference.pixels[0], image.reference.pixels[1], image.reference.pixels[2]}; };
+    auto before = f.host.compare_gpu(960, 720, 1.f);
+    report.check("PO-before", bool(before) && first_pixel(before) == original, "built-in background paints before any override");
+    auto result = f.form.ui.set_palette_overrides({{std::string(appearance.name()), ThemeVariant::light(), "background", changed}});
+    auto after = f.host.compare_gpu(960, 720, 1.f);
+    report.check("PO-override", bool(result) && bool(after) && first_pixel(after) == changed, "the next host frame paints the overridden background and the GPU agrees");
+    auto semantic = f.form.ui.semantics().effective_palette();
+    report.check("PO-semantic", semantic && semantic->background == changed, "the host binds its appearance so the semantic layer reads the overridden palette");
+    report.check("PO-clear", bool(f.form.ui.set_palette_overrides({})) && first_pixel(f.host.compare_gpu(960, 720, 1.f)) == original, "clearing the list restores the built-in background");
+}
+
 std::string windows_build() {
     using QueryVersion=LONG (WINAPI*)(OSVERSIONINFOW*);
     auto proc=reinterpret_cast<QueryVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
@@ -3152,6 +3170,7 @@ int run(const std::filesystem::path& folder) {
         report.appearance = tag;
         presentation_before_input(*appearance, report);
         draw_list_initial(*appearance, report);
+        palette_override_native(*appearance, report);
         tabs_native(*appearance, report, folder);
         atlas_native(*appearance, report);
         progress_native(*appearance, report, folder);
