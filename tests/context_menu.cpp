@@ -117,13 +117,15 @@ void read_only_field_only_copies_and_selects() {
 
 // Every built-in item is the same operation as its shortcut: value, clipboard and history agree.
 void built_in_items_match_their_shortcuts() {
-    struct Case { const char* item; KeyPress key; const char16_t* clipboard; };
+    // Besides menu == shortcut, each case states what the operation must do on "hello world" with "hello" selected
+    // (code review 2026-11-12, item 16): the value after it, the clipboard after it, and the final selection.
+    struct Case { const char* item; KeyPress key; const char16_t* clipboard; const char16_t* value; std::optional<std::u16string> clipboard_after; unsigned anchor, caret; };
     const Case cases[] = {
-        {"lcars.cut", {.ctrl = true, .letter = u'X'}, nullptr},
-        {"lcars.copy", {.ctrl = true, .letter = u'C'}, nullptr},
-        {"lcars.paste", {.ctrl = true, .letter = u'V'}, u"PASTED"},
-        {"lcars.delete", {.key = Key::del}, nullptr},
-        {"lcars.select_all", {.ctrl = true, .letter = u'A'}, nullptr},
+        {"lcars.cut", {.ctrl = true, .letter = u'X'}, nullptr, u" world", u"hello", 0, 0},
+        {"lcars.copy", {.ctrl = true, .letter = u'C'}, nullptr, u"hello world", u"hello", 0, 5},
+        {"lcars.paste", {.ctrl = true, .letter = u'V'}, u"PASTED", u"PASTED world", u"PASTED", 6, 6},
+        {"lcars.delete", {.key = Key::del}, nullptr, u" world", std::nullopt, 0, 0},
+        {"lcars.select_all", {.ctrl = true, .letter = u'A'}, nullptr, u"hello world", std::nullopt, 0, 11},
     };
     for (const auto& c : cases) {
         Ui by_menu, by_key; MemoryClipboard menu_clipboard, key_clipboard;
@@ -135,6 +137,8 @@ void built_in_items_match_their_shortcuts() {
         check(bool(by_menu.open_context_menu(a.handle)), "open for the menu twin");
         check(bool(by_menu.invoke_menu_item(c.item)), "run the menu item");
         check(bool(core(by_key).key_down(c.key)), "run the shortcut");
+        check(*a.model == c.value && *b.model == c.value, (std::string(c.item) + ": the value after the operation").c_str());
+        check(menu_clipboard.content == c.clipboard_after && key_clipboard.content == c.clipboard_after, (std::string(c.item) + ": the clipboard after the operation").c_str());
         check(*a.model == *b.model, "the menu item and its shortcut leave the same value");
         check(a.handle.draft().value.value() == b.handle.draft().value.value(), "same field text");
         check(menu_clipboard.content == key_clipboard.content, "the same clipboard content");
@@ -142,6 +146,7 @@ void built_in_items_match_their_shortcuts() {
         check(sa.operations == sb.operations, "the same undo history (undo and redo operations)");
         auto selection_a = by_menu.semantics().get({"f"})->text_selection, selection_b = by_key.semantics().get({"f"})->text_selection;
         check(selection_a && selection_b && selection_a->anchor == selection_b->anchor && selection_a->caret == selection_b->caret, "the same selection");
+        check(selection_a && selection_a->anchor == c.anchor && selection_a->caret == c.caret, (std::string(c.item) + ": the selection after the operation").c_str());
         check(a.handle.undo().status == b.handle.undo().status && *a.model == *b.model, "undo behaves the same afterwards");
     }
 }
@@ -275,7 +280,12 @@ void keyboard_moves_skips_lines_and_wraps() {
     press(ui, Key::menu);
     press(ui, Key::end); press(ui, Key::up);
     check(highlighted(ui) == "lcars.delete", "Up from the last item lands before the separator");
-    check(bool(press(ui, Key::menu)) && !*ui.context_menu_open(), "the menu key again closes it");
+    // Code review 2026-11-12 item 13: a standard Win32 popup menu ignores the Apps key while open (probed with TrackPopupMenu: F10 and
+    // Alt close it, VK_APPS does not), and the spec's close list is Esc / Alt / F10 / click outside / deactivation.
+    press(ui, Key::menu);
+    check(*ui.context_menu_open() && highlighted(ui) == "lcars.delete", "the menu key again leaves the open menu and its highlight alone");
+    press(ui, Key::escape);
+    check(!*ui.context_menu_open(), "Escape still closes it");
     core(ui).key_down({.key = Key::f10, .shift = true});
     check(*ui.context_menu_open(), "Shift+F10 opens the menu");
     core(ui).key_down({.key = Key::enter});
@@ -395,6 +405,56 @@ void menu_closes_by_escape_alt_f10_and_deactivation() {
     core(ui).key_down({.key = Key::backspace});
     core(ui).key_down({.key = Key::left});
     check(*field.model == u"hello" && *ui.context_menu_open(), "other keys do nothing while the menu is open");
+}
+
+// Code review 2026-11-12 item 16: every way of closing a menu is announced (MenuClosed in UIA is built on this event), and
+// every opening is announced, not only the first one.
+void every_way_of_closing_announces_menu_closed() {
+    std::vector<std::pair<std::string, std::function<void(Ui&, Field&)>>> closers = {
+        {"Escape", [](Ui& ui, Field&) { press(ui, Key::escape); }},
+        {"Alt", [](Ui& ui, Field&) { press(ui, Key::alt); }},
+        {"F10", [](Ui& ui, Field&) { press(ui, Key::f10); }},
+        {"the window losing activation", [](Ui& ui, Field&) { core(ui).window_active(false); core(ui).window_active(true); }},
+        {"close_context_menu", [](Ui& ui, Field&) { ui.close_context_menu(); }},
+        {"the semantic cancel verb", [](Ui& ui, Field&) { ui.semantics().perform({menu_node_id("note")}, Verb::cancel); }},
+    };
+    for (const auto& [name, close] : closers) {
+        Ui ui; auto field = add_field(ui, "note", u"hello");
+        core(ui).window_active(true);
+        std::vector<SemanticEventKind> kinds;
+        auto subscription = ui.semantics().subscribe([&](const SemanticEvent& e) { kinds.push_back(e.kind); });
+        auto count = [&](SemanticEventKind kind) { return std::count(kinds.begin(), kinds.end(), kind); };
+        for (int round = 1; round <= 2; ++round) {  // the second opening is announced like the first
+            field.handle.focus();
+            check(bool(ui.open_context_menu(field.handle)) && *ui.context_menu_open(), "open");
+            ui.semantics().dispatch_events();
+            check(count(SemanticEventKind::menu_opened) == round, (name + ": opening number " + std::to_string(round) + " is announced").c_str());
+            if (round == 1) {
+                close(ui, field);
+                ui.semantics().dispatch_events();
+                check(!*ui.context_menu_open() && count(SemanticEventKind::menu_closed) == 1, (name + ": closing is announced once").c_str());
+            } else {
+                press(ui, Key::escape);
+                ui.semantics().dispatch_events();
+                check(count(SemanticEventKind::menu_closed) == 2, (name + ": the second menu closes with its own announcement").c_str());
+            }
+        }
+    }
+}
+
+// Removing the component a menu hangs from closes the menu, and that is announced too.
+void removing_the_component_announces_menu_closed() {
+    Ui ui;
+    auto button = ui.add_button({.id = "b", .kind = Kind::button}).value.value();
+    ui.add_context_menu(button, {command("go", u"執行(G)", u'G')});
+    std::vector<SemanticEventKind> kinds;
+    auto subscription = ui.semantics().subscribe([&](const SemanticEvent& e) { kinds.push_back(e.kind); });
+    check(bool(ui.open_context_menu(button)), "open the button's menu");
+    ui.semantics().dispatch_events();
+    check(std::count(kinds.begin(), kinds.end(), SemanticEventKind::menu_opened) == 1, "opening is announced");
+    check(bool(button.remove()) && !*ui.context_menu_open(), "removing the component closes the menu");
+    ui.semantics().dispatch_events();
+    check(std::count(kinds.begin(), kinds.end(), SemanticEventKind::menu_closed) == 1, "and the closing is announced once");
 }
 
 void menu_cannot_open_or_survive_when_the_component_cannot_act() {
@@ -694,6 +754,8 @@ int main() {
         {"attach modes: append, replace, off", attach_modes_append_replace_and_off},
         {"other components have no menu until one is attached", other_components_have_no_menu_until_one_is_attached},
         {"menu closes by Escape, Alt, F10 and deactivation", menu_closes_by_escape_alt_f10_and_deactivation},
+        {"every way of closing a menu announces menu_closed", every_way_of_closing_announces_menu_closed},
+        {"removing the component announces menu_closed", removing_the_component_announces_menu_closed},
         {"menu cannot open or survive when the component cannot act", menu_cannot_open_or_survive_when_the_component_cannot_act},
         {"list menu selects the row and hands it to the application", list_menu_selects_the_row_and_hands_it_to_the_application},
         {"items can change while the menu is open", items_can_change_while_the_menu_is_open},

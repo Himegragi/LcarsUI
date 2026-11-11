@@ -353,20 +353,27 @@ int wmain(int argc, wchar_t** argv) {
             // Focus moves to an item when the keyboard highlights it.
             focus_event->wanted = L"items.edit";
             bool focused_event = SendMessageW(s.window, uia_demo::message_context_menu, 3, 0) == 0 && SUCCEEDED(focus_subscribed) && WaitForSingleObject(focus_event->received, 3000) == WAIT_OBJECT_0;
+            // HasKeyboardFocus is the semantic focus AND the window owning the keyboard focus. The old check (`|| GetFocus() != s.window`)
+            // was always true from this process. Now: bring the window forward (best effort); when it is in front the highlighted item
+            // must report focus; when Windows will not let us, say so instead of passing.
+            SetForegroundWindow(s.window); Sleep(200);
             BOOL has_focus = FALSE;
-            bool focus_state = edit_item && SUCCEEDED(edit_item->get_CurrentHasKeyboardFocus(&has_focus)) && (has_focus || GetFocus() != s.window);
+            const bool in_front = GetForegroundWindow() == s.window;
+            bool focus_state = edit_item && SUCCEEDED(edit_item->get_CurrentHasKeyboardFocus(&has_focus)) && (!in_front || has_focus);
+            if (!in_front) std::cout << "UA12 focus state: N/A (the demo window could not be brought to the foreground)\n";
             // Invoke runs the row's Edit: the menu closes (MenuClosed) and the edit dialog opens.
             bool invoked = edit_item && invoke_id(uia, menu, L"items.edit") == S_OK && WaitForSingleObject(closed_event->received, 3000) == WAIT_OBJECT_0;
             auto gone = find_id(uia, root, L"items.list/menu"); bool vanished = !gone; if (gone) gone->Release();
             bool dialog_closed = close_modal(uia, root, L"items.dialog");
             if (edit_item) edit_item->Release(); if (delete_item) delete_item->Release(); if (menu) menu->Release();
             // The search field's menu: a separator line and a disabled item (nothing is selected there).
-            // MenuOpened / MenuClosed are asserted above on the first menu. This second opening is checked through
-            // the tree: one run in about twenty did not deliver its second MenuOpened to the client (UIA event delivery).
+            // The second opening raises its own MenuOpened (the event is reset first, so the first one cannot satisfy this wait).
+            ResetEvent(opened_event->received);
             const auto field_status = SendMessageW(s.window, uia_demo::message_context_menu, 2, 0);
+            const bool second_opened_event = SUCCEEDED(opened_subscribed) && WaitForSingleObject(opened_event->received, 3000) == WAIT_OBJECT_0;
             IUIAutomationElement* field_menu = nullptr;
             for (int attempt = 0; attempt < 30 && !field_menu; ++attempt) { field_menu = find_id(uia, root, L"items.search/menu"); if (!field_menu) Sleep(100); }
-            bool field_open = field_status == 0 && field_menu;
+            bool field_open = field_status == 0 && field_menu && second_opened_event;
             auto copy_item = field_menu ? find_id(uia, field_menu, L"lcars.copy") : nullptr;
             auto select_all_item = field_menu ? find_id(uia, field_menu, L"lcars.select_all") : nullptr;
             bool field_items = menu_item_is(copy_item, UIA_MenuItemControlTypeId, L"複製(C)", L"C", L"Ctrl+C", false) &&
@@ -378,7 +385,22 @@ int wmain(int argc, wchar_t** argv) {
             if (separators) separators->Release(); if (separator_condition) separator_condition->Release();
             bool disabled_refuses = copy_item && [&] { IUIAutomationInvokePattern* p = nullptr; bool refused = SUCCEEDED(copy_item->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p))) && p && p->Invoke() == UIA_E_ELEMENTNOTENABLED; if (p) p->Release(); return refused; }();
             if (copy_item) copy_item->Release(); if (select_all_item) select_all_item->Release(); if (field_menu) field_menu->Release();
-            bool field_closed = SendMessageW(s.window, uia_demo::message_context_menu, 1, 0) == 0;
+            // MenuClosed arrives for every way of closing: the application's close_context_menu (1), Escape (4) and the window
+            // losing activation (6). Each round opens the search field's menu again and waits for its MenuOpened first.
+            bool field_closed = true;
+            for (int how : {1, 4, 6}) {
+                if (how == 6) SendMessageW(s.window, uia_demo::message_context_menu, 5, 0);  // active, so deactivating is a change
+                ResetEvent(opened_event->received); ResetEvent(closed_event->received);
+                if (how != 1) {  // the menu opened above is still open for the first way
+                    const bool reopened = SendMessageW(s.window, uia_demo::message_context_menu, 2, 0) == 0 && WaitForSingleObject(opened_event->received, 3000) == WAIT_OBJECT_0;
+                    field_closed = field_closed && reopened;
+                    ResetEvent(closed_event->received);
+                }
+                const bool closed_ok = SendMessageW(s.window, uia_demo::message_context_menu, how, 0) == 0 && SUCCEEDED(closed_subscribed) &&
+                    WaitForSingleObject(closed_event->received, 3000) == WAIT_OBJECT_0;
+                if (!closed_ok) std::cout << "UA12 MenuClosed missing for way " << how << '\n';
+                field_closed = field_closed && closed_ok;
+            }
             if (SUCCEEDED(opened_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuOpenedEventId, root, opened_event);
             if (SUCCEEDED(closed_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuClosedEventId, root, closed_event);
             if (SUCCEEDED(focus_subscribed)) uia->RemoveFocusChangedEventHandler(focus_event);

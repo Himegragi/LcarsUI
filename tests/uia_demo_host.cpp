@@ -47,6 +47,9 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         case 1: return static_cast<LRESULT>(active->ui.close_context_menu().status);
         case 2: return static_cast<LRESULT>(tree.perform({"items.search"}, lcars::Verb::context_menu).status);
         case 3: return static_cast<LRESULT>(lcars::detail::access(active->ui).key_down({.key = lcars::Key::down}).status);
+        case 4: return static_cast<LRESULT>(lcars::detail::access(active->ui).key_down({.key = lcars::Key::escape}).status);  // Escape closes the menu
+        case 5: lcars::detail::access(active->ui).window_active(true); return 0;   // the window counts as active (before opening a menu to deactivate)
+        case 6: lcars::detail::access(active->ui).window_active(false); return 0;  // deactivation closes an open menu
         default: return 99;
         }
     }

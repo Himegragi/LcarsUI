@@ -257,7 +257,8 @@ Result detail::UiState::menu_run_builtin(const Id& target, std::string_view comm
 Result detail::UiState::menu_key_down(KeyPress key) {
     OperationScope operation(this);
     if (!menu_) return {};
-    if (key.key == Key::escape || key.key == Key::alt || key.key == Key::f10 || key.key == Key::menu) return close_menu();
+    // Escape, Alt and F10 close an open menu; the Apps key does not (a standard Win32 popup menu ignores it too).
+    if (key.key == Key::escape || key.key == Key::alt || key.key == Key::f10) return close_menu();
     auto entries = menu_entries(menu_->target);
     std::vector<std::size_t> selectable;
     std::size_t current = entries.size();
