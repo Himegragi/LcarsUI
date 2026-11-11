@@ -93,13 +93,25 @@ unsigned FieldView::line_of(unsigned offset) const {
 std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
     if (lines.empty()) return {0, false};
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
-    unsigned offset = item.begin + item.run.hit(x);
+    unsigned offset = item.begin + item.run.hit(x - item.shift);
     return {offset, item.soft && offset == item.end};
 }
 float FieldView::x_in_line(unsigned line, unsigned offset) const {
     if (lines.empty()) return 0;
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
-    return item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
+    return item.shift + item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
+}
+int FieldView::row_y(unsigned line, unsigned first_line) const {
+    if (lines.empty()) return text.y;
+    const auto at = [&](unsigned i) { return lines[std::min<std::size_t>(i, lines.size() - 1)].top; };
+    return text.y + at(line) - at(first_line);
+}
+unsigned FieldView::line_at(int y, unsigned first_line) const {
+    if (lines.empty()) return 0;
+    const unsigned last = static_cast<unsigned>(std::min<std::size_t>(first_line + std::max(1u, visible), lines.size())) - 1;
+    unsigned found = std::min(first_line, last);
+    for (unsigned i = found + 1; i <= last && row_y(i, first_line) <= y; ++i) found = i;
+    return found;
 }
 
 namespace layout {
@@ -185,19 +197,11 @@ const Placement* Frame::hit(int x, int y) const {
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
 }
-namespace {
-// Which display line a pointer y falls on, clamped to the lines in view.
-unsigned pointed_line(const FieldView& view, int y) {
-    int row = view.line_height > 0 ? static_cast<int>(std::floor(static_cast<double>(y - view.text.y) / view.line_height)) : 0;
-    int last = static_cast<int>(std::min<std::size_t>(view.first + view.visible, view.lines.size())) - 1;
-    return static_cast<unsigned>(std::clamp(static_cast<int>(view.first) + row, static_cast<int>(view.first), std::max(static_cast<int>(view.first), last)));
-}
-}
 detail::TextHit detail::placement_text_hit(const Frame& frame, std::string_view id, int x, int y) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return {};
     if (!p->multiline) return {p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset), false};
-    auto [offset, upstream] = p->view.hit_in_line(pointed_line(p->view, y), static_cast<float>(x - p->view.text.x));
+    auto [offset, upstream] = p->view.hit_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
     return {offset, upstream};
 }
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
@@ -222,12 +226,12 @@ int Placement::caret_x(unsigned offset) const {
 }
 Rect Placement::caret_rect(unsigned offset) const {
     if (!multiline) return {caret_x(offset), bounds.y + field.editor.y, 1, field.editor.h};
-    const int row = std::clamp(static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first), 0, std::max(0, static_cast<int>(view.visible) - 1));
-    return {caret_x(offset), view.text.y + row * view.line_height, 1, view.line_height};
+    const unsigned last = static_cast<unsigned>(std::min<std::size_t>(view.first + std::max(1u, view.visible), view.lines.size())) - 1;
+    return {caret_x(offset), view.row_y(std::clamp(view.line_of(offset), std::min(view.first, last), last)), 1, view.row_height};
 }
 int Placement::caret_y(unsigned offset) const {
     if (!multiline) return bounds.y + field.editor.y;
-    return view.text.y + (static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first)) * view.line_height;
+    return view.row_y(view.line_of(offset));
 }
 int ScrollRegion::offset_for_thumb(int thumb_top) const {
     int travel = track.h - thumb.h;
@@ -292,10 +296,10 @@ bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
         const auto* current = owner.field_view(p->id);  // this frame may be older than the last scroll
         const unsigned count = static_cast<unsigned>(view.lines.size());
         unsigned first = current ? current->first : view.first;
-        const int top = view.text.y, bottom = top + static_cast<int>(view.visible) * view.line_height;
+        const int top = view.text.y, bottom = top + view.text.h;
         if (y < top && first > 0) { if ((scrolled = owner.scroll_lines_to(p->id, first - 1))) --first; }
         else if (y >= bottom && first + view.visible < count) { if ((scrolled = owner.scroll_lines_to(p->id, first + 1))) ++first; }
-        unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : pointed_line(view, y);
+        unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : view.line_at(y);
         auto [offset, upstream] = view.hit_in_line(line, static_cast<float>(x - view.text.x));
         owner.select_pointer(p->id, before.anchor, offset, upstream);
     }
@@ -488,13 +492,13 @@ struct Arranger {
         const auto& v = p.view;
         ScrollRegion region;
         region.state = &ui.line_scroll(p.id);
-        region.field = p.id; region.step = v.line_height; region.modal_content = in_modal;
+        region.field = p.id; region.step = v.row_height; region.modal_content = in_modal;
         region.viewport = region.clip = {v.text.x, v.text.y, v.track.x + v.track.w - v.text.x, v.text.h};
         region.track = v.track; region.thumb = v.thumb;
         const int count = static_cast<int>(v.lines.size()), visible = static_cast<int>(v.visible);
-        region.extent = count * v.line_height;
-        region.maximum = std::max(0, count - visible) * v.line_height;
-        region.offset = static_cast<int>(v.first) * v.line_height;
+        region.extent = count * v.row_height;   // scrolling is by whole lines: a uniform row stands in for the gaps
+        region.maximum = std::max(0, count - visible) * v.row_height;
+        region.offset = static_cast<int>(v.first) * v.row_height;
         return region;
     }
     int place_scroll(const Node& node, Rect r, std::vector<Placement>& out) {

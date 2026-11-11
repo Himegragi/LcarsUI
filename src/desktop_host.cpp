@@ -639,7 +639,7 @@ void DesktopHost::drag_text(int x, int y) {
     if (auto* field = std::get_if<TextHandle>(&handle)) {
         frame_.select_to(ui_, *field, x, y);
         const auto* placed = detail::find_placement(frame_, id);
-        const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + static_cast<int>(placed->view.visible) * placed->view.line_height);
+        const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + placed->view.text.h);
         if (outside) SetTimer(window_, drag_scroll_timer, 60, nullptr);
         else KillTimer(window_, drag_scroll_timer);
     }

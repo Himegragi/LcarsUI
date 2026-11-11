@@ -2383,7 +2383,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     m.view = view;
     m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
     if (relaid) { m.text = std::move(text); m.size = text_size; m.width = width; }
-    m.scroll.offset = static_cast<int>(first) * view.line_height;
+    m.scroll.offset = static_cast<int>(first) * view.row_height;
 }
 bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
     OperationScope operation(this);
@@ -2395,7 +2395,7 @@ bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
     if (first == m.first) return false;
     m.first = m.view.first = first;
     m.anchor = m.view.lines[first].begin;
-    m.scroll.offset = static_cast<int>(first) * m.view.line_height;
+    m.scroll.offset = static_cast<int>(first) * m.view.row_height;
     if (invalidate_) invalidate_();
     return true;
 }

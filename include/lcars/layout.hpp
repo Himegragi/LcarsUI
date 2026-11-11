@@ -36,7 +36,9 @@ std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view t
 struct FieldLine {
     unsigned begin = 0, end = 0;  // end excludes the LF that ends a hard line
     bool soft = false;            // wrapped: the next line continues it, and next.begin == end
-    TextRun run;                  // caret stops for this line alone; x is 0 at the line's left edge
+    TextRun run;                  // caret stops for this line alone; x is 0 at the text's own left edge
+    float shift = 0;              // where the text starts, from the text area's left edge: its alignment (#80)
+    int top = 0;                  // top of the line's row from the first line's, physical pixels (#80)
 };
 // The settled multi-line geometry of one field. Core keeps a copy for the cursor keys, so drawing,
 // hit testing, navigation and the IME all read the same lines.
@@ -44,7 +46,8 @@ struct FieldView {
     std::vector<FieldLine> lines;  // every display line, never empty once laid out
     unsigned first = 0;            // index of the first visible line: the scroll position
     unsigned visible = 0;          // configured height in lines
-    int line_height = 0;           // physical pixels
+    int line_height = 0;           // physical pixels: the font's line height, what a glyph run occupies
+    int row_height = 0;            // physical pixels: one line's row, line_height times the line spacing (#80)
     bool upstream = false;         // a caret on a wrap point is drawn at the end of the line above
     Rect text, track, thumb;       // frame coordinates; thumb is empty while everything fits
     // The line holding a caret offset; a wrap point belongs to the next line unless upstream.
@@ -52,7 +55,16 @@ struct FieldView {
     // Nearest caret stop in a line for an x relative to the line start. The flag reports an offset
     // that is the end of a wrapped line, which must be drawn upstream to stay on that line.
     std::pair<unsigned, bool> hit_in_line(unsigned line, float x) const;
+    // x relative to the text area's left edge, alignment shift included (hit_in_line takes the same).
     float x_in_line(unsigned line, unsigned offset) const;
+    // Frame y of the top of a line's row. A line outside the visible window is placed as if the lines
+    // were laid out continuously (it is not drawn there).
+    int row_y(unsigned line) const { return row_y(line, first); }
+    int row_y(unsigned line, unsigned first_line) const;  // as if first_line were the first visible one
+    // The visible line a frame y falls in: the last one whose row starts at or above y (the space after a
+    // paragraph belongs to the row above); above the window it is the first, below it the last visible one.
+    unsigned line_at(int y) const { return line_at(y, first); }
+    unsigned line_at(int y, unsigned first_line) const;
 };
 // Wraps like wrap() and measures each resulting line, keeping UTF-16 offsets.
 std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width);

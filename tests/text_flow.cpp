@@ -204,6 +204,98 @@ void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
     check(pb->text_top == 6, "The glyphs sit in the middle of the row");
 }
 
+Control multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
+    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .multiline = true, .visible_lines = lines,
+            .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
+}
+// A 200 px multi-line field: 176 px editor at x = 12, 14 px scrollbar reserve, so the text area is 162 px
+// wide and a line wraps at 160 px (20 characters of 8 px). Centered text starts (162 - w) / 2 in, right-aligned 160 - w.
+void a_multi_line_field_aligns_every_display_line() {
+    struct Case { TextAlign align; int line0, line1, line2; };
+    // Lines "ab" (16 px), "cde" (24 px), "" (0 px).
+    for (const auto& c : {Case{TextAlign::left, 12, 12, 12}, Case{TextAlign::center, 85, 81, 93}, Case{TextAlign::right, 156, 148, 172}}) {
+        Ui ui;
+        auto handle = field_of(ui, multi("t", u"ab\ncde\n", 3, c.align));
+        Laid laid(ui, handle);
+        const auto* p = laid.frame.find(handle);
+        check(p->multiline && p->view.lines.size() == 3, "Three lines");
+        check(p->caret_x(0) == c.line0 && p->caret_x(3) == c.line1 && p->caret_x(7) == c.line2, "Every line starts where its alignment puts it");
+        check(p->caret_x(2) == c.line0 + 16 && p->caret_x(6) == c.line1 + 24, "And ends one text width later");
+        check(p->bounds.x == 0 && p->bounds.w == 200, "The field itself does not move");
+    }
+}
+
+void pointer_hits_follow_the_drawn_position_of_an_aligned_line() {
+    Ui ui;
+    auto handle = field_of(ui, multi("t", u"ab\ncde\n", 3, TextAlign::right));
+    Laid laid(ui, handle);
+    const auto* p = laid.frame.find(handle);
+    const int y0 = p->view.text.y + 5, y1 = y0 + 24;
+    // Line 1 "cde" is drawn from x = 148: stops at 148, 156, 164, 172.
+    check(laid.frame.text_offset(handle, 148, y1) == 3 && laid.frame.text_offset(handle, 161, y1) == 5 && laid.frame.text_offset(handle, 190, y1) == 6, "A click maps through the drawn position");
+    check(laid.frame.text_offset(handle, 20, y1) == 3, "A click left of the text goes to the line start");
+    check(laid.frame.text_offset(handle, 172, y0) == 2 && laid.frame.text_offset(handle, 164, y0) == 1 && laid.frame.text_offset(handle, 150, y0) == 0, "Line 0 starts at x = 156");
+}
+
+void vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines() {
+    Ui ui;
+    auto handle = field_of(ui, multi("t", u"abcdefgh\nab", 3, TextAlign::right));
+    auto& host = detail::access(ui);
+    Laid first(ui, handle);
+    check(bool(host.focus("t")), "Focus the field");
+    host.select("t", 8, 8);
+    Laid laid(ui, handle);
+    const int x = laid.frame.find(handle)->caret_x(8);   // line 0 is 64 px wide, drawn from 108: the end is at 172
+    check(x == 172, "The caret is at the end of the right-aligned line");
+    check(bool(host.key_down({.key = Key::down})), "Down");
+    Laid below(ui, handle);
+    const auto caret = host.edit("t")->selection.caret;
+    check(caret == 11 && below.frame.find(handle)->caret_x(caret) == 172, "The caret lands under the same drawn x, at the end of the shorter line");
+    check(bool(host.key_down({.key = Key::up})), "Up");
+    Laid above(ui, handle);
+    check(host.edit("t")->selection.caret == 8 && above.frame.find(handle)->caret_x(8) == 172, "And back");
+}
+
+void multi_line_height_counts_the_spaced_rows_and_paragraph_gaps() {
+    Ui ui;
+    auto plain = field_of(ui, multi("plain", u"a\nb\nc\nd"));
+    auto spaced = field_of(ui, multi("spaced", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
+    auto gapped = field_of(ui, multi("gapped", u"a\nb\nc\nd", 3, TextAlign::left, 1.0, 8));
+    auto both = field_of(ui, multi("both", u"a\nb\nc\nd", 3, TextAlign::left, 1.5, 8));
+    auto editor_h = [&](const TextHandle& h) { Laid laid(ui, h); return laid.frame.find(h)->field.editor.h; };
+    check(editor_h(plain) == 72, "Three rows of 24");
+    check(editor_h(spaced) == 108, "Three rows of 36");
+    check(editor_h(gapped) == 72 + 2 * 8, "Three rows and two paragraph gaps");
+    check(editor_h(both) == 108 + 2 * 8, "Spaced rows and gaps together");
+    Laid laid(ui, both);
+    const auto* p = laid.frame.find(both);
+    check(p->view.row_height == 36 && p->view.line_height == 24, "The view keeps the font line and the row apart");
+    const int top = p->view.text.y;
+    check(p->caret_rect(0).y == top && p->caret_rect(2).y == top + 36 + 8 && p->caret_rect(4).y == top + 2 * (36 + 8), "Each paragraph row starts one row and one gap below the last");
+    check(p->caret_rect(2).h == 36, "The caret is as tall as the row");
+}
+
+void soft_wrapped_lines_add_no_paragraph_gap_in_a_field() {
+    Ui ui;
+    auto handle = field_of(ui, multi("t", u"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nb", 3, TextAlign::left, 1.0, 8));
+    Laid laid(ui, handle);
+    const auto* p = laid.frame.find(handle);
+    // 40 characters wrap into 20 + 20; the LF then starts "b" after one gap.
+    check(p->view.lines.size() == 3 && p->view.lines[0].soft && !p->view.lines[1].soft, "Two wrapped pieces then a new paragraph");
+    const int top = p->view.text.y;
+    check(p->caret_rect(0).y == top && p->caret_rect(20).y == top + 24 && p->caret_rect(41).y == top + 48 + 8, "The gap is only after the LF");
+}
+
+void a_click_between_rows_belongs_to_the_row_above() {
+    Ui ui;
+    auto handle = field_of(ui, multi("t", u"ab\ncd\nef", 3, TextAlign::left, 1.0, 8));
+    Laid laid(ui, handle);
+    const auto* p = laid.frame.find(handle);
+    const int top = p->view.text.y;
+    check(laid.frame.text_offset(handle, 12, top + 12) == 0 && laid.frame.text_offset(handle, 12, top + 24 + 3) == 0, "Row 0 and the gap below it");
+    check(laid.frame.text_offset(handle, 12, top + 24 + 8 + 2) == 3 && laid.frame.text_offset(handle, 12, top + 2 * 32 + 4) == 6, "The next rows");
+}
+
 void a_run_time_change_reflows_the_next_frame() {
     Ui ui;
     auto handle = *ui.add_label(label("l", u"abcd"));
@@ -226,6 +318,12 @@ int main() {
         {"an empty centered field puts the caret in the middle", an_empty_centered_field_puts_the_caret_in_the_middle},
         {"text wider than the field scrolls whatever the alignment", text_wider_than_the_field_scrolls_whatever_the_alignment},
         {"line spacing makes a single-line field taller", line_spacing_makes_a_single_line_field_taller_and_centers_the_text},
+        {"a multi-line field aligns every display line", a_multi_line_field_aligns_every_display_line},
+        {"pointer hits follow the drawn position", pointer_hits_follow_the_drawn_position_of_an_aligned_line},
+        {"vertical keys keep the drawn x of aligned lines", vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines},
+        {"multi-line height counts spaced rows and gaps", multi_line_height_counts_the_spaced_rows_and_paragraph_gaps},
+        {"wrapped lines add no paragraph gap in a field", soft_wrapped_lines_add_no_paragraph_gap_in_a_field},
+        {"a click between rows belongs to the row above", a_click_between_rows_belongs_to_the_row_above},
         {"a run-time change reflows the next frame", a_run_time_change_reflows_the_next_frame},
     };
     return test::run("text_flow", cases);

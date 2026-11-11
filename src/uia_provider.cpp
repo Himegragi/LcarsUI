@@ -704,9 +704,9 @@ class TextRange final : public ITextRangeProvider {
                             auto from = std::max(a, line.begin), to = std::min(b, line.end);
                             if (from > to || (from == to && !(a == b))) continue;
                             if (from == to && line.end > line.begin) continue;
-                            int y = v.text.y + static_cast<int>(i - v.first) * v.line_height;
+                            int y = v.row_y(i);
                             int left = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, from))), right = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, to)));
-                            auto r = intersect({left, y, std::max(0, right - left), v.line_height}, clip);
+                            auto r = intersect({left, y, std::max(0, right - left), v.row_height}, clip);
                             if (r.w > 0 && r.h > 0) rectangles.push_back(r);
                         }
                         return;
