@@ -65,6 +65,29 @@ Node modal(Node background, Node content, DialogHandle dialog);
 using DialogLayout = layout::DialogLayout;
 
 struct Line { Rect bounds; std::u16string text; };
+// Vertical (top-to-bottom, columns right-to-left) text, shared by layout and painting. A piece is one
+// unit placed on a column: a single character cell, a combined digit group, or a sideways word.
+enum class VerticalForm {
+    upright,      // CJK, full-width and emoji: one em cell, glyph stays upright
+    sideways,     // Latin words, long digit runs: rotated 90 degrees clockwise, advance is the text width
+    combined,     // 2-3 half-width digits side by side in one cell, squeezed to the cell width
+    point,        // ，。、；：！？ centered in the cell, never the font's vertical alternate
+    bracket,      // quotes and brackets: the font's vertical alternate, else rotated 90 degrees
+    line,         // dashes and ellipses: rotated, centered in the cell on both axes
+    middle_dot,   // middle dots: upright, centered in the cell
+};
+struct VerticalPiece { unsigned begin = 0, end = 0; VerticalForm form = VerticalForm::upright; int y = 0, advance = 0; };
+struct VerticalColumn {
+    Rect bounds;                      // the whole column, width = pitch
+    unsigned begin = 0, end = 0;      // UTF-16 range of the display text on this column
+    std::vector<VerticalPiece> pieces;  // y is relative to bounds.y
+};
+struct VerticalLayout {
+    std::vector<VerticalColumn> columns;  // reading order: the first column is the rightmost
+    int em = 0, pitch = 0;                // text pixels and column width, including line spacing
+    int extent = 0, maximum = 0, offset = 0;  // content width, scrollable distance, distance scrolled from the start (right)
+    Rect track, thumb;                    // horizontal scrollbar when the content is wider than the label
+};
 struct Placement {
     std::string id;
     Kind kind = Kind::label;
@@ -75,7 +98,9 @@ struct Placement {
     bool tooltip = false;         // explanatory overlay: never receives pointer input
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
-    std::vector<Line> lines;      // labels and command titles
+    std::vector<Line> lines;      // labels and command titles; vertical labels: one line per column
+    bool vertical = false;        // labels in vertical writing mode: see `column_layout`
+    VerticalLayout column_layout;
     std::vector<Rect> options;   // radio option hit and paint bounds
     std::size_t option_start = 0; // logical index of the first placed option
     Rect slider_track;           // slider track in frame coordinates
