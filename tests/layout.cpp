@@ -317,9 +317,9 @@ void slider_track_and_drag_share_geometry() {
         const auto* item = frame.find(slider);
         check(item && item->slider_track.w > 0 && frame.hit(item->slider_track.x, item->slider_track.y)->id == "volume", "The drawn track is a pointer target");
         detail::access(ui).pointer_down(item->id);
-        detail::access(ui).slider_pointer(item->id, item->slider_track.x, item->slider_track);
+        detail::access(ui).slider_pointer_down(item->id, item->slider_track.x, item->slider_track);
         check(*slider.draft() == 0, "Track start reaches minimum");
-        detail::access(ui).slider_pointer(item->id, item->slider_track.x + item->slider_track.w, item->slider_track);
+        detail::access(ui).slider_pointer(item->id, item->slider_track.x + item->slider_track.w);
         check(*slider.draft() == 100, "Dragging to the track end reaches maximum");
     }
 }

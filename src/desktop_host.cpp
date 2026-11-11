@@ -697,15 +697,20 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_ACTIVATE:
-        if (LOWORD(w) == WA_INACTIVE) detail::access(ui_).cancel_input();
+        if (LOWORD(w) == WA_INACTIVE) {
+            detail::access(ui_).cancel_input();
+            // An interrupted slider drag returns its thumb to the value's tick.
+            if (drag_ == Drag::slider) { drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
+        }
         break;
     case WM_CANCELMODE:
         detail::access(ui_).cancel_input();
         drag_ = Drag::none;
         if (GetCapture() == window_) ReleaseCapture();
+        InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
+        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
         return 0;
     case WM_MOUSEWHEEL: {
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
@@ -748,7 +753,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             }
             if (hit->kind == Kind::slider) {
                 drag_ = Drag::slider;
-                detail::access(ui_).slider_pointer(id, x, hit->slider_track);
+                detail::access(ui_).slider_pointer_down(id, x, hit->slider_track);
             }
             SetCapture(window_);
         }
@@ -771,8 +776,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::slider && (w & MK_LBUTTON)) {
-            const auto& id = detail::access(ui_).focused();
-            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            detail::access(ui_).slider_pointer(detail::access(ui_).focused(), x);
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
@@ -786,8 +790,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
         if (drag_ == Drag::slider) {
-            const auto& id = detail::access(ui_).focused();
-            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            const auto id = detail::access(ui_).focused();
+            detail::access(ui_).slider_pointer(id, x);
             detail::access(ui_).pointer_up(id);
         } else if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
