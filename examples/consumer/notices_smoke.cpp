@@ -9,10 +9,10 @@ int main() {
     auto* volatile desktop_entry = &lcars::run_desktop;
     if (!desktop_entry) return 5;
     const auto notices = lcars::third_party_notices();
-    if (notices.size() != 3) return 1;
+    if (notices.size() != 4) return 1;
     std::ifstream input(LCARS_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
     const std::string file((std::istreambuf_iterator<char>(input)), {});
-    const std::u16string_view names[] = {u"FreeType", u"HarfBuzz", u"Khronos OpenGL headers"};
+    const std::u16string_view names[] = {u"FreeType", u"HarfBuzz", u"Khronos OpenGL headers", u"Unicode Character Database (Vertical_Orientation)"};
     const std::string separator = "========================================================================\n";
     auto pos = file.find(separator);
     for (std::size_t i = 0; i < notices.size(); ++i) {

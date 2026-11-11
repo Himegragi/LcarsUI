@@ -44,6 +44,11 @@ inline constexpr double min_line_spacing = 1.0, max_line_spacing = 3.0;
 inline constexpr int max_paragraph_spacing = 48;
 inline bool valid_line_spacing(double value) { return value >= min_line_spacing && value <= max_line_spacing; }  // false for NaN
 inline bool valid_paragraph_spacing(int value) { return value >= 0 && value <= max_paragraph_spacing; }
+// Writing direction of a label (display only). Vertical runs top to bottom with columns from right to
+// left, laid out by the Taiwan Ministry of Education rules. Only labels support it.
+enum class WritingMode { horizontal, vertical };
+// Longest run of half-width digits that vertical text sets side by side in one cell (0 turns it off).
+inline constexpr int max_vertical_digits = 3;
 struct Control {
     std::string id;
     Kind kind;
@@ -66,6 +71,8 @@ struct Control {
     TextAlign text_align = TextAlign::left;
     double line_spacing = 1.0;       // times the font's line height, 1.0-3.0; extra space splits above and below
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
+    int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll };
@@ -97,6 +104,8 @@ struct Semantics {
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
     std::vector<Operation> operations;
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only
+    int vertical_digits = max_vertical_digits;           // labels only
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
 // menu is the application/menu key (VK_APPS); Shift+F10 arrives as f10 with shift; alt is a lone Alt press.
@@ -263,6 +272,11 @@ public:
     Query<double> line_spacing() const;
     Result set_paragraph_spacing(int dip) const;
     Query<int> paragraph_spacing() const;
+    // Vertical writing: the text is re-arranged at once. The digit limit is 0-3 (invalid_value otherwise).
+    Result set_writing_mode(WritingMode mode) const;
+    Query<WritingMode> writing_mode() const;
+    Result set_vertical_digits(int digits) const;
+    Query<int> vertical_digits() const;
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;

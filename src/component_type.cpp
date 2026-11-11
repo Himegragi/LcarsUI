@@ -1,5 +1,6 @@
 #include "component_type.hpp"
 #include "core_internal.hpp"
+#include "vertical.hpp"
 #include <map>
 #include <algorithm>
 #include <cmath>
@@ -99,9 +100,76 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
+        if (c.control.writing_mode == WritingMode::vertical) { arrange_vertical(c); return; }
+        if (c.settle) c.ui.clear_vertical_scroll(c.control.id);
         auto flowed = flowed_block(c.measure, c.ui.text(c.control.id), p.text_size, c.width, c.control, c.scale);
         p.lines = std::move(flowed.lines);
         p.bounds = {0, 0, c.width, flowed.height};
+    }
+    // Columns of the given height from right to left; the box is as wide as its columns or the space offered,
+    // and scrolls sideways (offset counted from the right edge) when the columns are wider.
+    static void arrange_vertical(ComponentLayout& c) {
+        auto& p = c.placement;
+        p.vertical = true;
+        const int em = std::max(1, p.text_size);
+        const auto params = vertical_params(c.control);
+        const int pitch = std::max(1, static_cast<int>(std::lround(c.measure.line_height(em) * params.line_spacing)));
+        const int bar = scaled(c.scale, 10), gap = scaled(c.scale, 4);
+        const auto text = c.ui.text(c.control.id);
+        auto content_width = [&](const std::vector<VerticalColumn>& columns) {
+            int width = 0;
+            for (std::size_t i = 0; i < columns.size(); ++i) width += pitch + (columns[i].last_in_paragraph && i + 1 < columns.size() ? params.paragraph_spacing : 0);
+            return width;
+        };
+        auto columns = flow_vertical(c.measure, text, em, c.control.vertical_digits, c.vertical_height);
+        int content = content_width(columns);
+        const bool sideways = content > c.width;
+        const int bar_room = sideways ? bar + gap : 0;
+        if (sideways && c.vertical_height > 0) {  // the bar takes some of the height: wrap again for the shorter columns
+            columns = flow_vertical(c.measure, text, em, c.control.vertical_digits, std::max(em, c.vertical_height - bar_room));
+            content = content_width(columns);
+        }
+        int tallest = 0;
+        for (const auto& column : columns) tallest = std::max(tallest, column.bounds.h);
+        const int area = c.vertical_height > 0 ? std::max(0, c.vertical_height - bar_room) : tallest;
+        const int width = std::min(content, c.width), maximum = std::max(0, content - width);
+        auto& state = c.ui.vertical_scroll(c.control.id);
+        const int offset = std::clamp(state.offset, 0, maximum);
+        if (c.settle) { state.offset = offset; c.ui.set_vertical_scroll(c.control.id, maximum, pitch); }
+        int cursor = content;
+        for (std::size_t i = 0; i < columns.size(); ++i) {
+            auto& column = columns[i];
+            cursor -= pitch;
+            int slack = std::max(0, area - column.bounds.h);
+            int top = params.align == VerticalParams::Align::center ? slack / 2 : params.align == VerticalParams::Align::bottom ? slack : 0;
+            column.bounds = {cursor - (content - width) + offset, top, pitch, column.bounds.h};
+            p.lines.push_back({column.bounds, text.substr(column.begin, column.end - column.begin)});
+            if (column.last_in_paragraph && i + 1 < columns.size()) cursor -= params.paragraph_spacing;
+        }
+        p.bounds = {0, 0, width, area + bar_room};
+        auto& v = p.column_layout;
+        v.em = em; v.pitch = pitch; v.extent = content; v.maximum = maximum; v.offset = offset;
+        if (maximum > 0) {
+            v.track = {0, p.bounds.h - bar, width, bar};
+            int thumb = std::min(width, std::max(scaled(c.scale, 24), width * width / std::max(1, content)));
+            v.thumb = {(width - thumb) * (maximum - offset) / maximum, v.track.y, thumb, bar};
+        }
+        v.columns = std::move(columns);
+    }
+    static void paint_vertical(ComponentPaint& c, Color color) {
+        const auto& v = c.placement.column_layout;
+        const auto text = c.ui.text(c.placement.id);
+        auto paint = [&] {
+            for (const auto& column : v.columns) {
+                if (column.bounds.x + column.bounds.w <= c.placement.clip.x || column.bounds.x >= c.placement.clip.x + c.placement.clip.w) continue;
+                for (const auto& piece : column.pieces) {
+                    Rect cell = piece.form == VerticalForm::sideways ? Rect{column.bounds.x, column.bounds.y + piece.y, v.pitch, piece.advance}
+                                                                     : Rect{column.bounds.x + (v.pitch - v.em) / 2, column.bounds.y + piece.y, v.em, v.em};
+                    c.vertical_text(std::u16string_view(text).substr(piece.begin, piece.end - piece.begin), piece.form, v.em, cell, color);
+                }
+            }
+        };
+        if (c.semantics.role == TextRole::error) marked(c, PaintRole::error_text, paint); else paint();
     }
     void paint(ComponentPaint& c) const override {
         if (c.focus_visible) {
@@ -115,7 +183,8 @@ public:
                 c.fill({r.x + r.w - edge, r.y, edge, r.h}, color);
             });
         }
-        if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.palette().text);
+        if (c.placement.vertical) paint_vertical(c, c.palette().text);
+        else if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.palette().text);
         else paint_lines(c, c.placement.lines, c.placement.text_size, c.palette().text);
     }
     bool can_focus() const override { return false; }

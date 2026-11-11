@@ -375,7 +375,7 @@ int demo_compare(const std::filesystem::path& evidence) {
     out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
     int failures=0, rows=0;
     for (const auto* appearance : {&web_appearance(), &material_appearance()})
-    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<8; ++scenario) {
+    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<9; ++scenario) {
         settings_demo::AboutInfo info;
         info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
@@ -397,7 +397,14 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
         if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
         if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.is_open().value.value_or(false); }
-        if(scenario==7) setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+        if(scenario==7) {
+            setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+            // The About page is taller since #82 added the vertical label, which pushes the centered navigation list
+            // out of a small window: scroll it into view the way a user would, so its focus indicator is on screen.
+            host.pump();
+            if(const auto* nav=host.frame().find(demo.nav)) { demo.scroll.offset+=nav->bounds.y+nav->bounds.h/2-(scale==1.f?720:480)/2; host.pump(); }
+        }
+        if(scenario==8) setup &= bool(demo.nav.select({"about"}));  // the vertical writing label (#82)
         host.pump(); auto result=host.compare_gpu(960,720,scale);
         auto has_role=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
         bool cues=true;
@@ -405,6 +412,17 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==1) cues=has_role("general.name",32) && (has_role("general.name",16) || has_role("general.name.error",16));
         if(scenario==2) cues=has_role("items.list",1) && has_role("items.list",4);
         if(scenario==7) cues=has_role("app.nav",1);
+        if(scenario==8) {
+            // The vertical label is plain content: compare its own box between the CPU reference and OpenGL, and require ink in it.
+            const auto* label=host.frame().find(demo.about_vertical());
+            cues=label && label->vertical;
+            if(cues) {
+                auto box=intersect(label->bounds,label->clip);
+                auto same=compare_images(result.reference,result.actual,{box});
+                int ink=0; for(int y=box.y;y<box.y+box.h;++y) for(int x=box.x;x<box.x+box.w;++x) { auto i=(static_cast<std::size_t>(y)*result.reference.width+x)*4; ink+=result.reference.pixels[i]!=result.reference.pixels[(static_cast<std::size_t>(box.y)*result.reference.width+box.x)*4]; }
+                cues=same.regions_ok && ink>box.w*box.h/40;
+            }
+        }
         bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
         std::string name="SD-"+std::string(1,char('a'+scenario));
         std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
@@ -420,7 +438,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
     }
-    return out && rows==64 && !failures ? 0 : 1;
+    return out && rows==72 && !failures ? 0 : 1;
 }
 
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -1059,6 +1077,79 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     core.close_menu();
     report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO") +
                  " (client " + std::to_string(client.right) + "x" + std::to_string(client.bottom) + ", menu panel height " + std::to_string(panel_height) + ", scroll maximum " + std::to_string(panel_maximum) + ")");
+}
+
+// #82 twin of tests/vertical.cpp on a real window: posted messages scroll a vertical-writing label sideways.
+// Reading starts at the right edge; wheel down (also with Shift) goes toward the end of the text, the horizontal
+// wheel and the thumb go both ways, Left and Right read on and back. The 300 characters make 25 columns of 24 px
+// (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
+void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto note = ui.add_label({.id = "note", .kind = Kind::label, .value = std::u16string(300, u'字'),
+                              .writing_mode = WritingMode::vertical}).value.value();
+    DesktopOptions options; options.title = u"LcarsUI vertical label verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(420, 300);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto region = [&]() -> std::optional<ScrollRegion> {  // a copy: repaints replace the frame
+        for (const auto& r : host.frame().regions) if (r.horizontal) return r;
+        return std::nullopt;
+    };
+    auto label = [&]() { return *detail::find_placement(host.frame(), "note"); };
+    auto offset = [&] { auto r = region(); return r ? r->offset : -1; };
+    auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
+    auto start = region();
+    report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
+                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w,
+        "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
+    const auto bounds = label().bounds;
+    POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_wheel = offset();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(MK_SHIFT, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_shift = offset();
+    post(WM_MOUSEHWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(WHEEL_DELTA))), screen(inside));
+    const int after_horizontal = offset();
+    report.check("VT02-wheels", after_wheel > 0 && after_shift > after_wheel && after_horizontal < after_shift && scroll.offset == 0,
+        "Wheel down and Shift+wheel move toward the end of the text, the horizontal wheel to the right moves back, and the page does not scroll; offsets " +
+            std::to_string(after_wheel) + ", " + std::to_string(after_shift) + ", " + std::to_string(after_horizontal));
+    // Thumb: press it, drag it to the far left, release.
+    auto drag = region();
+    bool dragged = false;
+    if (drag) {
+        POINT grab{drag->thumb.x + drag->thumb.w / 2, drag->thumb.y + drag->thumb.h / 2};
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+        post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(drag->track.x - 40, grab.y));
+        const int at_left = offset();
+        post(WM_LBUTTONUP, 0, MAKELPARAM(drag->track.x - 40, grab.y));
+        post(WM_MOUSEMOVE, 0, MAKELPARAM(grab.x, grab.y));
+        dragged = at_left == drag->maximum && offset() == drag->maximum;
+    }
+    report.check("VT03-thumb-drag", dragged, "Dragging the horizontal thumb to the left end shows the last column; offset=" + std::to_string(offset()));
+    // Focus and keys: a label that scrolls takes focus and reads on with Left, back with Right.
+    ui.semantics().perform({"note"}, Verb::focus);
+    host.pump(); host.paint();
+    auto key = [&](WPARAM vk) { post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true)); };
+    key(VK_HOME);
+    const int home = offset();
+    key(VK_LEFT);
+    const int left = offset();
+    key(VK_RIGHT);
+    const int right = offset();
+    key(VK_END);
+    const int end = offset();
+    report.check("VT04-keys", home == 0 && left > 0 && right == 0 && end == region()->maximum && detail::access(ui).focused() == "note",
+        "Home, Left, Right and End scroll the focused label; offsets " + std::to_string(home) + ", " + std::to_string(left) + ", " + std::to_string(right) + ", " + std::to_string(end));
+    if (!folder.empty()) {
+        std::filesystem::create_directories(folder);
+        host.render(420, 300, 1.f, folder / ("vertical-label-" + report.appearance + ".bmp"));
+    }
+    auto comparison = host.compare_gpu(420, 300, 1.f);
+    report.check("VT05-gpu", bool(comparison), "The CPU reference and the OpenGL picture of the vertical label agree");
 }
 
 // #79 twin of tests/multiline.cpp on a real window: posted messages drive a multi-line field. The input
@@ -3499,6 +3590,7 @@ int run(const std::filesystem::path& folder) {
         pointer_selection_and_clipboard(*appearance, report);
         context_menu_native(*appearance, report);
         multiline_native(*appearance, report, folder);
+        vertical_label_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3955,7 +4047,7 @@ int wmain(int argc, wchar_t** argv) {
     try {
         std::filesystem::path evidence = "host-evidence";
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, context_menu_only = false, animation_only = false;
-        bool multiline_only = false;
+        bool multiline_only = false, vertical_only = false;
                 bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
@@ -3981,6 +4073,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--context-menu-only") context_menu_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
             else if (arg == L"--animation-only") animation_only = true;
+            else if (arg == L"--vertical-only") vertical_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -4019,6 +4112,14 @@ int wmain(int argc, wchar_t** argv) {
                 context_menu_native(*appearance, report);
             }
             std::cout << report.checks << " context menu checks, " << report.failures << " not passing\n";
+            return report.failures ? 1 : 0;
+        }
+        if (vertical_only) {  // #82 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "vertical.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                vertical_label_native(*appearance, report, evidence);
+            }
             return report.failures ? 1 : 0;
         }
         if (multiline_only) {  // #79 native checks alone, for quick runs

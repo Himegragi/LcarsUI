@@ -89,6 +89,7 @@ struct Node {
     ScrollState* scroll_state = nullptr; // bounded nested viewport: caller keeps this state alive
     int scroll_height = 0; // viewport height in DIP; 0 fills the available space
     bool scrollable_text = false; // a single label may receive focus when it overflows
+    int vertical_height = 0;      // control: height in DIP of a vertical-writing label; 0 = columns never wrap
     std::vector<Node> children;
 };
 Node control(ComponentHandle component, int text_size = 0);
@@ -98,6 +99,11 @@ Node grid(std::vector<Node> children, int min_column, int gap = 16);
 Node scroll(Node child);  // fills available space, using arrange's scroll state
 Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
 Node scroll_text(LabelHandle label, ScrollState& state, int height);
+// A label whose height the application gives (DIP). While the label is in vertical writing mode its text
+// fills columns of that height from right to left, and its width follows from the number of columns; when
+// the columns are wider than the space offered, the label scrolls sideways by itself (initially showing
+// the right end, where the text starts). In horizontal writing mode it lays out as an ordinary label.
+Node vertical_text(LabelHandle label, int height);
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 struct DialogLayout { DialogHandle dialog; Node content; };
@@ -109,6 +115,30 @@ using DialogLayout = layout::DialogLayout;
 struct Line { Rect bounds; std::u16string text; };
 // One row of the open context menu, positioned after scrolling; rows outside Placement::menu_inner are clipped.
 struct MenuRow { std::string id; Rect bounds; std::u16string label, hint; bool separator = false, enabled = true, highlighted = false; };
+// Vertical (top-to-bottom, columns right-to-left) text, shared by layout and painting. A piece is one
+// unit placed on a column: a single character cell, a combined digit group, or a sideways word.
+enum class VerticalForm {
+    upright,      // CJK, full-width and emoji: one em cell, glyph stays upright
+    sideways,     // Latin words, long digit runs: rotated 90 degrees clockwise, advance is the text width
+    combined,     // 2-3 half-width digits side by side in one cell, squeezed to the cell width
+    point,        // full-width comma, period, enumeration comma, semicolon, colon, ! and ?: centered, never the font's vertical alternate
+    bracket,      // quotes and brackets: the font's vertical alternate, else rotated 90 degrees
+    line,         // dashes and ellipses: rotated, centered in the cell on both axes
+    middle_dot,   // middle dots: upright, centered in the cell
+};
+struct VerticalPiece { unsigned begin = 0, end = 0; VerticalForm form = VerticalForm::upright; int y = 0, advance = 0; };
+struct VerticalColumn {
+    Rect bounds;                      // the whole column, width = pitch
+    unsigned begin = 0, end = 0;      // UTF-16 range of the display text on this column
+    bool last_in_paragraph = false;   // the paragraph (text up to a line break) ends on this column
+    std::vector<VerticalPiece> pieces;  // y is relative to bounds.y
+};
+struct VerticalLayout {
+    std::vector<VerticalColumn> columns;  // reading order: the first column is the rightmost
+    int em = 0, pitch = 0;                // text pixels and column width, including line spacing
+    int extent = 0, maximum = 0, offset = 0;  // content width, scrollable distance, distance scrolled from the start (right)
+    Rect track, thumb;                    // horizontal scrollbar when the content is wider than the label
+};
 struct Placement {
     std::string id;
     Kind kind = Kind::label;
@@ -119,7 +149,9 @@ struct Placement {
     bool tooltip = false;         // explanatory overlay: never receives pointer input
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
-    std::vector<Line> lines;      // labels and command titles
+    std::vector<Line> lines;      // labels and command titles; vertical labels: one line per column
+    bool vertical = false;        // labels in vertical writing mode: see `column_layout`
+    VerticalLayout column_layout;
     std::vector<Rect> options;   // radio option hit and paint bounds
     std::size_t option_start = 0; // logical index of the first placed option
     Rect slider_track;           // slider track in frame coordinates
@@ -152,7 +184,11 @@ struct ScrollRegion {
     std::string field;           // a multi-line text field's own scrollbar; it moves by whole lines
     int step = 0;                // physical pixels per line when field is set
     bool modal_content = false;  // inside the open dialog, so it still takes wheel and drag input
-    int offset_for_thumb(int thumb_top) const;
+    // A horizontal region is a vertical-writing label: its offset counts pixels scrolled from the start of
+    // the text (the right edge), the bar lies along the bottom, and the thumb starts at the right end.
+    bool horizontal = false;
+    // The offset for a dragged thumb: its top (vertical regions) or its left edge (horizontal regions).
+    int offset_for_thumb(int thumb_position) const;
 };
 struct Frame {
     std::vector<Placement> items;
@@ -181,7 +217,11 @@ struct Frame {
     // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
     bool scroll_to(Ui& ui, ScrollState& state, int offset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
-    bool wheel(Ui& ui, int x, int y, int delta) const;
+    // With sideways_only (Shift held), only sideways-scrolling labels take the step; a vertical wheel step down
+    // on a vertical-writing label moves toward the end of the text.
+    bool wheel(Ui& ui, int x, int y, int delta, bool sideways_only = false) const;
+    // Route a horizontal wheel step (delta in physical pixels, positive to the right) to a sideways-scrolling label.
+    bool hwheel(Ui& ui, int x, int y, int delta) const;
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
     // Multi-line fields: caret offset for a pointer position. Above or below the lines it clamps to
     // the first or last visible line.

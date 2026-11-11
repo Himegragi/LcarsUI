@@ -23,6 +23,9 @@ struct AboutInfo {
     std::u16string appearance, renderer, settings_path, build;
 };
 class Demo {
+public:
+    lcars::LabelHandle about_vertical() const { return about_vertical_; }
+private:
     std::u16string name_value_ = u"測試使用者";
     bool notices_value_ = true;
     std::optional<lcars::OptionValue> mode_value_ = lcars::OptionValue{"normal"}, region_value_ = lcars::OptionValue{"north"};
@@ -31,6 +34,7 @@ class Demo {
     lcars::LabelHandle title_, status_, name_label_, name_help_, name_error_;
     std::vector<lcars::LabelHandle> about_labels_;
     lcars::LabelHandle license_text_;
+    lcars::LabelHandle about_vertical_;  // vertical writing sample (display only)
     AboutInfo about_;
     std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
     std::function<void()> license_selection_changed_;

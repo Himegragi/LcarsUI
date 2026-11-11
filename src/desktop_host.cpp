@@ -547,6 +547,11 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
+        void vertical_text(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
+            auto begin=cursor();
+            renderer.draw_vertical(canvas, value, form, pixels, cell, color);
+            observe(DrawObservation::Type::text, std::u16string(value), cell, color, begin);
+        }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
             auto layout = renderer.shape(value, pixels);
             auto begin=cursor();
@@ -909,8 +914,16 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
-        frame_.wheel(ui_, point.x, point.y, delta);
+        frame_.wheel(ui_, point.x, point.y, delta, (GET_KEYSTATE_WPARAM(w) & MK_SHIFT) != 0);
         follow_composition();
+        InvalidateRect(window_, nullptr, FALSE);
+        return 0;
+    }
+    case WM_MOUSEHWHEEL: {
+        POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+        ScreenToClient(window_, &point);
+        int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
+        frame_.hwheel(ui_, point.x, point.y, delta);
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
@@ -983,10 +996,13 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
                 if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
-                drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
+                // A sideways-scrolling label has a horizontal bar: its thumb is dragged by x.
+                int along = it->horizontal ? x : y;
+                drag_offset_ = it->thumb.contains(x, y) ? (it->horizontal ? it->thumb.x : it->thumb.y)
+                                                        : along - (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
                 drag_scroll_ = it->state;
                 frame_.scroll_to(ui_, *drag_scroll_, it->offset_for_thumb(drag_offset_));
-                drag_ = Drag::thumb; drag_origin_ = y;
+                drag_ = Drag::thumb; drag_origin_ = along;
                 SetCapture(window_);
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
@@ -1036,7 +1052,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
                 [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
-            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + (y - drag_origin_)));
+            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + ((region->horizontal ? x : y) - drag_origin_)));
             follow_composition();
             InvalidateRect(window_, nullptr, FALSE);
         }

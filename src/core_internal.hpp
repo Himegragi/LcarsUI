@@ -177,6 +177,11 @@ public:
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     void on_relayout(std::function<void()> callback) { relayout_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
+    // Sideways scrolling of a vertical-writing label. The state belongs to the label; the offset counts pixels
+    // from the start of the text (right edge). A label that does not scroll is not focusable.
+    ScrollState& vertical_scroll(const Id& id) { return vertical_scrolls_[id]; }
+    void set_vertical_scroll(const Id& id, int maximum, int column_width);
+    void clear_vertical_scroll(const Id& id);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
         if (semantic_schedule_ && !semantic_pending_.empty()) semantic_schedule_();
@@ -246,6 +251,9 @@ public:
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
     void set_read_only(std::string_view id, bool read_only);
     void check(std::string_view id, bool checked);
+    // Label owner configuration (vertical writing). A change asks the host for a new frame.
+    static Result writing_support(const Control& control);
+    void set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } refresh_tooltips(); }
@@ -511,8 +519,9 @@ private:
     Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
     std::function<void()> changed_, invalidate_, relayout_;
-    struct TextScroll { ScrollState* state; int maximum, line_height; };
+    struct TextScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
     std::map<std::string, TextScroll, std::less<>> text_scrolls_;
+    std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;

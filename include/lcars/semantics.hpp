@@ -6,10 +6,11 @@ namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
 // set_text_align takes a TextAlign, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
+// set_writing_mode takes a WritingMode and set_vertical_digits an int (0-3); labels only.
 // context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition>;
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits };
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
 inline std::string menu_node_id(std::string_view target) { return std::string(target) + "/menu"; }
@@ -47,6 +48,8 @@ struct SemanticNode {
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;
+    std::optional<WritingMode> writing_mode;  // labels only
+    std::optional<int> vertical_digits;       // labels only
     std::vector<NodeRef> labelled_by, described_by;
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;

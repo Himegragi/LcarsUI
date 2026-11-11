@@ -15,6 +15,7 @@ struct ComponentLayout {
     int width;
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
+    int vertical_height = 0; // physical pixels given by layout::vertical_text; 0 = columns never wrap
 };
 enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32 };
 constexpr PaintRole operator|(PaintRole a, PaintRole b) {
@@ -44,6 +45,9 @@ public:
     virtual void clip(Rect rect) = 0;
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
+    // One piece of vertical text in its cell (see VerticalForm). The default draws it as horizontal text at the
+    // cell's corner; backends that can rotate and center glyphs override it.
+    virtual void vertical_text(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }
 };
 // Type-level applicability, independent of any instance's current semantic state.
 // Modal and tooltip content are declared by page membership, not by component kind.

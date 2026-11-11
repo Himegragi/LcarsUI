@@ -75,6 +75,25 @@ A context menu is a short list of commands opened beside a component by the righ
 - **Semantic layer and UIA.** While open, the component has a `Role::menu` child (`menu_node_id(id)`, `"<id>/menu"`) with `menu_item` and `menu_separator` children; `Verb::context_menu` opens it, `invoke` on an item runs it, `cancel` on the menu closes it. UIA sees Menu / MenuItem / Separator, `AccessKey`, `AcceleratorKey`, `IsEnabled`, the Invoke pattern, and `MenuOpened` / `MenuClosed` events.
 
 Out of scope here: submenus, check marks and icons, menus outside the application window, an application menu bar and touch long-press.
+## Vertical labels (display only)
+
+A label can be set vertically: text runs top to bottom, columns from right to left, laid out by the Taiwan Ministry of Education rules. Editable vertical text and read-only text fields are not covered.
+
+```cpp
+auto note = ui.add_label({.id = "about.note", .kind = lcars::Kind::label, .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
+                          .writing_mode = lcars::WritingMode::vertical}).value.value();
+auto page = lcars::layout::column({lcars::layout::vertical_text(note, 200)});  // the height is yours, in DIP
+note.set_writing_mode(lcars::WritingMode::horizontal);     // changes at run time; the next arrangement follows
+note.set_vertical_digits(2);                               // 0-3 (default 3); anything else is Status::invalid_value
+ui.semantics().perform({"about.note"}, lcars::Verb::set_writing_mode, lcars::WritingMode::vertical);  // same checks, same Status
+```
+
+- **Size.** The height comes from `layout::vertical_text(label, height)`; characters fill a column to that height, then continue in the next column to the left, and a line break (`\n`) starts a new column. The width is the number of columns times the column width (the line height of the text). `vertical_text(label, 0)` never wraps.
+- **Too many columns.** When the columns are wider than the space the layout offers, the label scrolls sideways: it starts at the right edge (the start of the text), the wheel (also with Shift) moves toward the end of the text, the horizontal wheel and the bar's thumb move both ways, and a scrolling label takes focus, where Left and Right (and Home and End) scroll it. Nothing is cut off beyond reach.
+- **Characters** follow UAX #50 (data in `src/vertical_orientation_data.inc`, source and version in `THIRD_PARTY_NOTICES.txt`): CJK, full-width letters and emoji stand upright; Latin words and sentences, single letters and runs of four or more digits turn 90 degrees clockwise; two to three half-width digits (the limit set by `vertical_digits`) are set side by side in one cell, squeezed to the cell width; one digit stands upright.
+- **Punctuation** uses the Taiwan placements: the full-width comma, period, enumeration comma, semicolon, colon, exclamation and question marks sit in the middle of the cell, drawn from the horizontal glyph (the font's vertical alternates differ between weights); quotes and brackets face up and down (the font's vertical form, else a quarter turn); dashes and ellipses are centered lines over two cells; middle dots sit in the middle of the cell. Mainland China and Japanese placements, avoiding punctuation at the start or end of a column, and underline-style marks are not provided.
+- **Accessibility.** The name is the label text in reading order, the bounding box is the drawn box; no text pattern is added.
+- **Hooks for later work.** Alignment along the column, line spacing and paragraph spacing are read in one place (`vertical_params` in `src/vertical.hpp`); the defaults are top, 1.0 and 0.
 
 ## Desktop support
 
