@@ -171,12 +171,14 @@ public:
         }
         auto description = block(c.measure, description_text, caption, probe.description.w);
         auto error = block(c.measure, semantics.error, caption, probe.error.w);
-        p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), line}, c.scale, c.ui.presentation().density);
+        const int editor_height = control.multiline ? line * static_cast<int>(control.visible_lines) : line;  // a fixed number of lines
+        p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), editor_height}, c.scale, c.ui.presentation().density);
         auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
         anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
         p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
         p.bounds = {0, 0, c.width, p.field.height};
         const auto* session = c.ui.edit(control.id);
+        if (control.multiline) { arrange_lines(c, line); return; }
         p.run = c.measure.measure(session->visible(), p.text_size);
         float offset = c.ui.text_offset(control.id) * c.scale;
         if (c.ui.focused() != control.id) {
@@ -197,6 +199,68 @@ public:
         }
         p.offset = offset;
     }
+    // Multi-line: wrap at the edge, reserve the scrollbar's width whether or not it shows, and let
+    // core decide the first visible line (scroll position, caret reveal, font-size anchor).
+    static void arrange_lines(ComponentLayout& c, int line) {
+        auto& p = c.placement;
+        auto& view = p.view;
+        p.multiline = true;
+        view.visible = c.control.visible_lines; view.line_height = line;
+        const int bar = scaled(c.scale, 10), gap = scaled(c.scale, 4);
+        const Rect editor = p.field.editor;
+        view.text = {editor.x, editor.y, std::max(0, editor.w - bar - gap), editor.h};
+        view.track = {editor.x + editor.w - bar, editor.y, bar, editor.h};
+        if (!c.settle) return;  // a measurement probe only needs the fixed height
+        const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
+        const int wrap_width = std::max(1, view.text.w - slack);
+        view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
+        c.ui.settle_lines(c.control.id, view, p.text_size, wrap_width);
+        const int count = static_cast<int>(view.lines.size()), visible = static_cast<int>(view.visible);
+        if (count > visible) {
+            const int extent = count * line, maximum = (count - visible) * line;
+            const int thumb = std::min(view.track.h, std::max(scaled(c.scale, 24), view.track.h * view.track.h / std::max(1, extent)));
+            view.thumb = {view.track.x, view.track.y + (view.track.h - thumb) * static_cast<int>(view.first) * line / maximum, view.track.w, thumb};
+        }
+    }
+    static void paint_lines_of(ComponentPaint& c) {
+        const auto& item = c.placement;
+        const auto& view = item.view;
+        const auto p = c.palette();
+        const auto* session = c.ui.edit(item.id);
+        const bool focused = c.semantics.focused, enabled = c.semantics.enabled;
+        auto d = [&](int value) { return scaled(c.scale, value); };
+        const int inset = d(c.appearance.component_presentation(c.ui.presentation().density).inset);
+        if (view.thumb.h) {
+            c.rounded(view.track, view.track.w / 2, p.panel);
+            c.rounded(view.thumb, view.thumb.w / 2, p.border);
+        }
+        c.clip(view.text);
+        const auto text = session->visible();
+        const unsigned first = session->begin();
+        const unsigned last = session->composing ? first + static_cast<unsigned>(session->preedit.size()) : session->end();
+        const unsigned end_line = static_cast<unsigned>(std::min<std::size_t>(view.first + view.visible, view.lines.size()));
+        for (unsigned i = view.first; i < end_line; ++i) {
+            const auto& line = view.lines[i];
+            const int y = view.text.y + static_cast<int>(i - view.first) * view.line_height;
+            auto x_at = [&](unsigned offset) { return view.text.x + static_cast<int>(std::lround(view.x_in_line(i, offset))); };
+            if (focused && last > first) {
+                const unsigned a = std::max(first, line.begin), b = std::min(last, line.end);
+                const bool covers_break = !session->composing && !line.soft && line.end < text.size() && first <= line.end && last > line.end;
+                const int extra = covers_break ? d(6) : 0;  // a selected line break shows as a short block
+                if (a < b || covers_break) {
+                    const int from = x_at(std::min(a, line.end)), to = x_at(std::max(a, b)) + extra;
+                    if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({from, y + view.line_height - inset, to - from, inset}, p.accent); });
+                    else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, view.line_height}, p.selection); });
+                }
+            }
+            if (line.end > line.begin) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, view.text.x, y, enabled ? p.text : p.muted);
+        }
+        if (focused && c.window_focused && enabled) {
+            const unsigned caret_line = view.line_of(session->visible_caret());
+            if (caret_line >= view.first && caret_line < end_line)
+                marked(c, PaintRole::caret, [&] { c.fill({item.caret_x(session->visible_caret()), item.caret_y(session->visible_caret()), d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, view.line_height}, p.accent); });
+        }
+    }
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement;
         const auto& semantics = c.semantics;
@@ -215,6 +279,7 @@ public:
         paint_lines(c, item.label_lines, item.caption_size, semantics.invalid ? p.error : p.muted);
         paint_lines(c, item.description_lines, item.caption_size, p.muted);
         paint_errors(c, item.error_lines, item.caption_size, p.error);
+        if (item.multiline) { paint_lines_of(c); return; }
         const auto* session = c.ui.edit(item.id);
         c.clip(editor);
         auto at = [&](unsigned position) { return item.caret_x(position); };

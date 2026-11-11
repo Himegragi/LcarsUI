@@ -5,7 +5,7 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, set_writing_mode, set_vertical_digits };
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_writing_mode, set_vertical_digits };
 using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, WritingMode>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
 struct SemanticEvent {
@@ -25,6 +25,8 @@ public:
 private:
     std::function<void()> disconnect_;
 };
+// Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
+struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextScroll&) const = default; };
 struct SemanticNode {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
@@ -40,6 +42,7 @@ struct SemanticNode {
     std::vector<NodeRef> labelled_by, described_by;
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
+    std::optional<TextScroll> scroll;  // multi-line text fields
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.

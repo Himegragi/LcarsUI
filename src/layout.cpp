@@ -55,6 +55,40 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
     }
     return lines;
 }
+std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    std::vector<FieldLine> out;
+    std::size_t pos = 0;
+    for (auto& piece : wrap(measure, text, pixels, width)) {
+        FieldLine line;
+        line.begin = static_cast<unsigned>(pos);
+        pos += piece.size();
+        line.end = static_cast<unsigned>(pos);
+        // wrap() drops the LF between paragraphs; a wrapped piece is followed by more of its own text.
+        if (pos < text.size() && text[pos] == u'\n') ++pos;
+        else line.soft = pos < text.size();
+        line.run = measure.measure(piece, pixels);
+        out.push_back(std::move(line));
+    }
+    return out;
+}
+unsigned FieldView::line_of(unsigned offset) const {
+    if (lines.empty()) return 0;
+    auto it = std::upper_bound(lines.begin(), lines.end(), offset, [](unsigned o, const FieldLine& line) { return o < line.begin; });
+    unsigned index = it == lines.begin() ? 0 : static_cast<unsigned>(it - lines.begin()) - 1;
+    if (upstream && index > 0 && lines[index - 1].soft && lines[index - 1].end == offset) --index;
+    return index;
+}
+std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
+    if (lines.empty()) return {0, false};
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    unsigned offset = item.begin + item.run.hit(x);
+    return {offset, item.soft && offset == item.end};
+}
+float FieldView::x_in_line(unsigned line, unsigned offset) const {
+    if (lines.empty()) return 0;
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    return item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
+}
 
 namespace layout {
 Node control(ComponentHandle component, int text_size) { Node n; n.type = Node::Type::control; n.component = std::move(component); n.text_size = text_size; return n; }
@@ -143,17 +177,49 @@ const Placement* Frame::hit(int x, int y) const {
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
 }
+namespace {
+// Which display line a pointer y falls on, clamped to the lines in view.
+unsigned pointed_line(const FieldView& view, int y) {
+    int row = view.line_height > 0 ? static_cast<int>(std::floor(static_cast<double>(y - view.text.y) / view.line_height)) : 0;
+    int last = static_cast<int>(std::min<std::size_t>(view.first + view.visible, view.lines.size())) - 1;
+    return static_cast<unsigned>(std::clamp(static_cast<int>(view.first) + row, static_cast<int>(view.first), std::max(static_cast<int>(view.first), last)));
+}
+}
+detail::TextHit detail::placement_text_hit(const Frame& frame, std::string_view id, int x, int y) {
+    const auto* p = detail::find_placement(frame, id);
+    if (!p || !component_type(p->kind).selects_text()) return {};
+    if (!p->multiline) return {p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset), false};
+    auto [offset, upstream] = p->view.hit_in_line(pointed_line(p->view, y), static_cast<float>(x - p->view.text.x));
+    return {offset, upstream};
+}
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return 0;
+    if (p->multiline) return placement_text_hit(frame, id, x, p->view.text.y).offset;
     return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
 }
 unsigned Frame::text_offset(const TextHandle& handle, int x) const {
     const auto* p = find(handle);
-    return p ? p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset) : 0;
+    if (!p) return 0;
+    if (p->multiline) return detail::placement_text_hit(*this, p->id, x, p->view.text.y).offset;
+    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
+}
+unsigned Frame::text_offset(const TextHandle& handle, int x, int y) const {
+    const auto* p = find(handle);
+    return p ? detail::placement_text_hit(*this, p->id, x, y).offset : 0;
 }
 int Placement::caret_x(unsigned offset) const {
+    if (multiline) return view.text.x + static_cast<int>(std::lround(view.x_in_line(view.line_of(offset), offset)));
     return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
+}
+Rect Placement::caret_rect(unsigned offset) const {
+    if (!multiline) return {caret_x(offset), bounds.y + field.editor.y, 1, field.editor.h};
+    const int row = std::clamp(static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first), 0, std::max(0, static_cast<int>(view.visible) - 1));
+    return {caret_x(offset), view.text.y + row * view.line_height, 1, view.line_height};
+}
+int Placement::caret_y(unsigned offset) const {
+    if (!multiline) return bounds.y + field.editor.y;
+    return view.text.y + (static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first)) * view.line_height;
 }
 int ScrollRegion::offset_for_thumb(int thumb_position) const {
     if (horizontal) {
@@ -170,11 +236,19 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
     bool popup_scroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) { return p.dropdown_panel && &owner.dropdown_scroll(p.id) == &state; });
-    if ((modal || owner.modal()) && !popup_scroll) return false;
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
     if (region == regions.end()) return false;
+    // An open dialog blocks the page behind it, but scrolls its own content.
+    if ((modal || owner.modal()) && !popup_scroll && !region->modal_content) return false;
     int next = std::clamp(offset, 0, region->maximum);
     if (next == state.offset) return false;
+    if (!region->field.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
+        int step = std::max(1, region->step), lines = (next + step / 2) / step, current = state.offset / step;
+        if (lines == current) lines += next > state.offset ? 1 : -1;
+        if (!owner.scroll_lines_to(region->field, static_cast<unsigned>(std::clamp(lines, 0, region->maximum / step)))) return false;
+        owner.scrolled();
+        return true;
+    }
     state.offset = next;
     if (popup_scroll) owner.popup_scrolled();
     else owner.scrolled();
@@ -194,9 +268,9 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
         }
         return false;
     }
-    if (modal || owner.modal()) return false;
+    const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
-        if (!it->clip.contains(x, y) || (sideways_only && !it->horizontal)) continue;
+        if (!it->clip.contains(x, y) || (blocked && !it->modal_content) || (sideways_only && !it->horizontal)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
     }
     return false;
@@ -204,12 +278,39 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
 
 bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
     auto& owner = detail::access(ui);
-    if (owner_ != &owner || modal || owner.modal()) return false;
+    if (owner_ != &owner) return false;
+    const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
-        if (!it->horizontal || !it->clip.contains(x, y)) continue;
+        if (!it->horizontal || !it->clip.contains(x, y) || (blocked && !it->modal_content)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
     }
     return false;
+}
+bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
+    auto& owner = detail::access(ui);
+    if (owner_ != &owner) return false;
+    const auto* p = find(handle);
+    auto* session = p ? owner.edit(p->id) : nullptr;
+    if (!p || !session) return false;
+    const auto before = session->selection;
+    const bool upstream_before = session->caret_upstream;
+    bool scrolled = false;
+    if (!p->multiline) owner.select(p->id, before.anchor, detail::placement_text_hit(*this, p->id, x, y).offset);
+    else {
+        const auto& view = p->view;
+        const auto* current = owner.field_view(p->id);  // this frame may be older than the last scroll
+        const unsigned count = static_cast<unsigned>(view.lines.size());
+        unsigned first = current ? current->first : view.first;
+        const int top = view.text.y, bottom = top + static_cast<int>(view.visible) * view.line_height;
+        if (y < top && first > 0) { if ((scrolled = owner.scroll_lines_to(p->id, first - 1))) --first; }
+        else if (y >= bottom && first + view.visible < count) { if ((scrolled = owner.scroll_lines_to(p->id, first + 1))) ++first; }
+        unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : pointed_line(view, y);
+        auto [offset, upstream] = view.hit_in_line(line, static_cast<float>(x - view.text.x));
+        owner.select_pointer(p->id, before.anchor, offset, upstream);
+    }
+    if (scrolled) owner.scrolled();
+    const auto after = session->selection;
+    return scrolled || after.anchor != before.anchor || after.caret != before.caret || session->caret_upstream != upstream_before;
 }
 
 int Frame::offset_for_thumb(int thumb_top) const {
@@ -223,6 +324,7 @@ void translate(Placement& p, int dx, int dy) {
     move(p.bounds);
     if (p.clipped) move(p.clip);
     move(p.slider_track);
+    move(p.view.text); move(p.view.track); move(p.view.thumb);
     move(p.progress_track); move(p.progress_fill);
     for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
@@ -239,6 +341,7 @@ struct Arranger {
     std::string_view reveal;
     Frame frame;
     bool measuring = false;
+    bool in_modal = false;  // placing the open dialog's content
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
     int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
@@ -304,6 +407,7 @@ struct Arranger {
                     frame.regions.push_back(region);
                 }
             }
+            if (p.multiline && !measuring) frame.regions.push_back(field_region(p));
             out.push_back(std::move(p));
             return out.back().bounds.h;
         }
@@ -383,7 +487,14 @@ struct Arranger {
             Rect panel{r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h};
             frame.modal = true; frame.modal_panel = panel;
             std::vector<Placement> modal_items;
+            auto region_start = frame.regions.size();
+            in_modal = true;
             place(content, {panel.x + padding, panel.y + padding, content_width, std::max(0, h - 2 * padding)}, modal_items);
+            in_modal = false;
+            for (auto i = region_start; i < frame.regions.size(); ++i) {
+                frame.regions[i].modal_content = true;
+                frame.regions[i].clip = intersect(frame.regions[i].clip, panel);
+            }
             for (auto& p : modal_items) {
                 p.popup = true;
                 p.clip = p.clipped ? intersect(p.clip, panel) : panel;
@@ -394,6 +505,20 @@ struct Arranger {
         }
         }
         return 0;
+    }
+    // A multi-line field scrolls like any viewport: wheel, track and thumb find it among the regions.
+    ScrollRegion field_region(const Placement& p) {
+        const auto& v = p.view;
+        ScrollRegion region;
+        region.state = &ui.line_scroll(p.id);
+        region.field = p.id; region.step = v.line_height; region.modal_content = in_modal;
+        region.viewport = region.clip = {v.text.x, v.text.y, v.track.x + v.track.w - v.text.x, v.text.h};
+        region.track = v.track; region.thumb = v.thumb;
+        const int count = static_cast<int>(v.lines.size()), visible = static_cast<int>(v.visible);
+        region.extent = count * v.line_height;
+        region.maximum = std::max(0, count - visible) * v.line_height;
+        region.offset = static_cast<int>(v.first) * v.line_height;
+        return region;
     }
     int place_scroll(const Node& node, Rect r, std::vector<Placement>& out) {
         const auto& child = node.children.front();
@@ -499,8 +624,8 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     }
     a.frame.items = std::move(items);
     for (auto& region : a.frame.regions) region.clip = intersect(region.clip, window);
-    // The frame-level scroll fields describe the page, never a sideways-scrolling label.
-    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal; });
+    // The frame-level scroll fields describe the page, never a sideways-scrolling label or a text field.
+    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal && r.field.empty(); });
     if (page_region != a.frame.regions.end()) {
         const auto& outer = *page_region;
         a.frame.viewport = outer.viewport; a.frame.track = outer.track; a.frame.thumb = outer.thumb;

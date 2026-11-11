@@ -8,6 +8,7 @@
 #include "fake_measure.hpp"
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <thread>
 using namespace lcars;
 using test::check;
@@ -253,6 +254,45 @@ void painting_uses_the_overridden_colors_for_the_current_combination() {
     check(has(paint_colors(ui, web_appearance(), box), web_accent), "clearing restores the built-in accent on the next frame");
 }
 
+// Records which color each rect gets, so the field scrollbar (track and thumb) can be told apart from other fills.
+struct RectProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    std::vector<std::pair<Rect, Color>> shapes;
+    void fill(Rect r, Color c) override { shapes.push_back({r, c}); }
+    void rounded(Rect r, int, Color c) override { shapes.push_back({r, c}); }
+    void clip(Rect) override {}
+    void text(std::u16string_view, int, int, int, Color c) override { shapes.push_back({{}, c}); }
+    bool colored(Color c) const { return std::any_of(shapes.begin(), shapes.end(), [&](const auto& s) { return s.second == c; }); }
+    bool rect_has(Rect r, Color c) const { return std::any_of(shapes.begin(), shapes.end(), [&](const auto& s) { return s.first.x == r.x && s.first.y == r.y && s.first.w == r.w && s.first.h == r.h && s.second == c; }); }
+};
+
+void a_multiline_field_paints_with_the_overridden_palette() {
+    Ui ui;
+    auto field = ui.add_text({.id = "note", .kind = Kind::text, .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visible_lines = 2}).value.value();
+    detail::access(ui).focus("note");
+    const auto& web = web_appearance();
+    const Color track{245, 240, 250}, thumb{200, 30, 120};
+    auto paint = [&] {
+        test::FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(layout::control(field), ui, web, measure, 400, 300, 1.f, scroll);
+        auto& state = detail::access(ui);
+        const auto& item = frame.items.front();
+        auto semantics = state.describe(item.id);
+        auto probe = std::make_unique<RectProbe>(state, item, *semantics, web, 1.f, true);
+        detail::component_type(semantics->kind).paint(*probe);
+        return std::make_pair(std::move(probe), item.view);
+    };
+    auto [before, view] = paint();
+    check(view.thumb.h > 0, "the content overflows, so the field draws its own scrollbar");
+    check(before->rect_has(view.track, web.palette().panel) && before->rect_has(view.thumb, web.palette().border), "without overrides the scrollbar uses the built-in panel and border colors");
+    check(before->colored(web.palette().accent), "without overrides the focused field draws the built-in accent");
+    check(bool(ui.set_palette_overrides({entry(web, ThemeVariant::light(), "panel", track), entry(web, ThemeVariant::light(), "border", thumb), entry(web, ThemeVariant::light(), "accent", green)})), "overrides accepted");
+    auto [after, overridden] = paint();
+    check(after->rect_has(overridden.track, track) && !after->rect_has(overridden.track, web.palette().panel), "the scrollbar track follows the panel override");
+    check(after->rect_has(overridden.thumb, thumb) && !after->rect_has(overridden.thumb, web.palette().border), "the scrollbar thumb follows the border override");
+    check(after->colored(green) && !after->colored(web.palette().accent), "the focused field's accent (caret and edge) follows the accent override");
+}
+
 void the_semantic_layer_reads_the_effective_palette_read_only() {
     Ui ui;
     check(ui.semantics().effective_palette().status == Status::not_found, "no appearance bound yet");
@@ -289,6 +329,7 @@ int main() {
         {"off_thread_calls_report_wrong_thread", off_thread_calls_report_wrong_thread},
         {"a_custom_appearance_is_never_overridden", a_custom_appearance_is_never_overridden},
         {"painting_uses_the_overridden_colors_for_the_current_combination", painting_uses_the_overridden_colors_for_the_current_combination},
+        {"a_multiline_field_paints_with_the_overridden_palette", a_multiline_field_paints_with_the_overridden_palette},
         {"the_semantic_layer_reads_the_effective_palette_read_only", the_semantic_layer_reads_the_effective_palette_read_only},
     };
     return test::run("palette_override", cases);
