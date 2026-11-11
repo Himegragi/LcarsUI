@@ -704,6 +704,24 @@ void a_rich_field_without_styles_lays_out_like_a_plain_one() {
         check(a.field->view.lines[i].run.stops == b.field->view.lines[i].run.stops, "Caret stops match too");
 }
 
+void composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry() {
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto& host = detail::access(ui);
+    host.focus("note");
+    field.set_style(0, 1, {.bold = true});
+    host.select("note", 1, 1);
+    check(bool(host.composition_update(u"ㄅ", 1)), "Start composing after a bold character");
+    check(host.visible_style_spans("note") == Spans{bold(0, 2)} && spans_of(field) == Spans{bold(0, 1)},
+          "The preedit is shown in the style it will take; the committed styles are untouched while composing");
+    Laid laid(ui, field);
+    const auto& pieces = laid.field->view.lines[0].pieces;
+    check(pieces.size() == 2 && pieces[0].style.bold && pieces[0].end == 2 && !pieces[1].style.bold && pieces[1].begin == 2 && laid.field->view.lines[0].end == 3,
+          "The line measures the preedit as a bold run and the rest as plain");
+    check(bool(host.composition_commit(u"你")) && field.rich_value()->text == u"a你b" && spans_of(field) == Spans{bold(0, 2)}, "The commit is bold, like typing there");
+    check(bool(field.undo()) && field.rich_value()->text == u"ab" && spans_of(field) == Spans{bold(0, 1)}, "One undo removes the committed text and its style");
+}
+
 const test::Case cases[] = {
     {"normalization_merges_sorts_and_drops_empty_spans", normalization_merges_sorts_and_drops_empty_spans},
     {"normalization_rejects_overlap_and_out_of_range_spans", normalization_rejects_overlap_and_out_of_range_spans},
@@ -735,6 +753,7 @@ const test::Case cases[] = {
     {"each_run_is_painted_in_its_face_color_and_underline", each_run_is_painted_in_its_face_color_and_underline},
     {"unknown_color_names_and_disabled_fields_use_the_plain_colors", unknown_color_names_and_disabled_fields_use_the_plain_colors},
     {"a_rich_field_without_styles_lays_out_like_a_plain_one", a_rich_field_without_styles_lays_out_like_a_plain_one},
+    {"composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry", composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry},
 };
 }
 

@@ -94,6 +94,58 @@ int wmain(int argc, wchar_t** argv) {
             note = close_modal(uia, root, L"items.dialog") && note;
             std::cout << "UA08 multi-line note: " << (note ? "PASS" : "FAIL") << '\n'; ok &= note;
         }
+        // #81: the rich note's TextPattern reports the weight, slant, underline and foreground color of each range as
+        // the field draws them now (a color name resolved for the current theme); a mixed range reports the mixed value.
+        {
+            bool rich = invoke(uia, root, L"items.add");
+            auto field = rich ? find_id(uia, root, L"items.dialog.note") : nullptr;
+            rich = rich && field && SendMessageW(s.window, WM_APP + 85, 1, 0) == 0;
+            RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+            IUIAutomationTextPattern* pattern = nullptr; IUIAutomationTextRange* whole = nullptr;
+            rich = rich && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&pattern))) && pattern && SUCCEEDED(pattern->get_DocumentRange(&whole)) && whole;
+            auto slice = [&](int from, int count) -> IUIAutomationTextRange* {
+                IUIAutomationTextRange* r = nullptr; int moved = 0;
+                if (!whole || FAILED(whole->Clone(&r)) || !r) return nullptr;
+                if (FAILED(r->MoveEndpointByRange(TextPatternRangeEndpoint_End, r, TextPatternRangeEndpoint_Start)) || FAILED(r->Move(TextUnit_Character, from, &moved)) ||
+                    FAILED(r->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, count, &moved)) || moved != count) { r->Release(); return nullptr; }
+                return r;
+            };
+            auto read = [&](IUIAutomationTextRange* range, TEXTATTRIBUTEID id, VARIANT& out) { VariantInit(&out); return range && SUCCEEDED(range->GetAttributeValue(id, &out)); };
+            IUIAutomationTextRange* bold_range = rich ? slice(0, 2) : nullptr; IUIAutomationTextRange* italic_range = rich ? slice(2, 2) : nullptr; IUIAutomationTextRange* red_range = rich ? slice(4, 2) : nullptr;
+            VARIANT weight, slant, line, plain_slant, plain_line, plain_weight, red, plain_light, mixed_weight, mixed_color;
+            IUnknown* reserved_mixed = nullptr;
+            rich = rich && bold_range && italic_range && red_range && SUCCEEDED(UiaGetReservedMixedAttributeValue(&reserved_mixed));
+            rich = rich && read(bold_range, UIA_FontWeightAttributeId, weight) && weight.vt == VT_I4 && weight.lVal == 700 &&
+                read(bold_range, UIA_IsItalicAttributeId, plain_slant) && plain_slant.vt == VT_BOOL && plain_slant.boolVal == VARIANT_FALSE &&
+                read(bold_range, UIA_UnderlineStyleAttributeId, plain_line) && plain_line.vt == VT_I4 && plain_line.lVal == 0 &&
+                read(italic_range, UIA_IsItalicAttributeId, slant) && slant.vt == VT_BOOL && slant.boolVal == VARIANT_TRUE &&
+                read(italic_range, UIA_UnderlineStyleAttributeId, line) && line.vt == VT_I4 && line.lVal == 1 &&
+                read(italic_range, UIA_FontWeightAttributeId, plain_weight) && plain_weight.vt == VT_I4 && plain_weight.lVal == 400;
+            rich = rich && read(red_range, UIA_ForegroundColorAttributeId, red) && red.vt == VT_I4 && red.lVal == (176 | (0 << 8) | (32 << 16)) &&
+                read(italic_range, UIA_ForegroundColorAttributeId, plain_light) && plain_light.vt == VT_I4;
+            rich = rich && read(whole, UIA_FontWeightAttributeId, mixed_weight) && mixed_weight.vt == VT_UNKNOWN && mixed_weight.punkVal == reserved_mixed &&
+                read(whole, UIA_ForegroundColorAttributeId, mixed_color) && mixed_color.vt == VT_UNKNOWN && mixed_color.punkVal == reserved_mixed;
+            // FindAttribute walks the runs of equal value.
+            VARIANT wanted; VariantInit(&wanted); wanted.vt = VT_BOOL; wanted.boolVal = VARIANT_TRUE;
+            IUIAutomationTextRange* found = nullptr; BSTR found_text = nullptr;
+            rich = rich && SUCCEEDED(whole->FindAttribute(UIA_IsItalicAttributeId, wanted, FALSE, &found)) && found && SUCCEEDED(found->GetText(-1, &found_text)) && found_text && std::wstring(found_text) == L"cd";
+            // The dark theme repaints the same names in their dark values; the normal text color follows the theme too.
+            bool themed = rich && SendMessageW(s.window, WM_APP + 85, 2, 1) == 0;
+            RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+            VARIANT dark_red, plain_dark;
+            themed = themed && read(red_range, UIA_ForegroundColorAttributeId, dark_red) && dark_red.vt == VT_I4 && dark_red.lVal == (255 | (138 << 8) | (148 << 16)) &&
+                read(italic_range, UIA_ForegroundColorAttributeId, plain_dark) && plain_dark.vt == VT_I4 && plain_dark.lVal != plain_light.lVal;
+            SendMessageW(s.window, WM_APP + 85, 2, 0);
+            // A plain (non-rich) text field reports no such attributes.
+            auto search_field = find_id(uia, root, L"items.dialog.name"); IUIAutomationTextPattern* name_pattern = nullptr; IUIAutomationTextRange* name_range = nullptr; VARIANT unsupported;
+            bool plain_unsupported = search_field && SUCCEEDED(search_field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&name_pattern))) && name_pattern && SUCCEEDED(name_pattern->get_DocumentRange(&name_range)) && name_range &&
+                read(name_range, UIA_FontWeightAttributeId, unsupported) && unsupported.vt == VT_UNKNOWN;
+            if (search_field) search_field->Release(); if (name_pattern) name_pattern->Release(); if (name_range) name_range->Release();
+            SysFreeString(found_text); if (found) found->Release(); if (bold_range) bold_range->Release(); if (italic_range) italic_range->Release(); if (red_range) red_range->Release();
+            if (whole) whole->Release(); if (pattern) pattern->Release(); if (field) field->Release();
+            rich = close_modal(uia, root, L"items.dialog") && rich;
+            std::cout << "UA09 rich text attributes: " << (rich && themed && plain_unsupported ? "PASS" : "FAIL") << " (values=" << rich << " theme=" << themed << " plain=" << plain_unsupported << ")\n"; ok &= rich && themed && plain_unsupported;
+        }
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;
         if (item_selection) item_selection->Release(); if (items_list) items_list->Release();

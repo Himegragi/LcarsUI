@@ -62,7 +62,33 @@ ui.semantics().perform({"item.note"}, lcars::Verb::scroll, 4);  // the same oper
 - **Layout data for application and host code.** After `arrange`, `Placement::multiline` fields carry `Placement::view` (`FieldView`: every display line with its UTF-16 range and caret stops, the first visible line, the track and thumb). `Frame::text_offset(handle, x, y)`, `Placement::caret_x/caret_y/caret_rect` and `Frame::select_to` read it. A host that can lay out again on demand registers `UiState::on_relayout` (the desktop host does) so cursor keys never see stale lines.
 - **UI Automation.** The text pattern reads and moves by `TextUnit_Line` (display lines) and `TextUnit_Paragraph` (LF-separated lines); a vertical-only scroll pattern reads and sets the scroll position.
 
-Out of scope here: double and triple click selection, growing with content, horizontal scrolling or a no-wrap mode, Tab characters, alignment and line spacing, rich text and vertical text.
+Out of scope here: double and triple click selection, growing with content, horizontal scrolling or a no-wrap mode, Tab characters, alignment and line spacing and vertical text. Styled text is the [rich text option](#rich-text-fields) below.
+
+## Rich text fields
+
+A multi-line field created with `rich = true` holds **plain text plus style spans** (`lcars::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalid_value` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
+
+```cpp
+auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+note.set_colors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
+note.connect_rich_source({[&] { return model; }, subscribe});        // RichTextSource: read() -> RichText
+note.connect_rich_confirmed([&](const lcars::RichTextChange& c) { model = c.value; return lcars::Result{}; });
+note.set_style(0, 2, {.bold = true});                                // a range of the committed text
+note.toggle_style(lcars::StyleAttribute::underline);                 // what Ctrl+U does: the selection, or the typing style at a caret
+note.apply_style({.color = "red"});                                  // set the selection's color (caret only: the typing style)
+auto value = note.rich_value();                                      // Query<RichText>: text + spans in normal form
+```
+
+- **Value.** `RichText { std::u16string text; std::vector<StyleSpan> spans; }`, a span being `{start, length, bold, italic, underline, color}` in UTF-16 offsets. The text follows the multi-line rule (LF only) and `max_length` counts text characters only. Only styled text is listed. `normalize_rich_text` (applied to everything that enters a rich field) sorts the spans, drops empty and plain ones and merges adjacent spans of equal style, so equal content always reads back as an equal value; spans that overlap, run past the text or start/end inside a surrogate pair are `Status::invalid_value` and leave the field unchanged. The framework parses no markup language.
+- **Colors.** A color is a name in the value; the field's list (`set_colors`, replaceable at run time, repainted at once) gives each name a light and a dark value, so a theme switch recolors the text. No name means the theme's normal text color. A name that is not in the list is drawn in the normal color and kept in the value (an application that removed a color, or text pasted from another application, loses nothing). A disabled field is drawn muted.
+- **Keys.** Ctrl+B / Ctrl+I / Ctrl+U are taken by a focused rich field before any application shortcut on the same chord (any other field leaves them to the application). With a selection the attribute is applied to all of it unless all of it already has it, then removed. With a caret only, the next typed text changes: it ends when the caret moves or text is inserted. There is no built-in toolbar or menu and no color shortcut: an application calls `toggle_style` / `apply_style` from its own buttons.
+- **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typing_style()` / `set_typing_style()` read and set it. An IME preedit is shown in the style it will take.
+- **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
+- **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
+- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_mixed_confirmation` (a `RichTextChange` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
+- **Semantic layer and UI Automation.** `SemanticNode::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
+
+Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
 
 ## Desktop support
 
