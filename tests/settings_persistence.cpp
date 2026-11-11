@@ -10,7 +10,7 @@ void round_trip() {
     settings_demo::Demo demo; auto document = demo.document();
     document.name=u"Station A"; document.notices=false; document.mode=lcars::OptionValue{"focus"}; document.region=lcars::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.next_item_id=22;
-    document.presentation.font_family=u"NoSuchFont"; document.presentation.text_size=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact;
+    document.presentation.font_family=u"NoSuchFont"; document.presentation.text_size=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact; document.accent="green";
     auto bytes = settings_demo::write_settings(document);
     test::check(bytes.starts_with("{\n  \"format\"") && bytes.back()=='\n' && bytes.find('\r')==std::string::npos && !bytes.starts_with("\xef\xbb\xbf"), "UTF-8 without BOM uses LF and fixed first key");
     test::check(bytes.find("\"general\"") < bytes.find("\"items\"") && bytes.find("\"items\"") < bytes.find("\"next_item_id\"") && bytes.find("\"next_item_id\"") < bytes.find("\"presentation\""), "top-level keys have specified order");
@@ -79,13 +79,33 @@ void appearance_persistence() {
     test::check(font && font->selected && font->name==u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "saved missing font stays selected");
     std::filesystem::remove_all(path);
 }
+void accent_persistence() {
+    settings_demo::Demo demo; auto document=demo.document();
+    test::check(document.accent=="default" && settings_demo::write_settings(document).find("\"accent\": \"default\"")!=std::string::npos, "default accent is written");
+    const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto old=settings_demo::parse_settings(old_file); test::check(old && old->accent=="default", "a file without accent loads as default");
+    const std::string density="\"density\":\"standard\"";
+    auto with=[&](const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\"accent\":"+value); return copy; };
+    auto orange=settings_demo::parse_settings(with("\"orange\"")); test::check(orange && orange->accent=="orange", "accent orange loads");
+    for (const char* bad : {"\"purple\"","5","null","\"\""}) test::check(!settings_demo::parse_settings(with(bad)), "unknown accent rejects the whole document");
+    auto path=std::filesystem::temp_directory_path()/"lcars-persistence-accent";
+    std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
+    settings_demo::Demo saving; saving.on_save([&](const auto& doc) { return store.save(doc); });
+    test::check(bool(saving.set_accent("green")) && bool(saving.save()), "choose and save the accent");
+    test::check(bool(saving.set_accent("orange")), "make an unsaved accent change");
+    auto loaded=store.load(); test::check(loaded.document && loaded.document->accent=="green", "saved accent is in the file");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
+    test::check(reopened.accent_id()=="green" && reopened.ui.semantics().get({"appearance.accent",lcars::OptionValue{"green"}})->selected, "reopened demo shows the saved accent");
+    test::check(reopened.ui.effective_palette(lcars::web_appearance(),lcars::ThemeVariant::light())->accent==lcars::Color{20,110,50}, "reopened demo paints the saved accent");
+    std::filesystem::remove_all(path);
+}
 void failures();
 void load_failures();
 void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

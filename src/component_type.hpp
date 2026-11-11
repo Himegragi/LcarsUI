@@ -33,6 +33,9 @@ public:
     const Appearance& appearance;
     float scale;
     bool window_focused;
+    // The only source of paint colors: the appearance's palette for the current theme variant,
+    // with the Ui's palette overrides applied.
+    Palette palette() const;
     virtual void role(PaintRole) {}
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;

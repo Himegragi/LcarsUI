@@ -1,9 +1,12 @@
 #pragma once
 #include "lcars/presentation.hpp"
+#include <optional>
 #include <string_view>
 #include <string>
+#include <variant>
+#include <vector>
 namespace lcars {
-struct Color { unsigned char r, g, b; };
+struct Color { unsigned char r, g, b; bool operator==(const Color&) const = default; };
 struct Rect {
     int x = 0, y = 0, w = 0, h = 0;
     bool contains(int px, int py) const { return px >= x && py >= y && px < x + w && py < y + h; }
@@ -15,7 +18,32 @@ inline Rect intersect(Rect a, Rect b) {
     return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
 }
 struct FieldParts { Rect label, surface, editor; bool underline = false; };
-struct Palette { Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110; };
+struct Palette {
+    Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110;
+    bool operator==(const Palette&) const = default;
+};
+// Palette roles are addressed by name so an override list never needs a field list of its own:
+// every named color in Palette, plus "scrim_alpha" (0-255, an int value), is a role.
+using PaletteValue = std::variant<Color, int>;
+std::vector<std::string_view> palette_roles();
+std::optional<PaletteValue> palette_value(const Palette& palette, std::string_view role);
+// False (palette untouched) for an unknown role, a value of the wrong kind or scrim_alpha outside 0-255.
+bool set_palette_value(Palette& palette, std::string_view role, const PaletteValue& value);
+// WCAG 2.x contrast ratio (1 to 21) between two sRGB colors.
+double contrast_ratio(Color a, Color b);
+struct ContrastFailure { std::string pair; double ratio = 0, required = 0; };  // pair such as "text/surface"
+// Pairs below their WCAG threshold: text on background, panel, surface and selection, muted and error
+// on surface, on_accent on accent (4.5:1 each) and accent on surface (3:1). Empty when the palette passes.
+std::vector<ContrastFailure> check_palette_contrast(const Palette& palette);
+// One entry of Ui::set_palette_overrides: appearance name as reported by Appearance::name(), one
+// theme variant, one palette role, and the replacement value (Color, or int for "scrim_alpha").
+struct PaletteOverride {
+    std::string appearance;
+    ThemeVariant variant;
+    std::string role;
+    PaletteValue value;
+    bool operator==(const PaletteOverride&) const = default;
+};
 // Measured text blocks a field must host. Heights are physical pixels from the text backend.
 struct FieldText {
     int label = 0, description = 0, error = 0;  // wrapped block heights; 0 when absent
@@ -76,4 +104,16 @@ public:
 };
 const Appearance& web_appearance();
 const Appearance& material_appearance();
+namespace detail {
+// Built-in appearances register themselves when their module is linked, so the Ui can resolve the
+// appearance names in a palette override list without depending on the modules.
+inline std::vector<const Appearance*>& builtin_appearances() { static std::vector<const Appearance*> list; return list; }
+inline bool register_builtin_appearance(const Appearance& appearance) { builtin_appearances().push_back(&appearance); return true; }
+}
+// A built-in appearance linked into this program, found by Appearance::name(); nullptr when its module is not linked.
+inline const Appearance* builtin_appearance(std::string_view name) {
+    for (const auto* appearance : detail::builtin_appearances())
+        if (appearance->name() == name) return appearance;
+    return nullptr;
+}
 }

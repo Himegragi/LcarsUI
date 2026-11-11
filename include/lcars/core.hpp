@@ -1,4 +1,5 @@
 #pragma once
+#include "lcars/appearance.hpp"
 #include "lcars/presentation.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -485,6 +486,21 @@ public:
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
+    // Overrides individual palette colors of the built-in appearances for the whole Ui. The list
+    // replaces the previous one and applies on the next frame; an empty list restores built-in
+    // values. Unknown appearance, unsupported variant, unknown role, a value of the wrong kind,
+    // scrim_alpha outside 0-255, a repeated (appearance, variant, role) or any contrast failure
+    // (see check_palette_contrast, applied to every affected appearance and variant) returns
+    // invalid_value and leaves the active list unchanged. Custom appearances are never affected.
+    // The built-in appearance modules register their names when linked into the program.
+    Result set_palette_overrides(std::vector<PaletteOverride> overrides);
+    const std::vector<PaletteOverride>& palette_overrides() const;
+    // The palette that paints for this appearance and variant: built-in values with overrides applied.
+    Query<Palette> effective_palette(const Appearance& appearance, const ThemeVariant& variant) const;
+    // Tells the Ui which appearance it is shown with so SemanticTree::effective_palette can report
+    // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
+    // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
+    void bind_appearance(const Appearance* appearance);
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:
