@@ -1,4 +1,5 @@
 #include "uia_client_helpers.hpp"
+#include "vertical_expectations.hpp"
 #include <windows.h>
 #include <UIAutomation.h>
 #include <string>
@@ -112,12 +113,14 @@ int wmain(int argc, wchar_t** argv) {
         {
             // #82: the vertical label reports its text in reading order as the name, and the box it is drawn in.
             auto vertical = find_id(uia, root, L"about.vertical"); BSTR vname = nullptr; RECT box{}; CONTROLTYPEID vtype = 0;
-            double scale = GetDpiForWindow(s.window) / 96.0;
+            // The box is the one drawn: inside the window, as tall as the application asked (200 DIP) and as wide as its columns.
+            RECT window_box{}; bool inside = SUCCEEDED(root->get_CurrentBoundingRectangle(&window_box));
             bool label = vertical && SUCCEEDED(vertical->get_CurrentControlType(&vtype)) && vtype == UIA_TextControlTypeId && SUCCEEDED(vertical->get_CurrentName(&vname)) && vname &&
-                std::wstring(vname) == L"LcarsUI 設定管理示範（第 12 版），謹此致謝。" &&
-                SUCCEEDED(vertical->get_CurrentBoundingRectangle(&box)) && box.right > box.left && std::abs((box.bottom - box.top) - 200 * scale) <= 2;
-            std::cout << "UA-vertical label: " << (label ? "PASS" : "FAIL") << '
-'; ok &= label;
+                std::wstring(vname) == std::wstring(reinterpret_cast<const wchar_t*>(test::vertical::about_sample.data()), test::vertical::about_sample.size()) &&
+                SUCCEEDED(vertical->get_CurrentBoundingRectangle(&box)) && inside &&
+                test::vertical::drawn_box(box.left, box.top, box.right, box.bottom, window_box.left, window_box.top, window_box.right, window_box.bottom, 150);
+            if (!label) std::cout << "vertical element=" << bool(vertical) << " type=" << vtype << " name=" << (vname ? SysStringLen(vname) : 0) << " box=" << box.left << ',' << box.top << ',' << box.right << ',' << box.bottom << " window=" << window_box.left << ',' << window_box.top << ',' << window_box.right << ',' << window_box.bottom << '\n';
+            std::cout << "UA-vertical label: " << (label ? "PASS" : "FAIL") << '\n'; ok &= label;
             SysFreeString(vname); if (vertical) vertical->Release();
         }
         std::cout << "navigation=" << navigation << " long-dropdown=" << dropdown << " about-text=" << about << '\n'; ok = ok && navigation && dropdown && about;

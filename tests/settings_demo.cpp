@@ -10,6 +10,7 @@
 #include "fake_measure.hpp"
 #include "component_type.hpp"
 #include "vertical.hpp"
+#include "vertical_expectations.hpp"
 using namespace lcars;
 struct RoleProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -655,7 +656,7 @@ void about_vertical_label() {
     test::check(bool(demo.nav.select({"about"})), "open About");
     auto node = demo.ui.semantics().get({"about.vertical"});
     test::check(node && node->role == Role::label && node->writing_mode == WritingMode::vertical, "the About page has a vertical label");
-    test::check(node->value == u"LcarsUI 設定管理示範（第 12 版），謹此致謝。", "the vertical label carries the sample sentence");
+    test::check(node->value == test::vertical::about_sample, "the vertical label carries the sample sentence");
     // It shows every kind of piece the rules cover: a sideways word, a bracket, combined digits, a comma and a period.
     std::vector<VerticalForm> forms;
     for (const auto& segment : detail::segment_vertical(node->value, 3)) forms.push_back(segment.form);
@@ -666,6 +667,11 @@ void about_vertical_label() {
         auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
         auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.vertical"; });
         test::check(item != frame.items.end() && item->vertical && item->column_layout.columns.size() >= 2 && item->bounds.h > 0, "the page lays the label out in columns");
+        auto semantic = demo.ui.semantics().get({"about.vertical"});
+        test::check(semantic && semantic->bounds && semantic->name == test::vertical::about_sample &&
+                    test::vertical::drawn_box(semantic->bounds->x, semantic->bounds->y, semantic->bounds->x + semantic->bounds->w, semantic->bounds->y + semantic->bounds->h,
+                                              0, 0, 960, 720, 200) && *semantic->bounds == intersect(item->bounds, item->clip),
+                    "the semantic node reports the text in reading order and the box that is drawn"); 
     }
 }
 void td01_failure_diagnostic() {
