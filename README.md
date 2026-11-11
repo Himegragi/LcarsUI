@@ -108,6 +108,19 @@ auto value = note.rich_value();                                      // Query<Ri
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
 
+## Justified text
+
+Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::distribute`. Both are set at creation (`Control::text_align`) or at run time (`set_text_align`, semantic verb `set_text_align`).
+
+- **justify** stretches every display line to the full width except the last line of a paragraph (the line before an LF, or the end of the text), which stays left-aligned. A single-line text field therefore looks left-aligned. **distribute** also stretches the last line and a one-line text (a form label such as `姓　名`); a text field refuses it with `Status::invalid_value` and stays unchanged.
+- **Where the extra width goes** is `JustifyMethod` (`Control::justify_method`, `set_justify_method`, semantic verb `set_justify_method`, read back with `justify_method()`; only used while the alignment is justify or distribute). `automatic` (default): around every CJK character and full-width punctuation mark and after every ASCII space or ideographic space (U+3000, which stays with the character before it); punctuation is never compressed and a Latin word is never widened inside. `spaces`: only after ASCII spaces, so a Chinese-only line stays left-aligned. `per_character`: between any two characters, Latin letters included; such a line is drawn piece by piece, so ligatures such as `fi` do not form.
+- **Shared rules.** Width is added only between whole characters (a base with its variation selector, or an emoji sequence, is never split; the unit is the shaping cluster). Trailing spaces neither count toward the width nor receive any. A line with nowhere to stretch is left-aligned. The added width sits on top of the font's own spacing and kerning.
+- **Caret, selection and pointer.** All of them use the stretched, drawn positions: `FieldLine::run` stops include the added width, `FieldLine::segments` / `Line::segments` list the drawn pieces (each starts at its own x). Typing re-spreads the line being typed in, which is expected. A caret at a gap is drawn at the start of the next character.
+- **Rich text.** A justified line of a rich field is also cut at every style boundary (no width is added there), so each drawn piece lies inside one run and keeps its face and color; a run's underline spans the gaps added inside it. Caret, selection, hits and drawn glyphs read the same positions as in plain text.
+- **Vertical labels.** Justify and distribute read as top alignment there; the justification method is ignored.
+- **User setting (WCAG 1.4.8).** `PresentationSettings::justify_as_left` (default off, applied by `Ui::set_presentation`) draws every justified and distributed text left-aligned. The property values do not change; UI Automation then reports `HorizontalTextAlignment_Left`, otherwise both values report `HorizontalTextAlignment_Justified`. The settings demo's Appearance page has the checkbox and saves the setting.
+- **Not included:** punctuation compression or squeeze-before-stretch (Mainland style), hyphenation, a separate last-line alignment property, soft line breaks, justified vertical text and per-run alignment in rich text.
+
 ## Context menus
 
 A context menu is a short list of commands opened beside a component by the right mouse button (on release), the menu key or Shift+F10. One menu is open per window; it is drawn inside the window like a dropdown's list (flipped left and up near the window's edges, scrollable when the window is too small) and never changes which component has focus.

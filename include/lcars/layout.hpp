@@ -39,13 +39,18 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
 struct WrappedLine { std::u16string text; bool soft = false; };
 std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view text, int pixels, int width);
 
+// A justified or distributed line is drawn in pieces, each at its own x: offsets are UTF-16 offsets
+// relative to the start of the line, x is physical pixels from the line's start (the start the line's
+// alignment gives it: the left edge of the box or text area). A line drawn as one piece has none (#84).
+struct TextSegment { unsigned begin = 0, end = 0; float x = 0, width = 0; };  // width: the piece's own advance (no added gap)
 // One display line of a multi-line field: a hard line (it ends at an LF) or one wrapped piece of it.
 // Offsets are UTF-16 offsets into the visible text (an IME composition included).
 struct FieldLine {
     unsigned begin = 0, end = 0;  // end excludes the LF that ends a hard line
     bool soft = false;            // wrapped: the next line continues it, and next.begin == end
-    TextRun run;                  // caret stops for this line alone; x is 0 at the text's own left edge
-    float shift = 0;              // where the text starts, from the text area's left edge: its alignment (#80)
+    TextRun run;                  // caret stops for this line alone; x is 0 at the text's own left edge. A justified line's stops include the added width
+    std::vector<TextSegment> segments;  // #84: a justified line's pieces (x from the shift); empty = draw the whole line in one go
+    float shift = 0;             // where the text starts, from the text area's left edge: its alignment (#80)
     int top = 0;                  // top of the line's row from the first line's, physical pixels (#80)
     // Rich fields: the line cut into runs of one style, in order and covering [0, end - begin). Offsets are
     // relative to begin; x is each run's left edge from the TEXT AREA's left edge, the line's alignment shift
@@ -131,7 +136,9 @@ Node modal(Node background, Node content, DialogHandle dialog);
 }
 using DialogLayout = layout::DialogLayout;
 
-struct Line { Rect bounds; std::u16string text; };
+// bounds.x is where the (aligned) text starts. A justified or distributed label line spans the whole width and
+// lists its pieces in segments (#84); every other line leaves segments empty.
+struct Line { Rect bounds; std::u16string text; std::vector<TextSegment> segments = {}; };
 // One row of the open context menu, positioned after scrolling; rows outside Placement::menu_inner are clipped.
 struct MenuRow { std::string id; Rect bounds; std::u16string label, hint; bool separator = false, enabled = true, highlighted = false; };
 // Vertical (top-to-bottom, columns right-to-left) text, shared by layout and painting. A piece is one

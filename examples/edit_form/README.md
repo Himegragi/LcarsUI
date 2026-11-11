@@ -111,3 +111,7 @@ The V01 behavior cases drive the assembled form through public handles; native k
 驗收紀錄、工具鏈與代表畫面見 [evidence/rework-verification.md](evidence/rework-verification.md)。
 
 Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.
+
+## Justified text comparison (#84)
+
+The 呈現設定 page (V04) ends with a mixed Chinese, English and digit paragraph (a label, justified at first) and two dropdowns: 對齊 (靠左／置中／靠右／左右對齊／分散對齊) and 對齊方法 (自動／只拉空格／每字元). Choosing from them sets the label's `text_align` and `justify_method` live, so the project author can compare every alignment and method at any window width. Below it, a short label `姓　名` is distributed next to the same label left-aligned. The paragraph is left-aligned while the user setting `PresentationSettings::justify_as_left` is on (the settings demo has the checkbox).

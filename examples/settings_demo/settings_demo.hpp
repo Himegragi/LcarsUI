@@ -69,7 +69,7 @@ private:
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
     bool saved_once_ = false, volume_group_ = false, text_size_group_ = false, dirty_state_ = false;
-    std::function<void()> text_size_changed_, dark_changed_, compact_changed_;
+    std::function<void()> text_size_changed_, dark_changed_, compact_changed_, justify_left_changed_;
     lcars::LabelHandle preview_, font_status_;
     std::function<void()> font_changed_;
     void refresh_fonts();
@@ -99,7 +99,7 @@ public:
     bool is_dirty() const;
     bool blank_name_draft() const;
     std::u16string save_failed_renderer();
-    lcars::CheckboxHandle notices, dark, compact;
+    lcars::CheckboxHandle notices, dark, compact, justify_left;  // justify_left: PresentationSettings::justify_as_left (#84)
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region, font, accent;
     lcars::SliderHandle volume, text_size;

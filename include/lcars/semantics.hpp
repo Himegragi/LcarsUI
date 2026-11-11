@@ -5,7 +5,7 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
-// set_text_align takes a TextAlign, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
+// set_text_align takes a TextAlign, set_justify_method a JustifyMethod, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
 // set_writing_mode takes a WritingMode and set_vertical_digits an int (0-3); labels only.
 // context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
@@ -14,13 +14,13 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 // select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
 // set_word_segmentation takes a WordSegmentation. All are text fields only.
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
-                  set_word_segmentation, select_word, select_paragraph, double_click, triple_click };
+                  set_word_segmentation, select_word, select_paragraph, double_click, triple_click, set_justify_method };
 // The text units a semantic query can ask for: what a double click selects and what a triple click selects.
 enum class TextUnitKind { word, paragraph };
 // Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
 struct StyleEdit { unsigned begin = 0, end = 0; StyleChange change; };
 // Rich fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle, WordSegmentation>;
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle, WordSegmentation, JustifyMethod>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
 inline std::string menu_node_id(std::string_view target) { return std::string(target) + "/menu"; }
@@ -64,7 +64,8 @@ struct SemanticNode {
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
     std::optional<TextScroll> scroll;  // multi-line text fields
-    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere
+    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. As set: the user's "justified text as left" setting does not change it
+    JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
     bool rich = false;                 // text fields created with Control::rich

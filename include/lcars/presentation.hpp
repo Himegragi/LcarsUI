@@ -27,6 +27,9 @@ struct PresentationSettings {
     Density density = Density::standard;
     Hover hover = Hover::on;
     FocusIndicatorMode focus_indicator = FocusIndicatorMode::automatic;
+    // Accessibility (WCAG 1.4.8): when on, every justified or distributed text is drawn left-aligned instead.
+    // The components keep their property values; only what is drawn (and reported to UIA) changes.
+    bool justify_as_left = false;
     Motion motion = Motion::automatic;
     bool operator==(const PresentationSettings&) const = default;
 };

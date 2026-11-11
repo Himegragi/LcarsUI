@@ -141,13 +141,34 @@ void accent_persistence() {
     test::check(reopened.ui.effective_palette(lcars::web_appearance(),lcars::ThemeVariant::light())->accent==lcars::Color{20,110,50}, "reopened demo paints the saved accent");
     std::filesystem::remove_all(path);
 }
+// #84: the "justified text as left" setting is saved with the presentation and comes back on load.
+void justify_as_left_persistence() {
+    settings_demo::Demo demo; auto document=demo.document();
+    test::check(!document.presentation.justify_as_left && settings_demo::write_settings(document).find("\"justify_as_left\": false")!=std::string::npos, "the default is written as off");
+    const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto old=settings_demo::parse_settings(old_file); test::check(old && !old->presentation.justify_as_left, "a file without the setting loads as off");
+    const std::string density="\"density\":\"standard\"";
+    auto with=[&](const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\"justify_as_left\":"+value); return copy; };
+    auto on=settings_demo::parse_settings(with("true")); test::check(on && on->presentation.justify_as_left, "the setting loads as on");
+    for (const char* bad : {"\"yes\"","1","null"}) test::check(!settings_demo::parse_settings(with(bad)), "a non-boolean rejects the whole document");
+    auto path=std::filesystem::temp_directory_path()/"lcars-persistence-justify";
+    std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
+    settings_demo::Demo saving; saving.on_save([&](const auto& doc) { return store.save(doc); });
+    saving.nav.select({"appearance"});
+    test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)) && bool(saving.save()), "turn it on and save");
+    test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)), "turn it off again, unsaved");
+    auto loaded=store.load(); test::check(loaded.document && loaded.document->presentation.justify_as_left, "the saved file has it on");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
+    test::check(reopened.ui.presentation().justify_as_left && *reopened.ui.semantics().get({"appearance.justify_left"})->checked, "the reopened demo applies it and shows the checkbox on");
+    std::filesystem::remove_all(path);
+}
 void failures();
 void load_failures();
 void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"rich notes",rich_notes_round_trip_and_old_string_notes_still_load},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"justify as left persistence",justify_as_left_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"rich notes",rich_notes_round_trip_and_old_string_notes_still_load},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

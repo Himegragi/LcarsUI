@@ -89,6 +89,9 @@ const ComponentType& component_type(Kind kind);
 // a paragraph ended by an LF, scaled from DIP, never rounded up to a pixel when it is 0.
 int text_row(int line_height, double line_spacing);
 int paragraph_gap(const Control& control, float scale);
+// The alignment to draw now (#84): the control's own, except that the user's "justified text as left"
+// setting turns justify and distribute into left. Reads of the property itself stay unchanged.
+TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings);
 
 // Temporary internal registration supports extension tests without changing any dispatch point.
 // Its lifetime must encompass every UI using the registered type, on the UI thread.

@@ -1,6 +1,7 @@
 #include "component_type.hpp"
 #include "core_internal.hpp"
 #include "vertical.hpp"
+#include "justify.hpp"
 #include <map>
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,10 @@ void ComponentPaint::overlay(Rect rect, int radius, Color color, unsigned char) 
     if (radius > 0) rounded(rect, radius, color); else fill(rect, color);
 }
 
+TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings) {
+    const bool stretched = control.text_align == TextAlign::justify || control.text_align == TextAlign::distribute;
+    return stretched && settings.justify_as_left ? TextAlign::left : control.text_align;
+}
 ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
                                const Appearance& look, float render_scale, bool active_window)
     : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window),
@@ -53,7 +58,7 @@ int height_of(const std::vector<Line>& lines) {
 // the glyphs occupy: x is where the (aligned) text starts, y its top inside the row, h the font's line
 // height. A left-aligned line keeps the full width as before; the others are as wide as their text.
 struct Flowed { std::vector<Line> lines; int height = 0; };
-Flowed flowed_block(TextMeasure& measure, std::u16string_view text, int size, int width, const Control& control, float scale) {
+Flowed flowed_block(TextMeasure& measure, std::u16string_view text, int size, int width, const Control& control, float scale, TextAlign align) {
     Flowed out;
     if (text.empty()) return out;
     const int line = measure.line_height(size), row = text_row(line, control.line_spacing), gap = paragraph_gap(control, scale);
@@ -61,11 +66,15 @@ Flowed flowed_block(TextMeasure& measure, std::u16string_view text, int size, in
     const auto pieces = wrap_marked(measure, text, size, width);
     for (std::size_t i = 0; i < pieces.size(); ++i) {
         Line placed{{0, y + (row - line) / 2, width, line}, pieces[i].text};
-        if (control.text_align != TextAlign::left) {
+        if (align == TextAlign::center || align == TextAlign::right) {
             const int w = static_cast<int>(std::ceil(measure.measure(pieces[i].text, size).width));
             const int room = std::max(0, width - w);
-            placed.bounds.x = control.text_align == TextAlign::center ? room / 2 : room;
+            placed.bounds.x = align == TextAlign::center ? room / 2 : room;
             placed.bounds.w = w;
+        } else if (align == TextAlign::distribute || (align == TextAlign::justify && pieces[i].soft)) {
+            // Stretched to the full width, in pieces; a line with nowhere to stretch stays left-aligned.
+            if (auto stretched = justify_line(measure, pieces[i].text, size, measure.measure(pieces[i].text, size), static_cast<float>(width), control.justify_method))
+                placed.segments = std::move(stretched->segments);
         }
         out.lines.push_back(std::move(placed));
         y += row;
@@ -99,7 +108,12 @@ void paint_errors(ComponentPaint& c, const std::vector<Line>& lines, int pixels,
     marked(c, PaintRole::error_text, [&] { for (const auto& line : lines) c.text(line.text, pixels, line.bounds.x, line.bounds.y, color); });
 }
 void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
-    for (const auto& line : lines) c.text(line.text, pixels, line.bounds.x, line.bounds.y, color);
+    for (const auto& line : lines) {
+        if (line.segments.empty()) { c.text(line.text, pixels, line.bounds.x, line.bounds.y, color); continue; }
+        // A justified line: every piece at its own x, so nothing (a ligature, kerning) spans the added width.
+        for (const auto& piece : line.segments)
+            c.text(std::u16string_view(line.text).substr(piece.begin, piece.end - piece.begin), pixels, line.bounds.x + static_cast<int>(std::floor(piece.x)), line.bounds.y, color);
+    }
 }
 // The slider's focus dot sits left of the title. Its room is always reserved, so the title never moves
 // when the indicator appears. Diameter is ~40% of the text size.
@@ -113,9 +127,9 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
-        if (c.control.writing_mode == WritingMode::vertical) { arrange_vertical(c); return; }
+        if (c.control.writing_mode == WritingMode::vertical) { arrange_vertical(c); return; }  // justify/distribute read as top there (vertical_params)
         if (c.settle) c.ui.clear_vertical_scroll(c.control.id);
-        auto flowed = flowed_block(c.measure, c.ui.text(c.control.id), p.text_size, c.width, c.control, c.scale);
+        auto flowed = flowed_block(c.measure, c.ui.text(c.control.id), p.text_size, c.width, c.control, c.scale, drawn_text_align(c.control, c.ui.presentation()));
         p.lines = std::move(flowed.lines);
         p.bounds = {0, 0, c.width, flowed.height};
     }
@@ -257,8 +271,10 @@ public:
         }
         p.offset = offset;
         // Text that fits is placed by its alignment; text that does not fit scrolls from its start as before.
-        if (p.run.width <= room && control.text_align != TextAlign::left)
-            p.shift = control.text_align == TextAlign::center ? std::max(0.f, (static_cast<float>(p.field.editor.w) - p.run.width) / 2) : room - p.run.width;
+        // A single line is the last line of its paragraph, so justify leaves it left-aligned (#84).
+        const auto align = drawn_text_align(control, c.ui.presentation());
+        if (p.run.width <= room && (align == TextAlign::center || align == TextAlign::right))
+            p.shift = align == TextAlign::center ? std::max(0.f, (static_cast<float>(p.field.editor.w) - p.run.width) / 2) : room - p.run.width;
     }
     // Multi-line: wrap at the edge, reserve the scrollbar's width whether or not it shows, and let
     // core decide the first visible line (scroll position, caret reveal, font-size anchor).
@@ -274,10 +290,12 @@ public:
         if (!c.settle) return;  // a measurement probe only needs the fixed height
         const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
         const int wrap_width = std::max(1, view.text.w - slack);
+        const auto visible_text = c.ui.edit(c.control.id)->visible();
         if (c.control.rich) {  // wrap and measure every run in its own face
             const auto styles = c.ui.visible_style_spans(c.control.id);
-            view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width, &styles);
-        } else view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
+            view.lines = wrap_lines(c.measure, visible_text, p.text_size, wrap_width, &styles);
+        } else view.lines = wrap_lines(c.measure, visible_text, p.text_size, wrap_width);
+        const auto align = drawn_text_align(c.control, c.ui.presentation());
         // Rows: one per line, a paragraph gap after each hard line. Alignment: centered in the text area,
         // right-aligned to the wrap edge (which keeps the caret's slack free at the right).
         const int paragraph = paragraph_gap(c.control, c.scale);
@@ -286,9 +304,25 @@ public:
             auto& item = view.lines[i];
             item.top = top;
             top += row + (item.soft ? 0 : paragraph);
-            if (c.control.text_align == TextAlign::center) item.shift = std::max(0.f, (static_cast<float>(view.text.w) - item.run.width) / 2);
-            else if (c.control.text_align == TextAlign::right) item.shift = std::max(0.f, static_cast<float>(wrap_width) - item.run.width);
-            for (auto& piece : item.pieces) piece.x += item.shift;  // rich runs are drawn where the aligned line is
+            if (align == TextAlign::center) item.shift = std::max(0.f, (static_cast<float>(view.text.w) - item.run.width) / 2);
+            else if (align == TextAlign::right) item.shift = std::max(0.f, static_cast<float>(wrap_width) - item.run.width);
+            else if (align == TextAlign::justify && item.soft) {
+                // Every wrapped piece but the paragraph's last is stretched to the wrap edge; its stops carry the
+                // added width, so the caret, hits, selection and the input method follow the drawn pieces. A rich
+                // line is also cut at every style boundary (no extra there), so each piece lies inside one style run.
+                if (auto stretched = justify_line(c.measure, std::u16string_view(visible_text).substr(item.begin, item.end - item.begin), p.text_size, item.run,
+                                                  static_cast<float>(wrap_width), c.control.justify_method, item.pieces.empty() ? nullptr : &item.pieces)) {
+                    item.run = std::move(stretched->run);
+                    item.segments = std::move(stretched->segments);
+                    for (auto& piece : item.pieces) {  // a style run is drawn where its first piece starts and reaches the end of its last one
+                        const TextSegment* first = nullptr; const TextSegment* last = nullptr;
+                        for (const auto& segment : item.segments)
+                            if (segment.begin >= piece.begin && segment.end <= piece.end) { if (!first) first = &segment; last = &segment; }
+                        if (first) { piece.x = first->x; piece.width = last->x + last->width - first->x; }
+                    }
+                }
+            }
+            for (auto& piece : item.pieces) piece.x += item.shift;  // rich runs are drawn where the aligned line is (a justified line has no shift)
         }
         c.ui.settle_lines(c.control.id, view, p.text_size, wrap_width);
         const int count = static_cast<int>(view.lines.size()), visible = static_cast<int>(view.visible);
@@ -329,17 +363,28 @@ public:
                     else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, row}, p.selection); });
                 }
             }
-            if (line.end > line.begin && line.pieces.empty())
-                c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, enabled ? p.text : p.muted);
+            const Color base = enabled ? p.text : p.muted;
+            if (line.end > line.begin && line.pieces.empty()) {
+                if (line.segments.empty()) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, base);
+                else for (const auto& piece : line.segments)  // a justified line (it has text), piece by piece (#84)
+                    c.text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size,
+                           view.text.x + static_cast<int>(std::lround(line.shift + piece.x)), y + dy, base);
+            }
             // A rich line is drawn run by run: its face, its color (by name, for the theme of the moment) and its underline.
-            // piece.x already includes the line's alignment shift.
+            // piece.x already includes the line's alignment shift; a justified line is drawn segment by segment (#84),
+            // every segment inside one style run, and the run's underline spans the added gaps.
             for (const auto& piece : line.pieces) {
                 const int left = view.text.x + static_cast<int>(std::lround(piece.x));
-                Color color = enabled ? p.text : p.muted;  // a disabled field is muted whatever the colors say
+                Color color = base;  // a disabled field is muted whatever the colors say
                 if (enabled)
                     if (auto named = c.ui.named_color(item.id, piece.style.color)) color = *named;
-                c.styled_text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size,
-                              FontStyle{piece.style.bold, piece.style.italic}, left, y + dy, color);
+                const FontStyle face{piece.style.bold, piece.style.italic};
+                if (line.segments.empty())
+                    c.styled_text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size, face, left, y + dy, color);
+                else for (const auto& segment : line.segments)
+                    if (segment.begin >= piece.begin && segment.end <= piece.end)
+                        c.styled_text(std::u16string_view(text).substr(line.begin + segment.begin, segment.end - segment.begin), item.text_size, face,
+                                      view.text.x + static_cast<int>(std::lround(line.shift + segment.x)), y + dy, color);
                 if (piece.style.underline) {
                     const int width = static_cast<int>(std::lround(piece.x + piece.width)) - static_cast<int>(std::lround(piece.x));
                     c.fill({left, y + dy + view.line_height * 5 / 6, width, std::max(1, item.text_size / 14)}, color);

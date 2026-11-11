@@ -28,10 +28,14 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         InvalidateRect(window, nullptr, FALSE); UpdateWindow(window);
         return 0;
     }
-    if (message == WM_APP + 85) {  // #80: the Items search box gets a centered, 1.5-spaced presentation (w = 1) or the defaults (w = 0)
+    if (message == WM_APP + 85) {  // #80: the Items search box gets a centered, 1.5-spaced presentation (w = 1) or the defaults (w = 0);
+        // #84: w = 2 justifies it, w = 3 justifies it with the user's "justified text as left" setting on
         auto& search = active->items_search;
-        return static_cast<LRESULT>(search.set_text_align(w ? lcars::TextAlign::center : lcars::TextAlign::left).status) |
-               static_cast<LRESULT>(search.set_line_spacing(w ? 1.5 : 1.0).status);
+        auto settings = active->ui.presentation(); settings.justify_as_left = w == 3;
+        const auto align = w == 1 ? lcars::TextAlign::center : w >= 2 ? lcars::TextAlign::justify : lcars::TextAlign::left;
+        return static_cast<LRESULT>(search.set_text_align(align).status) |
+               static_cast<LRESULT>(search.set_line_spacing(w == 1 ? 1.5 : 1.0).status) |
+               static_cast<LRESULT>(active->ui.set_presentation(settings).status);
     }
     if (message == WM_APP + 86) {
         // Context menu driver (#85). 0: open the Items list menu on row T003; 1: close; 2: open the search field's menu;

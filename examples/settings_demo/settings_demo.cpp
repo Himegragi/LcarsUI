@@ -60,13 +60,17 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     text_size.on_blur([this] { text_size_group_ = false; });
     dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
     compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
+    // WCAG 1.4.8: the user can turn justified text off for the whole window.
+    justify_left = ui.add_checkbox({.id="appearance.justify_left",.kind=Kind::checkbox,.label=u"左右對齊文字改為靠左"}).value.value();
     accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
     accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
-    for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
+    for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
+    justify_left.connect_source({[this] { return ui.presentation().justify_as_left; }, subscribe_to(justify_left_changed_)});
+    justify_left.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
     dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
     compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
     dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
@@ -345,7 +349,7 @@ Result Demo::set_accent(const std::string& id) {
     return result;
 }
 Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
-    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); dirty(coalesce); } return result;
+    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); dirty(coalesce); } return result;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
@@ -377,7 +381,7 @@ void Demo::apply(const SettingsDocument& value) {
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
     apply_accent(value.accent);
-    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); refresh_items(); current_=value; update_history_controls();
+    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); refresh_items(); current_=value; update_history_controls();
 }
 void Demo::load_document(const SettingsDocument& value) {
     apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
@@ -437,7 +441,7 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(accent)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
         content.push_back(vertical_text(about_vertical_, 200));
