@@ -55,11 +55,18 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
     std::size_t content_end = text.size();
     while (content_end > 0 && text[content_end - 1] == u' ') --content_end;  // spaces at the end never stretch
     if (content_end == 0) return std::nullopt;
-    // Whole characters: the measuring backend's own stops, minus any that would split one.
+    // Whole characters. Normally the measuring backend's own stops (its shaping clusters), minus any that would
+    // split a character. A per-character line cuts at every character instead: a ligature such as ffi is one
+    // cluster in the shaper's eyes, but it must not stay one here, so the line is cut by code point.
     std::vector<unsigned> cuts;
-    for (const auto& [offset, x] : natural.stops) {
-        (void)x;
-        if (offset < text.size() && safe_cut(text, offset) && (cuts.empty() || offset > cuts.back())) cuts.push_back(offset);
+    if (method == JustifyMethod::per_character) {
+        for (std::size_t offset = 0; offset < text.size(); ++offset)
+            if (safe_cut(text, offset)) cuts.push_back(static_cast<unsigned>(offset));
+    } else {
+        for (const auto& [offset, x] : natural.stops) {
+            (void)x;
+            if (offset < text.size() && safe_cut(text, offset) && (cuts.empty() || offset > cuts.back())) cuts.push_back(offset);
+        }
     }
     if (cuts.empty() || cuts.front() != 0) cuts.insert(cuts.begin(), 0);
     cuts.push_back(static_cast<unsigned>(text.size()));

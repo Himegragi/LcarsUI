@@ -1,5 +1,6 @@
 #include "lcars/fonts.hpp"
 #include "text.hpp"
+#include "justify.hpp"
 #include "diagnostic_queue.hpp"
 #include <iostream>
 #include <fstream>
@@ -278,5 +279,48 @@ int main() {
     RecordingCanvas recorded_missing(64,64,{255,255,255});
     without_fonts.draw(recorded_missing,private_glyph,0,30,{0,0,0});
     if(recorded_missing.list.commands.size()<=1) return 35;
+    // #84 justified lines through the real shaper: its cluster stops, and the shaping of the pieces that get drawn.
+    {
+        Text shaper;
+        ShapedMeasure measure(shaper);
+        // Offsets: 漢 0, variation selector 1, 語 2, woman 3-4, joiner 5, laptop 6-7, 字 8, 體 9.
+        const std::u16string line = u"漢︀語\U0001f469‍\U0001f4bb字體";
+        const auto natural = measure.measure(line, 18);
+        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::per_character}) {
+            auto stretched = justify_line(measure, line, 18, natural, natural.width + 60.f, method);
+            if (!stretched) { std::cerr << "justify: a line with characters to spread was not stretched\n"; return 60; }
+            for (const auto& piece : stretched->segments)
+                for (unsigned inside : {1u, 4u, 5u, 6u, 7u})
+                    if (piece.begin == inside) { std::cerr << "justify: cut inside a character at " << inside << '\n'; return 61; }
+            if (std::abs(stretched->run.width - (natural.width + 60.f)) > 1.5f) { std::cerr << "justify: width " << stretched->run.width << " for " << natural.width + 60.f << '\n'; return 62; }
+        }
+        // Mixed text, every method: the content ends flush at the target width (within a pixel).
+        const std::u16string mixed = u"Hello world 中文 test, 12345 繁體";
+        const auto mixed_run = measure.measure(mixed, 18);
+        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::spaces, lcars::JustifyMethod::per_character}) {
+            auto stretched = justify_line(measure, mixed, 18, mixed_run, mixed_run.width + 40.f, method);
+            if (!stretched || std::abs(stretched->run.width - (mixed_run.width + 40.f)) > 2.f) { std::cerr << "justify: mixed line not flush\n"; return 63; }
+        }
+        // A ligature needs the letters shaped together; the per-character pieces are shaped one by one.
+        const char16_t* ligature_fonts[] = {u"Times New Roman", u"Cambria", u"Georgia", u"Palatino Linotype", u"Calibri"};
+        bool ligature_tested = false;
+        for (const auto* family : ligature_fonts) {
+            if (!catalog.contains(family)) continue;
+            Text serif;
+            serif.set_primary_family(family);
+            if (serif.shape(u"fi", 24).glyphs.size() != 1) continue;  // this face has no fi ligature
+            ShapedMeasure serif_measure(serif);
+            const std::u16string word = u"office fi";
+            const auto word_run = serif_measure.measure(word, 24);
+            auto stretched = justify_line(serif_measure, word, 24, word_run, word_run.width + 30.f, lcars::JustifyMethod::per_character);
+            if (!stretched) return 64;
+            for (const auto& piece : stretched->segments)
+                if (serif.shape(word.substr(piece.begin, piece.end - piece.begin), 24).glyphs.size() > piece.end - piece.begin) return 65;
+            if (stretched->segments.size() < 8) return 66;
+            ligature_tested = true;
+            break;
+        }
+        if (!ligature_tested) std::cout << "justify ligature check: N/A (no installed face with a fi ligature)\n";
+    }
     return 0;
 }

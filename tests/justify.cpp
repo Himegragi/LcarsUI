@@ -148,6 +148,38 @@ void the_per_character_method_spreads_latin_letters_and_never_draws_a_ligature()
     check(laid.frame.find(automatic)->lines[0].segments.empty(), "The automatic method leaves a line without spaces or Chinese alone");
 }
 
+// A shaper that makes "ffi" and "fi" one cluster, like a font with those ligatures: no caret stop inside them.
+struct LigatureMeasure final : TextMeasure {
+    FakeMeasure base;
+    TextRun measure(std::u16string_view text, int pixels) override {
+        auto run = base.measure(text, pixels);
+        std::vector<std::pair<unsigned, float>> kept;
+        for (const auto& stop : run.stops) {
+            const bool inside = (stop.first >= 1 && stop.first < text.size() && text[stop.first - 1] == u'f' && (text[stop.first] == u'f' || text[stop.first] == u'i')) ||
+                                (stop.first >= 2 && stop.first < text.size() && text[stop.first - 2] == u'f' && text[stop.first - 1] == u'f' && text[stop.first] == u'i');
+            if (!inside) kept.push_back(stop);
+        }
+        run.stops = std::move(kept);
+        return run;
+    }
+    int line_height(int pixels) override { return base.line_height(pixels); }
+};
+
+void the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_not() {
+    Ui ui;
+    auto per_character = *ui.add_label(label("p", u"office is open now", TextAlign::justify, JustifyMethod::per_character));
+    auto automatic = *ui.add_label(label("a", u"office is open now", TextAlign::justify, JustifyMethod::automatic));
+    LigatureMeasure measure; ScrollState scroll;
+    auto first = arrange(layout::control(per_character), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    const auto& line = first.find(per_character)->lines[0];
+    check(line.text == u"office is " && std::count_if(line.segments.begin(), line.segments.end(), [&](const TextSegment& s) { return s.end - s.begin == 1; }) >= 8,
+          "Every letter is a piece of its own, though the shaper clusters ffi");
+    for (const auto& s : line.segments) check(line.text.substr(s.begin, s.end - s.begin).find(u"fi") == std::u16string::npos, "No piece can form the ligature");
+    auto second = arrange(layout::control(automatic), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    const auto& plain = second.find(automatic)->lines[0];
+    check(!plain.segments.empty() && plain.segments[0].end == 7, "The automatic method keeps the word, ligature and all, in one piece");
+}
+
 void the_distribute_alignment_stretches_the_last_line_and_a_single_line() {
     Ui ui;
     auto name = *ui.add_label(label("n", u"姓名", TextAlign::distribute));
@@ -497,6 +529,7 @@ int main() {
         {"the spaces method only widens spaces", the_spaces_method_only_widens_spaces_and_a_chinese_line_stays_left},
         {"nowhere to stretch stays left; trailing spaces get nothing", a_line_with_nowhere_to_stretch_stays_left_and_trailing_spaces_get_nothing},
         {"the per-character method spreads Latin letters, no ligature", the_per_character_method_spreads_latin_letters_and_never_draws_a_ligature},
+        {"per-character cuts inside a ligature cluster, the others do not", the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_not},
         {"distribute stretches the last line and a single line", the_distribute_alignment_stretches_the_last_line_and_a_single_line},
         {"a multi-code-point character is never cut", a_character_made_of_several_code_points_is_never_cut},
         {"a justified multi-line field stretches wrapped lines to the wrap edge", a_justified_multi_line_field_stretches_each_wrapped_line_to_the_wrap_edge},
