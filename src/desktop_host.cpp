@@ -615,6 +615,13 @@ void DesktopHost::sync_ime() {
 }
 // Extend the selection of the field being dragged; outside a multi-line field's top or bottom edge it
 // scrolls a line, and a timer repeats that while the pointer rests there.
+// Scrolling moves a composing caret's line; the input method's window must move with it.
+void DesktopHost::follow_composition() {
+    const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
+    if (!session || !session->composing) return;
+    relayout();
+    sync_ime();
+}
 void DesktopHost::relayout() {
     RECT r{};
     if (window_ && !painting_ && GetClientRect(window_, &r) && r.right > 0 && r.bottom > 0) frame_ = arrange(r.right, r.bottom, scale());
@@ -745,6 +752,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
         frame_.wheel(ui_, point.x, point.y, delta);
+        follow_composition();
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
@@ -813,6 +821,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
                 [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
             if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + (y - drag_origin_)));
+            follow_composition();
             InvalidateRect(window_, nullptr, FALSE);
         }
         return 0;

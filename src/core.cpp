@@ -3025,6 +3025,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
                 case Key::down: n.accelerator_key += u"Down"; break;
                 case Key::home: n.accelerator_key += u"Home"; break;
                 case Key::end: n.accelerator_key += u"End"; break;
+                case Key::page_up: n.accelerator_key += u"PageUp"; break;
+                case Key::page_down: n.accelerator_key += u"PageDown"; break;
                 case Key::backspace: n.accelerator_key += u"Backspace"; break;
                 case Key::del: n.accelerator_key += u"Delete"; break;
                 default: break;
