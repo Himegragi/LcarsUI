@@ -5,6 +5,7 @@
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
 #include "animation.hpp"
+#include "word_break.hpp"
 #include <array>
 #include <map>
 #include <set>
@@ -14,6 +15,7 @@
 namespace lcars {
 using Id = std::string;
 namespace detail {
+struct TextHit { unsigned offset = 0; bool upstream = false; };
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
     friend class lcars::SemanticTree;
@@ -265,6 +267,32 @@ public:
     Result set_text_align(std::string_view id, TextAlign align);
     Result set_line_spacing(std::string_view id, double multiple);
     Result set_paragraph_spacing(std::string_view id, int dip);
+    // Words, paragraphs and multi-click (#83). Queries and selections share select()'s admission rules.
+    void set_word_breaker(std::shared_ptr<const WordBreaker> breaker) { word_breaker_ = std::move(breaker); }  // null: the system ICU
+    Result set_word_segmentation(std::string_view id, WordSegmentation mode);
+    Query<WordSegmentation> word_segmentation(std::string_view id) const;
+    Query<WordSegmentation> word_segmentation_in_use(std::string_view id) const;
+    Query<TextSpan> word_at(std::string_view id, unsigned offset) const;
+    Query<TextSpan> paragraph_at(std::string_view id, unsigned offset) const;
+    Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
+    // The UIA word and paragraph unit boundaries of a field's committed text (empty for anything that is not a text field).
+    std::vector<unsigned> word_unit_boundaries(std::string_view id) const;
+    std::vector<unsigned> paragraph_boundaries(std::string_view id) const;
+    Result select_word(std::string_view id, unsigned offset);
+    Result select_paragraph(std::string_view id, unsigned offset);
+    Result double_click(std::string_view id, unsigned offset);
+    Result triple_click(std::string_view id, unsigned offset);
+    // The host reads the system double-click settings and a clock and lets core count the clicks, so tests
+    // can inject both. Without a clock every press counts as a single click.
+    struct ClickSettings { std::uint64_t interval_ms = 500; int width = 4, height = 4; };
+    void set_click_settings(ClickSettings settings) { click_settings_ = settings; }
+    void set_click_clock(std::function<std::uint64_t()> clock) { click_clock_ = std::move(clock); }
+    // A primary-button press on a text field: `caret` is the nearest caret position (single click), `cell` the
+    // character under the pointer (double and triple click), x/y the press position in the click's coordinates.
+    Result text_pointer_down(std::string_view id, TextHit caret, unsigned cell, int x, int y, bool extend);
+    // A drag with the button held: extends by the unit the press started with (character, word or paragraph).
+    Result text_pointer_drag(std::string_view id, TextHit caret, unsigned cell);
+    void end_text_drag();
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
@@ -380,6 +408,9 @@ private:
             unsigned want_from = ~0u;     // the caret that run last left it at: any other caret starts a new run
             ScrollState scroll;           // pixel offset = first * line height, for the field's scrollbar region
         } multi;
+        WordSegmentation segmentation = WordSegmentation::dictionary;
+        // A double or triple click arms a drag that grows by that unit while the selection stays as the click left it.
+        struct UnitDrag { enum class Unit { character, word, paragraph } unit = Unit::character; TextSpan origin; Selection last; } drag;
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;
@@ -553,6 +584,14 @@ private:
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;
+    std::shared_ptr<const WordBreaker> word_breaker_;
+    const WordBreaker& dictionary() const { return word_breaker_ ? *word_breaker_ : system_icu_breaker(); }
+    Words words_of(const Field& field) const { return segment_words(field.session.text, field.segmentation, dictionary()); }
+    ClickSettings click_settings_;
+    std::function<std::uint64_t()> click_clock_;
+    struct ClickRun { Id id; int x = 0, y = 0; std::uint64_t time = 0; unsigned count = 0; } click_run_;
+    unsigned count_click(const Id& id, int x, int y);
+    Result select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm);
     Result focusable(const Control& control) const;
     Result move_focus(Id next);
     std::vector<std::pair<Id, Id>> pending_focus_;  // focus notifications queued behind the current one
@@ -588,9 +627,10 @@ private:
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);
 unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);
-struct TextHit { unsigned offset = 0; bool upstream = false; };
 // The caret position a pointer at (x, y) means; y only matters for multi-line fields.
 TextHit placement_text_hit(const Frame& frame, std::string_view id, int x, int y);
+// The character under a pointer rather than the nearest caret stop: what a double or triple click means.
+unsigned placement_text_cell(const Frame& frame, std::string_view id, int x, int y);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
 }

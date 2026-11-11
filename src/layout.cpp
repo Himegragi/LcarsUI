@@ -24,6 +24,14 @@ unsigned TextRun::hit(float x) const {
         if (std::abs(position - x) < distance) { distance = std::abs(position - x); best = stop; }
     return best;
 }
+unsigned TextRun::cell(float x) const {
+    unsigned result = 0;
+    for (const auto& [stop, position] : stops) {
+        if (position > x) break;
+        result = stop;
+    }
+    return result;
+}
 namespace {
 // Measures text[begin, end) as one run (stops relative to begin).
 using RangeMeasure = std::function<TextRun(unsigned begin, unsigned end)>;
@@ -137,6 +145,13 @@ std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     unsigned offset = item.begin + item.run.hit(x - item.shift);
     return {offset, item.soft && offset == item.end};
+}
+unsigned FieldView::cell_in_line(unsigned line, float x) const {
+    if (lines.empty()) return 0;
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    unsigned offset = item.begin + item.run.cell(x - item.shift);
+    if (item.soft && offset == item.end && offset > item.begin) --offset;  // right of a wrapped line: its last character
+    return offset;
 }
 float FieldView::x_in_line(unsigned line, unsigned offset) const {
     if (lines.empty()) return 0;
@@ -264,6 +279,12 @@ detail::TextHit detail::placement_text_hit(const Frame& frame, std::string_view 
     auto [offset, upstream] = p->view.hit_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
     return {offset, upstream};
 }
+unsigned detail::placement_text_cell(const Frame& frame, std::string_view id, int x, int y) {
+    const auto* p = detail::find_placement(frame, id);
+    if (!p || !component_type(p->kind).selects_text()) return 0;
+    if (!p->multiline) return p->run.cell(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+    return p->view.cell_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
+}
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return 0;
@@ -377,7 +398,7 @@ bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
     const auto before = session->selection;
     const bool upstream_before = session->caret_upstream;
     bool scrolled = false;
-    if (!p->multiline) owner.select(p->id, before.anchor, detail::placement_text_hit(*this, p->id, x, y).offset);
+    if (!p->multiline) owner.text_pointer_drag(p->id, detail::placement_text_hit(*this, p->id, x, y), detail::placement_text_cell(*this, p->id, x, y));
     else {
         const auto& view = p->view;
         const auto* current = owner.field_view(p->id);  // this frame may be older than the last scroll
@@ -388,7 +409,8 @@ bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
         else if (y >= bottom && first + view.visible < count) { if ((scrolled = owner.scroll_lines_to(p->id, first + 1))) ++first; }
         unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : view.line_at(y);
         auto [offset, upstream] = view.hit_in_line(line, static_cast<float>(x - view.text.x));
-        owner.select_pointer(p->id, before.anchor, offset, upstream);
+        const unsigned cell = view.cell_in_line(line, static_cast<float>(x - view.text.x));
+        owner.text_pointer_drag(p->id, {offset, upstream}, cell);
     }
     if (scrolled) owner.scrolled();
     const auto after = session->selection;

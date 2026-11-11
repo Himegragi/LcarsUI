@@ -6,6 +6,7 @@
 #include <atomic>
 #include <iostream>
 #include "uia_pattern_drivers.hpp"
+#include "text_unit_expectations.hpp"
 class EnabledEvent final : public UiaEventHandler<EnabledEvent, IUIAutomationPropertyChangedEventHandler> {
 public:
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override { if (id == UIA_IsEnabledPropertyId && value.vt == VT_BOOL && value.boolVal == VARIANT_TRUE) SetEvent(received); return S_OK; }
@@ -184,6 +185,42 @@ int wmain(int argc, wchar_t** argv) {
             if (whole) whole->Release(); if (pattern) pattern->Release(); if (field) field->Release();
             rich = close_modal(uia, root, L"items.dialog") && rich;
             std::cout << "UA09 rich text attributes: " << (rich && themed && plain_unsupported ? "PASS" : "FAIL") << " (values=" << rich << " theme=" << themed << " plain=" << plain_unsupported << ")\n"; ok &= rich && themed && plain_unsupported;
+        }
+        // #83: TextUnit_Word and TextUnit_Paragraph follow the framework's word and paragraph boundaries. ASCII text, so
+        // the system dictionary cannot change the words. The expectations are shared with the core seam (tests/word_select.cpp).
+        {
+            namespace shared = test::units;
+            auto wide = [](const std::u16string& value) { return std::wstring(reinterpret_cast<const wchar_t*>(value.data()), value.size()); };
+            const auto& words = shared::words(); const auto& paragraph_units = shared::paragraphs();
+            bool units = invoke(uia, root, L"items.add");
+            auto field = units ? find_id(uia, root, L"items.dialog.note") : nullptr;
+            IUIAutomationValuePattern* unit_value = nullptr; IUIAutomationTextPattern* unit_text = nullptr; IUIAutomationTextRange* range = nullptr;
+            units = units && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&unit_value))) && unit_value && SUCCEEDED(unit_value->SetValue(const_cast<wchar_t*>(wide(shared::text).c_str())));
+            RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+            auto read = [](IUIAutomationTextRange* r) { BSTR t = nullptr; std::wstring out; if (r && SUCCEEDED(r->GetText(-1, &t)) && t) out.assign(t, SysStringLen(t)); SysFreeString(t); return out; };
+            int moved = -99;
+            units = units && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&unit_text))) && unit_text && SUCCEEDED(unit_text->get_DocumentRange(&range)) && range &&
+                SUCCEEDED(range->MoveEndpointByRange(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_Start)) && SUCCEEDED(range->ExpandToEnclosingUnit(TextUnit_Word)) && read(range) == wide(words[0]);
+            for (std::size_t i = 1; i < words.size(); ++i)
+                units = units && SUCCEEDED(range->Move(TextUnit_Word, 1, &moved)) && moved == 1 && read(range) == wide(words[i]);
+            units = units && SUCCEEDED(range->Move(TextUnit_Word, 5, &moved)) && moved == 0 && read(range) == wide(words.back()) &&
+                SUCCEEDED(range->Move(TextUnit_Word, -9, &moved)) && moved == -static_cast<int>(words.size() - 1) && read(range) == wide(words[0]);
+            units = units && SUCCEEDED(range->ExpandToEnclosingUnit(TextUnit_Paragraph)) && read(range) == wide(paragraph_units[0]) &&
+                SUCCEEDED(range->Move(TextUnit_Paragraph, 3, &moved)) && moved == 1 && read(range) == wide(paragraph_units[1]) &&
+                SUCCEEDED(range->Move(TextUnit_Paragraph, -1, &moved)) && moved == -1 && read(range) == wide(paragraph_units[0]);
+            IUIAutomationTextRange* grown = nullptr; IUIAutomationTextRange* paragraphs = nullptr;
+            units = units && SUCCEEDED(unit_text->get_DocumentRange(&grown)) && grown &&
+                SUCCEEDED(grown->MoveEndpointByRange(TextPatternRangeEndpoint_End, grown, TextPatternRangeEndpoint_Start)) &&
+                SUCCEEDED(grown->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Word, 3, &moved)) && moved == 3 && read(grown) == wide(shared::join(words, 0, 3)) &&
+                SUCCEEDED(grown->MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Word, 1, &moved)) && moved == 1 && read(grown) == wide(shared::join(words, 1, 3)) &&
+                SUCCEEDED(unit_text->get_DocumentRange(&paragraphs)) && paragraphs &&
+                SUCCEEDED(paragraphs->MoveEndpointByRange(TextPatternRangeEndpoint_End, paragraphs, TextPatternRangeEndpoint_Start)) &&
+                SUCCEEDED(paragraphs->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Paragraph, 1, &moved)) && moved == 1 && read(paragraphs) == wide(paragraph_units[0]) &&
+                SUCCEEDED(paragraphs->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Paragraph, 1, &moved)) && moved == 1 && read(paragraphs) == wide(shared::join(paragraph_units, 0, 2)) &&
+                SUCCEEDED(paragraphs->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Paragraph, 1, &moved)) && moved == 0;
+            if (paragraphs) paragraphs->Release(); if (grown) grown->Release(); if (range) range->Release(); if (unit_text) unit_text->Release(); if (unit_value) unit_value->Release(); if (field) field->Release();
+            units = close_modal(uia, root, L"items.dialog") && units;
+            std::cout << "UA10 word and paragraph units: " << (units ? "PASS" : "FAIL") << '\n'; ok &= units;
         }
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;

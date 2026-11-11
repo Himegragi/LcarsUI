@@ -11,11 +11,16 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
 // hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
 // typed Ui::simulate_hover would be, and is never listed in SemanticNode::verbs (hover is not an operation of the node).
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style };
+// select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
+// set_word_segmentation takes a WordSegmentation. All are text fields only.
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
+                  set_word_segmentation, select_word, select_paragraph, double_click, triple_click };
+// The text units a semantic query can ask for: what a double click selects and what a triple click selects.
+enum class TextUnitKind { word, paragraph };
 // Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
 struct StyleEdit { unsigned begin = 0, end = 0; StyleChange change; };
 // Rich fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle>;
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle, WordSegmentation>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
 inline std::string menu_node_id(std::string_view target) { return std::string(target) + "/menu"; }
@@ -65,6 +70,7 @@ struct SemanticNode {
     bool rich = false;                 // text fields created with Control::rich
     std::vector<StyleSpan> styles;     // rich fields: the styled runs of value, in normal form
     std::optional<TextStyle> typing_style;  // rich fields: the style the next typed text takes
+    std::optional<WordSegmentation> word_segmentation, word_segmentation_in_use;  // text fields: as set, and what works now
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.
@@ -75,6 +81,10 @@ public:
     Query<std::u16string> text(std::string_view id) const;
     // Same answer and admission as Ui::animating: is any on-screen transition still running?
     Query<bool> animating() const;
+    // Text fields: the range of the word or paragraph holding the character at a UTF-16 offset, and the next or
+    // previous word stop (where Ctrl+Right / Ctrl+Left go). The same answers as the typed TextHandle.
+    Query<TextSpan> text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const;
+    Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
     // Read-only: the colors currently painted for the bound appearance and the current theme variant,
     // overrides applied. not_found until an appearance is bound (see Ui::bind_appearance).
     Query<Palette> effective_palette() const;

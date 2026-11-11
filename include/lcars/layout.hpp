@@ -17,6 +17,7 @@ struct TextRun {
     float width = 0;
     float x(unsigned offset) const;    // x of the last stop at or before offset
     unsigned hit(float x) const;       // nearest stop
+    unsigned cell(float x) const;      // the last stop at or before x: the character whose cell holds x
 };
 // The weight and slant of a run of text; they change advances (a bold face is wider). Color and underline never do.
 struct FontStyle {
@@ -69,6 +70,9 @@ struct FieldView {
     std::pair<unsigned, bool> hit_in_line(unsigned line, float x) const;
     // x relative to the text area's left edge, alignment shift included (hit_in_line takes the same).
     float x_in_line(unsigned line, unsigned offset) const;
+    // The character whose cell holds an x relative to the text area's left edge (alignment shift included, like
+    // hit_in_line): what a double or triple click selects. Right of a wrapped line it is that line's last character.
+    unsigned cell_in_line(unsigned line, float x) const;
     // Frame y of the top of a line's row. A line outside the visible window is placed as if the lines
     // were laid out continuously (it is not drawn there).
     int row_y(unsigned line) const { return row_y(line, first); }
