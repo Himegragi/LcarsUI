@@ -603,22 +603,37 @@ void hover_native(const Appearance& appearance, Report& report) {
     bool off_hidden = hovered(half) && bool(switched) && (switched.roles & static_cast<unsigned>(detail::PaintRole::hover)) == 0;
     // Dragging (text selection, slider) keeps the hover on the dragged component; the release hands it to
     // whatever lies under the pointer.
-    h.tabs.activate({"v01"}); f.host.client_size(900, 1400); f.settle(); activate();  // tall enough to show every control of the page
+    h.tabs.activate({"v01"}); f.host.client_size(900, 420); f.settle(); activate();
     auto hovered_id = [&](const std::string& id) { return hovered(id); };
-    POINT name_at = f.center(f.ids.name), apply_at = f.center(f.ids.apply), volume_at = f.center(f.ids.volume);
-    auto drag = [&](POINT from, const std::string& id, bool& held, bool& released) {
+    // The window is deliberately short (and a CI desktop is smaller than the page anyway), so each drag first scrolls the
+    // dragged control to the top third of the window and releases over the nearest other control that is on screen with it.
+    auto center_of = [&](const std::string& id) { return f.center(id); };
+    auto on_screen = [&](POINT p) { RECT c{}; GetClientRect(f.host.window(), &c); return p.x >= 0 && p.y >= 0 && p.x < c.right && p.y < c.bottom; };
+    auto reveal = [&](const std::string& id) {
+        f.form.scroll.offset = 0; f.settle();
+        RECT c{}; GetClientRect(f.host.window(), &c);
+        int y = detail::find_placement(f.host.frame(), id)->bounds.y;
+        f.form.scroll.offset = std::clamp(y - static_cast<int>(c.bottom) / 3, 0, static_cast<int>(f.host.frame().maximum)); f.settle(); activate();
+    };
+    auto drag = [&](const std::string& id, bool& held, bool& released) {
         for (int attempt = 0; attempt < 5 && !(held && released); ++attempt) {
+            reveal(id);
+            std::string target;
+            for (const auto& candidate : {f.ids.apply, f.ids.reset, f.ids.name, f.ids.volume})
+                if (candidate != id && on_screen(center_of(candidate))) { target = candidate; break; }
+            if (target.empty()) continue;
+            POINT from = center_of(id), to = center_of(target);
             activate();
             send(WM_MOUSEMOVE, from); send(WM_LBUTTONDOWN, from, MK_LBUTTON);
-            send(WM_MOUSEMOVE, apply_at, MK_LBUTTON);
+            send(WM_MOUSEMOVE, to, MK_LBUTTON);
             held = hovered_id(id);
-            send(WM_LBUTTONUP, apply_at);
-            released = hovered_id(f.ids.apply);
+            send(WM_LBUTTONUP, to);
+            released = hovered_id(target);
         }
     };
     bool text_held = false, text_released = false, slider_held = false, slider_released = false;
-    drag(name_at, f.ids.name, text_held, text_released);
-    drag(volume_at, f.ids.volume, slider_held, slider_released);
+    drag(f.ids.name, text_held, text_released);
+    drag(f.ids.volume, slider_held, slider_released);
     bool drags = text_held && text_released && slider_held && slider_released;
     report.check("DF-hover-drag-native", drags,
         "text-held=" + std::to_string(text_held) + ", text-released=" + std::to_string(text_released) +
