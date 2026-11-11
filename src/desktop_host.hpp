@@ -81,8 +81,9 @@ public:
     unsigned atlas_peak_pages() const { return text_.atlas_peak_pages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
     void perf_enable(int delay_ms=0, bool offscreen=false) { perf_enabled_=true; perf_delay_=delay_ms; perf_offscreen_=offscreen; }
-    void perf_reset() { perf_samples_.clear(); }
+    void perf_reset() { perf_samples_.clear(); perf_breakdown_.clear(); }
     const PerfSamples& perf_samples() const { return perf_samples_; }
+    const PerfBreakdown& perf_breakdown() const { return perf_breakdown_; }
     int paint_messages() const { return paint_messages_; }
     double first_present_ms() const { return first_present_ms_; }
     double input_present_ms() const { return input_present_ms_; }
@@ -126,6 +127,7 @@ private:
     double first_present_ms_=-1, input_present_ms_=0;
     std::chrono::steady_clock::time_point input_time_{};
     PerfSamples perf_samples_;
+    PerfBreakdown perf_breakdown_;
     int frames_ = 0;
     bool failed_ = false;
     bool painting_ = false;

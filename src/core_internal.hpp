@@ -72,7 +72,11 @@ public:
     ComponentHandle slider_layout_handle(const Control& control);
     Result slider_key_down(KeyPress key);
     Result slider_set_value(const Id& id, int value);
-    Result slider_pointer(const Id& id, int x, Rect track);
+    // A pointer drag converts the mouse x to a value against the track captured at press, so a layout
+    // that moves under the pointer cannot change the value. The thumb is drawn at the pointer, not the value.
+    Result slider_pointer_down(const Id& id, int x, Rect track);
+    Result slider_pointer(const Id& id, int x);
+    std::optional<int> slider_drag_x(std::string_view id) const;
     ComponentHandle radio_layout_handle(const Control& control);
     Result radio_key_down(KeyPress key);
     ComponentHandle checkbox_layout_handle(const Control& control);
@@ -355,6 +359,8 @@ private:
     struct ShortcutBinding { Shortcut chord; Id target, scope; };
     std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
+    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0; };
+    std::optional<SliderDrag> slider_drag_;
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;
