@@ -15,9 +15,10 @@ bool integer(const json& o, const char* key, int& out) {
     auto i=o.find(key); if (i==o.end() || !i->is_number_integer()) return false;
     if (*i < 0 || *i > 999999) return false; out=i->get<int>(); return true;
 }
-bool text(const json& o, const char* key, std::u16string& out, size_t max, bool required) {
+// A multi-line value keeps its line breaks as LF (JSON writes them as \n); CR and other controls stay invalid.
+bool text(const json& o, const char* key, std::u16string& out, size_t max, bool required, bool multiline = false) {
     std::string s; if (!string(o,key,s)) return false; out=utf16_from_utf8(s);
-    return lcars::valid_single_line(out,max) && (!required || std::any_of(out.begin(),out.end(),[](char16_t c){return c!=u' ' && c!=u'\t' && c!=u'\u3000';}));
+    return (multiline ? lcars::valid_multi_line(out,max) : lcars::valid_single_line(out,max)) && (!required || std::any_of(out.begin(),out.end(),[](char16_t c){return c!=u' ' && c!=u'\t' && c!=u'\u3000';}));
 }
 }
 std::optional<SettingsDocument> parse_settings(const std::string& bytes) {
@@ -38,7 +39,7 @@ std::optional<SettingsDocument> parse_settings(const std::string& bytes) {
         for (auto& x:j["items"]) {
             Item item; if (!x.is_object() || !string(x,"id",v) || v.size()<4 || v.size()>7 || v[0]!='T' || !std::all_of(v.begin()+1,v.end(),[](char c){return c>='0'&&c<='9';}) || !ids.insert(v).second) return {};
             max_id=std::max(max_id,std::stoi(v.substr(1))); item.id={v};
-            if (!text(x,"name",item.name,64,true) || !text(x,"note",item.note,200,false)) return {}; d.items.push_back(std::move(item));
+            if (!text(x,"name",item.name,64,true) || !text(x,"note",item.note,200,false,true)) return {}; d.items.push_back(std::move(item));
         }
         if (!integer(j,"next_item_id",d.next_item_id) || d.next_item_id<=max_id) return {};
         if (!string(p,"font_family",v)) return {}; d.presentation.font_family=utf16_from_utf8(v);

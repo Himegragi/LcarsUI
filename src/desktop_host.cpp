@@ -19,6 +19,7 @@ namespace lcars::detail {
 namespace {
 const wchar_t* window_class = L"LcarsUI.DesktopHost";
 constexpr UINT_PTR tooltip_timer = 1;
+constexpr UINT_PTR drag_scroll_timer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
 
 Key map_key(WPARAM vk) {
     switch (vk) {
@@ -32,6 +33,8 @@ Key map_key(WPARAM vk) {
     case VK_DOWN: return Key::down;
     case VK_HOME: return Key::home;
     case VK_END: return Key::end;
+    case VK_PRIOR: return Key::page_up;
+    case VK_NEXT: return Key::page_down;
     case VK_BACK: return Key::backspace;
     case VK_DELETE: return Key::del;
     default: return Key::other;
@@ -152,6 +155,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
+        detail::access(ui_).on_relayout([this] { relayout(); });
         detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
         detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlas_text_size_ = ui_.presentation().text_size;
@@ -242,10 +247,11 @@ void DesktopHost::release() {
     }
     detail::access(ui_).on_presentation({});
     detail::access(ui_).on_invalidate({});
+    detail::access(ui_).on_relayout({});
     detail::access(ui_).on_semantic_pending({});
     detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
-    if (window_) KillTimer(window_, tooltip_timer);
+    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, drag_scroll_timer); }
     detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
@@ -592,8 +598,8 @@ void DesktopHost::sync_ime() {
     const auto* field = writable ? detail::find_placement(frame_, id) : nullptr;
     if (!field || GetFocus() != window_) return;
     const auto* session = detail::access(ui_).edit(id);
-    int x = field->caret_x(session->visible_caret());
-    int y = field->bounds.y + field->field.editor.y, h = field->field.editor.h;
+    const auto anchor = field->caret_rect(session->visible_caret());  // a wrapped line's own row in a multi-line field
+    int x = anchor.x, y = anchor.y, h = anchor.h;
     if (auto imc = ImmGetContext(window_)) {
         CANDIDATEFORM candidate{};
         candidate.dwStyle = CFS_EXCLUDE;
@@ -607,8 +613,29 @@ void DesktopHost::sync_ime() {
         ImmReleaseContext(window_, imc);
     }
 }
+// Extend the selection of the field being dragged; outside a multi-line field's top or bottom edge it
+// scrolls a line, and a timer repeats that while the pointer rests there.
+void DesktopHost::relayout() {
+    RECT r{};
+    if (window_ && !painting_ && GetClientRect(window_, &r) && r.right > 0 && r.bottom > 0) frame_ = arrange(r.right, r.bottom, scale());
+}
+void DesktopHost::drag_text(int x, int y) {
+    const auto& id = detail::access(ui_).focused();
+    auto handle = detail::access(ui_).layout_handle(id);
+    if (auto* field = std::get_if<TextHandle>(&handle)) {
+        frame_.select_to(ui_, *field, x, y);
+        const auto* placed = detail::find_placement(frame_, id);
+        const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + static_cast<int>(placed->view.visible) * placed->view.line_height);
+        if (outside) SetTimer(window_, drag_scroll_timer, 60, nullptr);
+        else KillTimer(window_, drag_scroll_timer);
+    }
+    sync_ime();
+    InvalidateRect(window_, nullptr, FALSE);
+}
 void DesktopHost::after_input(const Id& focus_before) {
     if (detail::access(ui_).focused() != focus_before) reveal_ = detail::access(ui_).focused();
+    // The input method anchors at the caret's wrapped line, so settle the lines this input changed first.
+    if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->multiline) relayout();
     sync_ime();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -688,6 +715,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             schedule_tooltip();
             return 0;
         }
+        if (w == drag_scroll_timer) {
+            POINT point{};
+            if (drag_ != Drag::text || !GetCursorPos(&point) || !ScreenToClient(window_, &point)) { KillTimer(window_, drag_scroll_timer); return 0; }
+            drag_text(point.x, point.y);
+            return 0;
+        }
         break;
     case WM_KILLFOCUS:
         log_ime(L"wm:killfocus");
@@ -705,7 +738,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (GetCapture() == window_) ReleaseCapture();
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
+        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; KillTimer(window_, drag_scroll_timer); }
         return 0;
     case WM_MOUSEWHEEL: {
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
@@ -722,8 +755,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
         if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
-        if (!frame_.modal || (hit && hit->kind == Kind::dropdown && hit->popup)) {
+        {
+            // An open dialog blocks the page's scrollbars but not its own.
+            const bool popup_hit = hit && hit->kind == Kind::dropdown && hit->popup;
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
+                if (frame_.modal && !popup_hit && !it->modal_content) continue;
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
                 if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
@@ -738,12 +774,13 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
+        const bool on_list = hit->kind == Kind::list;  // after_input may arrange again, which replaces the frame hit points into
         finish_composition();
         if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
             if (detail::component_type(hit->kind).selects_text()) {
-                auto offset = detail::placement_text_offset(frame_, id, x);
-                auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
-                detail::access(ui_).select(id, anchor, offset);
+                auto at = detail::placement_text_hit(frame_, id, x, y);
+                auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : at.offset;
+                detail::access(ui_).select_pointer(id, anchor, at.offset, at.upstream);
                 drag_ = Drag::text;
             }
             if (hit->kind == Kind::slider) {
@@ -755,7 +792,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         after_input(before);
         // A pointer already targets a visible row. Revealing the list's entry cursor here
         // would move the row before button-up and cancel or redirect the click.
-        if (hit->kind == Kind::list) reveal_.clear();
+        if (on_list) reveal_.clear();
         return 0;
     }
     case WM_MOUSELEAVE:
@@ -767,9 +804,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         TrackMouseEvent(&track);
         update_hover(x, y);
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
-            const auto& id = detail::access(ui_).focused();
-            if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
-            InvalidateRect(window_, nullptr, FALSE);
+            drag_text(x, y);
         } else if (drag_ == Drag::slider && (w & MK_LBUTTON)) {
             const auto& id = detail::access(ui_).focused();
             if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
@@ -795,6 +830,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
         }
         drag_ = Drag::none; drag_scroll_ = nullptr;
+        KillTimer(window_, drag_scroll_timer);
         if (GetCapture() == window_) ReleaseCapture();
         after_input(before);
         return 0;
@@ -871,10 +907,10 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))
                                          : session->selection.caret;
-            info->pt = {field->caret_x(at),
-                        field->bounds.y + field->field.editor.y};
+            const auto anchor = field->caret_rect(at);
+            info->pt = {anchor.x, anchor.y};
             ClientToScreen(window_, &info->pt);
-            info->cLineHeight = static_cast<UINT>(field->field.editor.h);
+            info->cLineHeight = static_cast<UINT>(anchor.h);
             GetWindowRect(window_, &info->rcDocument);
             return 1;
         }
