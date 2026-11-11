@@ -97,5 +97,78 @@ std::vector<VerticalSegment> segment_vertical(std::u16string_view text, int max_
     return result;
 }
 VerticalParams vertical_params(const Control&) { return {}; }
-std::vector<VerticalColumn> flow_vertical(TextMeasure&, std::u16string_view, int, int, int) { return {}; }
+
+std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_view text, int em, int max_digits, int height) {
+    std::vector<VerticalColumn> columns;
+    if (text.empty()) return columns;
+    for (std::size_t paragraph = 0; paragraph <= text.size();) {
+        auto end = text.find(u'\n', paragraph);
+        if (end == std::u16string_view::npos) end = text.size();
+        auto part = text.substr(paragraph, end - paragraph);
+        if (!part.empty() && part.back() == u'\r') part.remove_suffix(1);
+        const auto base = static_cast<unsigned>(paragraph);
+        VerticalColumn column;
+        column.begin = column.end = base;
+        int y = 0;
+        auto finish = [&] {
+            column.bounds = {0, 0, 0, y};
+            columns.push_back(std::move(column));
+            column = {};
+            y = 0;
+        };
+        auto place = [&](unsigned begin, unsigned stop, VerticalForm form, int advance) {
+            if (height > 0 && y > 0 && y + advance > height) { column.end = begin; finish(); column.begin = begin; }
+            if (column.pieces.empty()) column.begin = begin;
+            column.pieces.push_back({begin, stop, form, y, advance});
+            y += advance;
+            column.end = stop;
+        };
+        for (const auto& segment : segment_vertical(part, max_digits)) {
+            const unsigned first = base + segment.begin, last = base + segment.end;
+            if (segment.form == VerticalForm::combined) { place(first, last, segment.form, em); continue; }
+            if (segment.form != VerticalForm::sideways) {
+                // One cell per character; clusters keep their marks.
+                for (const auto& cluster : clusters(part.substr(segment.begin, segment.end - segment.begin)))
+                    place(first + cluster.begin, first + cluster.end, segment.form, em);
+                continue;
+            }
+            // A sideways run breaks after a space; a word longer than the column is cut where it overflows.
+            auto run_text = part.substr(segment.begin, segment.end - segment.begin);
+            auto run = measure.measure(run_text, em);
+            unsigned token = 0;
+            while (token < run_text.size()) {
+                unsigned token_end = token;
+                while (token_end < run_text.size() && run_text[token_end++] != u' ') {}
+                auto width_of = [&](unsigned from, unsigned to) { return static_cast<int>(std::ceil(measure.measure(run_text.substr(from, to - from), em).width)); };
+                int advance = width_of(token, token_end);
+                if (height > 0 && advance > height) {
+                    // Hard cut: fill the rest of this column, then whole columns, at caret stops.
+                    unsigned from = token;
+                    while (from < token_end) {
+                        unsigned to = from;
+                        int used = 0;
+                        for (const auto& [stop, x] : run.stops) {
+                            if (stop <= from || stop > token_end) continue;
+                            int w = width_of(from, stop);
+                            if (y + w > height && to > from) break;
+                            to = stop; used = w;
+                            if (y + w >= height) break;
+                        }
+                        if (to == from) to = token_end;
+                        place(first + from, first + to, VerticalForm::sideways, used ? used : width_of(from, to));
+                        from = to;
+                        if (from < token_end) { column.end = first + from; finish(); column.begin = first + from; }
+                    }
+                } else place(first + token, first + token_end, VerticalForm::sideways, advance);
+                token = token_end;
+            }
+        }
+        column.end = std::max(column.end, base + static_cast<unsigned>(part.size()));
+        if (column.pieces.empty()) column.begin = column.end = base + static_cast<unsigned>(part.size());
+        finish();
+        paragraph = end + 1;
+        if (end == text.size()) break;
+    }
+    return columns;
+}
 }
