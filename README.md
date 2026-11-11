@@ -207,8 +207,9 @@ Buttons, checkboxes, radio options, dropdowns (body and open options), list rows
 ## Focus indicator
 
 Focus indicators (the accent ring, bar or dot that marks the focused component) are drawn only while the
-user is working with the keyboard, like `:focus-visible` in browsers. Any key without Ctrl or Alt turns them on;
-a pointer press anywhere in the window turns them off. Moving focus from code (`focus()`, semantic
+user is working with the keyboard, like `:focus-visible` in browsers. Any key without Ctrl or Alt turns them on
+(a modifier on its own, and the F10 that only closes an open menu, change nothing);
+a pointer press anywhere in the window, with either mouse button, turns them off. Moving focus from code (`focus()`, semantic
 operations, UI Automation `SetFocus`) never changes this state, and semantics and UIA always report the real
 focus. Editable text fields always draw the indicator while focused. The slider marks focus with a dot left of
 its title; the room for the dot is always reserved so the title never shifts.
@@ -242,6 +243,32 @@ feedback and the first frame time after changing fonts (PR04). Generate the
 PR04 requires coordinator review and is not marked as passed by the generator.
 PS10 runs automatically in the `presentation_recovery` CTest. A report with open or failed cases causes the idle
 script to return a failure status.
+
+## Real-platform runs per change
+
+Production changes to layout or to the desktop host need runs that only a real, idle desktop can give (real clipboard,
+input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
+lists, per change, which idle-desktop runs the author still has to do before a release. Commands are
+`./verify-idle.ps1 -Only <name>` unless the row says otherwise; `lcars_host_verify` is `build/Release/lcars_host_verify.exe`.
+
+| Change | Idle-desktop runs |
+| --- | --- |
+| #72 focus indicator | `-Only dpi` (R08 real-window focus); toggle the Windows keyboard-cues setting once to see `WM_SETTINGCHANGE` re-read it; right press on empty space and a lone Alt with real input |
+| #73 slider drag interface | `-Only perf` (the report-only `slider-drag-text-size` plus PM01-PM05), `-Only dpi` |
+| #74 pointer hover | `lcars_host_verify --hover-only` (needs a real cursor position), look at both appearances; `-Only demo-uia` |
+| #75 slider animation | `-Only perf` (includes the gating `idle-after-animation`), `lcars_host_verify --animation-only`, `-Only uia`; drag and release a slider at 150 % and 200 % (the 4 DIP click/drag threshold and the release slide) |
+| #78 palette overrides | `-Only clipboard,ime,dpi` |
+| #79 multi-line text field | `-Only ime` (a real Zhuyin composition in a multi-line field), `-Only clipboard`, `-Only dpi` at 150 % and 200 %, author trial |
+| #80 text alignment and spacing | `-Only presentation` (layout), `-Only ime`, `-Only dpi` |
+| #81 rich text | `lcars_host_verify --richtext-only` (real clipboard), `lcars_demo_keyboard --real`, `-Only ime`, `-Only dpi` |
+| #82 vertical labels | `-Only dpi` |
+| #83 word and paragraph selection | `-Only ime`, `-Only dpi` (the real double-click time and distance are read at every press) |
+| #84 justified text | `-Only ime` (a composition on a justified line: the core test moves the caret rectangle, only a real input method shows the candidate window), `-Only dpi` (pieces are placed at whole pixels at 125 / 150 / 200 %) |
+| #85 context menu | `-Only demo-uia`; the Apps key, Shift+F10 and Alt/F10 with real input (the CTest drivers post messages), right-button release over a row |
+| #86 outline | none beyond `demo_render_compare` (CTest); compare the saved images |
+
+The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
+author has run them.
 
 ## Using LcarsUI from another CMake project
 
