@@ -361,7 +361,7 @@ void clicks_count_by_time_distance_and_target() {
 }
 
 // The UIA word and paragraph units are the double-click words and the triple-click paragraphs: one predicate, shared with
-// the UIA seam (tests/uia_demo_client.cpp UA09) through tests/text_unit_expectations.hpp.
+// the UIA seam (tests/uia_demo_client.cpp UA11) through tests/text_unit_expectations.hpp.
 bool bounds_start_and_end(const std::vector<unsigned>& bounds, std::size_t size) { return !bounds.empty() && bounds.front() == 0 && bounds.back() == size; }
 void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
     for (auto mode : {WordSegmentation::dictionary, WordSegmentation::per_character, WordSegmentation::script_run}) {

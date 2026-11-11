@@ -1,3 +1,4 @@
+#include "uia_demo_messages.hpp"
 #include "uia_client_helpers.hpp"
 #include "vertical_expectations.hpp"
 #include <windows.h>
@@ -19,6 +20,19 @@ class TextEvent final : public UiaEventHandler<TextEvent, IUIAutomationEventHand
 public:
     EVENTID expected = UIA_Text_TextChangedEventId;
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override { if (id == expected) SetEvent(received); return S_OK; }
+};
+// For the hover check, which wants silence: any event of the kind at all counts.
+class AnyPropertyEvent final : public UiaEventHandler<AnyPropertyEvent, IUIAutomationPropertyChangedEventHandler> {
+public:
+    HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID, VARIANT) override { SetEvent(received); return S_OK; }
+};
+class AnyAutomationEvent final : public UiaEventHandler<AnyAutomationEvent, IUIAutomationEventHandler> {
+public:
+    HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID) override { SetEvent(received); return S_OK; }
+};
+class AnyStructureEvent final : public UiaEventHandler<AnyStructureEvent, IUIAutomationStructureChangedEventHandler> {
+public:
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType, SAFEARRAY*) override { SetEvent(received); return S_OK; }
 };
 class StructureEvent final : public UiaEventHandler<StructureEvent, IUIAutomationStructureChangedEventHandler> {
 public:
@@ -122,7 +136,7 @@ int wmain(int argc, wchar_t** argv) {
             auto search_field = find_id(uia, root, L"items.search"); IUIAutomationTextPattern* search_text = nullptr; IUIAutomationTextRange* range = nullptr;
             auto attribute_case = [&](int mode, int alignment, const wchar_t* spacing) {  // mode: 0 defaults, 1 centered 1.5, 2 justified, 3 justified with "justified text as left" on (#84)
                 VARIANT align{}, line{}; VariantInit(&align); VariantInit(&line);
-                bool good = SendMessageW(s.window, WM_APP + 85, static_cast<WPARAM>(mode), 0) == 0 && search_field &&
+                bool good = SendMessageW(s.window, uia_demo::message_text_flow, static_cast<WPARAM>(mode), 0) == 0 && search_field &&
                     SUCCEEDED(search_field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&search_text))) && search_text && SUCCEEDED(search_text->get_DocumentRange(&range)) && range &&
                     SUCCEEDED(range->GetAttributeValue(UIA_HorizontalTextAlignmentAttributeId, &align)) && align.vt == VT_I4 && align.lVal == alignment &&
                     SUCCEEDED(range->GetAttributeValue(UIA_LineSpacingAttributeId, &line)) && line.vt == VT_BSTR && line.bstrVal && std::wstring(line.bstrVal) == spacing;
@@ -139,7 +153,7 @@ int wmain(int argc, wchar_t** argv) {
         {
             bool rich = invoke(uia, root, L"items.add");
             auto field = rich ? find_id(uia, root, L"items.dialog.note") : nullptr;
-            rich = rich && field && SendMessageW(s.window, WM_APP + 87, 1, 0) == 0;
+            rich = rich && field && SendMessageW(s.window, uia_demo::message_rich_text, 1, 0) == 0;
             RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             IUIAutomationTextPattern* pattern = nullptr; IUIAutomationTextRange* whole = nullptr;
             rich = rich && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&pattern))) && pattern && SUCCEEDED(pattern->get_DocumentRange(&whole)) && whole;
@@ -170,12 +184,12 @@ int wmain(int argc, wchar_t** argv) {
             IUIAutomationTextRange* found = nullptr; BSTR found_text = nullptr;
             rich = rich && SUCCEEDED(whole->FindAttribute(UIA_IsItalicAttributeId, wanted, FALSE, &found)) && found && SUCCEEDED(found->GetText(-1, &found_text)) && found_text && std::wstring(found_text) == L"cd";
             // The dark theme repaints the same names in their dark values; the normal text color follows the theme too.
-            bool themed = rich && SendMessageW(s.window, WM_APP + 87, 2, 1) == 0;
+            bool themed = rich && SendMessageW(s.window, uia_demo::message_rich_text, 2, 1) == 0;
             RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             VARIANT dark_red, plain_dark;
             themed = themed && read(red_range, UIA_ForegroundColorAttributeId, dark_red) && dark_red.vt == VT_I4 && dark_red.lVal == (255 | (138 << 8) | (148 << 16)) &&
                 read(italic_range, UIA_ForegroundColorAttributeId, plain_dark) && plain_dark.vt == VT_I4 && plain_dark.lVal != plain_light.lVal;
-            SendMessageW(s.window, WM_APP + 87, 2, 0);
+            SendMessageW(s.window, uia_demo::message_rich_text, 2, 0);
             // A plain (non-rich) text field reports no such attributes.
             auto search_field = find_id(uia, root, L"items.dialog.name"); IUIAutomationTextPattern* name_pattern = nullptr; IUIAutomationTextRange* name_range = nullptr; VARIANT unsupported;
             bool plain_unsupported = search_field && SUCCEEDED(search_field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&name_pattern))) && name_pattern && SUCCEEDED(name_pattern->get_DocumentRange(&name_range)) && name_range &&
@@ -184,7 +198,7 @@ int wmain(int argc, wchar_t** argv) {
             SysFreeString(found_text); if (found) found->Release(); if (bold_range) bold_range->Release(); if (italic_range) italic_range->Release(); if (red_range) red_range->Release();
             if (whole) whole->Release(); if (pattern) pattern->Release(); if (field) field->Release();
             rich = close_modal(uia, root, L"items.dialog") && rich;
-            std::cout << "UA09 rich text attributes: " << (rich && themed && plain_unsupported ? "PASS" : "FAIL") << " (values=" << rich << " theme=" << themed << " plain=" << plain_unsupported << ")\n"; ok &= rich && themed && plain_unsupported;
+            std::cout << "UA10 rich text attributes: " << (rich && themed && plain_unsupported ? "PASS" : "FAIL") << " (values=" << rich << " theme=" << themed << " plain=" << plain_unsupported << ")\n"; ok &= rich && themed && plain_unsupported;
         }
         // #83: TextUnit_Word and TextUnit_Paragraph follow the framework's word and paragraph boundaries. ASCII text, so
         // the system dictionary cannot change the words. The expectations are shared with the core seam (tests/word_select.cpp).
@@ -220,7 +234,7 @@ int wmain(int argc, wchar_t** argv) {
                 SUCCEEDED(paragraphs->MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Paragraph, 1, &moved)) && moved == 0;
             if (paragraphs) paragraphs->Release(); if (grown) grown->Release(); if (range) range->Release(); if (unit_text) unit_text->Release(); if (unit_value) unit_value->Release(); if (field) field->Release();
             units = close_modal(uia, root, L"items.dialog") && units;
-            std::cout << "UA10 word and paragraph units: " << (units ? "PASS" : "FAIL") << '\n'; ok &= units;
+            std::cout << "UA11 word and paragraph units: " << (units ? "PASS" : "FAIL") << '\n'; ok &= units;
         }
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;
@@ -235,7 +249,7 @@ int wmain(int argc, wchar_t** argv) {
         auto value_events = new ValueEvent(); PROPERTYID value_property = UIA_ValueValuePropertyId;
         auto value_subscribed = search ? uia->AddPropertyChangedEventHandlerNativeArray(search, TreeScope_Element, nullptr, value_events, &value_property, 1) : E_FAIL;
         auto text_subscribed = search ? uia->AddAutomationEventHandler(UIA_Text_TextChangedEventId, search, TreeScope_Element, nullptr, text_events) : E_FAIL;
-        auto changed = SendMessageW(s.window, WM_APP + 81, 1, 0);
+        auto changed = SendMessageW(s.window, uia_demo::message_set_search_value, 1, 0);
         bool text_event = changed == 0 && SUCCEEDED(text_subscribed) && WaitForSingleObject(text_events->received, 2000) == WAIT_OBJECT_0;
         bool value_event = SUCCEEDED(value_subscribed) && WaitForSingleObject(value_events->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(value_subscribed)) uia->RemovePropertyChangedEventHandler(search, value_events); value_events->Release();
@@ -243,11 +257,52 @@ int wmain(int argc, wchar_t** argv) {
         if (SUCCEEDED(text_subscribed)) uia->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId, search, text_events); text_events->Release();
         auto selection_events = new TextEvent(); selection_events->expected = UIA_Text_TextSelectionChangedEventId;
         auto selection_subscribed = search ? uia->AddAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, search, TreeScope_Element, nullptr, selection_events) : E_FAIL;
-        auto selection_changed = SendMessageW(s.window, WM_APP + 82, 0, 0);
+        auto selection_changed = SendMessageW(s.window, uia_demo::message_select_in_search, 0, 0);
         bool selection_event = selection_changed == 0 && SUCCEEDED(selection_subscribed) && WaitForSingleObject(selection_events->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(selection_subscribed)) uia->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, search, selection_events); selection_events->Release(); if (search) search->Release();
         std::cout << "text selection event=" << selection_event << '\n'; navigation &= selection_event;
-        SendMessageW(s.window, WM_APP + 81, 0, 0); std::cout << "text event=" << text_event << '\n'; navigation &= text_event;
+        SendMessageW(s.window, uia_demo::message_set_search_value, 0, 0); std::cout << "text event=" << text_event << '\n'; navigation &= text_event;
+        {   // UA14 (#74): pointer hover is not part of the UIA tree. Simulating a hover on the search box changes no property
+            // of it, adds or removes no element and raises no event of any kind (the brief: "UIA tree and events unchanged").
+            struct Snapshot { std::wstring name, value; BOOL enabled = FALSE, focused = FALSE; RECT box{}; int count = -1; };
+            auto take = [&] {
+                Snapshot snap; BSTR text = nullptr;
+                if (auto element = find_id(uia, root, L"items.search")) {
+                    if (SUCCEEDED(element->get_CurrentName(&text)) && text) snap.name = text;
+                    SysFreeString(text); text = nullptr;
+                    IUIAutomationValuePattern* value = nullptr;
+                    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value))) && value) {
+                        if (SUCCEEDED(value->get_CurrentValue(&text)) && text) snap.value = text;
+                        SysFreeString(text); value->Release();
+                    }
+                    element->get_CurrentIsEnabled(&snap.enabled); element->get_CurrentHasKeyboardFocus(&snap.focused);
+                    element->get_CurrentBoundingRectangle(&snap.box); element->Release();
+                }
+                IUIAutomationCondition* any = nullptr; IUIAutomationElementArray* nodes = nullptr;
+                if (SUCCEEDED(uia->CreateTrueCondition(&any)) && any && SUCCEEDED(root->FindAll(TreeScope_Subtree, any, &nodes)) && nodes) nodes->get_Length(&snap.count);
+                if (nodes) nodes->Release();
+                if (any) any->Release();
+                return snap;
+            };
+            const auto before = take();
+            auto property_events = new AnyPropertyEvent(); auto automation_events = new AnyAutomationEvent(); auto structure_events = new AnyStructureEvent();
+            PROPERTYID watched[] = {UIA_NamePropertyId, UIA_ValueValuePropertyId, UIA_IsEnabledPropertyId, UIA_HasKeyboardFocusPropertyId, UIA_BoundingRectanglePropertyId, UIA_IsOffscreenPropertyId};
+            bool subscribed = SUCCEEDED(uia->AddPropertyChangedEventHandlerNativeArray(root, TreeScope_Subtree, nullptr, property_events, watched, 6)) &&
+                SUCCEEDED(uia->AddStructureChangedEventHandler(root, TreeScope_Subtree, nullptr, structure_events));
+            for (EVENTID id : {UIA_Text_TextChangedEventId, UIA_Text_TextSelectionChangedEventId, UIA_LayoutInvalidatedEventId})
+                subscribed = subscribed && SUCCEEDED(uia->AddAutomationEventHandler(id, root, TreeScope_Subtree, nullptr, automation_events));
+            const bool hovered = SendMessageW(s.window, uia_demo::message_hover, 1, 0) == 0;
+            Sleep(500);  // the repaint and any event it would raise have long arrived
+            const bool silent = WaitForSingleObject(property_events->received, 0) != WAIT_OBJECT_0 && WaitForSingleObject(automation_events->received, 0) != WAIT_OBJECT_0 &&
+                WaitForSingleObject(structure_events->received, 0) != WAIT_OBJECT_0;
+            const auto during = take();
+            const bool cleared = SendMessageW(s.window, uia_demo::message_hover, 0, 0) == 0;
+            uia->RemoveAllEventHandlers(); property_events->Release(); automation_events->Release(); structure_events->Release();
+            const bool same = before.name == during.name && before.value == during.value && before.enabled == during.enabled && before.focused == during.focused &&
+                before.count == during.count && before.count > 0 && EqualRect(&before.box, &during.box);
+            const bool hover_hidden = subscribed && hovered && cleared && silent && same;
+            std::cout << "UA14 hover is not exposed: " << (hover_hidden ? "PASS" : "FAIL") << " (subscribed=" << subscribed << " hovered=" << hovered << " silent=" << silent << " same=" << same << ")\n"; ok &= hover_hidden;
+        }
         navigation = navigation && select(uia, nav, L"appearance") && patterns(uia, root);
         auto font = find_id(uia, root, L"appearance.font"); IUIAutomationExpandCollapsePattern* expand = nullptr;
         auto default_option = font ? find_id(uia, font, L"default") : nullptr; BOOL closed_offscreen = FALSE;
@@ -276,11 +331,11 @@ int wmain(int argc, wchar_t** argv) {
                 SUCCEEDED(vertical->get_CurrentBoundingRectangle(&box)) && inside &&
                 test::vertical::drawn_box(box.left, box.top, box.right, box.bottom, window_box.left, window_box.top, window_box.right, window_box.bottom, 150);
             if (!label) std::cout << "vertical element=" << bool(vertical) << " type=" << vtype << " name=" << (vname ? SysStringLen(vname) : 0) << " box=" << box.left << ',' << box.top << ',' << box.right << ',' << box.bottom << " window=" << window_box.left << ',' << window_box.top << ',' << window_box.right << ',' << window_box.bottom << '\n';
-            std::cout << "UA-vertical label: " << (label ? "PASS" : "FAIL") << '\n'; ok &= label;
+            std::cout << "UA13 vertical label: " << (label ? "PASS" : "FAIL") << '\n'; ok &= label;
             SysFreeString(vname); if (vertical) vertical->Release();
         }
         std::cout << "navigation=" << navigation << " long-dropdown=" << dropdown << " about-text=" << about << '\n'; ok = ok && navigation && dropdown && about;
-        if (select(uia, nav, L"items")) {   // UA10: the context menu as a UIA Menu with MenuItem and Separator children (#85).
+        if (select(uia, nav, L"items")) {   // UA12: the context menu as a UIA Menu with MenuItem and Separator children (#85).
             auto opened_event = new TextEvent(); opened_event->expected = UIA_MenuOpenedEventId;
             auto closed_event = new TextEvent(); closed_event->expected = UIA_MenuClosedEventId;
             auto focus_event = new FocusEvent();
@@ -288,7 +343,7 @@ int wmain(int argc, wchar_t** argv) {
             auto closed_subscribed = uia->AddAutomationEventHandler(UIA_MenuClosedEventId, root, TreeScope_Subtree, nullptr, closed_event);
             auto focus_subscribed = uia->AddFocusChangedEventHandler(nullptr, focus_event);
             const std::wstring edit_name = L"編輯(E)", delete_name = L"刪除(D)";
-            bool opened = SendMessageW(s.window, WM_APP + 86, 0, 0) == 0 && SUCCEEDED(opened_subscribed) && WaitForSingleObject(opened_event->received, 3000) == WAIT_OBJECT_0;
+            bool opened = SendMessageW(s.window, uia_demo::message_context_menu, 0, 0) == 0 && SUCCEEDED(opened_subscribed) && WaitForSingleObject(opened_event->received, 3000) == WAIT_OBJECT_0;
             auto menu = find_id(uia, root, L"items.list/menu"); CONTROLTYPEID menu_type = 0;
             bool is_menu = menu && SUCCEEDED(menu->get_CurrentControlType(&menu_type)) && menu_type == UIA_MenuControlTypeId;
             auto edit_item = menu ? find_id(uia, menu, L"items.edit") : nullptr;
@@ -297,7 +352,7 @@ int wmain(int argc, wchar_t** argv) {
                 menu_item_is(delete_item, UIA_MenuItemControlTypeId, delete_name.c_str(), L"D", L"Del", true);
             // Focus moves to an item when the keyboard highlights it.
             focus_event->wanted = L"items.edit";
-            bool focused_event = SendMessageW(s.window, WM_APP + 86, 3, 0) == 0 && SUCCEEDED(focus_subscribed) && WaitForSingleObject(focus_event->received, 3000) == WAIT_OBJECT_0;
+            bool focused_event = SendMessageW(s.window, uia_demo::message_context_menu, 3, 0) == 0 && SUCCEEDED(focus_subscribed) && WaitForSingleObject(focus_event->received, 3000) == WAIT_OBJECT_0;
             BOOL has_focus = FALSE;
             bool focus_state = edit_item && SUCCEEDED(edit_item->get_CurrentHasKeyboardFocus(&has_focus)) && (has_focus || GetFocus() != s.window);
             // Invoke runs the row's Edit: the menu closes (MenuClosed) and the edit dialog opens.
@@ -308,7 +363,7 @@ int wmain(int argc, wchar_t** argv) {
             // The search field's menu: a separator line and a disabled item (nothing is selected there).
             // MenuOpened / MenuClosed are asserted above on the first menu. This second opening is checked through
             // the tree: one run in about twenty did not deliver its second MenuOpened to the client (UIA event delivery).
-            const auto field_status = SendMessageW(s.window, WM_APP + 86, 2, 0);
+            const auto field_status = SendMessageW(s.window, uia_demo::message_context_menu, 2, 0);
             IUIAutomationElement* field_menu = nullptr;
             for (int attempt = 0; attempt < 30 && !field_menu; ++attempt) { field_menu = find_id(uia, root, L"items.search/menu"); if (!field_menu) Sleep(100); }
             bool field_open = field_status == 0 && field_menu;
@@ -323,13 +378,13 @@ int wmain(int argc, wchar_t** argv) {
             if (separators) separators->Release(); if (separator_condition) separator_condition->Release();
             bool disabled_refuses = copy_item && [&] { IUIAutomationInvokePattern* p = nullptr; bool refused = SUCCEEDED(copy_item->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p))) && p && p->Invoke() == UIA_E_ELEMENTNOTENABLED; if (p) p->Release(); return refused; }();
             if (copy_item) copy_item->Release(); if (select_all_item) select_all_item->Release(); if (field_menu) field_menu->Release();
-            bool field_closed = SendMessageW(s.window, WM_APP + 86, 1, 0) == 0;
+            bool field_closed = SendMessageW(s.window, uia_demo::message_context_menu, 1, 0) == 0;
             if (SUCCEEDED(opened_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuOpenedEventId, root, opened_event);
             if (SUCCEEDED(closed_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuClosedEventId, root, closed_event);
             if (SUCCEEDED(focus_subscribed)) uia->RemoveFocusChangedEventHandler(focus_event);
             opened_event->Release(); closed_event->Release(); focus_event->Release();
             bool menu_pass = opened && is_menu && items_ok && focused_event && focus_state && invoked && vanished && dialog_closed && field_open && field_items && lines && disabled_refuses && field_closed;
-            std::cout << "UA10 context menu: " << (menu_pass ? "PASS" : "FAIL") << " opened=" << opened << " menu=" << is_menu << " items=" << items_ok << " focus-event=" << focused_event << " focus=" << focus_state
+            std::cout << "UA12 context menu: " << (menu_pass ? "PASS" : "FAIL") << " opened=" << opened << " menu=" << is_menu << " items=" << items_ok << " focus-event=" << focused_event << " focus=" << focus_state
                       << " invoke+closed=" << invoked << " vanished=" << vanished << " dialog=" << dialog_closed << " field-menu=" << field_open << " field-items=" << field_items << " lines=" << lines << " disabled=" << disabled_refuses << '\n';
             ok &= menu_pass;
         }
