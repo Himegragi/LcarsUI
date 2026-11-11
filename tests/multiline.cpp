@@ -312,6 +312,312 @@ void a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream() {
     upstream.upstream = true;
     check(upstream.line_of(20) == 0 && upstream.line_of(21) == 1, "Upstream puts the wrap-point caret on the line above");
 }
+
+// ---- Cursor movement ----------------------------------------------------------------------
+// The host arranges after every input; so does this fixture, which is what keeps core's copy of the lines fresh.
+struct Editor {
+    Ui ui; TextHandle field; FakeMeasure measure; ScrollState scroll; Frame frame;
+    explicit Editor(std::u16string value, unsigned lines = 3, int width = field_width) : width_(width) {
+        field = connect(ui, multi("note", std::move(value), lines));
+        host().focus("note");
+        layout();
+    }
+    detail::UiState& host() { return detail::access(ui); }
+    void layout() { frame = arrange(layout::control(field), ui, web_appearance(), measure, width_, 400, 1.f, scroll); }
+    const Placement& placed() const { return *frame.find(field); }
+    void key(Key k, bool shift = false, bool control = false) { host().key_down(press(k, shift, control)); layout(); }
+    void put(unsigned anchor, unsigned caret) { check(bool(host().select("note", anchor, caret)), "Select"); layout(); }
+    unsigned caret() { return host().edit("note")->selection.caret; }
+    unsigned anchor() { return host().edit("note")->selection.anchor; }
+    unsigned first() const { return placed().view.first; }
+    int width_;
+};
+
+void vertical_keys_move_by_display_line_and_keep_the_column() {
+    Editor e(u"abcdef\nxy\nabcdef");
+    e.put(4, 4);
+    e.key(Key::down);
+    check(e.caret() == 9 && e.anchor() == 9, "Down into a shorter line lands at its end");
+    e.key(Key::down);
+    check(e.caret() == 14, "Down again returns to the remembered column");
+    e.key(Key::up);
+    check(e.caret() == 9, "Up goes back to the short line");
+    e.key(Key::up);
+    check(e.caret() == 4, "Up restores the original column");
+    e.key(Key::up);
+    check(e.caret() == 4, "Up on the first line does not move");
+    e.put(16, 16);
+    e.key(Key::down);
+    check(e.caret() == 16, "Down on the last line does not move");
+}
+
+void vertical_keys_follow_wrapped_lines() {
+    Editor e(std::u16string(30, u'a'));
+    e.put(5, 5);
+    e.key(Key::down);
+    check(e.caret() == 25, "Down moves into the wrapped piece, same column");
+    e.key(Key::up);
+    check(e.caret() == 5, "Up moves back");
+    e.key(Key::home);
+    check(e.caret() == 0, "Home on the first piece");
+    e.put(25, 25);
+    e.key(Key::home);
+    check(e.caret() == 20, "Home on a wrapped piece goes to the piece's start, not the paragraph's");
+    e.put(3, 3);
+    e.key(Key::end);
+    check(e.caret() == 20 && e.host().edit("note")->caret_upstream, "End on a wrapped piece stops at its end, upstream");
+    check(e.placed().caret_y(e.caret()) == e.placed().view.text.y, "The upstream caret is drawn on the first line");
+    e.key(Key::right);
+    check(e.caret() == 21 && !e.host().edit("note")->caret_upstream && e.placed().caret_y(21) == e.placed().view.text.y + 24, "Right leaves the wrap point");
+    e.put(25, 25);
+    e.key(Key::end);
+    check(e.caret() == 30 && !e.host().edit("note")->caret_upstream, "End on the last piece is the end of the text");
+}
+
+void home_and_end_use_the_current_line_and_ctrl_uses_the_whole_text() {
+    Editor e(u"ab\ncd\nef");
+    e.put(4, 4);
+    e.key(Key::end);
+    check(e.caret() == 5, "End: end of the line, before its break");
+    e.key(Key::home);
+    check(e.caret() == 3, "Home: start of the line");
+    e.key(Key::end, false, true);
+    check(e.caret() == 8, "Ctrl+End: end of the text");
+    e.key(Key::home, false, true);
+    check(e.caret() == 0, "Ctrl+Home: start of the text");
+    e.put(4, 4);
+    e.key(Key::end, true);
+    check(e.anchor() == 4 && e.caret() == 5, "Shift+End extends to the line end");
+    e.key(Key::home, true, true);
+    check(e.anchor() == 4 && e.caret() == 0, "Shift+Ctrl+Home extends to the start");
+    e.key(Key::end, true, true);
+    check(e.anchor() == 4 && e.caret() == 8, "Shift+Ctrl+End extends to the end");
+}
+
+void shift_with_vertical_keys_extends_the_selection() {
+    Editor e(u"ab\ncd\nef");
+    e.put(1, 1);
+    e.key(Key::down, true);
+    check(e.anchor() == 1 && e.caret() == 4, "Shift+Down extends one line");
+    e.key(Key::down, true);
+    check(e.anchor() == 1 && e.caret() == 7, "Shift+Down extends again");
+    e.key(Key::up, true);
+    check(e.anchor() == 1 && e.caret() == 4, "Shift+Up shrinks it");
+    e.key(Key::down);
+    check(e.anchor() == 7 && e.caret() == 7, "Down without Shift collapses to the new caret");
+}
+
+void page_keys_move_by_the_visible_line_count() {
+    Editor e(u"0\n1\n2\n3\n4\n5\n6\n7\n8\n9", 3);
+    check(e.placed().view.lines.size() == 10 && e.first() == 0, "Ten lines, three visible");
+    e.put(0, 0);
+    e.key(Key::page_down);
+    check(e.caret() == 6 && e.first() == 3, "PageDown moves three lines and scrolls three lines");
+    e.key(Key::page_down);
+    check(e.caret() == 12 && e.first() == 6, "PageDown again");
+    e.key(Key::page_down);
+    check(e.caret() == 18 && e.first() == 7, "PageDown at the end stops on the last line with the last page showing");
+    e.key(Key::page_up);
+    check(e.caret() == 12 && e.first() == 4, "PageUp moves three lines back, the view follows");
+    e.key(Key::page_up, true);
+    check(e.anchor() == 12 && e.caret() == 6, "Shift+PageUp extends the selection");
+}
+
+// ---- Scrolling ----------------------------------------------------------------------------
+std::u16string numbered_lines(int count) {
+    std::u16string text;
+    for (int i = 0; i < count; ++i) { if (i) text += u'\n'; text += std::u16string(1, static_cast<char16_t>(u'0' + i % 10)); }
+    return text;
+}
+unsigned scroll_line_of(const TextHandle& field) { return field.scroll_line().value.value(); }
+
+void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
+    Editor e(u"x", 3);
+    e.key(Key::end, false, true);
+    for (int i = 0; i < 19; ++i) {
+        e.key(Key::enter);
+        e.host().text_input(u"y"); e.layout();
+    }
+    check(e.placed().view.lines.size() == 20 && e.caret() == 39, "Twenty lines, the caret on the last");
+    check(e.first() == 17, "The field scrolled so the caret's line is the last visible one");
+    check(e.placed().view.thumb.h > 0 && e.placed().view.thumb.y + e.placed().view.thumb.h == e.placed().view.track.y + e.placed().view.track.h,
+          "The thumb sits at the bottom");
+    e.key(Key::up); e.key(Key::up); e.key(Key::up);
+    check(e.first() == 16, "Moving the caret above the view scrolls up just enough");
+    e.key(Key::home, false, true);
+    check(e.first() == 0, "Ctrl+Home returns to the top");
+}
+
+void scrolling_alone_does_not_move_the_caret_or_snap_back() {
+    Editor e(numbered_lines(10), 3);
+    check(bool(e.field.set_scroll_line(5)), "Scroll the view");
+    e.layout();
+    check(e.first() == 5 && e.caret() == 0, "The caret stays where it was, out of view");
+    e.layout();
+    check(e.first() == 5, "Arranging again does not reveal the caret");
+    e.key(Key::right);
+    check(e.first() == 0, "Moving the caret reveals it");
+}
+
+void the_wheel_scrolls_the_field_then_the_page() {
+    Ui ui;
+    auto field = connect(ui, multi("note", numbered_lines(10), 3));
+    auto tall = *ui.add_label({.id = "tall", .kind = Kind::label, .value = numbered_lines(30)});
+    FakeMeasure measure; ScrollState page, outer;
+    auto node = layout::scroll(layout::column({layout::control(field), layout::control(tall)}, 8), outer, 200);
+    auto frame = arrange(node, ui, web_appearance(), measure, 300, 400, 1.f, page);
+    const auto* placed = frame.find(field);
+    check(placed != nullptr && frame.regions.size() == 2 && frame.regions.back().field == "note", "The field is an inner scroll region of the page");
+    const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
+    check(frame.wheel(ui, x, y, -48) && scroll_line_of(field) == 2 && outer.offset == 0, "One notch scrolls two lines of the field, not the page");
+    while (frame.wheel(ui, x, y, -48) && scroll_line_of(field) < 7) {}
+    check(scroll_line_of(field) == 7 && outer.offset == 0, "The field reaches its last page");
+    check(frame.wheel(ui, x, y, -48) && scroll_line_of(field) == 7 && outer.offset > 0, "At the bottom the wheel passes to the page");
+    const int page_offset = outer.offset;
+    check(frame.wheel(ui, x, y, 48) && scroll_line_of(field) == 5 && outer.offset == page_offset, "Scrolling back up moves the field first again");
+    check(!frame.wheel(ui, 5000, 5000, -48), "A pointer outside every region scrolls nothing");
+    check(scroll_line_of(field) == 5, "The field kept its position");
+}
+
+void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
+    Ui ui;
+    auto background = *ui.add_label({.id = "background", .kind = Kind::label, .value = numbered_lines(40)});
+    auto backup = *ui.add_button({.id = "backup", .kind = Kind::button, .label = u"Back"});
+    auto cancel = *ui.add_button({.id = "cancel", .kind = Kind::button, .label = u"Cancel"});
+    auto note = connect(ui, multi("note", numbered_lines(10), 3));
+    auto dialog = *ui.add_dialog("dlg", {note, cancel}, note, backup, [](bool) {});
+    FakeMeasure measure; ScrollState page, outer;
+    auto content = layout::column({layout::control(note), layout::control(cancel)}, 8);
+    auto root = layout::modal(layout::scroll(layout::control(background), outer, 150), content, dialog);
+    check(bool(dialog.open()), "Open the dialog");
+    auto frame = arrange(root, ui, web_appearance(), measure, 400, 400, 1.f, page);
+    const auto* placed = frame.find(note);
+    check(frame.modal && placed != nullptr, "The dialog's field is placed in the open dialog");
+    const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
+    check(frame.wheel(ui, x, y, -48) && scroll_line_of(note) == 2, "The wheel scrolls the field inside the dialog");
+    check(!frame.wheel(ui, 5, 5, -48) && outer.offset == 0, "The page behind the dialog still does not scroll");
+    const auto& region = *std::find_if(frame.regions.begin(), frame.regions.end(), [](const ScrollRegion& r) { return r.field == "note"; });
+    check(region.modal_content && region.thumb.h > 0, "The field's scrollbar belongs to the dialog");
+    const int travel = region.track.h - region.thumb.h;
+    check(frame.scroll_to(ui, *region.state, region.offset_for_thumb(region.track.y + travel)) && scroll_line_of(note) == 7,
+          "Dragging the thumb to the bottom scrolls the field to its last page");
+    check(frame.scroll_to(ui, *region.state, region.offset_for_thumb(region.track.y + travel / 2)) && scroll_line_of(note) == 4,
+          "Dragging the thumb halfway lands on the middle line");
+}
+
+void the_scroll_position_is_one_value_for_code_and_semantics() {
+    Editor e(numbered_lines(10), 3);
+    auto& tree = e.ui.semantics();
+    check(scroll_line_of(e.field) == 0, "Starts at the top");
+    check(bool(e.field.set_scroll_line(4)) && scroll_line_of(e.field) == 4, "Typed set");
+    e.layout();
+    check(e.first() == 4 && e.placed().view.lines[e.first()].begin == 8, "The first visible line is the fifth, which starts at offset 8");
+    auto node = tree.get({"note"});
+    check(node && node->scroll && node->scroll->first_line == 4 && node->scroll->visible_lines == 3 && node->scroll->line_count == 10,
+          "The semantic node reports the same position, visible lines and total lines");
+    check(std::find(node->verbs.begin(), node->verbs.end(), Verb::scroll) != node->verbs.end(), "The semantic node offers the scroll verb");
+    check(bool(tree.perform({"note"}, Verb::scroll, 6)) && scroll_line_of(e.field) == 6, "Semantic scroll moves the same position");
+    check(e.field.set_scroll_line(8).status == Status::invalid_value && tree.perform({"note"}, Verb::scroll, 8).status == Status::invalid_value &&
+          scroll_line_of(e.field) == 6, "Both entry points reject a line past the last page, with the same status");
+    check(tree.perform({"note"}, Verb::scroll, -1).status == Status::invalid_value, "A negative line is invalid");
+    check(tree.perform({"note"}, Verb::scroll, std::u16string(u"x")).status == Status::invalid_value, "A scroll needs a number");
+    check(bool(e.field.set_scroll_line(7)) && scroll_line_of(e.field) == 7, "The last page is the last valid position");
+    e.layout();
+    check(e.first() == 7, "Arranging keeps a position set from code");
+}
+
+void the_first_visible_line_survives_a_text_size_change() {
+    std::u16string text;
+    for (int i = 0; i < 6; ++i) { if (i) text += u'\n'; text += u"p" + std::u16string(1, static_cast<char16_t>(u'0' + i)) + std::u16string(37, u'a'); }
+    Editor e(text, 3);
+    check(e.placed().view.lines.size() == 12, "Six 39-character paragraphs wrap to 20 + 19 characters, two lines each, at 16 px");
+    check(bool(e.field.set_scroll_line(6)), "Scroll to the fourth paragraph");
+    e.layout();
+    check(e.placed().view.lines[e.first()].begin == 120, "Its first line starts at offset 120");
+    check(bool(e.ui.set_presentation({.text_size = 28})), "Raise the text size");
+    e.layout();
+    check(e.placed().view.lines.size() > 12 && e.placed().view.lines[e.first()].begin == 120 && scroll_line_of(e.field) == e.first(),
+          "More lines now, and the first visible line still starts the same paragraph");
+    check(e.first() == 12, "At 28 px each paragraph takes four lines");
+}
+
+void the_visible_line_count_can_change_at_run_time() {
+    Editor e(numbered_lines(10), 3);
+    int invalidations = 0;
+    e.host().on_invalidate([&] { ++invalidations; });
+    const int before = e.placed().bounds.h;
+    check(bool(e.field.set_visible_lines(5)) && e.field.visible_lines().value.value() == 5 && invalidations > 0, "Set five lines and ask for a new frame");
+    e.layout();
+    check(e.placed().view.visible == 5 && e.placed().field.editor.h == 5 * 24 && e.placed().bounds.h == before + 2 * 24, "The field is two lines taller at once");
+    check(e.ui.semantics().get({"note"})->scroll->visible_lines == 5 && e.field.describe()->visible_lines == 5, "Semantics report the new height");
+    check(bool(e.field.set_scroll_line(5)), "Five visible lines of ten leave six scroll positions");
+    check(bool(e.field.set_visible_lines(2)) && scroll_line_of(e.field) == 5, "Shrinking keeps the position");
+    e.layout();
+    check(e.placed().view.visible == 2 && e.first() == 5, "Two lines are shown from the same first line");
+    check(e.field.set_visible_lines(0).status == Status::invalid_value && e.field.visible_lines().value.value() == 2, "At least one line");
+    check(bool(e.field.set_visible_lines(20)) && scroll_line_of(e.field) == 0, "More lines than the text has leaves nothing to scroll");
+    Ui single;
+    auto name = connect(single, {.id = "name", .kind = Kind::text});
+    check(name.set_visible_lines(2).status == Status::not_supported && name.set_scroll_line(0).status == Status::not_supported &&
+          name.scroll_line().status == Status::not_supported && name.visible_lines().status == Status::not_supported,
+          "A single-line field has neither");
+    check(single.semantics().perform({"name"}, Verb::scroll, 0).status == Status::not_supported, "Nor a semantic scroll");
+}
+
+// ---- Pointer and input method ---------------------------------------------------------------
+void dragging_selects_across_lines_and_scrolls_at_the_edges() {
+    Editor e(numbered_lines(10), 3);
+    const auto& view = e.placed().view;
+    const int x = view.text.x, top = view.text.y, bottom = top + 3 * 24;
+    check(bool(e.host().select("note", 0, 0)), "Press on the first character");
+    check(e.frame.select_to(e.ui, e.field, x, top + 24 * 2 + 3) && e.anchor() == 0 && e.caret() == 4, "Dragging to the third line selects through it");
+    check(e.first() == 0, "Inside the field nothing scrolls");
+    check(e.frame.select_to(e.ui, e.field, x, bottom + 5) && scroll_line_of(e.field) == 1 && e.anchor() == 0 && e.caret() == 6,
+          "Below the field it scrolls one line and the caret takes the last visible line (the fourth)");
+    check(e.frame.select_to(e.ui, e.field, x, bottom + 50) && scroll_line_of(e.field) == 2 && e.caret() == 8,
+          "Each call scrolls one more, from the current position rather than the frame's");
+    e.layout();
+    check(e.first() == 2 && e.caret() == 8, "The next frame keeps the scrolled view");
+    check(e.frame.select_to(e.ui, e.field, x, top - 5) && scroll_line_of(e.field) == 1 && e.caret() == 2, "Above the field it scrolls back up");
+    while (e.frame.select_to(e.ui, e.field, x, bottom + 5)) {}
+    check(scroll_line_of(e.field) == 7 && e.caret() == 18 && !e.frame.select_to(e.ui, e.field, x, bottom + 5),
+          "At the last page the drag stops scrolling and the caret stays on the last line");
+    check(e.anchor() == 0, "The anchor never moved during the drag");
+}
+
+void a_click_past_a_wrapped_line_end_stays_on_that_line() {
+    Editor e(std::u16string(30, u'a'), 3);
+    const auto& view = e.placed().view;
+    auto hit = detail::placement_text_hit(e.frame, "note", view.text.x + 500, view.text.y + 3);
+    check(hit.offset == 20 && hit.upstream, "Past the end of a wrapped piece: its end, flagged upstream");
+    check(bool(e.host().select_pointer("note", hit.offset, hit.offset, hit.upstream)), "Place the caret there");
+    e.layout();
+    check(e.placed().caret_y(e.caret()) == view.text.y && e.placed().caret_x(e.caret()) == view.text.x + 20 * 8, "It is drawn at the end of the first line");
+    auto second = detail::placement_text_hit(e.frame, "note", view.text.x + 500, view.text.y + 24 + 3);
+    check(second.offset == 30 && !second.upstream, "Past the end of the last line is the end of the text");
+}
+
+void composition_wraps_and_the_candidate_position_follows_the_caret_line() {
+    Editor e(std::u16string(18, u'a'), 3);
+    e.put(18, 18);
+    check(bool(e.host().composition_update(u"你好", 2)), "Start composing two wide characters");
+    e.layout();
+    const auto& p = e.placed();
+    check(spans(p) == Spans{{0, 19}, {19, 20}}, "The composed text wraps like committed text");
+    const auto rect = p.caret_rect(e.host().edit("note")->visible_caret());
+    check(rect.y == p.view.text.y + 24 && rect.x == p.view.text.x + 16 && rect.h == 24, "The candidate window anchors at the caret's wrapped line");
+    check(bool(e.host().composition_commit(u"你好")) && e.host().text("note") == std::u16string(18, u'a') + u"你好", "Commit it");
+
+    Editor s(numbered_lines(3), 2);
+    s.put(2, 2);
+    check(bool(s.host().composition_update(u"x", 1)), "Compose on the second line");
+    s.layout();
+    check(s.placed().caret_rect(s.host().edit("note")->visible_caret()).y == s.placed().view.text.y + 24, "On the second row of the view");
+    check(bool(s.field.set_scroll_line(1)), "Scroll one line while composing");
+    s.layout();
+    check(s.placed().caret_rect(s.host().edit("note")->visible_caret()).y == s.placed().view.text.y && s.host().edit("note")->composing,
+          "The anchor follows the caret to the first row and the composition goes on");
+}
 }
 
 int main() {
@@ -333,6 +639,21 @@ int main() {
         {"the scrollbar width is always reserved", the_scrollbar_width_is_always_reserved},
         {"pointer positions map to line and offset", pointer_positions_map_to_line_and_offset},
         {"a wrap-boundary caret belongs to the next line", a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream},
+        {"vertical keys move by display line and keep the column", vertical_keys_move_by_display_line_and_keep_the_column},
+        {"vertical keys follow wrapped lines", vertical_keys_follow_wrapped_lines},
+        {"Home/End use the line, Ctrl the whole text", home_and_end_use_the_current_line_and_ctrl_uses_the_whole_text},
+        {"Shift with vertical keys extends the selection", shift_with_vertical_keys_extends_the_selection},
+        {"page keys move by the visible line count", page_keys_move_by_the_visible_line_count},
+        {"typing to line twenty scrolls to the caret", typing_to_line_twenty_scrolls_the_field_to_the_caret},
+        {"scrolling alone neither moves the caret nor snaps back", scrolling_alone_does_not_move_the_caret_or_snap_back},
+        {"the wheel scrolls the field, then the page", the_wheel_scrolls_the_field_then_the_page},
+        {"a dialog scrolls its own content and blocks the page", a_dialog_scrolls_its_own_content_and_blocks_the_page},
+        {"the scroll position is one value for code and semantics", the_scroll_position_is_one_value_for_code_and_semantics},
+        {"the first visible line survives a text size change", the_first_visible_line_survives_a_text_size_change},
+        {"the visible line count can change at run time", the_visible_line_count_can_change_at_run_time},
+        {"dragging selects across lines and scrolls at the edges", dragging_selects_across_lines_and_scrolls_at_the_edges},
+        {"a click past a wrapped line end stays on that line", a_click_past_a_wrapped_line_end_stays_on_that_line},
+        {"composition wraps and the candidate follows the caret line", composition_wraps_and_the_candidate_position_follows_the_caret_line},
     };
     return test::run("multiline", cases);
 }

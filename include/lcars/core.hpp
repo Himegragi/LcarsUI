@@ -52,7 +52,7 @@ struct Control {
     unsigned visible_lines = 3;  // multi-line height in lines, at least 1; later changed through the handle
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
-enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo };
+enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
@@ -66,6 +66,8 @@ struct Semantics {
     bool visible = false; // intersects the clip in the latest arranged frame
     bool multiline = false;     // text fields: created multi-line
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
+    unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
+    unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
     std::vector<OptionSemantics> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
@@ -173,6 +175,13 @@ public:
     Result reset_to_source() const;
     Result enable(bool enabled) const;
     Result read_only(bool is_read_only) const;
+    // Multi-line fields only; any other field answers not_supported. The scroll position is the index of
+    // the first visible display line (a wrapped piece counts as a line), so it keeps its meaning when the
+    // text size or density changes. A position past the last page is invalid_value, as for the semantic scroll.
+    Result set_visible_lines(unsigned lines) const;  // owner configuration: at least 1; reflows at once
+    Query<unsigned> visible_lines() const;
+    Result set_scroll_line(unsigned first_visible_line) const;
+    Query<unsigned> scroll_line() const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;

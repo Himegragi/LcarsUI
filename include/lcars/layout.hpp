@@ -114,6 +114,9 @@ struct Placement {
     float offset = 0;             // text fields: horizontal display offset in pixels
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
     int caret_y(unsigned offset) const;  // multi-line fields: frame y of the top of the caret's line
+    // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line field a caret scrolled
+    // out of view is held on the nearest visible row, which is where an input method anchors its window.
+    Rect caret_rect(unsigned offset) const;
 };
 struct ScrollRegion {
     ScrollState* state = nullptr;

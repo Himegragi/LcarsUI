@@ -1809,6 +1809,62 @@ Query<Semantics> TextHandle::describe() const {
     if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
 }
+Result TextHandle::set_visible_lines(unsigned lines) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_visible_lines(id_, lines);
+}
+Query<unsigned> TextHandle::visible_lines() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+    const auto* control = ui_->find(id_);
+    if (!control->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
+    return {Status::ok, {}, control->visible_lines};
+}
+Result TextHandle::set_scroll_line(unsigned first_visible_line) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_scroll_line(id_, first_visible_line);
+}
+Query<unsigned> TextHandle::scroll_line() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->scroll_line(id_);
+}
+Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!control->multiline) return {Status::not_supported, u"Not a multi-line field"};
+    if (lines < 1 || lines > max_visible_lines) return {Status::invalid_value, u"A multi-line field shows at least one line"};
+    control->visible_lines = lines;
+    auto& m = edits_.find(id)->second.multi;
+    if (m.placed) {  // keep the position valid for the new page size until the next arrange settles it
+        m.view.visible = lines;
+        const auto count = static_cast<unsigned>(m.view.lines.size());
+        scroll_lines_to(id, std::min(m.first, count > lines ? count - lines : 0));
+    }
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
+    OperationScope operation(this);
+    if (auto r = available(id); !r) return r;
+    if (!find(id)->multiline) return {Status::not_supported, u"Not a multi-line field"};
+    auto& m = edits_.find(id)->second.multi;
+    if (!m.placed) { m.pending_first = first; if (invalidate_) invalidate_(); return {}; }  // clamped by the first arrange
+    const auto count = static_cast<unsigned>(m.view.lines.size());
+    if (first > (count > m.view.visible ? count - m.view.visible : 0)) return {Status::invalid_value, u"No such scroll position"};
+    scroll_lines_to(id, first);
+    return {};
+}
+Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    if (!find(id)->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
+    const auto& m = edits_.find(id)->second.multi;
+    return {Status::ok, {}, m.pending_first.value_or(m.first)};
+}
 Query<std::u16string> TextHandle::draft() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     auto snapshot = describe();
@@ -1840,7 +1896,14 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
-    if (control->kind == Kind::text) { s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0; }
+    if (control->kind == Kind::text) {
+        s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
+        if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
+            const auto& m = it->second.multi;
+            s.scroll_line = m.pending_first.value_or(m.first);
+            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
+        }
+    }
     if (auto it = bools_.find(id); it != bools_.end()) {
         s.checked = it->second.value;
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
@@ -1946,6 +2009,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
+        if (control->multiline) s.operations.push_back(Operation::scroll);
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
         if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
@@ -2493,6 +2557,8 @@ Result detail::UiState::edit_key(KeyPress key) {
     if (session.composing) return {Status::busy, u"組字中，按鍵交由輸入法處理"};
     const auto size = static_cast<unsigned>(session.text.size());
     auto move = [&](unsigned pos) { session.select(key.shift ? session.selection.anchor : pos, pos); return Result{}; };
+    const bool multi = find(focus_)->multiline;
+    if (multi && key.ctrl && !key.letter && (key.key == Key::home || key.key == Key::end)) return move(key.key == Key::home ? 0 : size);
     if (key.ctrl) {
         if (key.letter == u'Z') return travel(focus_, key.shift);
         if (key.letter == u'Y') return travel(focus_, true);
@@ -2513,8 +2579,12 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (!key.shift && session.begin() != session.end()) return move(direction < 0 ? session.begin() : session.end());
         return move(step(session.text, session.selection.caret, direction));
     }
-    case Key::home: return move(0);
-    case Key::end: return move(size);
+    case Key::home: return multi ? move_line_edge(focus_, false, key.shift) : move(0);
+    case Key::end: return multi ? move_line_edge(focus_, true, key.shift) : move(size);
+    case Key::up: case Key::down:
+        return multi ? move_lines(focus_, key.key == Key::up ? -1 : 1, 1, key.shift) : Result{};
+    case Key::page_up: case Key::page_down:
+        return multi ? move_lines(focus_, key.key == Key::page_up ? -1 : 1, find(focus_)->visible_lines, key.shift) : Result{};
     case Key::enter: {
         if (!find(focus_)->multiline) return {};
         Field* field = nullptr;
@@ -2532,6 +2602,62 @@ Result detail::UiState::edit_key(KeyPress key) {
     }
     default: return {};
     }
+}
+// The lines cursor keys move over: the last arrange's when they still describe the text, else a fresh
+// arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
+FieldView detail::UiState::vertical_view(const Id& id) {
+    auto& field = edits_.find(id)->second;
+    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible(); };
+    if (!fresh() && relayout_) relayout_();
+    FieldView view;
+    if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
+    const auto& text = field.session.text;
+    for (std::size_t start = 0;;) {
+        auto end = text.find(u'\n', start);
+        FieldLine line;
+        line.begin = static_cast<unsigned>(start);
+        line.end = static_cast<unsigned>(end == std::u16string::npos ? text.size() : end);
+        line.run.stops.push_back({0, 0.f});
+        for (unsigned i = 1; i <= line.end - line.begin; ++i) line.run.stops.push_back({i, static_cast<float>(i)});
+        line.run.width = static_cast<float>(line.end - line.begin);
+        view.lines.push_back(std::move(line));
+        if (end == std::u16string::npos) break;
+        start = end + 1;
+    }
+    view.visible = find(id)->visible_lines;
+    view.upstream = field.session.caret_upstream;
+    return view;
+}
+Result detail::UiState::move_line_edge(const Id& id, bool end, bool shift) {
+    OperationScope operation(this);
+    auto view = vertical_view(id);
+    auto& session = edits_.find(id)->second.session;
+    const auto& line = view.lines[view.line_of(session.selection.caret)];
+    const unsigned target = end ? line.end : line.begin;
+    session.select(shift ? session.selection.anchor : target, target);
+    session.caret_upstream = end && line.soft;  // the caret stays on the line it was moved to the end of
+    return {};
+}
+Result detail::UiState::move_lines(const Id& id, int direction, unsigned count, bool shift) {
+    OperationScope operation(this);
+    auto& field = edits_.find(id)->second;
+    auto& session = field.session;
+    auto view = vertical_view(id);
+    const unsigned from = view.line_of(session.selection.caret);
+    const bool real = field.multi.placed && field.multi.text == session.visible();
+    // One run of Up/Down presses keeps the column it started at.
+    if (field.multi.want_from != session.selection.caret || !real) field.multi.want_x = view.x_in_line(from, session.selection.caret);
+    const long target = std::clamp(static_cast<long>(from) + static_cast<long>(direction) * static_cast<long>(count), 0L, static_cast<long>(view.lines.size()) - 1);
+    if (target == static_cast<long>(from)) return {};
+    auto [offset, upstream] = view.hit_in_line(static_cast<unsigned>(target), field.multi.want_x);
+    session.select(shift ? session.selection.anchor : offset, offset);
+    session.caret_upstream = upstream;
+    field.multi.want_from = real ? offset : ~0u;
+    if (count > 1 && real) {  // a page key moves the view as far as the caret moved
+        const long moved = target - static_cast<long>(from);
+        scroll_lines_to(id, static_cast<unsigned>(std::max(0L, static_cast<long>(field.multi.first) + moved)));
+    }
+    return {};
 }
 Result detail::UiState::key_up(Key key) {
     OperationScope operation(this);
@@ -2918,6 +3044,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
+    if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -2951,6 +3078,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::copy, n.role == Role::text && admits(Operation::copy));
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
+            add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3042,6 +3170,10 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        if (node.scroll && old->scroll) {
+            property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
+            property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
+        }
         if (node.role == Role::text && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
         if (node.text_selection && old->text_selection && (node.text_selection->anchor != old->text_selection->anchor || node.text_selection->caret != old->text_selection->caret))
             emit(SemanticEventKind::text_selection_changed, node.ref);
@@ -3096,6 +3228,11 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (node->role == Role::text && verb == Verb::scroll) {
+        if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
+        if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
+        return invalid_argument();
+    }
     if (node->role == Role::text && verb == Verb::set_value) {
         if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
         return invalid_argument();

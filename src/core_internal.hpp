@@ -136,6 +136,7 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void on_relayout(std::function<void()> callback) { relayout_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
@@ -193,6 +194,10 @@ public:
     bool scroll_lines_to(std::string_view id, unsigned first);  // clamps; true when the position changed
     // A pointer click or drag: like select, but may place the caret at the end of a wrapped line.
     Result select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream);
+    // Multi-line configuration and view position, shared by the typed handle and the semantic verb.
+    Result set_visible_lines(std::string_view id, unsigned lines);
+    Result set_scroll_line(std::string_view id, unsigned first);
+    Query<unsigned> scroll_line(std::string_view id) const;
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
@@ -246,6 +251,8 @@ private:
             unsigned caret = 0;           // caret seen by the last arrange: a different one reveals itself
             bool upstream = false, placed = false;
             std::optional<unsigned> pending_first;  // set before the first arrange
+            float want_x = 0;             // the column an Up/Down run keeps, in pixels from the line start
+            unsigned want_from = ~0u;     // the caret that run last left it at: any other caret starts a new run
             ScrollState scroll;           // pixel offset = first * line height, for the field's scrollbar region
         } multi;
         TextSource source;
@@ -388,8 +395,13 @@ private:
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
+    // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
+    // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
+    FieldView vertical_view(const Id& id);
+    Result move_lines(const Id& id, int direction, unsigned count, bool shift);
+    Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
-    std::function<void()> changed_, invalidate_;
+    std::function<void()> changed_, invalidate_, relayout_;
     struct TextScroll { ScrollState* state; int maximum, line_height; };
     std::map<std::string, TextScroll, std::less<>> text_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;

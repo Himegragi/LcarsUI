@@ -206,6 +206,11 @@ int Placement::caret_x(unsigned offset) const {
     if (multiline) return view.text.x + static_cast<int>(std::lround(view.x_in_line(view.line_of(offset), offset)));
     return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
 }
+Rect Placement::caret_rect(unsigned offset) const {
+    if (!multiline) return {caret_x(offset), bounds.y + field.editor.y, 1, field.editor.h};
+    const int row = std::clamp(static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first), 0, std::max(0, static_cast<int>(view.visible) - 1));
+    return {caret_x(offset), view.text.y + row * view.line_height, 1, view.line_height};
+}
 int Placement::caret_y(unsigned offset) const {
     if (!multiline) return bounds.y + field.editor.y;
     return view.text.y + (static_cast<int>(view.line_of(offset)) - static_cast<int>(view.first)) * view.line_height;
