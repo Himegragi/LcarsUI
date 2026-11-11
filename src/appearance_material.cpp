@@ -6,7 +6,7 @@ class Material final : public Appearance {
     std::string_view name() const override { return "Material-inspired"; }
     Palette palette() const override {
         return {{247,244,251},{255,251,255},{235,229,242},{35,30,44},{105,94,118},
-                {202,193,213},{105,74,153},{255,255,255},{221,205,249},{174,40,51},{0,0,0},110,{35,30,44},20};
+                {202,193,213},{105,74,153},{255,255,255},{221,205,249},{174,40,51},{0,0,0},110,{35,30,44},10};
     }
     bool supports(const ThemeVariant& variant) const override { return variant == ThemeVariant::light() || variant == ThemeVariant::dark(); }
     Palette palette(const ThemeVariant& variant) const override {

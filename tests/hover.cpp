@@ -564,7 +564,8 @@ void hover_overlay_values_are_the_proposed_ones() {
     auto material_dark = material_appearance().palette(ThemeVariant::dark());
     auto web_light = web_appearance().palette(ThemeVariant::light());
     auto web_dark = web_appearance().palette(ThemeVariant::dark());
-    check(material_light.hover == material_light.text && material_light.hover_alpha == 20, "material light: text color at 8%");
+    // 8% would leave the muted field label at 4.22:1 on the hovered surface; 10/255 (4%) keeps 4.56:1.
+    check(material_light.hover == material_light.text && material_light.hover_alpha == 10, "material light: text color at 4% (the contrast rule caps it below 8%)");
     check(material_dark.hover == material_dark.text && material_dark.hover_alpha == 20, "material dark: text color at 8%");
     check(web_light.hover == Color{0, 0, 0} && web_light.hover_alpha == 15, "web light: 6% black");
     check(web_dark.hover == Color{255, 255, 255} && web_dark.hover_alpha == 20, "web dark: 8% white");
@@ -591,6 +592,37 @@ void hover_roles_can_be_overridden_through_the_ui() {
     check(ui.effective_palette(web_appearance(), ThemeVariant::dark())->hover == Color{255, 255, 255}, "other variants keep their value");
 }
 
+// ---- contrast ------------------------------------------------------------------------------
+
+Color blended(Color over, unsigned char alpha, Color under) {
+    auto mix = [&](unsigned char o, unsigned char u) { return static_cast<unsigned char>((o * alpha + u * (255 - alpha)) / 255); };
+    return {mix(over.r, under.r), mix(over.g, under.g), mix(over.b, under.b)};
+}
+// WCAG 1.4.11 understanding: a hover effect itself needs no 3:1, but it must not make the component lose
+// sufficient contrast with its neighbors. Text keeps 4.5:1 and the accent 3:1 on every hovered surface.
+void hover_keeps_text_and_accent_readable_on_every_hovered_surface() {
+    std::string failures;
+    for (const auto* look : builtins) for (const auto& variant : variants) {
+        auto p = look->palette(variant);
+        struct Surface { const char* name; Color color; };
+        for (const auto& surface : {Surface{"background", p.background}, Surface{"panel", p.panel}, Surface{"surface", p.surface}, Surface{"selection", p.selection}}) {
+            auto hovered = blended(p.hover, p.hover_alpha, surface.color);
+            auto context = label_of(*look, variant) + " " + surface.name;
+            auto expect = [&](const char* what, Color foreground, double required) {
+                double ratio = contrast_ratio(foreground, hovered);
+                if (ratio < required) failures += context + ": " + what + " " + std::to_string(ratio).substr(0, 4) + ":1 (needs " + std::to_string(required).substr(0, 3) + "); ";
+            };
+            expect("text", p.text, 4.5);
+            if (std::string(surface.name) == "surface") { expect("muted", p.muted, 4.5); expect("accent", p.accent, 3.0); }
+        }
+    }
+    check(failures.empty(), ("hover must not take away contrast: " + failures).c_str());
+}
+void the_blend_helper_matches_a_worked_example() {
+    auto c = blended({0, 0, 0}, 15, {200, 100, 50});
+    check(c == (Color{188, 94, 47}), "6% black over (200,100,50) is (188,94,47): (0*15 + 200*240)/255 = 188 etc.");
+}
+
 // ---- presentation switch -------------------------------------------------------------------
 
 void presentation_has_a_hover_switch_on_by_default() {
@@ -611,6 +643,8 @@ int main() {
         {"hover_roles_are_named_palette_roles", hover_roles_are_named_palette_roles},
         {"hover_roles_can_be_overridden_through_the_ui", hover_roles_can_be_overridden_through_the_ui},
         {"presentation_has_a_hover_switch_on_by_default", presentation_has_a_hover_switch_on_by_default},
+        {"the_blend_helper_matches_a_worked_example", the_blend_helper_matches_a_worked_example},
+        {"hover_keeps_text_and_accent_readable_on_every_hovered_surface", hover_keeps_text_and_accent_readable_on_every_hovered_surface},
         {"the_pointer_hovers_components_and_single_items", the_pointer_hovers_components_and_single_items},
         {"disabled_components_and_items_are_never_the_target", disabled_components_and_items_are_never_the_target},
         {"touch_messages_neither_make_nor_change_the_hover", touch_messages_neither_make_nor_change_the_hover},
