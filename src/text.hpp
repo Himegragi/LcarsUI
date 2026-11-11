@@ -68,6 +68,8 @@ public:
     // Bold and/or italic text: the family's real Bold / Italic file when it has one, else the regular face with the
     // look synthesized (heavier outlines, sheared outlines). Advances are those of the face actually used.
     TextLayout shape(std::u16string_view text,int pixels,FontStyle style);
+    // The same with optional ligatures (liga, clig) switched off, for letters that are drawn apart (per-character justification).
+    TextLayout shape_apart(std::u16string_view text,int pixels,FontStyle style);
     // The files that are looked up for bold / italic faces; without one every bold or italic look is synthesized.
     void set_styled_lookup(std::function<FontFile(std::u16string_view,bool bold,bool italic)> lookup);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
@@ -92,6 +94,7 @@ public:
     explicit ShapedMeasure(Text& text) : text_(text) {}
     TextRun measure(std::u16string_view text, int pixels) override;
     TextRun measure(std::u16string_view text, int pixels, FontStyle style) override;
+    TextRun measure_apart(std::u16string_view text, int pixels, FontStyle style) override;
     int line_height(int pixels) override { return (pixels * 3 + 1) / 2; }
     static int baseline(int pixels) { return pixels * 23 / 20; }  // from the top of a line box
 private:

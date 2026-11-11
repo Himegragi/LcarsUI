@@ -420,6 +420,9 @@ int main() {
             for (const auto& piece : stretched->segments)
                 if (serif.shape(word.substr(piece.begin, piece.end - piece.begin), 24).glyphs.size() > piece.end - piece.begin) return 95;
             if (stretched->segments.size() < 8) return 96;
+            // The line shaped with ligatures off has a cluster per letter (the natural run has fewer: ffi, fi), so the
+            // pieces come from one run and keep the font's kerning.
+            if (serif_measure.measure_apart(word, 24, lcars::FontStyle{}).stops.size() != word.size() + 1 || word_run.stops.size() >= word.size() + 1) return 97;
             ligature_tested = true;
             break;
         }

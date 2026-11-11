@@ -145,7 +145,7 @@ struct Text::Impl {
         if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing","Microsoft JhengHei");
     }
     ~Impl(){for(auto& slot:fonts)for(auto& font:slot)font.reset();if(library)FT_Done_FreeType(library);}
-    TextLayout shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={});
+    TextLayout shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={},bool ligatures=true);
     struct Look { Font* font=nullptr; unsigned slot=0, synth=0; };
     // The face for a bold/italic request: the real file of that look, else the nearest real file plus the looks it
     // still lacks as synth bits (1 heavier, 2 sheared), else the regular face with both.
@@ -201,9 +201,11 @@ unsigned TextLayout::hit(float x) const {
 TextLayout Text::shape(std::u16string_view text,int size){ return shape(text,size,FontStyle{}); }
 void Text::set_styled_lookup(std::function<FontFile(std::u16string_view,bool,bool)> lookup) { impl_->styled_lookup=std::move(lookup); }
 TextLayout Text::shape(std::u16string_view text,int size,FontStyle style){ return impl_->shape_directed(text,size,HB_DIRECTION_LTR,style); }
+// Optional ligatures (liga, clig) off: every letter of "ffi" stays a cluster of its own; kerning is untouched.
+TextLayout Text::shape_apart(std::u16string_view text,int size,FontStyle style){ return impl_->shape_directed(text,size,HB_DIRECTION_LTR,style,false); }
 // Top-to-bottom shaping applies the font's vertical alternates ('vert') and reports vertical advances: advance is the
 // distance moved down, dx and dy the offset (y up) from the pen at the top center of the cell to the glyph origin.
-TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style){
+TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style,bool ligatures){
     auto& e=*this;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
@@ -238,7 +240,9 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
         hb_buffer_set_language(buffer,hb_language_from_string("zh-TW",-1));
         hb_buffer_add_utf16(buffer,reinterpret_cast<const uint16_t*>(text.data()),static_cast<int>(text.size()),run.begin,run.end-run.begin);
         const auto look=e.resolve(run.font,style.bold,style.italic);
-        auto f=look.font; f->size(size); hb_shape(f->hb,buffer,nullptr,0);
+        auto f=look.font; f->size(size);
+        const hb_feature_t apart[]={{HB_TAG('l','i','g','a'),0,0,static_cast<unsigned>(-1)},{HB_TAG('c','l','i','g'),0,0,static_cast<unsigned>(-1)}};
+        if(ligatures) hb_shape(f->hb,buffer,nullptr,0); else hb_shape(f->hb,buffer,apart,2);
         const float heavier=(look.synth&1)?synthetic_bold_pixels(size):0.f;  // a synthesized bold advances like a bold face would
         unsigned count=0;auto info=hb_buffer_get_glyph_infos(buffer,&count);auto pos=hb_buffer_get_glyph_positions(buffer,&count);
         for(unsigned i=0;i<count;++i){
@@ -475,13 +479,14 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) { return measure(text, pixels, FontStyle{}); }
-TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) {
-    auto layout = text_.shape(text, pixels, style);
+static TextRun run_of(const TextLayout& layout) {
     TextRun run;
     run.stops.assign(layout.carets.begin(), layout.carets.end());
     run.width = layout.width;
     return run;
 }
+TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape(text, pixels, style)); }
+TextRun ShapedMeasure::measure_apart(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape_apart(text, pixels, style)); }
 void Text::label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color){
     auto old=canvas.clip;
     int x=std::max(old.x,rect.x),y=std::max(old.y,rect.y);

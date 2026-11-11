@@ -30,6 +30,10 @@ public:
     virtual TextRun measure(std::u16string_view text, int pixels) = 0;
     // The same for bold and/or italic text. A backend that cannot tell the styles apart keeps the default.
     virtual TextRun measure(std::u16string_view text, int pixels, FontStyle style) { (void)style; return measure(text, pixels); }
+    // The same line shaped for letters that will be drawn apart (per-character justification): optional ligatures
+    // (liga, clig) are off so every character is its own cluster, kerning and the font's spacing stay on. A backend
+    // without ligatures keeps the default.
+    virtual TextRun measure_apart(std::u16string_view text, int pixels, FontStyle style) { return measure(text, pixels, style); }
     virtual int line_height(int pixels) = 0;
 };
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).

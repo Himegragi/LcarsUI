@@ -1,5 +1,6 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
+#include "justify.hpp"
 // #84 justified and distributed alignment through the public core, semantic and layout seams, with a
 // deterministic fake text backend (FakeMeasure at 16 px: an ASCII character is 8 px, any other one 16 px).
 // Expected values are worked out by hand in each case.
@@ -162,8 +163,52 @@ struct LigatureMeasure final : TextMeasure {
         run.stops = std::move(kept);
         return run;
     }
+    // Ligatures off: every character is a cluster again (the fake has no kerning, so the rest is the same run).
+    TextRun measure_apart(std::u16string_view text, int pixels, FontStyle) override { return base.measure(text, pixels); }
     int line_height(int pixels) override { return base.line_height(pixels); }
 };
+
+// A shaper with pair kerning ("AV" is 4 px tighter) and a character that is two code points in one cluster
+// (the Hangul jamo U+1100 U+1161), measured at 16 px: ASCII 8 px, anything else 16 px.
+struct KernMeasure final : TextMeasure {
+    TextRun measure(std::u16string_view text, int pixels) override {
+        TextRun run;
+        run.stops.push_back({0, 0.f});
+        float x = 0;
+        for (unsigned i = 0; i < text.size();) {
+            unsigned next = i + 1;
+            if (text[i] == 0x1100 && i + 1 < text.size() && text[i + 1] == 0x1161) next = i + 2;
+            float advance = text[i] < 0x80 ? pixels * 0.5f : static_cast<float>(pixels);
+            if (text[i] == u'A' && i + 1 < text.size() && text[i + 1] == u'V') advance -= 4;
+            x += advance; i = next;
+            run.stops.push_back({i, x});
+        }
+        run.width = x;
+        return run;
+    }
+    int line_height(int pixels) override { return pixels * 3 / 2; }
+};
+// Code review 2026-11-12 item 10: the per-character method measures the line once (ligatures off, kerning on) and
+// takes the piece positions from that run, cutting at its clusters; it does not measure each letter alone.
+void the_per_character_method_keeps_kerning_and_cuts_at_clusters() {
+    KernMeasure measure;
+    const std::u16string kerned = u"AVA";
+    const auto natural = measure.measure(kerned, 16);  // A 4 (kerned) + V 8 + A 8 = 20
+    auto stretched = detail::justify_line(measure, kerned, 16, natural, 60.f, JustifyMethod::per_character);
+    check(stretched && stretched->segments.size() == 3, "Three pieces");
+    if (stretched && stretched->segments.size() == 3) {
+        const auto& s = stretched->segments;
+        // Two gaps share 60 - 0.02 - 20 = 39.98: 19.99 each.
+        check(near(s[0].width, 4, 0.01f) && near(s[1].width, 8, 0.01f), "The A before a V keeps its kerned advance");
+        check(near(s[1].x, 4 + 19.99f, 0.02f) && near(s[2].x, 4 + 19.99f + 8 + 19.99f, 0.02f), "Kerning sits under the added space");
+        check(near(stretched->run.width, 59.98f, 0.02f), "The line still ends at the target width");
+    }
+    const std::u16string clustered = u"\x1100\x1161字";
+    const auto run = measure.measure(clustered, 16);
+    auto split = detail::justify_line(measure, clustered, 16, run, 100.f, JustifyMethod::per_character);
+    check(split && split->segments.size() == 2, "Two clusters, two pieces");
+    if (split) for (const auto& s : split->segments) check(s.begin != 1 && s.end != 1, "No cut inside the two-code-point cluster");
+}
 
 void the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_not() {
     Ui ui;
@@ -193,8 +238,9 @@ void the_distribute_alignment_stretches_the_last_line_and_a_single_line() {
     }
     {
         Laid laid(ui, spaced);
-        // 姓, a full-width space, 名: like an ASCII space the blank stays with the character before it and the 52 px go after it.
-        check(same_pieces(pieces_of(laid.frame.find(spaced)->lines[0]), {{0, 2, 0}, {2, 3, 84}}), "A full-width space is a blank: it is never drawn as a piece of its own");
+        // Code review item 11: U+3000 is a CJK character like any other (clreq: gaps on both sides of every ideograph and
+        // full-width punctuation). 姓, U+3000 and 名 are 48 px; the 52 px spare goes to the two gaps, 25.99 px each.
+        check(same_pieces(pieces_of(laid.frame.find(spaced)->lines[0]), {{0, 1, 0}, {1, 2, 41.99f}, {2, 3, 83.98f}}), "A full-width space is a piece with a gap on each side");
     }
     {
         Laid laid(ui, plain);
@@ -699,6 +745,7 @@ int main() {
         {"nowhere to stretch stays left; trailing spaces get nothing", a_line_with_nowhere_to_stretch_stays_left_and_trailing_spaces_get_nothing},
         {"the per-character method spreads Latin letters, no ligature", the_per_character_method_spreads_latin_letters_and_never_draws_a_ligature},
         {"per-character cuts inside a ligature cluster, the others do not", the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_not},
+        {"per-character keeps kerning and cuts at clusters", the_per_character_method_keeps_kerning_and_cuts_at_clusters},
         {"distribute stretches the last line and a single line", the_distribute_alignment_stretches_the_last_line_and_a_single_line},
         {"a multi-code-point character is never cut", a_character_made_of_several_code_points_is_never_cut},
         {"a justified multi-line field stretches wrapped lines to the wrap edge", a_justified_multi_line_field_stretches_each_wrapped_line_to_the_wrap_edge},
