@@ -3333,7 +3333,10 @@ Result detail::UiState::key_down(KeyPress key) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
-    if (!key.ctrl && !keyboard_cues_) { keyboard_cues_ = true; focus_cues_changed(); }
+    // A key that uses the keyboard shows the focus indicator. A modifier on its own does not (code review 2026-11-12,
+    // item 2): Ctrl chords, a lone Alt, and the F10 that only closes an open menu all leave the state alone.
+    const bool modifier_only = key.ctrl || key.key == Key::alt || (key.key == Key::f10 && menu_);
+    if (!modifier_only && !keyboard_cues_) { keyboard_cues_ = true; focus_cues_changed(); }
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (menu_) return menu_key_down(key);  // an open context menu owns the keyboard
     if (key.key == Key::escape && !key.repeat) {

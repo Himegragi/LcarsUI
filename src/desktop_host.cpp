@@ -996,6 +996,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
         break;
     case WM_RBUTTONDOWN: {
+        detail::access(ui_).pointer_pressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         if (detail::access(ui_).menu_open() && !frame_.menu_contains(x, y)) {

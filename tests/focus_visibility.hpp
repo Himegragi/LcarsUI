@@ -79,6 +79,26 @@ void every_real_key_opens_but_modifier_chords_do_not() {
     f.state().key_down(save);
     check(f.ui.focus_indicator_visible(), "A Ctrl chord does not hide it either");
 }
+// Code review 2026-11-12 item 2: a modifier on its own changes nothing. Alt closes menus and F10 does too when a menu is open
+// (the host forwards both to the core); neither is a key that uses the keyboard, so neither shows the indicator.
+void a_lone_alt_or_a_menu_closing_f10_does_not_show_the_indicator() {
+    Fixture f; f.first.focus();
+    auto menu_open = [&] { return f.ui.context_menu_open().value.value_or(false); };
+    f.state().key_down({.key = Key::alt});
+    check(!f.ui.focus_indicator_visible() && f.indicator("first") == 0, "A lone Alt does not show it");
+    f.state().key_down({.key = Key::right});
+    check(f.ui.focus_indicator_visible(), "A real key shows it");
+    f.state().key_down({.key = Key::alt});
+    check(f.ui.focus_indicator_visible(), "And a lone Alt does not hide it either");
+    f.state().pointer_pressed();
+    check(!f.ui.focus_indicator_visible(), "A press hides it");
+    check(bool(f.ui.open_context_menu(f.edit)) && menu_open(), "A menu opens on the editable field");
+    check(!f.ui.focus_indicator_visible(), "Opening it through the typed API leaves the indicator hidden");
+    f.state().key_down({.key = Key::f10});
+    check(!menu_open() && !f.ui.focus_indicator_visible(), "F10 closes the menu without showing the indicator");
+    f.state().key_down({.key = Key::f10, .shift = true});
+    check(menu_open() && f.ui.focus_indicator_visible(), "Shift+F10 opens a menu from the keyboard: that is keyboard use");
+}
 void pointer_hides_everywhere_but_wheel_does_not() {
     Fixture f; f.first.focus();
     f.state().key_down({Key::right});
