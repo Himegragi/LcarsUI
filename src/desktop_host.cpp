@@ -506,7 +506,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         canvas.clip = intersect(region.clip, whole);
         if (region.thumb.h) {
             canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
         }
     }
     if (frame.modal) {
@@ -561,7 +561,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         if (item.dropdown_panel) for (const auto& region : frame.regions) {
             if (region.state != &detail::access(ui_).dropdown_scroll(item.id) || !region.thumb.h) continue;
             canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
         }
     }
     canvas.clip = whole;

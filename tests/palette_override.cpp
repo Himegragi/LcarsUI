@@ -63,6 +63,23 @@ void builtin_palettes_pass_the_contrast_rules() {
             check(check_palette_contrast(appearance->palette(variant)).empty(), (name_of(*appearance) + " " + variant.name + " passes").c_str());
 }
 
+// The ticket's proposed values (literals) and the WCAG 1.4.11 floor, independent of check_palette_contrast.
+void builtin_outline_meets_three_to_one_on_every_surface() {
+    struct Expected { const Appearance* appearance; ThemeVariant variant; Color outline; };
+    const Expected expected[] = {
+        {&web_appearance(), ThemeVariant::light(), {118, 128, 145}}, {&web_appearance(), ThemeVariant::dark(), {128, 138, 156}},
+        {&material_appearance(), ThemeVariant::light(), {121, 116, 126}}, {&material_appearance(), ThemeVariant::dark(), {147, 143, 153}},
+    };
+    for (const auto& e : expected) {
+        auto p = e.appearance->palette(e.variant);
+        auto label = name_of(*e.appearance) + " " + e.variant.name;
+        check(p.outline == e.outline, (label + " outline value").c_str());
+        for (auto [name, surface] : {std::pair{"surface", p.surface}, {"background", p.background}, {"panel", p.panel}})
+            check(contrast_ratio(p.outline, surface) >= 3.0, (label + " outline on " + name + " >= 3:1").c_str());
+        check(contrast_ratio(p.border, p.surface) < 3.0, (label + " border stays a light divider").c_str());
+    }
+}
+
 void without_overrides_every_palette_is_the_builtin_value() {
     Ui ui;
     check(ui.palette_overrides().empty(), "no overrides initially");
@@ -89,7 +106,7 @@ void overriding_web_light_accent_changes_only_that_combination() {
 // One driver over every palette role: each override changes exactly its own field.
 void every_palette_role_is_overridable_and_isolated() {
     auto roles = palette_roles();
-    check(roles.size() == 12, "ten core colors, scrim and scrim_alpha are roles");
+    check(roles.size() == 13 && std::find(roles.begin(), roles.end(), "outline") != roles.end(), "eleven core colors (incl. outline), scrim and scrim_alpha are roles");
     check(std::find(roles.begin(), roles.end(), "scrim_alpha") != roles.end() && std::find(roles.begin(), roles.end(), "border") != roles.end(), "known role names present");
     for (const auto* appearance : builtins)
         for (const auto& variant : variants)
@@ -134,6 +151,8 @@ struct ContrastCase { const char* pair; std::vector<std::pair<std::string, Color
 std::vector<ContrastCase> contrast_cases() {
     std::vector<std::pair<std::string, Color>> surfaces{{"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}, {"selection", gray(255)}, {"text", gray(0x76)}};
     auto with = [&](std::string role, Color c) { auto list = surfaces; for (auto& e : list) if (e.first == role) e.second = c; return list; };
+    std::vector<std::pair<std::string, Color>> outlined{{"outline", gray(0x94)}, {"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}};
+    auto with_outline = [&](std::string role, Color c) { auto list = outlined; for (auto& e : list) if (e.first == role) e.second = c; return list; };
     return {
         {"text/background", surfaces, with("background", gray(250))},
         {"text/panel", surfaces, with("panel", gray(250))},
@@ -143,6 +162,10 @@ std::vector<ContrastCase> contrast_cases() {
         {"error/surface", {{"error", gray(0x76)}}, {{"error", gray(0x77)}}},
         {"on_accent/accent", {{"accent", gray(0x76)}, {"on_accent", gray(255)}}, {{"accent", gray(0x77)}, {"on_accent", gray(255)}}},
         {"accent/surface", {{"accent", gray(0x94)}, {"on_accent", gray(0)}}, {{"accent", gray(0x95)}, {"on_accent", gray(0)}}},
+        // outline: 3:1 (#949494 on white is 3.03:1) on each of surface, background and panel; the surfaces are lightened to white so only the one varied surface decides.
+        {"outline/surface", outlined, with_outline("surface", gray(250))},
+        {"outline/background", outlined, with_outline("background", gray(250))},
+        {"outline/panel", outlined, with_outline("panel", gray(250))},
     };
 }
 std::vector<PaletteOverride> web_light(const std::vector<std::pair<std::string, Color>>& list) {
@@ -284,12 +307,12 @@ void a_multiline_field_paints_with_the_overridden_palette() {
     };
     auto [before, view] = paint();
     check(view.thumb.h > 0, "the content overflows, so the field draws its own scrollbar");
-    check(before->rect_has(view.track, web.palette().panel) && before->rect_has(view.thumb, web.palette().border), "without overrides the scrollbar uses the built-in panel and border colors");
+    check(before->rect_has(view.track, web.palette().panel) && before->rect_has(view.thumb, web.palette().outline), "without overrides the scrollbar uses the built-in panel and outline colors (#86)");
     check(before->colored(web.palette().accent), "without overrides the focused field draws the built-in accent");
-    check(bool(ui.set_palette_overrides({entry(web, ThemeVariant::light(), "panel", track), entry(web, ThemeVariant::light(), "border", thumb), entry(web, ThemeVariant::light(), "accent", green)})), "overrides accepted");
+    check(bool(ui.set_palette_overrides({entry(web, ThemeVariant::light(), "panel", track), entry(web, ThemeVariant::light(), "outline", thumb), entry(web, ThemeVariant::light(), "accent", green)})), "overrides accepted");
     auto [after, overridden] = paint();
     check(after->rect_has(overridden.track, track) && !after->rect_has(overridden.track, web.palette().panel), "the scrollbar track follows the panel override");
-    check(after->rect_has(overridden.thumb, thumb) && !after->rect_has(overridden.thumb, web.palette().border), "the scrollbar thumb follows the border override");
+    check(after->rect_has(overridden.thumb, thumb) && !after->rect_has(overridden.thumb, web.palette().outline), "the scrollbar thumb follows the outline override");
     check(after->colored(green) && !after->colored(web.palette().accent), "the focused field's accent (caret and edge) follows the accent override");
 }
 
@@ -318,6 +341,7 @@ int main() {
     static const test::Case cases[] = {
         {"contrast_ratio_matches_wcag_reference_values", contrast_ratio_matches_wcag_reference_values},
         {"builtin_palettes_pass_the_contrast_rules", builtin_palettes_pass_the_contrast_rules},
+        {"builtin_outline_meets_three_to_one_on_every_surface", builtin_outline_meets_three_to_one_on_every_surface},
         {"without_overrides_every_palette_is_the_builtin_value", without_overrides_every_palette_is_the_builtin_value},
         {"overriding_web_light_accent_changes_only_that_combination", overriding_web_light_accent_changes_only_that_combination},
         {"every_palette_role_is_overridable_and_isolated", every_palette_role_is_overridable_and_isolated},
