@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "utf.hpp"
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
@@ -680,6 +681,22 @@ class TextRange final : public ITextRangeProvider {
                 out->vt = VT_BOOL;
                 out->boolVal = n.read_only ? VARIANT_TRUE : VARIANT_FALSE;
                 return S_OK;
+            }
+            if (id == UIA_HorizontalTextAlignmentAttributeId) {  // #80: the field's own alignment, one value for the whole range
+                out->vt = VT_I4;
+                out->lVal = n.text_align == TextAlign::center ? HorizontalTextAlignment_Centered
+                          : n.text_align == TextAlign::right ? HorizontalTextAlignment_Right : HorizontalTextAlignment_Left;
+                return S_OK;
+            }
+            if (id == UIA_LineSpacingAttributeId) {  // #80: a VT_BSTR; the multiple of the font's line height, e.g. "1.4" ("1" is single spacing)
+                char digits[32];
+                std::snprintf(digits, sizeof digits, "%.2f", n.line_spacing);
+                std::string text = digits;
+                while (text.back() == '0') text.pop_back();
+                if (text.back() == '.') text.pop_back();
+                out->vt = VT_BSTR;
+                out->bstrVal = SysAllocString(std::wstring(text.begin(), text.end()).c_str());
+                return out->bstrVal ? S_OK : E_OUTOFMEMORY;
             }
             out->vt = VT_UNKNOWN;
             return UiaGetReservedNotSupportedValue(&out->punkVal);

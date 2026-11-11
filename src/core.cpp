@@ -3173,6 +3173,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
+    n.text_align = s.text_align; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -3207,6 +3208,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
+            for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, n.role == Role::label || n.role == Role::text);
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3305,6 +3307,8 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.text_align != old->text_align, "text_align"); property(node.line_spacing != old->line_spacing, "line_spacing");
+        property(node.paragraph_spacing != old->paragraph_spacing, "paragraph_spacing");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
@@ -3363,6 +3367,16 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
+        // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
+        if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
+        if (verb == Verb::set_text_align) {
+            if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
+        } else if (verb == Verb::set_line_spacing) {
+            if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
+        } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
+        return invalid_argument();
+    }
     if (node->role == Role::text && verb == Verb::scroll) {
         if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
         if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
