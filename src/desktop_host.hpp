@@ -152,6 +152,9 @@ private:
     int drag_origin_ = 0, drag_offset_ = 0;
     ScrollState* drag_scroll_ = nullptr;
     char16_t pending_high_ = 0;
+    bool swallow_left_ = false, swallow_right_ = false;  // a press that only closed a menu: its release is dropped too
+    bool menu_sys_swallow_ = false, drop_space_char_ = false;
+    void open_pointer_menu(int x, int y);
     std::vector<std::wstring> ime_log_, trace_;
     bool tracing_ = false;
     bool observe_paint_ = false;

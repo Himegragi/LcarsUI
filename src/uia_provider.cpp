@@ -125,6 +125,9 @@ int control_type(Role r) {
     case Role::progress: return UIA_ProgressBarControlTypeId;
     case Role::dialog: return UIA_WindowControlTypeId;
     case Role::tooltip: return UIA_ToolTipControlTypeId;
+    case Role::menu: return UIA_MenuControlTypeId;
+    case Role::menu_item: return UIA_MenuItemControlTypeId;
+    case Role::menu_separator: return UIA_SeparatorControlTypeId;
     }
     return UIA_CustomControlTypeId;
 }
@@ -170,7 +173,7 @@ public:
         if (!out) return E_POINTER; *out = nullptr;
         auto result = std::make_shared<IUnknown*>(nullptr); AddRef();
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
-            auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && n->role == Role::button) *result = static_cast<IInvokeProvider*>(this);
+            auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && (n->role == Role::button || n->role == Role::menu_item)) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
             if (id == UIA_WindowPatternId && n->role == Role::dialog) *result = static_cast<IWindowProvider*>(this);
             if (id == UIA_RangeValuePatternId && (n->role == Role::slider || n->role == Role::progress)) *result = static_cast<IRangeValueProvider*>(this);
@@ -190,6 +193,7 @@ public:
             if (id == UIA_AutomationIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr_id(ref.item ? ref.item->id : ref.id); }
             else if (id == UIA_NamePropertyId || id == UIA_HelpTextPropertyId || id == UIA_FrameworkIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(id == UIA_NamePropertyId ? n->name : id == UIA_HelpTextPropertyId ? n->description : u"LcarsUI"); }
             else if (id == UIA_AcceleratorKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->accelerator_key); }
+            else if (id == UIA_AccessKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->access_key); }
             else if (id == UIA_ControlTypePropertyId) { v.vt=VT_I4; v.lVal=control_type(n->role); }
             else if (id == UIA_IsEnabledPropertyId || id == UIA_IsKeyboardFocusablePropertyId || id == UIA_HasKeyboardFocusPropertyId || id == UIA_IsOffscreenPropertyId || id == UIA_IsDataValidForFormPropertyId || id == UIA_IsControlElementPropertyId || id == UIA_IsContentElementPropertyId) {
                 v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? n->enabled : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
@@ -217,6 +221,7 @@ public:
         if (!out) return E_POINTER; *out=nullptr; auto result=std::make_shared<Provider*>(nullptr); AddRef();
         auto hr=ctx->call([this,direction,result] { auto h=check(); if (FAILED(h)) return h;
             NodeRef parent; if (ref.item) parent.id=ref.id;
+            else if (auto menu_owner = menu_target_id(ref.id)) parent.id=*menu_owner;  // a menu hangs under its component
             else if (!root()) {
                 auto roots = ctx->ui->semantics().children({});
                 if (roots) for (const auto& candidate : *roots) {
@@ -1046,6 +1051,14 @@ void UiaBridge::Impl::observe() {
                 : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
             auto p = ctx->provider(event.ref); p->AddRef();
             ctx->overlay_events->post([p, id] { UiaRaiseAutomationEvent(p, id); p->Release(); });
+        }
+        if (event.kind == SemanticEventKind::menu_opened || event.kind == SemanticEventKind::menu_closed) {
+            // The closed menu no longer exists as a node, so its closing is raised on the component it hung from.
+            const bool opened = event.kind == SemanticEventKind::menu_opened;
+            NodeRef source = event.ref;
+            if (!opened) { auto owner = menu_target_id(event.ref.id); if (!owner) return; source = NodeRef{*owner}; }
+            auto p = ctx->provider(source); p->AddRef();
+            ctx->overlay_events->post([p, opened] { UiaRaiseAutomationEvent(p, opened ? UIA_MenuOpenedEventId : UIA_MenuClosedEventId); p->Release(); });
         }
         if (event.kind == SemanticEventKind::layout_changed) {
             auto p = ctx->provider({}); p->AddRef();

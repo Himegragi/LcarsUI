@@ -1,4 +1,5 @@
 ﻿#include "desktop_host.hpp"
+#include "core_internal.hpp"
 #include "settings_demo.hpp"
 #include "lcars/semantics.hpp"
 #include <windows.h>
@@ -31,6 +32,18 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         auto& search = active->items_search;
         return static_cast<LRESULT>(search.set_text_align(w ? lcars::TextAlign::center : lcars::TextAlign::left).status) |
                static_cast<LRESULT>(search.set_line_spacing(w ? 1.5 : 1.0).status);
+    }
+    if (message == WM_APP + 86) {
+        // Context menu driver (#85). 0: open the Items list menu on row T003; 1: close; 2: open the search field's menu;
+        // 3: press Down; the result is the Status as an integer (0 is ok).
+        auto& tree = active->ui.semantics();
+        switch (w) {
+        case 0: return static_cast<LRESULT>(tree.perform({"items.list", lcars::OptionValue{"T003"}}, lcars::Verb::context_menu).status);
+        case 1: return static_cast<LRESULT>(active->ui.close_context_menu().status);
+        case 2: return static_cast<LRESULT>(tree.perform({"items.search"}, lcars::Verb::context_menu).status);
+        case 3: return static_cast<LRESULT>(lcars::detail::access(active->ui).key_down({.key = lcars::Key::down}).status);
+        default: return 99;
+        }
     }
     if (message == WM_APP + 82) return static_cast<LRESULT>(active->items_search.select(0, 2).status);
     if (message == WM_APP + 81) return static_cast<LRESULT>(active->items_search.set_value(w ? u"sample" : u"").status);

@@ -99,7 +99,8 @@ struct Semantics {
     std::vector<Operation> operations;
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
-enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del, page_up, page_down };
+// menu is the application/menu key (VK_APPS); Shift+F10 arrives as f10 with shift; alt is a lone Alt press.
+enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del, page_up, page_down, menu, f10, alt };
 struct KeyPress {
     Key key = Key::other;
     bool shift = false, ctrl = false, repeat = false;
@@ -497,6 +498,61 @@ using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, 
 using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange>;
 struct MixedFieldError { ConfirmField field; std::u16string message; };
 struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
+// ---- Context menu. A short list of commands opened beside a component.
+struct MenuContext;
+// A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
+// shortcut hint (display only; it registers no shortcut) and the code to run when chosen.
+// Ids beginning with "lcars." are reserved for the framework's built-in items.
+struct MenuItem {
+    std::string id;
+    std::u16string label;
+    bool enabled = true;
+    char16_t access_key = 0;
+    std::u16string shortcut_hint;
+    std::function<Result(const MenuContext&)> action;
+    bool separator = false;
+    static MenuItem divider() { MenuItem item; item.separator = true; return item; }
+};
+// What the application's code learns about the opening: the component, and for a list the row.
+struct MenuContext { ComponentHandle target; std::optional<OptionValue> item; };
+// How an attached menu relates to a component's built-in items (only text fields have any).
+enum class MenuMode { append, replace, off };
+struct MenuPosition { int x = 0, y = 0; };  // window client pixels, as in Frame
+struct MenuItemInfo {
+    std::string id;
+    std::u16string label;
+    bool enabled = true, separator = false, highlighted = false;
+    char16_t access_key = 0;
+    std::u16string shortcut_hint;
+};
+struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
+// Built-in text field items, by id. Rich text (#81) adds lcars.bold, lcars.italic, lcars.underline.
+inline constexpr const char* menu_undo = "lcars.undo";
+inline constexpr const char* menu_redo = "lcars.redo";
+inline constexpr const char* menu_cut = "lcars.cut";
+inline constexpr const char* menu_copy = "lcars.copy";
+inline constexpr const char* menu_paste = "lcars.paste";
+inline constexpr const char* menu_delete = "lcars.delete";
+inline constexpr const char* menu_select_all = "lcars.select_all";
+// The application's items attached to one component. Built-in items are not part of it.
+class ContextMenuHandle {
+public:
+    ContextMenuHandle() = default;
+    Result set_mode(MenuMode mode) const;
+    Result set_items(std::vector<MenuItem> items) const;
+    Result add_item(MenuItem item, std::string before = {}) const;  // before: id of the item to precede; empty appends
+    Result remove_item(std::string id) const;
+    Result update_item(MenuItem item) const;  // replaces the item with the same id
+    Result enable_item(std::string id, bool enabled) const;
+    Query<std::vector<MenuItemInfo>> items() const;
+private:
+    friend class detail::UiState;
+    ContextMenuHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
@@ -525,6 +581,18 @@ public:
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    // Attach the application's menu to any component. Text fields have built-in items; with
+    // MenuMode::append (the default) the application's items follow them after a separator.
+    // Other components have no menu until one is attached. A component carries one attachment.
+    Query<ContextMenuHandle> add_context_menu(ComponentHandle target, std::vector<MenuItem> items = {}, MenuMode mode = MenuMode::append);
+    // Open the one window-wide menu for a component: at `at`, or at the keyboard position (a text
+    // field's caret, a list's current row, otherwise the component). For a list `item` names the
+    // row: it is selected first and handed to the application's code.
+    Result open_context_menu(ComponentHandle target, std::optional<MenuPosition> at = {}, std::optional<OptionValue> item = {});
+    Result close_context_menu();
+    Query<bool> context_menu_open() const;
+    Query<MenuInfo> context_menu() const;  // hidden while no menu is open
+    Result invoke_menu_item(std::string id);
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;

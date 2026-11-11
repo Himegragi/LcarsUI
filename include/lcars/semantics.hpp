@@ -4,11 +4,20 @@
 
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
-enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
+enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
 // set_text_align takes a TextAlign, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double>;
-enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
+// context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
+// MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu };
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition>;
+enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
+// An open menu is a child node of its component with this id; its items are {menu id, item id}.
+inline std::string menu_node_id(std::string_view target) { return std::string(target) + "/menu"; }
+inline std::optional<std::string> menu_target_id(std::string_view node) {
+    constexpr std::string_view suffix = "/menu";
+    if (node.size() <= suffix.size() || node.substr(node.size() - suffix.size()) != suffix) return std::nullopt;
+    return std::string(node.substr(0, node.size() - suffix.size()));
+}
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
     // Overlay visibility is captured at the transition, not at delivery time.
@@ -31,7 +40,7 @@ struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; 
 struct SemanticNode {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
-    std::u16string name, value, description, error, accelerator_key;
+    std::u16string name, value, description, error, accelerator_key, access_key;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
     bool hidden = false, visible = false, blocked_by_modal = false;
     bool selection_required = false;

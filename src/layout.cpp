@@ -189,9 +189,23 @@ std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y)
     for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return item.option_start + i;
     return std::nullopt;
 }
+const Placement* Frame::menu_panel() const {
+    auto it = std::find_if(overlays.begin(), overlays.end(), [](const Placement& p) { return p.menu; });
+    return it == overlays.end() ? nullptr : &*it;
+}
+bool Frame::menu_contains(int x, int y) const {
+    const auto* panel = menu_panel();
+    return panel && panel->bounds.contains(x, y);
+}
+std::optional<std::string> Frame::menu_item_at(int x, int y) const {
+    const auto* panel = menu_panel();
+    if (!panel || !panel->menu_inner.contains(x, y)) return std::nullopt;
+    for (const auto& row : panel->menu_rows) if (row.bounds.contains(x, y)) return row.id;
+    return std::nullopt;
+}
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
-        if (!it->tooltip && detail::component_type(it->kind).hit(*it, x, y)) return &*it;
+        if (!it->tooltip && !it->menu && detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     if (modal) return nullptr;
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
@@ -263,6 +277,16 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
 bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
+    // An open context menu owns the wheel: it scrolls itself and never the page behind it.
+    if (const auto* menu = menu_panel()) {
+        auto* state = owner.menu_scroll();
+        if (!state || !menu->bounds.contains(x, y)) return false;
+        int next = std::clamp(state->offset - delta, 0, menu->menu_maximum);
+        if (next == state->offset) return false;
+        state->offset = next;
+        owner.popup_scrolled();
+        return true;
+    }
     // A popup owns its own wheel input; it must not scroll the background beneath it.
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
         if (!it->dropdown_panel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
@@ -592,6 +616,104 @@ struct Arranger {
         return r.h;
     }
 };
+// Where a keyboard-opened menu hangs: a text field's caret line, a list's current row, else the component.
+Rect keyboard_anchor(detail::UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) {
+    if (target.kind == Kind::text) {
+        const auto* session = state.edit(target.id);
+        if (session) {  // the caret's own line, also in a multi-line field
+            const auto caret = target.caret_rect(session->visible_caret());
+            return {caret.x, caret.y, 0, caret.h};
+        }
+        return {target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
+    }
+    if (target.kind == Kind::list && item) {
+        auto semantic = state.describe(target.id);
+        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
+            if (semantic->options[i].value == *item) {
+                const auto& row = target.options[i];
+                return {row.x + row_inset, row.y, 0, row.h};
+            }
+    }
+    auto visible = intersect(target.bounds, target.clip);
+    if (visible.w <= 0 || visible.h <= 0) visible = target.bounds;
+    return {visible.x, visible.y, 0, visible.h};
+}
+// The open context menu is one overlay above everything: placed beside its anchor, flipped left and
+// up when the window edge is in the way, scrollable when even then it does not fit.
+void place_menu(Frame& frame, detail::UiState& state, const Appearance& appearance, TextMeasure& measure,
+                int width, int height, float scale) {
+    auto view = state.menu_view();
+    if (!view) return;
+    const auto look = appearance.component_presentation(state.presentation().density);
+    auto d = [&](int value) { return std::max(1, static_cast<int>(std::lround(value * scale))); };
+    const Placement* target = detail::find_placement(frame, view->target);
+    const int pixels = target && target->text_size ? target->text_size : static_cast<int>(std::lround(state.presentation().text_size * scale));
+    const int line = measure.line_height(pixels);
+    const int row_height = std::max(d(24), line + d(look.gap)), separator_height = d(look.gap);
+    const int pad_x = d(look.gap) + d(look.gap_small), pad_y = d(look.gap_small), border = d(look.thin), hint_gap = d(24);
+    int label_width = 0, hint_width = 0, rows_height = 0;
+    for (const auto& entry : view->entries) {
+        rows_height += entry.separator ? separator_height : row_height;
+        if (entry.separator) continue;
+        label_width = std::max(label_width, static_cast<int>(std::ceil(measure.measure(entry.label, pixels).width)));
+        if (!entry.hint.empty()) hint_width = std::max(hint_width, static_cast<int>(std::ceil(measure.measure(entry.hint, pixels).width)));
+    }
+    const int extent = rows_height + 2 * pad_y;
+    const int full_height = extent + 2 * border;
+    const int w = std::min(width, std::max(d(96), label_width + (hint_width ? hint_gap + hint_width : 0) + 2 * pad_x + 2 * border));
+    Rect anchor{0, 0, 0, 0};
+    if (view->at) anchor = {view->at->x, view->at->y, 0, 0};
+    else if (target) anchor = keyboard_anchor(state, *target, view->anchor_item, d(look.gap));
+    int x = anchor.x;
+    if (x + w > width) x = anchor.x - w;
+    x = std::clamp(x, 0, std::max(0, width - w));
+    const int below = anchor.y + anchor.h, space_below = height - below, space_above = anchor.y;
+    int h = std::min(full_height, height), y;
+    if (full_height <= space_below) y = below;
+    else if (full_height <= space_above) y = anchor.y - full_height;
+    else if (space_below >= h) y = below;
+    else if (space_above >= h) y = anchor.y - h;
+    else y = std::clamp(below, 0, std::max(0, height - h));
+    Placement popup;
+    popup.id = menu_node_id(view->target); popup.kind = target ? target->kind : Kind::label;
+    popup.menu = popup.popup = true;
+    popup.text_size = pixels; popup.menu_pad = pad_x;
+    popup.bounds = {x, y, w, h}; popup.clip = {0, 0, width, height}; popup.clipped = true;
+    const Rect inner{x + border, y + border, std::max(0, w - 2 * border), std::max(0, h - 2 * border)};
+    popup.menu_inner = inner;
+    const int maximum = std::max(0, extent - inner.h);
+    popup.menu_maximum = maximum;
+    auto* scroll = state.menu_scroll();
+    int offset = scroll ? std::clamp(scroll->offset, 0, maximum) : 0;
+    if (scroll && state.menu_reveal()) {
+        int top = 0;
+        for (const auto& entry : view->entries) {
+            const int rh = entry.separator ? separator_height : row_height;
+            if (!entry.separator && entry.id == view->highlighted) {
+                if (top < offset) offset = top;
+                else if (top + rh + 2 * pad_y > offset + inner.h) offset = top + rh + 2 * pad_y - inner.h;
+                break;
+            }
+            top += rh;
+        }
+        offset = std::clamp(offset, 0, maximum);
+    }
+    if (scroll) scroll->offset = offset;
+    const int bar = maximum ? d(6) : 0;
+    int row_y = inner.y + pad_y - offset;
+    for (const auto& entry : view->entries) {
+        const int rh = entry.separator ? separator_height : row_height;
+        popup.menu_rows.push_back({entry.id, {inner.x, row_y, std::max(0, inner.w - bar), rh}, entry.label, entry.hint,
+                                   entry.separator, entry.enabled, !entry.separator && entry.id == view->highlighted});
+        row_y += rh;
+    }
+    if (maximum) {
+        popup.menu_track = {inner.x + inner.w - bar, inner.y, bar, inner.h};
+        const int thumb = std::min(inner.h, std::max(d(24), inner.h * inner.h / std::max(1, extent)));
+        popup.menu_thumb = {popup.menu_track.x, inner.y + (inner.h - thumb) * offset / maximum, bar, thumb};
+    }
+    frame.overlays.push_back(std::move(popup));
+}
 }
 
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
@@ -690,6 +812,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
                                     std::max(0, w - 2 * pad), line_height}, std::move(lines[i])});
         a.frame.overlays.push_back(std::move(popup));
     }
+    place_menu(a.frame, detail::access(ui), appearance, measure, width, height, scale);
     std::map<Id, bool, std::less<>> visibility;
     auto visible = [](Rect bounds, Rect clip) { auto area = intersect(bounds, clip); return area.w > 0 && area.h > 0; };
     auto record = [&](const Placement& p) {
@@ -706,7 +829,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         }
     };
     for (const auto& item : a.frame.items) record(item);
-    for (const auto& item : a.frame.overlays) if (!item.tooltip) record(item);
+    for (const auto& item : a.frame.overlays) if (!item.tooltip && !item.menu) record(item);
     a.ui.frame_visibility(std::move(visibility));
     a.ui.semantic_frame(a.frame);
     return std::move(a.frame);
