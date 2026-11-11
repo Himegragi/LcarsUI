@@ -17,6 +17,10 @@
 
 namespace lcars::detail {
 namespace {
+bool system_keyboard_cues() {
+    BOOL on = FALSE;
+    return SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &on, 0) && on;
+}
 const wchar_t* window_class = L"LcarsUI.DesktopHost";
 constexpr UINT_PTR tooltip_timer = 1;
 constexpr UINT_PTR drag_scroll_timer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
@@ -155,6 +159,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).bind_appearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
         detail::access(ui_).on_relayout([this] { relayout(); });
@@ -768,7 +773,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
+    case WM_SETTINGCHANGE:
+        // "Always underline access keys and show keyboard focus": takes effect without a restart.
+        if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
+        break;
     case WM_LBUTTONDOWN: {
+        detail::access(ui_).pointer_pressed();  // any press in the client area hides the indicator
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
