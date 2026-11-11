@@ -5,8 +5,8 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue>;
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, set_writing_mode, set_vertical_digits };
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, WritingMode>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
@@ -35,6 +35,8 @@ struct SemanticNode {
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;
+    std::optional<WritingMode> writing_mode;  // labels only
+    std::optional<int> vertical_digits;       // labels only
     std::vector<NodeRef> labelled_by, described_by;
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;

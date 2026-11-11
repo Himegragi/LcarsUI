@@ -34,6 +34,11 @@ template<class T> struct Query {
 // Public text field limit in UTF-16 units. A field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
+// Writing direction of a label (display only). Vertical runs top to bottom with columns from right to
+// left, laid out by the Taiwan Ministry of Education rules. Only labels support it.
+enum class WritingMode { horizontal, vertical };
+// Longest run of half-width digits that vertical text sets side by side in one cell (0 turns it off).
+inline constexpr int max_vertical_digits = 3;
 struct Control {
     std::string id;
     Kind kind;
@@ -46,6 +51,8 @@ struct Control {
     std::string target = {};         // labels: the control this text names, describes or reports errors for
     TextRole role = TextRole::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
+    int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo };
@@ -70,6 +77,8 @@ struct Semantics {
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
     std::vector<Operation> operations;
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only
+    int vertical_digits = max_vertical_digits;           // labels only
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
 enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del };
@@ -205,6 +214,11 @@ class LabelHandle {
 public:
     LabelHandle() = default;
     Result connect_source(std::function<std::u16string()> read) const;
+    // Vertical writing: the text is re-arranged at once. The digit limit is 0-3 (invalid_value otherwise).
+    Result set_writing_mode(WritingMode mode) const;
+    Query<WritingMode> writing_mode() const;
+    Result set_vertical_digits(int digits) const;
+    Query<int> vertical_digits() const;
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;

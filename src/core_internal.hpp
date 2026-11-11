@@ -194,6 +194,9 @@ public:
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
     void set_read_only(std::string_view id, bool read_only);
     void check(std::string_view id, bool checked);
+    // Label owner configuration (vertical writing). A change asks the host for a new frame.
+    static Result writing_support(const Control& control);
+    void set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }

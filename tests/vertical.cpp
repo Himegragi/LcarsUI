@@ -1,6 +1,7 @@
 #include "vertical.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
+#include "lcars/semantics.hpp"
 // Vertical writing for labels (#82), core seam: classification, flow, properties, layout, scrolling.
 using namespace lcars;
 using test::check;
@@ -97,6 +98,64 @@ void a_digit_group_takes_one_cell() {
     check(columns.size() == 1 && columns[0].pieces.size() == 3 && columns[0].pieces[1].form == VerticalForm::combined &&
           columns[0].pieces[1].advance == 16 && columns[0].pieces[2].y == 32, "Combined digits advance one em, not their width");
 }
+
+// ---- properties: construction, typed handle, semantic layer ----
+LabelHandle vertical_label(Ui& ui, std::string id = "vertical", std::u16string text = u"設定", WritingMode mode = WritingMode::vertical) {
+    return ui.add_label({.id = id, .kind = Kind::label, .value = text, .writing_mode = mode}).value.value();
+}
+void a_label_is_horizontal_unless_told_otherwise() {
+    Ui ui;
+    auto plain = ui.add_label({.id = "plain", .kind = Kind::label, .value = u"abc"}).value.value();
+    check(*plain.writing_mode() == WritingMode::horizontal && *plain.vertical_digits() == 3, "Defaults keep the current behavior: horizontal, 3 digits");
+    auto vertical = vertical_label(ui);
+    check(*vertical.writing_mode() == WritingMode::vertical, "A label can be created vertical");
+}
+void creation_rejects_a_bad_digit_limit_and_other_components() {
+    Ui ui;
+    check(ui.add_label({.id = "four", .kind = Kind::label, .vertical_digits = 4}).status == Status::invalid_value, "A limit of 4 is invalid");
+    check(ui.add_label({.id = "negative", .kind = Kind::label, .vertical_digits = -1}).status == Status::invalid_value, "A negative limit is invalid");
+    check(bool(ui.add_label({.id = "zero", .kind = Kind::label, .vertical_digits = 0})), "A limit of 0 turns combining off");
+    check(ui.add_text({.id = "field", .kind = Kind::text, .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Text fields do not support vertical writing");
+    check(ui.add_button({.id = "button", .kind = Kind::button, .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Only labels support vertical writing");
+    check(bool(ui.add_label({.id = "four", .kind = Kind::label})), "A rejected label does not reserve its identifier");
+}
+void the_typed_handle_reads_and_writes_both_properties() {
+    Ui ui;
+    auto label = vertical_label(ui, "label", u"123", WritingMode::horizontal);
+    check(bool(label.set_writing_mode(WritingMode::vertical)) && *label.writing_mode() == WritingMode::vertical, "Writing mode changes at run time");
+    check(bool(label.set_vertical_digits(2)) && *label.vertical_digits() == 2, "The digit limit changes at run time");
+    check(label.set_vertical_digits(4).status == Status::invalid_value && *label.vertical_digits() == 2, "A limit of 4 is rejected and leaves the value");
+    check(label.set_vertical_digits(-1).status == Status::invalid_value, "A negative limit is rejected");
+    check(bool(label.set_vertical_digits(0)) && *label.vertical_digits() == 0, "0 is accepted");
+    LabelHandle expired;
+    { Ui other; expired = other.add_label({.id = "gone", .kind = Kind::label}).value.value(); }
+    check(expired.set_writing_mode(WritingMode::vertical).status == Status::not_found && expired.writing_mode().status == Status::not_found, "An expired handle reports not_found");
+}
+void the_semantic_layer_matches_the_typed_handle() {
+    Ui ui;
+    auto label = vertical_label(ui, "label", u"123", WritingMode::horizontal);
+    auto& tree = ui.semantics();
+    auto node = tree.get({"label"});
+    check(node && node->writing_mode == WritingMode::horizontal && node->vertical_digits == 3, "The node reports both properties");
+    check(std::find(node->verbs.begin(), node->verbs.end(), Verb::set_writing_mode) != node->verbs.end() &&
+          std::find(node->verbs.begin(), node->verbs.end(), Verb::set_vertical_digits) != node->verbs.end(), "Both verbs are offered on a label");
+    check(bool(tree.perform({"label"}, Verb::set_writing_mode, WritingMode::vertical)) && *label.writing_mode() == WritingMode::vertical, "The semantic verb writes what the handle reads");
+    check(bool(label.set_vertical_digits(2)) && tree.get({"label"})->vertical_digits == 2, "The handle writes what the node reads");
+    check(tree.perform({"label"}, Verb::set_vertical_digits, 4).status == label.set_vertical_digits(4).status, "Both entries give the same Status for a bad limit");
+    check(tree.perform({"label"}, Verb::set_vertical_digits, std::u16string(u"x")).status == Status::invalid_value, "A wrong argument type is invalid_value");
+    check(tree.perform({"label"}, Verb::set_vertical_digits, 0) && tree.get({"label"})->vertical_digits == 0, "0 through the semantic layer");
+    auto field = ui.add_text({.id = "field", .kind = Kind::text}).value.value();
+    check(!tree.get({"field"})->writing_mode && tree.perform({"field"}, Verb::set_writing_mode, WritingMode::vertical).status == Status::not_supported, "Other components have neither property");
+}
+void a_property_change_is_announced() {
+    Ui ui;
+    auto label = vertical_label(ui, "label", u"設定", WritingMode::horizontal);
+    std::vector<std::string> changed;
+    auto subscription = ui.semantics().subscribe([&](const SemanticEvent& e) { if (e.kind == SemanticEventKind::property_changed) changed.push_back(e.property); });
+    label.set_writing_mode(WritingMode::vertical);
+    ui.semantics().dispatch_events();
+    check(std::find(changed.begin(), changed.end(), "writing_mode") != changed.end(), "Changing the writing mode raises property_changed");
+}
 }
 
 int main() {
@@ -110,6 +169,11 @@ int main() {
         {"a_zero_height_never_wraps", a_zero_height_never_wraps},
         {"latin_words_move_whole_and_long_words_are_cut", latin_words_move_whole_and_long_words_are_cut},
         {"a_digit_group_takes_one_cell", a_digit_group_takes_one_cell},
+        {"a_label_is_horizontal_unless_told_otherwise", a_label_is_horizontal_unless_told_otherwise},
+        {"creation_rejects_a_bad_digit_limit_and_other_components", creation_rejects_a_bad_digit_limit_and_other_components},
+        {"the_typed_handle_reads_and_writes_both_properties", the_typed_handle_reads_and_writes_both_properties},
+        {"the_semantic_layer_matches_the_typed_handle", the_semantic_layer_matches_the_typed_handle},
+        {"a_property_change_is_announced", a_property_change_is_announced},
     };
     return test::run("vertical", cases);
 }

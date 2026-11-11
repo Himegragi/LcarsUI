@@ -1427,6 +1427,50 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     ui_->bind_text(id_, std::move(read));
     return {};
 }
+Result detail::UiState::writing_support(const Control& control) {
+    if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
+        return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
+    if (control.kind != Kind::label && control.writing_mode == WritingMode::vertical)
+        return {Status::invalid_value, u"Only labels support vertical writing"};
+    return {};
+}
+Result LabelHandle::set_writing_mode(WritingMode mode) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (mode != WritingMode::horizontal && mode != WritingMode::vertical) return {Status::invalid_value, u"Unknown writing mode"};
+    ui_->set_label_writing(id_, mode, std::nullopt);
+    return {};
+}
+Query<WritingMode> LabelHandle::writing_mode() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->find(id_)->writing_mode};
+}
+Result LabelHandle::set_vertical_digits(int digits) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (digits < 0 || digits > max_vertical_digits) return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
+    ui_->set_label_writing(id_, std::nullopt, digits);
+    return {};
+}
+Query<int> LabelHandle::vertical_digits() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->find(id_)->vertical_digits};
+}
+void detail::UiState::set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits) {
+    OperationScope operation(this);
+    auto* control = const_cast<Control*>(find(id));
+    if (!control) return;
+    bool changed = (mode && *mode != control->writing_mode) || (digits && *digits != control->vertical_digits);
+    if (mode) control->writing_mode = *mode;
+    if (digits) control->vertical_digits = *digits;
+    if (changed && invalidate_) invalidate_();
+}
 Result ButtonHandle::focus() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -1842,6 +1886,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
+    s.writing_mode = control->writing_mode; s.vertical_digits = control->vertical_digits;
     if (auto it = bools_.find(id); it != bools_.end()) {
         s.checked = it->second.value;
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
@@ -2596,36 +2641,42 @@ const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnos
 Query<TextHandle> Ui::add_text(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ButtonHandle> Ui::add_button(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<LabelHandle> Ui::add_label(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<CheckboxHandle> Ui::add_checkbox(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
     try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
@@ -2633,30 +2684,35 @@ Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
 Query<ProgressHandle> Ui::add_progress(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<NavigationListHandle> Ui::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
@@ -2830,6 +2886,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
+    if (c->kind == Kind::label) { n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; }
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
@@ -2851,6 +2908,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.visible = n.bounds.has_value();
     }
     auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
+    // Owner configuration of a label: offered whenever the label exists, like the typed handle.
+    if (!ref.item && c->kind == Kind::label) { n.verbs.push_back(Verb::set_writing_mode); n.verbs.push_back(Verb::set_vertical_digits); }
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
         auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
         if (ref.item) {
@@ -2960,6 +3019,7 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.writing_mode != old->writing_mode, "writing_mode"); property(node.vertical_digits != old->vertical_digits, "vertical_digits");
         if (node.role == Role::text && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
         if (node.text_selection && old->text_selection && (node.text_selection->anchor != old->text_selection->anchor || node.text_selection->caret != old->text_selection->caret))
             emit(SemanticEventKind::text_selection_changed, node.ref);
@@ -2996,6 +3056,15 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->renderer_failed_) return {Status::renderer_failed, {}};
+    if (verb == Verb::set_writing_mode || verb == Verb::set_vertical_digits) {
+        if (ref.item || node->role != Role::label) return {Status::not_supported, {}};
+        auto handle = state_->layout_handle(ref.id);
+        const auto& label = std::get<LabelHandle>(handle);
+        if (verb == Verb::set_writing_mode) {
+            if (const auto* mode = std::get_if<WritingMode>(&argument)) return label.set_writing_mode(*mode);
+        } else if (const auto* digits = std::get_if<int>(&argument)) return label.set_vertical_digits(*digits);
+        return {Status::invalid_value, {}};
+    }
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
