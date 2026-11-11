@@ -22,6 +22,27 @@ class StructureEvent final : public UiaEventHandler<StructureEvent, IUIAutomatio
 public:
     HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override { if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK; }
 };
+class FocusEvent final : public UiaEventHandler<FocusEvent, IUIAutomationFocusChangedEventHandler> {
+public:
+    std::wstring wanted;  // AutomationId of the element that should receive focus
+    HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override {
+        BSTR id = nullptr;
+        if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && id && wanted == id) SetEvent(received);
+        SysFreeString(id); return S_OK;
+    }
+};
+// One context-menu element as a UIA client sees it: type, Name, AccessKey, AcceleratorKey, IsEnabled and Invoke support.
+bool menu_item_is(IUIAutomationElement* element, CONTROLTYPEID type, const wchar_t* name, const wchar_t* access_key, const wchar_t* accelerator, bool enabled) {
+    if (!element) return false;
+    CONTROLTYPEID actual = 0; BSTR n = nullptr, key = nullptr, accel = nullptr; BOOL is_enabled = FALSE; IUIAutomationInvokePattern* invoke_pattern = nullptr;
+    bool ok = SUCCEEDED(element->get_CurrentControlType(&actual)) && actual == type && SUCCEEDED(element->get_CurrentName(&n)) && n && std::wstring(n) == name &&
+        SUCCEEDED(element->get_CurrentAccessKey(&key)) && key && std::wstring(key) == access_key &&
+        SUCCEEDED(element->get_CurrentAcceleratorKey(&accel)) && accel && std::wstring(accel) == accelerator &&
+        SUCCEEDED(element->get_CurrentIsEnabled(&is_enabled)) && bool(is_enabled) == enabled &&
+        SUCCEEDED(element->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke_pattern))) && invoke_pattern;
+    SysFreeString(n); SysFreeString(key); SysFreeString(accel); if (invoke_pattern) invoke_pattern->Release();
+    return ok;
+}
 bool select(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) { return SUCCEEDED(select_id(uia, root, id)); }
 bool invoke(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) { return SUCCEEDED(invoke_id(uia, root, id)); }
 bool close_modal(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
@@ -110,6 +131,59 @@ int wmain(int argc, wchar_t** argv) {
         if (!about) std::cout << "about details element=" << bool(text) << " type=" << type << " name-length=" << (name ? SysStringLen(name) : 0) << " focusable=" << focusable << '\n';
         SysFreeString(name); if (text) text->Release();
         std::cout << "navigation=" << navigation << " long-dropdown=" << dropdown << " about-text=" << about << '\n'; ok = ok && navigation && dropdown && about;
+        if (select(uia, nav, L"items")) {   // UA09: the context menu as a UIA Menu with MenuItem and Separator children (#85).
+            auto opened_event = new TextEvent(); opened_event->expected = UIA_MenuOpenedEventId;
+            auto closed_event = new TextEvent(); closed_event->expected = UIA_MenuClosedEventId;
+            auto focus_event = new FocusEvent();
+            auto opened_subscribed = uia->AddAutomationEventHandler(UIA_MenuOpenedEventId, root, TreeScope_Subtree, nullptr, opened_event);
+            auto closed_subscribed = uia->AddAutomationEventHandler(UIA_MenuClosedEventId, root, TreeScope_Subtree, nullptr, closed_event);
+            auto focus_subscribed = uia->AddFocusChangedEventHandler(nullptr, focus_event);
+            const std::wstring edit_name = L"編輯(E)", delete_name = L"刪除(D)";
+            bool opened = SendMessageW(s.window, WM_APP + 85, 0, 0) == 0 && SUCCEEDED(opened_subscribed) && WaitForSingleObject(opened_event->received, 3000) == WAIT_OBJECT_0;
+            auto menu = find_id(uia, root, L"items.list/menu"); CONTROLTYPEID menu_type = 0;
+            bool is_menu = menu && SUCCEEDED(menu->get_CurrentControlType(&menu_type)) && menu_type == UIA_MenuControlTypeId;
+            auto edit_item = menu ? find_id(uia, menu, L"items.edit") : nullptr;
+            auto delete_item = menu ? find_id(uia, menu, L"items.delete") : nullptr;
+            bool items_ok = menu_item_is(edit_item, UIA_MenuItemControlTypeId, edit_name.c_str(), L"E", L"Enter", true) &&
+                menu_item_is(delete_item, UIA_MenuItemControlTypeId, delete_name.c_str(), L"D", L"Del", true);
+            // Focus moves to an item when the keyboard highlights it.
+            focus_event->wanted = L"items.edit";
+            bool focused_event = SendMessageW(s.window, WM_APP + 85, 3, 0) == 0 && SUCCEEDED(focus_subscribed) && WaitForSingleObject(focus_event->received, 3000) == WAIT_OBJECT_0;
+            BOOL has_focus = FALSE;
+            bool focus_state = edit_item && SUCCEEDED(edit_item->get_CurrentHasKeyboardFocus(&has_focus)) && (has_focus || GetFocus() != s.window);
+            // Invoke runs the row's Edit: the menu closes (MenuClosed) and the edit dialog opens.
+            bool invoked = edit_item && invoke_id(uia, menu, L"items.edit") == S_OK && WaitForSingleObject(closed_event->received, 3000) == WAIT_OBJECT_0;
+            auto gone = find_id(uia, root, L"items.list/menu"); bool vanished = !gone; if (gone) gone->Release();
+            bool dialog_closed = close_modal(uia, root, L"items.dialog");
+            if (edit_item) edit_item->Release(); if (delete_item) delete_item->Release(); if (menu) menu->Release();
+            // The search field's menu: a separator line and a disabled item (nothing is selected there).
+            // MenuOpened / MenuClosed are asserted above on the first menu. This second opening is checked through
+            // the tree: one run in about twenty did not deliver its second MenuOpened to the client (UIA event delivery).
+            const auto field_status = SendMessageW(s.window, WM_APP + 85, 2, 0);
+            IUIAutomationElement* field_menu = nullptr;
+            for (int attempt = 0; attempt < 30 && !field_menu; ++attempt) { field_menu = find_id(uia, root, L"items.search/menu"); if (!field_menu) Sleep(100); }
+            bool field_open = field_status == 0 && field_menu;
+            auto copy_item = field_menu ? find_id(uia, field_menu, L"lcars.copy") : nullptr;
+            auto select_all_item = field_menu ? find_id(uia, field_menu, L"lcars.select_all") : nullptr;
+            bool field_items = menu_item_is(copy_item, UIA_MenuItemControlTypeId, L"複製(C)", L"C", L"Ctrl+C", false) &&
+                menu_item_is(select_all_item, UIA_MenuItemControlTypeId, L"全選(A)", L"A", L"Ctrl+A", true);
+            VARIANT separator_type; VariantInit(&separator_type); separator_type.vt = VT_I4; separator_type.lVal = UIA_SeparatorControlTypeId;
+            IUIAutomationCondition* separator_condition = nullptr; IUIAutomationElementArray* separators = nullptr; int separator_count = 0;
+            bool lines = field_menu && SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, separator_type, &separator_condition)) &&
+                SUCCEEDED(field_menu->FindAll(TreeScope_Children, separator_condition, &separators)) && separators && SUCCEEDED(separators->get_Length(&separator_count)) && separator_count == 2;
+            if (separators) separators->Release(); if (separator_condition) separator_condition->Release();
+            bool disabled_refuses = copy_item && [&] { IUIAutomationInvokePattern* p = nullptr; bool refused = SUCCEEDED(copy_item->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p))) && p && p->Invoke() == UIA_E_ELEMENTNOTENABLED; if (p) p->Release(); return refused; }();
+            if (copy_item) copy_item->Release(); if (select_all_item) select_all_item->Release(); if (field_menu) field_menu->Release();
+            bool field_closed = SendMessageW(s.window, WM_APP + 85, 1, 0) == 0;
+            if (SUCCEEDED(opened_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuOpenedEventId, root, opened_event);
+            if (SUCCEEDED(closed_subscribed)) uia->RemoveAutomationEventHandler(UIA_MenuClosedEventId, root, closed_event);
+            if (SUCCEEDED(focus_subscribed)) uia->RemoveFocusChangedEventHandler(focus_event);
+            opened_event->Release(); closed_event->Release(); focus_event->Release();
+            bool menu_pass = opened && is_menu && items_ok && focused_event && focus_state && invoked && vanished && dialog_closed && field_open && field_items && lines && disabled_refuses && field_closed;
+            std::cout << "UA09 context menu: " << (menu_pass ? "PASS" : "FAIL") << " opened=" << opened << " menu=" << is_menu << " items=" << items_ok << " focus-event=" << focused_event << " focus=" << focus_state
+                      << " invoke+closed=" << invoked << " vanished=" << vanished << " dialog=" << dialog_closed << " field-menu=" << field_open << " field-items=" << field_items << " lines=" << lines << " disabled=" << disabled_refuses << '\n';
+            ok &= menu_pass;
+        }
         bool general = select(uia, nav, L"general"); BSTR before_title = nullptr, after_title = nullptr;
         const std::wstring expected_title = std::wstring(argv[2]) == L"material" ? L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Material-inspired" : L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Minimal Web";
         bool title = general && SUCCEEDED(root->get_CurrentName(&before_title)) && before_title && std::wstring(before_title) == expected_title;
