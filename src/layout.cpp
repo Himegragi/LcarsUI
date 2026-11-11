@@ -565,6 +565,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     for (const auto& item : a.frame.overlays) if (!item.tooltip) record(item);
     a.ui.frame_visibility(std::move(visibility));
     a.ui.semantic_frame(a.frame);
+    a.ui.hover_refresh(a.frame);  // scrolling and reflow move components under a resting pointer
     return std::move(a.frame);
 }
 }

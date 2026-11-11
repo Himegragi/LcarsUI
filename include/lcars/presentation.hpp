@@ -11,11 +11,15 @@ struct ThemeVariant {
     bool operator==(const ThemeVariant&) const = default;
 };
 inline constexpr int min_text_size = 12, max_text_size = 28;
+// Whether the pointer hover overlay is drawn. Off hides it for every source (real mouse or
+// simulated); tooltips still follow the pointer.
+enum class Hover { on, off };
 struct PresentationSettings {
     std::u16string font_family;
     int text_size = 16;
     ThemeVariant variant = ThemeVariant::light();
     Density density = Density::standard;
+    Hover hover = Hover::on;
     bool operator==(const PresentationSettings&) const = default;
 };
 }

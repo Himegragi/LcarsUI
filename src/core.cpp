@@ -132,7 +132,8 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
-        (settings.density != Density::standard && settings.density != Density::compact))
+        (settings.density != Density::standard && settings.density != Density::compact) ||
+        (settings.hover != Hover::on && settings.hover != Hover::off))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
     if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};
@@ -1193,8 +1194,110 @@ void detail::UiState::window_active(bool active) {
     OperationScope operation(this);
     if (window_active_ == active) return;
     window_active_ = active;
-    if (!active) tooltip_hover_.clear();
+    if (!active) { tooltip_hover_.clear(); hover_clear(); }
     refresh_tooltips();
+}
+bool detail::UiState::hover_locked() const {
+    return hover_capture_ || (slider_drag_ && pointer_armed_ == slider_drag_->id);
+}
+bool detail::UiState::hover_admitted(const HoverTarget& target) const {
+    if (!available(target.id)) return false;
+    if (!target.item) return true;
+    auto semantics = describe(target.id);
+    if (!semantics) return false;
+    auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *target.item; });
+    return option != semantics->options.end() && option->enabled;
+}
+void detail::UiState::hover_set(std::optional<HoverTarget> target) {
+    if (hover_ == target) return;
+    hover_ = std::move(target);
+    if (invalidate_) invalidate_();
+}
+void detail::UiState::hover_clear() {
+    hover_simulated_ = hover_capture_ = false;
+    hover_position_.reset();
+    hover_set(std::nullopt);
+}
+void detail::UiState::hover_from_frame(const Frame& frame, int x, int y) {
+    const auto* hit = frame.hit(x, y);
+    tooltip_hover(hit && !hit->popup ? std::string_view(hit->id) : std::string_view{});
+    if (!window_active_ || hover_locked()) return;
+    std::optional<HoverTarget> target;
+    if (hit) {
+        target = HoverTarget{hit->id, std::nullopt};
+        if (auto index = frame.option_at(*hit, x, y)) {
+            auto semantics = describe(hit->id);
+            // A disabled item hovers nothing: the target keeps the component without the item.
+            if (semantics && *index < semantics->options.size() && semantics->options[*index].enabled)
+                target->item = semantics->options[*index].value;
+        }
+        if (!hover_admitted(*target)) target.reset();
+    }
+    hover_set(std::move(target));
+}
+void detail::UiState::pointer_over(const Frame& frame, int x, int y, bool touch) {
+    if (touch) return;
+    OperationScope operation(this);
+    if (window_active_) { hover_position_ = {x, y}; hover_simulated_ = false; }
+    hover_from_frame(frame, x, y);
+}
+void detail::UiState::pointer_left() {
+    OperationScope operation(this);
+    tooltip_hover({});
+    hover_clear();
+}
+void detail::UiState::hover_capture(std::string_view id) {
+    OperationScope operation(this);
+    if (!id.empty()) { hover_simulated_ = false; hover_set(HoverTarget{Id(id), std::nullopt}); }
+    hover_capture_ = true;
+}
+void detail::UiState::hover_release() { hover_capture_ = false; }
+void detail::UiState::hover_refresh(const Frame& frame) {
+    if (hover_simulated_ || hover_locked() || !hover_position_ || !window_active_) return;
+    OperationScope operation(this);
+    hover_from_frame(frame, hover_position_->first, hover_position_->second);
+}
+std::optional<HoverTarget> detail::UiState::hover_target() const {
+    if (hover_ && hover_admitted(*hover_)) return hover_;
+    return std::nullopt;
+}
+bool detail::UiState::hover_drawn(std::string_view id, const OptionValue* item) const {
+    if (presentation_.hover != Hover::on || !hover_ || hover_->id != id) return false;
+    if (item ? !hover_->item || !(*hover_->item == *item) : hover_->item.has_value()) return false;
+    return hover_admitted(*hover_);
+}
+Query<std::optional<HoverTarget>> detail::UiState::hover_query() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread", std::nullopt};
+    if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
+    return {Status::ok, {}, hover_target()};
+}
+Result detail::UiState::simulate_hover(std::string_view id, const std::optional<OptionValue>& item) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    if (hover_locked()) return {Status::busy, u"A pointer drag holds the hover"};
+    const auto* control = find(id);
+    if (item) {
+        auto semantics = describe(id);
+        if (!semantics) return {Status::not_found, u"Component no longer exists"};
+        auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *item; });
+        if (option == semantics->options.end()) return {Status::not_found, u"Item no longer exists"};
+        if (!option->enabled) return {Status::disabled, u"目前無法執行"};
+    }
+    hover_simulated_ = true;
+    hover_set(HoverTarget{control->id, item});
+    // An item of an open dropdown lives in its popup, which never starts a tooltip.
+    tooltip_hover(item && control->kind == Kind::dropdown ? std::string_view{} : std::string_view(control->id));
+    return {};
+}
+Result detail::UiState::clear_simulated_hover() {
+    OperationScope operation(this);
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (!hover_simulated_) return {};
+    hover_simulated_ = false;
+    hover_set(std::nullopt);
+    tooltip_hover({});
+    return {};
 }
 Query<bool> TooltipHandle::visible() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -2745,6 +2848,13 @@ Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmFi
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
+Query<std::optional<HoverTarget>> Ui::hover() const { return state_->hover_query(); }
+Result Ui::simulate_hover(const ComponentHandle& target, std::optional<OptionValue> item) {
+    auto id = state_->layout_id(target);
+    if (!id) return {Status::not_found, u"Component no longer exists"};
+    return state_->simulate_hover(*id, item);
+}
+Result Ui::clear_simulated_hover() { return state_->clear_simulated_hover(); }
 const PresentationSettings& Ui::presentation() const { return state_->presentation(); }
 Result Ui::set_palette_overrides(std::vector<PaletteOverride> overrides) { return state_->set_palette_overrides(std::move(overrides)); }
 const std::vector<PaletteOverride>& Ui::palette_overrides() const { return state_->palette_overrides(); }

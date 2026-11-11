@@ -88,7 +88,7 @@ void overriding_web_light_accent_changes_only_that_combination() {
 // One driver over every palette role: each override changes exactly its own field.
 void every_palette_role_is_overridable_and_isolated() {
     auto roles = palette_roles();
-    check(roles.size() == 12, "ten core colors, scrim and scrim_alpha are roles");
+    check(roles.size() == 14, "ten core colors, scrim, hover and the scrim_alpha and hover_alpha values are roles");
     check(std::find(roles.begin(), roles.end(), "scrim_alpha") != roles.end() && std::find(roles.begin(), roles.end(), "border") != roles.end(), "known role names present");
     for (const auto* appearance : builtins)
         for (const auto& variant : variants)
@@ -118,8 +118,8 @@ void every_palette_role_is_overridable_and_isolated() {
 
 void role_helpers_reject_unknown_roles_and_wrong_kinds() {
     Palette p = web_appearance().palette();
-    check(!palette_value(p, "hover").has_value(), "unknown role has no value");
-    check(!set_palette_value(p, "hover", Color{1, 2, 3}), "unknown role is refused");
+    check(!palette_value(p, "glow").has_value(), "unknown role has no value");
+    check(!set_palette_value(p, "glow", Color{1, 2, 3}), "unknown role is refused");
     check(!set_palette_value(p, "accent", 7), "a color role needs a Color");
     check(!set_palette_value(p, "scrim_alpha", Color{1, 2, 3}), "scrim_alpha needs an int");
     check(!set_palette_value(p, "scrim_alpha", 256) && !set_palette_value(p, "scrim_alpha", -1), "scrim_alpha is 0-255");
@@ -187,14 +187,14 @@ void invalid_entries_are_rejected_and_keep_the_active_list() {
     bad({{"No Such Appearance", ThemeVariant::light(), "accent", green}}, "unknown appearance name");
     bad({entry(web_appearance(), ThemeVariant::high_contrast(), "accent", green)}, "unsupported variant");
     bad({entry(web_appearance(), ThemeVariant{"sepia"}, "accent", green)}, "unknown variant");
-    bad({entry(web_appearance(), ThemeVariant::light(), "hover", green)}, "unknown role");
+    bad({entry(web_appearance(), ThemeVariant::light(), "glow", green)}, "unknown role");
     bad({entry(web_appearance(), ThemeVariant::light(), "scrim_alpha", 256)}, "scrim_alpha 256");
     bad({entry(web_appearance(), ThemeVariant::light(), "scrim_alpha", -1)}, "scrim_alpha -1");
     bad({entry(web_appearance(), ThemeVariant::light(), "accent", 5)}, "int for a color role");
     bad({entry(web_appearance(), ThemeVariant::light(), "scrim_alpha", green)}, "color for scrim_alpha");
     bad({entry(web_appearance(), ThemeVariant::light(), "accent", green), entry(web_appearance(), ThemeVariant::light(), "accent", gray(10))}, "duplicate entry");
     // The valid first entry of a partly invalid list is not applied either.
-    bad({entry(web_appearance(), ThemeVariant::dark(), "accent", Color{250, 200, 100}), entry(web_appearance(), ThemeVariant::light(), "hover", green)}, "all or nothing");
+    bad({entry(web_appearance(), ThemeVariant::dark(), "accent", Color{250, 200, 100}), entry(web_appearance(), ThemeVariant::light(), "glow", green)}, "all or nothing");
     check(bool(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "scrim_alpha", 255), entry(material_appearance(), ThemeVariant::dark(), "scrim_alpha", 0)})), "scrim_alpha bounds 0 and 255 are accepted");
 }
 
@@ -207,7 +207,7 @@ void replacing_and_clearing_the_list_takes_effect_immediately() {
     check(ui.effective_palette(web_appearance(), ThemeVariant::light())->accent == orange, "whole list is replaced, not merged");
     check(bool(ui.set_palette_overrides({})) && invalidations == 3, "clearing requests a repaint");
     check(ui.palette_overrides().empty() && *ui.effective_palette(web_appearance(), ThemeVariant::light()) == web_appearance().palette(), "cleared list restores built-in values");
-    check(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "hover", green)}).status == Status::invalid_value && invalidations == 3, "a rejected list does not repaint");
+    check(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "glow", green)}).status == Status::invalid_value && invalidations == 3, "a rejected list does not repaint");
 }
 
 void off_thread_calls_report_wrong_thread() {

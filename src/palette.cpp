@@ -11,11 +11,14 @@ constexpr std::array color_roles{
     ColorRole{"background", &Palette::background}, ColorRole{"panel", &Palette::panel}, ColorRole{"surface", &Palette::surface},
     ColorRole{"text", &Palette::text}, ColorRole{"muted", &Palette::muted}, ColorRole{"border", &Palette::border},
     ColorRole{"accent", &Palette::accent}, ColorRole{"on_accent", &Palette::on_accent}, ColorRole{"selection", &Palette::selection},
-    ColorRole{"error", &Palette::error}, ColorRole{"scrim", &Palette::scrim},
+    ColorRole{"error", &Palette::error}, ColorRole{"scrim", &Palette::scrim}, ColorRole{"hover", &Palette::hover},
 };
-constexpr std::string_view alpha_role = "scrim_alpha";
-static_assert(sizeof(Palette) == color_roles.size() * sizeof(Color) + sizeof(unsigned char),
-              "Palette gained a field that palette_roles() does not list; add it to color_roles in palette.cpp");
+struct AlphaRole { std::string_view name; unsigned char Palette::* member; };
+constexpr std::array alpha_roles{
+    AlphaRole{"scrim_alpha", &Palette::scrim_alpha}, AlphaRole{"hover_alpha", &Palette::hover_alpha},
+};
+static_assert(sizeof(Palette) == color_roles.size() * sizeof(Color) + alpha_roles.size() * sizeof(unsigned char),
+              "Palette gained a field that palette_roles() does not list; add it to color_roles or alpha_roles in palette.cpp");
 
 double linear(unsigned char channel) {
     double c = channel / 255.0;
@@ -26,20 +29,22 @@ double luminance(Color c) { return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) +
 std::vector<std::string_view> palette_roles() {
     std::vector<std::string_view> names;
     for (const auto& role : color_roles) names.push_back(role.name);
-    names.push_back(alpha_role);
+    for (const auto& role : alpha_roles) names.push_back(role.name);
     return names;
 }
 std::optional<PaletteValue> palette_value(const Palette& palette, std::string_view role) {
-    if (role == alpha_role) return PaletteValue{static_cast<int>(palette.scrim_alpha)};
+    for (const auto& entry : alpha_roles)
+        if (entry.name == role) return PaletteValue{static_cast<int>(palette.*entry.member)};
     for (const auto& entry : color_roles)
         if (entry.name == role) return PaletteValue{palette.*entry.member};
     return std::nullopt;
 }
 bool set_palette_value(Palette& palette, std::string_view role, const PaletteValue& value) {
-    if (role == alpha_role) {
+    for (const auto& entry : alpha_roles) {
+        if (entry.name != role) continue;
         const int* alpha = std::get_if<int>(&value);
         if (!alpha || *alpha < 0 || *alpha > 255) return false;
-        palette.scrim_alpha = static_cast<unsigned char>(*alpha);
+        palette.*entry.member = static_cast<unsigned char>(*alpha);
         return true;
     }
     const Color* color = std::get_if<Color>(&value);
