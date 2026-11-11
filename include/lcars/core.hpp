@@ -46,6 +46,10 @@ struct Control {
     std::string target = {};         // labels: the control this text names, describes or reports errors for
     TextRole role = TextRole::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
+    // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
+    // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
+    bool multiline = false;
+    unsigned visible_lines = 3;  // multi-line height in lines, at least 1; later changed through the handle
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo };
@@ -60,6 +64,8 @@ struct Semantics {
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame
+    bool multiline = false;     // text fields: created multi-line
+    unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     std::vector<OptionSemantics> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
@@ -72,7 +78,7 @@ struct Semantics {
     std::vector<Operation> operations;
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
-enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del };
+enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del, page_up, page_down };
 struct KeyPress {
     Key key = Key::other;
     bool shift = false, ctrl = false, repeat = false;
@@ -90,6 +96,8 @@ public:
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);
+// Multi-line fields keep breaks: CRLF, a lone CR and a lone LF each become one LF.
+std::u16string paste_as_multi_line(std::u16string_view text);
 // One session owns text and transient composition. Offsets are UTF-16.
 // The text backend supplies navigation stops; this is not a Unicode segmenter.
 class EditSession {
@@ -100,6 +108,9 @@ public:
     bool composing = false;
     std::u16string preedit;
     unsigned preedit_caret = 0;
+    // Multi-line fields: the caret sits at the end of a wrapped line, not the start of the next one.
+    // Only the End key and a click on a line's end set it; every other selection change clears it.
+    bool caret_upstream = false;
     unsigned begin() const { return std::min(selection.anchor, selection.caret); }
     unsigned end() const { return std::max(selection.anchor, selection.caret); }
     void select(unsigned anchor, unsigned caret);
@@ -111,6 +122,8 @@ public:
 };
 // Well-formed UTF-16, no control characters, within the given length.
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
+// As valid_single_line, but LF is allowed (one UTF-16 unit each) and CR still is not.
+bool valid_multi_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
 // The application owns the model. Notifications run on the UI thread; the source outlives the
 // connection. Its subscription returns a disconnection function.
 struct TextSource {

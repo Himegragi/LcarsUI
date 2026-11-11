@@ -27,17 +27,26 @@ std::u16string without_controls(std::u16string_view text) {
     return result;
 }
 }
-bool valid_single_line(std::u16string_view text, std::size_t max_length) {
+namespace {
+bool valid_text(std::u16string_view text, std::size_t max_length, bool allow_line_feed) {
     if (text.size() > max_length) return false;
     for (std::size_t i = 0; i < text.size(); ++i) {
         const auto ch = text[i];
-        if (ch < 0x20 || ch == 0x7f) return false;
+        if ((ch < 0x20 && !(allow_line_feed && ch == u'\n')) || ch == 0x7f) return false;
         if (ch >= 0xd800 && ch <= 0xdbff) {
             if (++i == text.size() || text[i] < 0xdc00 || text[i] > 0xdfff) return false;
         } else if (ch >= 0xdc00 && ch <= 0xdfff) return false;
     }
     return true;
 }
+// The value rule for one field: its kind decides whether a line feed is content.
+bool valid_value(const Control& control, std::u16string_view text) { return valid_text(text, control.max_length, control.multiline); }
+// A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
+constexpr unsigned max_visible_lines = 1000;
+bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
+}
+bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
+bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
 void EditSession::select(unsigned anchor, unsigned caret) {
     if (composing) cancel_composition();
     auto clamp = [&](unsigned pos) {
@@ -47,6 +56,7 @@ void EditSession::select(unsigned anchor, unsigned caret) {
         return pos;
     };
     selection = {clamp(anchor), clamp(caret)};
+    caret_upstream = false;
 }
 void EditSession::start_composition() {
     if (composing) return;
@@ -152,7 +162,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         if (control.kind == Kind::text) {
-            if (!valid_single_line(control.value, control.max_length)) throw std::invalid_argument("Invalid initial text");
+            if (!valid_value(control, control.value) || !valid_visible_lines(control)) throw std::invalid_argument("Invalid initial text");
             Field field;
             field.session.text = control.value;
             edits_.emplace(control.id, std::move(field));
@@ -206,7 +216,7 @@ Query<Semantics> ProgressHandle::describe() const {
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
-        !valid_single_line(control.value, control.max_length))
+        !valid_value(control, control.value) || !valid_visible_lines(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
     field.session.text = control.value;
@@ -1751,7 +1761,7 @@ void detail::UiState::source_changed(const Id& id) {
     if (it == edits_.end() || !it->second.source.read) return;
     auto& field = it->second;
     auto latest = field.source.read();
-    if (!valid_single_line(latest, find(id)->max_length)) return;
+    if (!valid_value(*find(id), latest)) return;
     const bool clean = !field.has_source_value || field.session.text == field.source_value;
     field.source_value = latest;
     field.has_source_value = true;
@@ -1830,6 +1840,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
+    if (control->kind == Kind::text) { s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0; }
     if (auto it = bools_.find(id); it != bools_.end()) {
         s.checked = it->second.value;
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
@@ -2023,10 +2034,11 @@ Result detail::UiState::replace_selection(std::string_view id, Field& field, std
     auto first = session.begin();
     auto next = session.text;
     next.replace(first, session.end() - first, insertion);
-    const auto limit = find(id)->max_length;
-    if (!valid_single_line(next, limit)) {
+    const auto& control = *find(id);
+    const auto limit = control.max_length;
+    if (!valid_value(control, next)) {
         auto digits = std::to_string(limit);
-        return {Status::invalid_value, u"請輸入有效單行文字（最多 " + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
+        return {Status::invalid_value, std::u16string(control.multiline ? u"請輸入有效文字（最多 " : u"請輸入有效單行文字（最多 ") + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
     }
     auto caret = first + static_cast<unsigned>(insertion.size());
     if (next == session.text) { session.select(caret, caret); return {}; }
@@ -2110,11 +2122,19 @@ std::u16string paste_as_single_line(std::u16string_view text) {
     }
     return result;
 }
+std::u16string paste_as_multi_line(std::u16string_view text) {
+    std::u16string result;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
+        result += text[i] == u'\r' ? u'\n' : text[i];
+    }
+    return result;
+}
 Result detail::UiState::paste(std::string_view id, std::u16string_view text) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    return replace_selection(id, *field, paste_as_single_line(text));
+    return replace_selection(id, *field, find(id)->multiline ? paste_as_multi_line(text) : paste_as_single_line(text));
 }
 Result detail::UiState::copy(std::string_view id) {
     OperationScope operation(this);
@@ -2123,7 +2143,13 @@ Result detail::UiState::copy(std::string_view id) {
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
     const auto& session = it->second.session;
     if (session.begin() == session.end()) return {};
-    if (!clipboard_ || !clipboard_->write(std::u16string_view(session.text).substr(session.begin(), session.end() - session.begin())))
+    auto selected = std::u16string(session.text, session.begin(), session.end() - session.begin());
+    if (find(id)->multiline) {  // the clipboard carries CRLF, as other Windows text does
+        std::u16string crlf;
+        for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
+        selected = std::move(crlf);
+    }
+    if (!clipboard_ || !clipboard_->write(selected))
         return {Status::failed, u"無法寫入剪貼簿"};
     return {};
 }
@@ -2150,6 +2176,63 @@ unsigned detail::UiState::text_anchor(std::string_view id, int text_size) const 
 }
 void detail::UiState::set_text_anchor(std::string_view id, int text_size, unsigned anchor) {
     if (auto it = edits_.find(id); it != edits_.end()) { it->second.offset_text_size = text_size; it->second.offset_anchor = anchor; }
+}
+const FieldView* detail::UiState::field_view(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.multi.placed ? &it->second.multi.view : nullptr;
+}
+void detail::UiState::settle_lines(std::string_view id, FieldView& view, int text_size, int width) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end() || view.lines.empty()) return;
+    auto& f = it->second;
+    auto& m = f.multi;
+    const auto& session = f.session;
+    auto text = session.visible();
+    const auto count = static_cast<unsigned>(view.lines.size());
+    const unsigned most = count > view.visible ? count - view.visible : 0;
+    const bool relaid = m.text != text || m.size != text_size || m.width != width;
+    unsigned first = m.first;
+    // A new wrap (resize, text size, edit) keeps the same text on top: the anchor is a text offset.
+    if (m.placed && relaid) { view.upstream = false; first = view.line_of(std::min<unsigned>(m.anchor, static_cast<unsigned>(text.size()))); }
+    first = std::min(first, most);
+    const unsigned caret = session.visible_caret();
+    const bool upstream = session.caret_upstream && !session.composing;
+    view.upstream = upstream;
+    // A caret that moved since the last arrange scrolls itself into view; scrolling alone never does.
+    if (caret != m.caret || upstream != m.upstream) {
+        auto line = view.line_of(caret);
+        if (line < first) first = line;
+        else if (line >= first + view.visible) first = line + 1 - view.visible;
+    }
+    if (m.pending_first) { first = *m.pending_first; m.pending_first.reset(); }
+    first = std::min(first, most);
+    view.first = first;
+    m.view = view;
+    m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
+    if (relaid) { m.text = std::move(text); m.size = text_size; m.width = width; }
+    m.scroll.offset = static_cast<int>(first) * view.line_height;
+}
+bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.multi.placed) return false;
+    auto& m = it->second.multi;
+    const auto count = static_cast<unsigned>(m.view.lines.size());
+    first = std::min(first, count > m.view.visible ? count - m.view.visible : 0);
+    if (first == m.first) return false;
+    m.first = m.view.first = first;
+    m.anchor = m.view.lines[first].begin;
+    m.scroll.offset = static_cast<int>(first) * m.view.line_height;
+    if (invalidate_) invalidate_();
+    return true;
+}
+Result detail::UiState::select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream) {
+    OperationScope operation(this);
+    if (auto result = select(id, anchor, caret); !result) return result;
+    auto& session = edits_.find(id)->second.session;
+    session.caret_upstream = upstream && session.selection.caret == caret;
+    return {};
 }
 Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned caret) {
     OperationScope operation(this);
@@ -2347,8 +2430,12 @@ Result detail::UiState::key_down(KeyPress key) {
         }
         bool handled = false;
         if (control->kind == Kind::text) {
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
-                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del);
+            // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
+            const bool multi = control->multiline;
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' ||
+                                  (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
+                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
+                 (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
         } else if (!key.ctrl || !key.letter) {
             switch (control->kind) {
             case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
@@ -2428,6 +2515,12 @@ Result detail::UiState::edit_key(KeyPress key) {
     }
     case Key::home: return move(0);
     case Key::end: return move(size);
+    case Key::enter: {
+        if (!find(focus_)->multiline) return {};
+        Field* field = nullptr;
+        if (auto result = writable(focus_, field); !result) return result;
+        return replace_selection(focus_, *field, u"\n");
+    }
     case Key::backspace:
     case Key::del: {
         Field* field = nullptr;
@@ -2540,7 +2633,7 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     OperationScope operation(this);
     auto* control = const_cast<Control*>(find(id));
     auto it = edits_.find(id);
-    if (!control || it == edits_.end() || !valid_single_line(value, control->max_length)) throw std::invalid_argument("Invalid owner refresh");
+    if (!control || it == edits_.end() || !valid_value(*control, value)) throw std::invalid_argument("Invalid owner refresh");
     if (composing_ == control->id) composition_cancel();
     auto& field = it->second;
     field.session.cancel_composition();
@@ -2548,6 +2641,7 @@ void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     field.session.text = std::move(value);
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
+    field.multi.first = field.multi.anchor = 0; field.multi.caret = ~0u; field.multi.pending_first.reset();  // show the caret afresh
 }
 Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
