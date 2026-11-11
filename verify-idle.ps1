@@ -68,7 +68,8 @@ if ('perf' -in $selected) {
     }
     foreach ($appearance in @('web', 'material')) {
         foreach ($size in @('1080', '4k')) {
-            $scenarios = if ($size -eq '4k') { @('list-hold-down', 'typing', 'delay') } else { @('startup', 'list-hold-down', 'typing', 'idle', 'delay') }
+            # slider-drag-text-size (#73) is report-only: it feeds PM01-PM05 nothing and decides nothing.
+            $scenarios = if ($size -eq '4k') { @('list-hold-down', 'typing', 'delay') } else { @('startup', 'list-hold-down', 'typing', 'idle', 'delay', 'slider-drag-text-size') }
             foreach ($scenario in $scenarios) {
                 $folder = Join-Path $OutDir "perf/$appearance/$size/$scenario"
                 $tsv = Join-Path $folder 'perf.tsv'
@@ -94,7 +95,14 @@ if ('perf' -in $selected) {
                     $rows = @(Import-Csv -Delimiter "`t" -LiteralPath $tsv)
                     $expectedCase = if ($scenario -eq 'delay') { 'list-hold-down' } else { $scenario }
                     $expectedSize = if ($size -eq '4k') { '3840x2160' } else { '1920x1080' }
-                    if ($rows.Count -ne 2 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.scenario -ne $expectedCase -or $_.appearance -ne $appearance -or $_.resolution -ne $expectedSize }).Count -or @($rows | Where-Object { $_.phase -eq 'warmup' }).Count -ne 1 -or @($rows | Where-Object { $_.phase -eq 'steady' }).Count -ne 1) { $runFailure = $true }
+                    $reportOnly = $scenario -eq 'slider-drag-text-size'
+                    if ($rows.Count -ne 2 -or @($rows | Where-Object { ($_.status -ne 'PASS' -and -not $reportOnly) -or ($reportOnly -and $_.status -ne 'REPORT') -or $_.scenario -ne $expectedCase -or $_.appearance -ne $appearance -or $_.resolution -ne $expectedSize }).Count -or @($rows | Where-Object { $_.phase -eq 'warmup' }).Count -ne 1 -or @($rows | Where-Object { $_.phase -eq 'steady' }).Count -ne 1) { $runFailure = $true }
+                }
+                if ($scenario -eq 'slider-drag-text-size') {
+                    # Report only: a missing or malformed report is shown, but never fails the PM01-PM05 verdict.
+                    $state = if ($runFailure) { 'REPORT MISSING (not gating)' } else { 'REPORT (no pass/fail)' }
+                    Write-Host "perf/$appearance/$size/${scenario}: $state"
+                    continue
                 }
                 if ($runFailure) { $failed = $true }
                 $state = if ($runFailure) { 'FAIL' } else { 'PASS' }

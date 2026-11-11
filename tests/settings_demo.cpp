@@ -4,6 +4,7 @@
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 #include <algorithm>
+#include <cmath>
 #include "check.hpp"
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
@@ -890,4 +891,113 @@ void item_note_is_a_multiline_field() {
     test::check(demo.item_note.draft().value.value() == text, "editing loads the note with its breaks");
     test::check(demo.item_note.set_value(std::u16string(200, u'x') + u"\ny").status == Status::invalid_value, "the 200 character limit still counts a line break");
 }
-int main() { const test::Case cases[] = {{"item note multi-line", item_note_is_a_multiline_field}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+// #73: the pointer-to-value basis is frozen at press, so a layout that moves under the pointer
+// (text size widens the navigation list) cannot make the value wander while the mouse is still.
+void slider_drag_basis_is_frozen_when_layout_moves() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        test::FakeMeasure measure; ScrollState scroll;
+        auto& state = detail::access(demo.ui);
+        auto frame = [&] { return arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll); };
+        auto first = frame(); const auto* item = first.find(demo.text_size);
+        test::check(item && item->slider_track.w > 0, "text size track is arranged");
+        const int mouse_x = item->slider_track.x + item->slider_track.w * 9 / 10;
+        test::check(bool(state.pointer_down(item->id)), "press text size");
+        state.slider_pointer_down(item->id, mouse_x, item->slider_track);
+        const int pressed = *demo.text_size.draft();
+        std::vector<int> seen{pressed}; std::vector<int> track_x{item->slider_track.x};
+        for (int i = 0; i < 6; ++i) {
+            auto moved = frame(); const auto* now = moved.find(demo.text_size);
+            track_x.push_back(now->slider_track.x);
+            state.slider_pointer(now->id, mouse_x);
+            seen.push_back(*demo.text_size.draft());
+        }
+        test::check(std::any_of(track_x.begin(), track_x.end(), [&](int x) { return x != track_x.front(); }), "the layout does move while dragging");
+        for (int v : seen) test::check(v == pressed, "a still mouse keeps the value while the layout moves");
+        state.pointer_up(item->id);
+    }
+}
+// What the slider paints, through the same entry the host uses.
+struct SliderProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    std::vector<Rect> thumbs; std::vector<std::u16string> texts;
+    void fill(Rect, Color) override {}
+    void rounded(Rect rect, int, Color) override { thumbs.push_back(rect); }
+    void clip(Rect) override {}
+    void text(std::u16string_view value, int, int, int, Color) override { texts.emplace_back(value); }
+    int thumb_center() const { return thumbs.empty() ? -1 : thumbs.back().x + thumbs.back().w / 2; }
+    bool titled(std::u16string_view title) const { return std::find(texts.begin(), texts.end(), std::u16string(title)) != texts.end(); }
+};
+SliderProbe paint_slider(settings_demo::Demo& demo, const Appearance& appearance, const lcars::SliderHandle& slider, Rect& track) {
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(demo.page(), demo.ui, appearance, measure, 960, 720, 1.f, scroll);
+    const auto* item = frame.find(slider); test::check(item != nullptr, "slider is arranged");
+    track = item->slider_track;
+    auto semantic = detail::access(demo.ui).describe(item->id);
+    SliderProbe probe(detail::access(demo.ui), *item, *semantic, appearance, 1.f, true);
+    detail::component_type(Kind::slider).paint(probe);
+    return probe;
+}
+bool near_px(int a, int b) { return std::abs(a - b) <= 1; }
+// #73: while pressed, the thumb is under the pointer and the value is the snapped one.
+void slider_thumb_follows_pointer_value_snaps() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; auto& state = detail::access(demo.ui);
+        Rect track{};
+        paint_slider(demo, *appearance, demo.volume, track);
+        const int x = track.x + static_cast<int>(track.w * 0.47);
+        test::check(bool(state.pointer_down("general.volume")) && bool(state.slider_pointer_down("general.volume", x, track)), "press volume at 47%");
+        auto held = paint_slider(demo, *appearance, demo.volume, track);
+        test::check(near_px(held.thumb_center(), x), "thumb is under the pointer, not on the 45 tick");
+        test::check(held.titled(u"音量: 45"), "title shows the snapped value");
+        test::check(*demo.volume.draft() == 45 && demo.ui.semantics().get({"general.volume"})->value == u"45", "semantic value is 45 while held");
+        test::check(bool(state.slider_pointer("general.volume", x - 40)) && near_px(paint_slider(demo, *appearance, demo.volume, track).thumb_center(), x - 40), "thumb keeps following");
+        state.slider_pointer("general.volume", x); state.pointer_up("general.volume");
+        auto released = paint_slider(demo, *appearance, demo.volume, track);
+        test::check(near_px(released.thumb_center(), track.x + static_cast<int>(std::lround(track.w * 0.45))), "release snaps the thumb to the 45 tick");
+        test::check(!state.slider_drag_x("general.volume"), "no drag display position after release");
+    }
+}
+void slider_thumb_stops_at_track_ends() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", track.x + 10, track);
+    state.slider_pointer("general.volume", track.x - 80);
+    auto left = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 0 && near_px(left.thumb_center(), track.x), "beyond the left end: minimum, thumb at the end");
+    state.slider_pointer("general.volume", track.x + track.w + 80);
+    auto right = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 100 && near_px(right.thumb_center(), track.x + track.w), "beyond the right end: maximum, thumb at the end");
+    state.pointer_up("general.volume");
+}
+void slider_interrupted_drag_returns_to_tick() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    const int x = track.x + static_cast<int>(track.w * 0.47);
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", x, track);
+    state.cancel_input();
+    auto after = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 45, "the last snapped value is kept");
+    test::check(near_px(after.thumb_center(), track.x + static_cast<int>(std::lround(track.w * 0.45))), "an interrupted drag puts the thumb on the value's tick");
+    test::check(!bool(state.slider_pointer("general.volume", x + 100)), "an interrupted drag takes no more pointer moves");
+}
+void slider_drag_is_one_write_per_value_and_one_undo() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    int writes = 0; std::vector<int> values;
+    Ui ui; auto bare = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
+    int model = 40; bare.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    bare.connect_immediate([&](const NumericChange& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
+    auto& bare_state = detail::access(ui); const Rect bare_track{100, 0, 200, 20};
+    bare_state.pointer_down("v"); bare_state.slider_pointer_down("v", 100 + 94, bare_track);
+    for (int x : {93, 94, 92, 91}) bare_state.slider_pointer("v", 100 + x);
+    bare_state.pointer_up("v");
+    test::check(writes == 1 && values == std::vector<int>{45}, "repeated moves inside one step write once");
+    const int before = *demo.volume.draft();
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", track.x, track);
+    for (double r : {0.2, 0.5, 0.7, 0.9, 0.3}) state.slider_pointer("general.volume", track.x + static_cast<int>(track.w * r));
+    state.slider_pointer("general.volume", track.x + static_cast<int>(track.w * 0.47)); state.pointer_up("general.volume");
+    test::check(*demo.volume.draft() == 45, "drag ended on 45");
+    test::check(bool(state.key_down({.ctrl = true, .letter = u'Z'})) && *demo.volume.draft() == before, "one undo restores the value before the whole drag");
+}
+int main() { const test::Case cases[] = {{"item note multi-line", item_note_is_a_multiline_field}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

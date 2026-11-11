@@ -474,6 +474,9 @@ public:
             double ratio = (static_cast<double>(*c.semantics.numeric_value) - range.minimum) /
                            (static_cast<double>(range.maximum) - range.minimum);
             int x = track.x + static_cast<int>(std::lround(track.w * ratio));
+            // While the pointer holds the thumb it sits under the pointer (kept on the current track);
+            // the value is still the snapped one. Releasing or interrupting the drag shows the tick again.
+            if (const auto held = c.ui.slider_drag_x(item.id)) x = std::clamp(*held, track.x, track.x + track.w);
             int size = scaled(c.scale, c.semantics.focused ? c.appearance.component_presentation().body_spacing : c.appearance.component_presentation().row_padding);
             c.rounded({x - size / 2, track.y + (track.h - size) / 2, size, size}, size / 2,
                       c.semantics.enabled ? palette.accent : palette.muted);
