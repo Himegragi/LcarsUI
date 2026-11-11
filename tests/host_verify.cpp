@@ -960,6 +960,98 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
                      "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
+// #79 twin of tests/multiline.cpp on a real window: posted messages drive a multi-line field. The input
+// method position is asked through WM_IME_REQUEST, as a real IME does; typing through an IME needs the
+// author's machine (see the author-run list).
+void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>();
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
+    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    DesktopOptions options; options.title = u"LcarsUI multi-line verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 400);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto placed = [&]() { return *detail::find_placement(host.frame(), "note"); };  // a copy: repaints replace the frame
+    auto caret = [&]() { return detail::access(ui).edit("note")->selection; };
+    auto line = [&] { return note.scroll_line().value.value_or(~0u); };
+    note.focus(); host.pump(); host.paint();
+    for (char16_t digit = u'1'; digit <= u'6'; ++digit) {
+        post(WM_CHAR, digit, 1);
+        if (digit != u'6') key(VK_RETURN);
+    }
+    const auto first_text = detail::access(ui).text("note");
+    report.check("ML01-enter-and-reveal", first_text == u"1\n2\n3\n4\n5\n6" && line() == 3 && placed().view.lines.size() == 6,
+        "Enter breaks lines through WM_KEYDOWN, typing to line six scrolls to the caret; first line=" + std::to_string(line()));
+    key(VK_PRIOR);
+    const bool page_up = caret().caret == 5 && line() == 0;  // three lines up, keeping the column after the last character
+    key(VK_END, true);
+    const bool ctrl_end = caret().caret == 11 && line() == 3;
+    key(VK_HOME, true, true);
+    report.check("ML02-cursor-keys", page_up && ctrl_end && caret().anchor == 11 && caret().caret == 0 && line() == 0,
+        "PageUp moves a page, Ctrl+End and Shift+Ctrl+Home move over the whole text and extend the selection; PageUp=" + std::to_string(page_up) + ", Ctrl+End=" + std::to_string(ctrl_end) +
+        ", selection=" + std::to_string(caret().anchor) + ".." + std::to_string(caret().caret) + ", first line=" + std::to_string(line()));
+
+    auto field = placed();
+    POINT inside{field.view.text.x + 20, field.view.text.y + 10};
+    POINT screen = inside; ClientToScreen(hwnd, &screen);
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    const unsigned after_notch = line();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    report.check("ML03-wheel", after_notch == 2 && line() == 3 && caret().caret == 0,
+        "One wheel notch scrolls two lines and stops at the last page without moving the caret; first line " + std::to_string(after_notch) + " then " + std::to_string(line()));
+
+    field = placed();
+    auto track = field.view.track, thumb = field.view.thumb;
+    POINT grab{thumb.x + thumb.w / 2, thumb.y + thumb.h / 2};
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(grab.x, track.y - 30));
+    const unsigned top = line();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(grab.x, track.y - 30));
+    report.check("ML04-thumb-drag", thumb.h > 0 && top == 0, "Dragging the field's scrollbar thumb to the top scrolls to the first line; line " + std::to_string(top));
+
+    field = placed();
+    auto row = [&](int index) { return POINT{field.view.text.x + 2, field.view.text.y + index * field.view.line_height + 3}; };
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(1).x, row(1).y));
+    post(WM_LBUTTONUP, 0, MAKELPARAM(row(1).x, row(1).y));
+    const auto clicked = caret();
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(0).x, row(0).y));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, row(2).y));
+    const auto dragged = caret();
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, field.view.text.y + 3 * field.view.line_height + 8));
+    const unsigned scrolled_by_drag = line();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(row(2).x, row(2).y));
+    report.check("ML05-click-and-drag", clicked.caret == 2 && clicked.anchor == 2 && dragged.anchor == 0 && dragged.caret == 4 && scrolled_by_drag >= 1,
+        "A click puts the caret on its line, a drag selects across lines, dragging below the field scrolls a line; click=" + std::to_string(clicked.caret) +
+        ", drag=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) + ", first line=" + std::to_string(scrolled_by_drag));
+
+    if (!folder.empty()) host.render(600, 220, 1.f, folder / (report.appearance + "-multiline.bmp"));  // evidence: selection across lines, scrollbar
+    detail::access(ui).select("note", 8, 8); host.paint();
+    detail::access(ui).composition_update(u"你", 1); host.paint();
+    IMECHARPOSITION info{}; info.dwSize = sizeof(info); info.dwCharPos = 0;
+    auto handled = SendMessageW(hwnd, WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&info));
+    auto anchor = placed().caret_rect(8);  // dwCharPos 0 is the start of the composition
+    POINT expected{anchor.x, anchor.y}; ClientToScreen(hwnd, &expected);
+    report.check("ML06-ime-anchor", handled == 1 && info.pt.x == expected.x && info.pt.y == expected.y && info.cLineHeight == static_cast<UINT>(anchor.h) && anchor.h == placed().view.line_height,
+        "The input method asks where the caret is and is told the caret's own line, not the field's top; y=" + std::to_string(info.pt.y) + " expected " + std::to_string(expected.y));
+    detail::access(ui).composition_cancel();
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -3207,6 +3299,7 @@ int run(const std::filesystem::path& folder) {
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
+        multiline_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3662,6 +3755,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
+        bool multiline_only = false;
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false, hover_only = false;
@@ -3685,6 +3779,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
+            else if (arg == L"--multiline-only") multiline_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3706,6 +3801,14 @@ int wmain(int argc, wchar_t** argv) {
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 long_dropdown_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (multiline_only) {  // #79 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "multiline.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                multiline_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }

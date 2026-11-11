@@ -27,6 +27,32 @@ public:
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width);
 
+// One display line of a multi-line field: a hard line (it ends at an LF) or one wrapped piece of it.
+// Offsets are UTF-16 offsets into the visible text (an IME composition included).
+struct FieldLine {
+    unsigned begin = 0, end = 0;  // end excludes the LF that ends a hard line
+    bool soft = false;            // wrapped: the next line continues it, and next.begin == end
+    TextRun run;                  // caret stops for this line alone; x is 0 at the line's left edge
+};
+// The settled multi-line geometry of one field. Core keeps a copy for the cursor keys, so drawing,
+// hit testing, navigation and the IME all read the same lines.
+struct FieldView {
+    std::vector<FieldLine> lines;  // every display line, never empty once laid out
+    unsigned first = 0;            // index of the first visible line: the scroll position
+    unsigned visible = 0;          // configured height in lines
+    int line_height = 0;           // physical pixels
+    bool upstream = false;         // a caret on a wrap point is drawn at the end of the line above
+    Rect text, track, thumb;       // frame coordinates; thumb is empty while everything fits
+    // The line holding a caret offset; a wrap point belongs to the next line unless upstream.
+    unsigned line_of(unsigned offset) const;
+    // Nearest caret stop in a line for an x relative to the line start. The flag reports an offset
+    // that is the end of a wrapped line, which must be drawn upstream to stay on that line.
+    std::pair<unsigned, bool> hit_in_line(unsigned line, float x) const;
+    float x_in_line(unsigned line, unsigned offset) const;
+};
+// Wraps like wrap() and measures each resulting line, keeping UTF-16 offsets.
+std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width);
+
 struct ScrollState {
     int offset = 0; // physical pixels, clamped by every arrange
     int text_size = 0;
@@ -81,15 +107,24 @@ struct Placement {
     Rect slider_track;           // slider track in frame coordinates
     Rect progress_track, progress_fill; // progress display in frame coordinates
     FieldLayout field;            // text fields, translated to frame coordinates
+    bool multiline = false;       // text fields: lines, caret and hits come from view, not run
+    FieldView view;               // multi-line text fields
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
     float offset = 0;             // text fields: horizontal display offset in pixels
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
+    int caret_y(unsigned offset) const;  // multi-line fields: frame y of the top of the caret's line
+    // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line field a caret scrolled
+    // out of view is held on the nearest visible row, which is where an input method anchors its window.
+    Rect caret_rect(unsigned offset) const;
 };
 struct ScrollRegion {
     ScrollState* state = nullptr;
     Rect viewport, clip, track, thumb;
     int extent = 0, maximum = 0, offset = 0;
+    std::string field;           // a multi-line text field's own scrollbar; it moves by whole lines
+    int step = 0;                // physical pixels per line when field is set
+    bool modal_content = false;  // inside the open dialog, so it still takes wheel and drag input
     int offset_for_thumb(int thumb_top) const;
 };
 struct Frame {
@@ -118,6 +153,12 @@ struct Frame {
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
     bool wheel(Ui& ui, int x, int y, int delta) const;
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
+    // Multi-line fields: caret offset for a pointer position. Above or below the lines it clamps to
+    // the first or last visible line.
+    unsigned text_offset(const TextHandle& handle, int x, int y) const;
+    // Extend the field's selection to the pointer, as a drag does. Outside the top or bottom edge the
+    // field also scrolls one line toward the pointer; hosts repeat this on a timer. True if anything changed.
+    bool select_to(Ui& ui, const TextHandle& handle, int x, int y) const;
     const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here
 };
