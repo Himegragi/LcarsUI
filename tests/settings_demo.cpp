@@ -50,6 +50,7 @@ void dark_new_component_sweep() {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         settings_demo::Demo demo;
         auto settings = demo.ui.presentation(); settings.variant = ThemeVariant::dark();
+        settings.focus_indicator = FocusIndicatorMode::always;  // indicators draw only after keys unless forced
         test::check(bool(demo.ui.set_presentation(settings)), "dark presentation accepted");
         test::check(bool(demo.nav.select({"items"})), "open items page");
         auto& state = detail::access(demo.ui);

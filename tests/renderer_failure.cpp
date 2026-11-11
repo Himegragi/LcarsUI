@@ -202,6 +202,7 @@ static void frozen_overlays(const Appearance& appearance) {
     state.tooltip_clock([&] { return now; });
     state.window_active(true);
     check(bool(form.handles.tabs.activate({"v03"})), "tooltip page");
+    state.set_system_keyboard_cues(true);  // a focus tooltip needs the indicator state to be on
     check(bool(form.handles.progress_half.focus()), "tooltip source focus");
     now += 10000; state.tooltip_time(now);
     check(*form.handles.progress_tip.visible(), "tooltip shown before failure");
@@ -228,7 +229,7 @@ static void frozen_overlays(const Appearance& appearance) {
     ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
     DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);
     auto& pending = access(pending_ui); std::uint64_t pending_now = 1000;
-    pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true);
+    pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true); pending.set_system_keyboard_cues(true);
     check(bool(button.focus()) && pending.tooltip_deadline() == 2000, "pending tooltip starts delay");
     pending_host.paint(); check(pending_host.renderer_failed(), "pending tooltip failure");
     pending_now = 6000; pending_hooks.gl_error_at_frame = 0;

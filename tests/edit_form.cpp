@@ -25,6 +25,12 @@ namespace {
 edit_form::Ids ids = edit_form::default_ids();
 Density behavior_density = Density::standard;
 const Appearance* appearance = &web_appearance();  // every case is rerun under each appearance
+// Focus indicators draw only after keyboard input. Sweeps that inspect them start by forcing the display
+// state on through the presentation switch (the same one an application would use).
+void force_focus_indicators(Ui& ui) {
+    auto settings = ui.presentation(); settings.focus_indicator = FocusIndicatorMode::always;
+    check(bool(ui.set_presentation(settings)), "Focus indicators can be forced on");
+}
 
 edit_form::Ids alternate_ids() {
     edit_form::Ids i;
@@ -786,7 +792,7 @@ void unfocused_field_preserves_visible_character() {
 
 void presentation_reflow_keeps_tooltip_and_modal() {
     edit_form::Form form(ids, true); auto& h = form.handles; auto& state = detail::access(form.ui);
-    test::FakeMeasure measure; h.tabs.activate({"v03"}); state.window_active(true);
+    test::FakeMeasure measure; h.tabs.activate({"v03"}); state.window_active(true); force_focus_indicators(form.ui);
     h.progress_half.focus(); state.tooltip_time(100000);
     arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.progress_half.describe()->id);
     auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
@@ -1419,7 +1425,7 @@ void tooltip_keyboard_delay_and_escape() {
     auto& host = detail::access(ui);
     host.tooltip_time(1000);
     host.window_active(true);
-    source.focus();
+    host.key_down({Key::tab});
     host.tooltip_time(1099);
     check(tip.visible() && !*tip.visible(), "Focus waits for the configured delay");
     host.tooltip_time(1100);
@@ -1472,7 +1478,7 @@ void tooltip_window_modal_and_source_lifetime() {
     auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
     auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
-    host.tooltip_time(0); host.window_active(true); source.focus(); host.tooltip_time(100);
+    host.tooltip_time(0); host.window_active(true); force_focus_indicators(ui); source.focus(); host.tooltip_time(100);
     check(*tip.visible(), "Tooltip becomes visible");
     host.window_active(false); host.tooltip_time(1000);
     check(!*tip.visible(), "Window deactivation cancels the tooltip");
@@ -1495,7 +1501,7 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
     auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
     auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"An explanation that wraps near a window edge", 0).value.value();
     auto& host = detail::access(ui);
-    host.window_active(true); source.focus();
+    host.window_active(true); force_focus_indicators(ui); source.focus();
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::column({layout::control(source)}, 0, 8);
     auto frame = arrange(root, ui, *appearance, measure, 160, 110, 1.f, scroll);
@@ -1524,8 +1530,9 @@ struct PaintRoleProbe : detail::ComponentPaint {
     }
     int count(detail::PaintRole role) const { return static_cast<int>(std::count_if(emitted.begin(),emitted.end(),[&](const auto& item){return (static_cast<unsigned>(item.first) & static_cast<unsigned>(role)) != 0;})); }
 };
+#include "focus_visibility.hpp"
 void x04_scrollable_text_inventory() {
-    Ui ui;
+    Ui ui; force_focus_indicators(ui);
     auto long_text = ui.add_label({.id="long", .kind=Kind::label, .value=std::u16string(4000, u'x')}).value.value();
     auto short_text = ui.add_label({.id="short", .kind=Kind::label, .value=u"short"}).value.value();
     auto action = ui.add_button({.id="action", .kind=Kind::button, .label=u"Action"}).value.value();
@@ -1572,7 +1579,7 @@ void draw_command_state_matrix() {
         }
         if(state_index==2) {
             applicable=x04::focus_applicable(*semantic);
-            if(applicable) check(x04::focus(form.ui, entry.handle), "Supported focus setup succeeds");
+            if(applicable) { force_focus_indicators(form.ui); check(x04::focus(form.ui, entry.handle), "Supported focus setup succeeds"); }
         }
         if(state_index==3) {
             applicable=entry.page!="modal" && x04::error_supported(*semantic);
@@ -1621,6 +1628,7 @@ void dark_focus_inventory() {
         auto semantic = x04::describe(entry.handle);
         auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark();
         check(bool(form.ui.set_presentation(settings)), "Dark theme accepted");
+        force_focus_indicators(form.ui);
         if (entry.page == "modal") {
             check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "Focus modal opened");
         } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "Focus page activated");
@@ -2054,7 +2062,7 @@ void x04_modal_inventory_at_each_size_and_scale() {
 void x04_tooltip_at_each_size_and_scale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
-        std::uint64_t now = 100; state.tooltip_clock([&] { return now; }); state.window_active(true);
+        std::uint64_t now = 100; state.tooltip_clock([&] { return now; }); state.window_active(true); force_focus_indicators(form.ui);
         check(x04::prepare_tip(form), "X04 prepare tooltip");
         auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
             int(size.second * scale), scale, form.scroll, form.handles.progress_half.describe()->id); };
@@ -2928,6 +2936,17 @@ int main() {
         {"X04 error inventory at each size and scale", [] { x04_error_inventory_at_each_size_and_scale(); }},
         {"X04 scrollable text inventory", x04_scrollable_text_inventory},
         {"Dark focus inventory", dark_focus_inventory},
+        {"F72 nothing drawn before input", focus_visibility::nothing_is_drawn_before_any_input},
+        {"F72 tab after pointer draws", focus_visibility::tab_after_pointer_draws_it},
+        {"F72 keys open, chords do not", focus_visibility::every_real_key_opens_but_modifier_chords_do_not},
+        {"F72 pointer hides, wheel does not", focus_visibility::pointer_hides_everywhere_but_wheel_does_not},
+        {"F72 programmatic focus keeps state", focus_visibility::programmatic_focus_keeps_the_current_state},
+        {"F72 text field exception", focus_visibility::editable_text_always_draws_but_read_only_follows_the_rule},
+        {"F72 system keyboard cues", focus_visibility::system_setting_forces_display_and_follows_changes},
+        {"F72 always mode", focus_visibility::always_mode_forces_display_and_reverts_live},
+        {"F72 tooltip after click", focus_visibility::tooltip_waits_for_keyboard_after_a_click},
+        {"F72 slider dot", focus_visibility::slider_focus_is_a_dot_left_of_the_title},
+        {"F72 slider thumb after pointer", focus_visibility::slider_thumb_stays_normal_after_pointer_use},
         {"Dark error inventory", [] { x04_error_inventory_at_each_size_and_scale(true); }},
         {"Dark disabled inventory", [] { x04_disabled_inventory_at_each_size_and_scale(true); }},
         {"Dark selected inventory", [] { x04_selected_inventory_at_each_size_and_scale(true); }},

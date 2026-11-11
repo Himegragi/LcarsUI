@@ -23,8 +23,7 @@ constexpr PaintRole operator|(PaintRole a, PaintRole b) {
 class ComponentPaint {
 public:
     ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
-                   const Appearance& look, float render_scale, bool active_window)
-        : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window) {}
+                   const Appearance& look, float render_scale, bool active_window);
     virtual ~ComponentPaint() = default;
     UiState& ui;
     const Placement& placement;
@@ -32,6 +31,9 @@ public:
     const Appearance& appearance;
     float scale;
     bool window_focused;
+    // Whether this component draws its focus indicator now. Built-in components draw the indicator
+    // from this value alone, never from semantics.focused.
+    bool focus_visible;
     virtual void role(PaintRole) {}
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;

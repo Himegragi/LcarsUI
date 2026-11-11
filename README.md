@@ -47,6 +47,22 @@ The settings demo includes navigation, persistence, history, diagnostics and acc
 
 The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
+## Focus indicator
+
+Focus indicators (the accent ring, bar or dot that marks the focused component) are drawn only while the
+user is working with the keyboard, like `:focus-visible` in browsers. Any key without Ctrl or Alt turns them on;
+a pointer press anywhere in the window turns them off. Moving focus from code (`focus()`, semantic
+operations, UI Automation `SetFocus`) never changes this state, and semantics and UIA always report the real
+focus. Editable text fields always draw the indicator while focused. The slider marks focus with a dot left of
+its title; the room for the dot is always reserved so the title never shifts.
+
+* `PresentationSettings::focus_indicator` is `FocusIndicatorMode::automatic` (default) or `always`; switch it
+  with `Ui::set_presentation`. There is no "never" mode.
+* Windows "Always underline access keys and show keyboard focus" (`SPI_GETKEYBOARDCUES`) forces the indicator
+  on, and a change takes effect without restarting.
+* `Ui::focus_indicator_visible()` reports whether indicators are being drawn right now. Tooltips (C11) use the
+  same state: a pointer-focused source shows its tooltip only after the next key press.
+
 ## Presentation verification
 
 The presentation matrix runs in `edit_form` with fake measurement and in
