@@ -17,6 +17,21 @@ void round_trip() {
     auto decoded = settings_demo::parse_settings(bytes);
     test::check(decoded && *decoded == document, "settings survive JSON round trip");
 }
+void multiline_notes_round_trip_and_reject_carriage_returns() {
+    settings_demo::Demo demo; auto document = demo.document();
+    document.items[0].note = u"\u7b2c\u4e00\u884c\n\n\u7b2c\u4e09\u884c\nlast";
+    auto bytes = settings_demo::write_settings(document);
+    test::check(bytes.find("\\n\\n") != std::string::npos && bytes.find('\r') == std::string::npos, "line breaks are stored as JSON \\n escapes");
+    auto decoded = settings_demo::parse_settings(bytes);
+    test::check(decoded && *decoded == document && decoded->items[0].note == document.items[0].note, "a note with line breaks loads back identical");
+    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto replace = [&](std::string from, std::string to) { auto value = base; auto at = value.find(from); test::check(at != std::string::npos, "fixture field"); value.replace(at, from.size(), to); return value; };
+    test::check(bool(settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\nb\""))), "an LF in a note is valid");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\rb\"")), "a CR in a note is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\tb\"")), "a tab in a note is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"name\":\"A\",\"note\"", "\"name\":\"A\\nB\",\"note\"")), "a line break in an item name is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"" + std::string(201, 'x') + "\"")), "the 200 character limit still applies");
+}
 void files() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-test";
     std::filesystem::remove_all(path);
@@ -105,7 +120,7 @@ void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);
