@@ -4,10 +4,13 @@
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 #include <algorithm>
+#include <cmath>
 #include "check.hpp"
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
 #include "component_type.hpp"
+#include "vertical.hpp"
+#include "vertical_expectations.hpp"
 using namespace lcars;
 struct RoleProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -50,6 +53,7 @@ void dark_new_component_sweep() {
     for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
         settings_demo::Demo demo;
         auto settings = demo.ui.presentation(); settings.variant = ThemeVariant::dark();
+        settings.focus_indicator = FocusIndicatorMode::always;  // indicators draw only after keys unless forced
         test::check(bool(demo.ui.set_presentation(settings)), "dark presentation accepted");
         test::check(bool(demo.nav.select({"items"})), "open items page");
         auto& state = detail::access(demo.ui);
@@ -184,6 +188,98 @@ void semantic_items_and_dialogs() {
                 "semantic visibility follows the active Items dialog");
 }
 
+// #78: accent choice on the appearance page, backed by Ui palette overrides.
+bool accent_has(const settings_demo::Demo& demo, const Appearance& appearance, const ThemeVariant& variant, Color expected_accent) {
+    auto palette = demo.ui.effective_palette(appearance, variant);
+    return palette && palette->accent == expected_accent;
+}
+void accent_choices_pass_contrast_everywhere() {
+    const char* ids[] = {"default", "green", "orange"};
+    for (const char* id : ids) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics();
+        auto options = tree.children({"appearance.accent"});
+        test::check(options && options->size() == 3, "accent dropdown has default, green and orange");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{id}}, Verb::select)), "select accent");
+        test::check(demo.accent_id() == id && tree.get({"appearance.accent", OptionValue{id}})->selected, "selection is reflected");
+        for (const auto* appearance : {&web_appearance(), &material_appearance()})
+            for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+                auto palette = demo.ui.effective_palette(*appearance, variant);
+                test::check(palette && check_palette_contrast(*palette).empty(), (std::string("accent ") + id + " passes contrast for " + std::string(appearance->name()) + " " + variant.name).c_str());
+                bool unchanged = palette && *palette == appearance->palette(variant);
+                test::check(unchanged == (std::string(id) == "default"), "default leaves built-in colors, other choices change them");
+            }
+    }
+}
+void accent_choice_repaints_the_page_in_the_chosen_color() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics();
+        test::check(bool(tree.perform({"appearance.dark"}, Verb::toggle)), "dark on so the checked box paints the accent");
+        auto painted = [&] {
+            test::FakeMeasure measure; ScrollState scroll; auto& state = detail::access(demo.ui);
+            auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+            std::vector<std::pair<detail::PaintRole, Color>> colors;
+            for (const auto& item : frame.items) {
+                auto semantic = state.describe(item.id); if (!semantic || !semantic->visible) continue;
+                DarkProbe paint(state, item, *semantic, *appearance, 1.f, true);
+                detail::component_type(semantic->kind).paint(paint);
+                colors.insert(colors.end(), paint.colors.begin(), paint.colors.end());
+            }
+            return colors;
+        };
+        auto has = [](const auto& colors, Color c) { return std::any_of(colors.begin(), colors.end(), [&](const auto& e) { return e.second == c; }); };
+        auto builtin = appearance->palette(ThemeVariant::dark());
+        test::check(has(painted(), builtin.accent), "built-in accent paints before any choice");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{"green"}}, Verb::select)), "choose green");
+        auto chosen = demo.ui.effective_palette(*appearance, ThemeVariant::dark());
+        auto colors = painted();
+        test::check(chosen && chosen->accent != builtin.accent && has(colors, chosen->accent) && !has(colors, builtin.accent), "next frame paints the green accent instead of the built-in one");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{"default"}}, Verb::select)) && has(painted(), builtin.accent), "default restores the built-in accent");
+    }
+}
+void accent_is_history_saved_state_and_reset() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    test::check(!demo.is_dirty(), "clean before the choice");
+    test::check(bool(tree.perform({"appearance.accent", OptionValue{"orange"}}, Verb::select)) && demo.is_dirty() && demo.document().accent == "orange", "choice dirties the document");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.accent_id() == "default" && demo.ui.palette_overrides().empty(), "undo restores the default accent and clears the overrides");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Y'})) && demo.accent_id() == "orange" && !demo.ui.palette_overrides().empty(), "redo reapplies the accent");
+    test::check(bool(tree.perform({"appearance.reset"}, Verb::invoke)) && demo.accent_id() == "default" && demo.ui.palette_overrides().empty(), "reset appearance also resets the accent");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.accent_id() == "orange", "reset is one history step");
+}
+void loading_a_document_applies_its_accent() {
+    settings_demo::Demo demo; auto document = demo.document();
+    test::check(document.accent == "default", "a new document uses the default accent");
+    document.accent = "green"; demo.load_document(document);
+    test::check(demo.accent_id() == "green" && accent_has(demo, web_appearance(), ThemeVariant::light(), Color{20, 110, 50}), "loaded accent overrides the palette");
+    document.accent = "default"; demo.load_document(document);
+    test::check(demo.ui.palette_overrides().empty(), "loading the default clears the overrides");
+}
+
+// #84: the appearance page's checkbox is the user's way to turn justified text off (WCAG 1.4.8).
+void the_justify_left_checkbox_switches_the_presentation_setting() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    auto box = tree.get({"appearance.justify_left"});
+    test::check(box && box->role == Role::checkbox && box->name == u"左右對齊文字改為靠左" && box->checked == std::optional<bool>(false), "the checkbox is there and off");
+    auto order = detail::access(demo.ui).focus_order();
+    auto at = [&](const char* id) { return std::find(order.begin(), order.end(), std::string(id)) - order.begin(); };
+    test::check(at("appearance.compact") < at("appearance.justify_left") && at("appearance.justify_left") < at("appearance.accent"), "it follows the compact checkbox in tab order");
+    test::check(!demo.ui.presentation().justify_as_left, "off by default");
+    test::check(bool(tree.perform({"appearance.justify_left"}, Verb::toggle)) && demo.ui.presentation().justify_as_left, "toggling turns the presentation setting on");
+    test::check(*tree.get({"appearance.justify_left"})->checked, "and the checkbox shows it");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true,.letter=u'Z'})) && !demo.ui.presentation().justify_as_left, "it is one undo step");
+    test::check(bool(tree.perform({"appearance.justify_left"}, Verb::toggle)) && bool(tree.perform({"appearance.reset"}, Verb::invoke)) && !demo.ui.presentation().justify_as_left, "reset appearance turns it off");
+    // The License text is long English and stays left-aligned, whatever the setting.
+    test::check(tree.get({"about.license_text"})->text_align == TextAlign::left, "the About license text stays left-aligned");
+}
+void accent_follows_the_existing_appearance_controls_in_tab_order() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto order = detail::access(demo.ui).focus_order();
+    auto at = [&](const char* id) { return std::find(order.begin(), order.end(), std::string(id)) - order.begin(); };
+    test::check(at("appearance.text_size") < at("appearance.dark") && at("appearance.dark") < at("appearance.compact") && at("appearance.compact") < at("appearance.accent") && at("appearance.accent") < at("appearance.reset"), "accent dropdown comes after the existing controls so their keyboard order is unchanged");
+}
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -647,6 +743,30 @@ void about_page_content() {
     test::check(with_diagnostics.ui.semantics().get({"about.diagnostics"})->value == u"診斷：基本診斷（只存記憶體）", "diagnostics present when selected");
     test::check(tree.get({"about.framework"})->value.find(lcars::framework_version) != std::u16string::npos, "framework version is shown");
 }
+void about_vertical_label() {
+    settings_demo::AboutInfo info;
+    settings_demo::Demo demo(info);
+    test::check(bool(demo.nav.select({"about"})), "open About");
+    auto node = demo.ui.semantics().get({"about.vertical"});
+    test::check(node && node->role == Role::label && node->writing_mode == WritingMode::vertical, "the About page has a vertical label");
+    test::check(node->value == test::vertical::about_sample, "the vertical label carries the sample sentence");
+    // It shows every kind of piece the rules cover: a sideways word, a bracket, combined digits, a comma and a period.
+    std::vector<VerticalForm> forms;
+    for (const auto& segment : detail::segment_vertical(node->value, 3)) forms.push_back(segment.form);
+    for (auto form : {VerticalForm::sideways, VerticalForm::bracket, VerticalForm::combined, VerticalForm::point, VerticalForm::upright})
+        test::check(std::find(forms.begin(), forms.end(), form) != forms.end(), "the sample covers every piece form");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        test::FakeMeasure measure;
+        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.vertical"; });
+        test::check(item != frame.items.end() && item->vertical && item->column_layout.columns.size() >= 2 && item->bounds.h > 0, "the page lays the label out in columns");
+        auto semantic = demo.ui.semantics().get({"about.vertical"});
+        test::check(semantic && semantic->bounds && semantic->name == test::vertical::about_sample &&
+                    test::vertical::drawn_box(semantic->bounds->x, semantic->bounds->y, semantic->bounds->x + semantic->bounds->w, semantic->bounds->y + semantic->bounds->h,
+                                              0, 0, 960, 720, 200) && *semantic->bounds == intersect(item->bounds, item->clip),
+                    "the semantic node reports the text in reading order and the box that is drawn"); 
+    }
+}
 void td01_failure_diagnostic() {
     auto reset = settings_demo::failure_diagnostic({lcars::RendererFailureKind::device_reset, 0x8253, u"Graphics reset"});
     test::check(reset.category == lcars::DiagnosticCategory::device_reset && reset.severity == lcars::DiagnosticSeverity::error &&
@@ -707,6 +827,35 @@ void about_keyboard_scroll() {
         auto short_label = short_demo.ui.semantics().get({"about.license_text"});
         test::check(short_label && !short_label->focusable, "fitting license stays out of Tab order");
     }
+}
+// #80: the licence text breathes (line spacing 1.4, 8 DIP between paragraphs) and the appearance preview is centered;
+// the settings pages offer no controls for either (ADR 0014: code switches and demo switches stay apart).
+void demo_text_flow() {
+    settings_demo::AboutInfo info;
+    info.licenses = {{{"lcars"}, u"framework", u"alpha\nbeta"}};
+    settings_demo::Demo demo(info);
+    auto& tree = demo.ui.semantics();
+    test::check(tree.get({"about.license_text"})->line_spacing == 1.4 && tree.get({"about.license_text"})->paragraph_spacing == 8, "licence text: 1.4 spacing, 8 DIP paragraphs");
+    test::check(tree.get({"about.license_text"})->text_align == TextAlign::left && tree.get({"appearance.preview"})->text_align == TextAlign::center, "the preview is centered, the licence text stays left");
+    test::check(tree.get({"appearance.preview"})->line_spacing == 1.0 && tree.get({"appearance.preview"})->paragraph_spacing == 0, "the preview keeps the default spacing");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        test::FakeMeasure measure;
+        demo.nav.select({"about"});
+        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.license_text"; });
+        test::check(item != frame.items.end() && item->lines.size() == 2, "the licence text has two paragraphs");
+        // 16 px text: a 24 px line, a 34 px row (24 * 1.4 rounded), and 8 px after the paragraph.
+        test::check(item->lines[1].bounds.y - item->lines[0].bounds.y == 34 + 8, "one row plus the paragraph gap between paragraphs");
+        demo.nav.select({"appearance"});
+        frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "appearance.preview"; });
+        test::check(item != frame.items.end() && !item->lines.empty() && item->lines[0].bounds.x > item->bounds.x &&
+                    std::abs((item->lines[0].bounds.x - item->bounds.x) * 2 + item->lines[0].bounds.w - item->bounds.w) <= 1,
+                    "the preview text is centered in its label");
+    }
+    auto top = tree.children({});
+    test::check(top && std::none_of(top->begin(), top->end(), [](const NodeRef& ref) { return ref.id.find("align") != std::string::npos || ref.id.find("spacing") != std::string::npos; }),
+                "the settings pages have no alignment or spacing options");
 }
 void failure_retry_flow() {
     struct Prompt : settings_demo::NativePrompt {
@@ -865,4 +1014,267 @@ void appearance_interleaved_history() {
     state.key_down({.ctrl=true,.letter=u'Z'});
     test::check(demo.ui.presentation().variant==ThemeVariant::light(), "undo intervening toggle independently");
 }
-int main() { const test::Case cases[] = {{"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+// #79: the item dialog's note is a three-line multi-line field whose breaks survive saving and editing.
+void item_note_is_a_multiline_field() {
+    settings_demo::Demo demo; demo.nav.select({"items"});
+    test::check(bool(demo.items_add.invoke()), "open the add item dialog");
+    auto note = demo.ui.semantics().get({"items.dialog.note"});
+    test::check(note && note->role == Role::text && note->scroll && note->scroll->visible_lines == 3, "the note is a three-line multi-line text field");
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(demo.page(), demo.ui, web_appearance(), measure, 960, 720, 1, scroll);
+    const auto* placed = frame.find(demo.item_note);
+    test::check(placed && placed->multiline && placed->view.visible == 3 && placed->field.editor.h == 3 * measure.line_height(placed->text_size), "it is arranged three lines tall");
+    test::check(demo.item_note.describe()->visible_lines == 3 && !demo.item_name.describe()->multiline, "the name beside it stays single-line");
+    demo.item_note.focus();
+    test::check(bool(detail::access(demo.ui).key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter in the note breaks the line and the dialog stays open");
+    test::check(demo.item_note.draft().value.value() == u"\n", "the break is in the draft");
+    const std::u16string text = u"first line\nsecond line\n\nfourth";
+    test::check(bool(demo.item_note.set_value(text)) && bool(demo.item_name.set_value(u"Multi")), "a note may hold line breaks");
+    test::check(bool(demo.item_ok.invoke()) && !*demo.item_dialog.is_open(), "the item is saved");
+    auto document = demo.document();
+    test::check(document.items.back().name == u"Multi" && document.items.back().note == text, "the saved note keeps its line breaks");
+    test::check(bool(demo.items_list.select(document.items.back().id)), "select it again");
+    demo.items_list.focus();
+    test::check(bool(detail::access(demo.ui).key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter on the list still opens the edit dialog");
+    test::check(demo.item_note.draft().value.value() == text, "editing loads the note with its breaks");
+    test::check(demo.item_note.set_value(std::u16string(200, u'x') + u"\ny").status == Status::invalid_value, "the 200 character limit still counts a line break");
+}
+// #81: the item dialog's note is a rich text field with a style bar above it; the buttons and the color list act on
+// the note's selection, the selection stays and the note takes the focus back; the styles are saved with the item.
+void item_note_is_rich_with_a_style_bar() {
+    settings_demo::Demo demo; demo.nav.select({"items"});
+    test::check(bool(demo.items_add.invoke()), "open the add item dialog");
+    auto& tree = demo.ui.semantics();
+    test::check(tree.get({"items.dialog.note"})->rich && !tree.get({"items.dialog.name"})->rich, "the note is rich, the name is not");
+    for (const char* id : {"items.dialog.note.bold", "items.dialog.note.italic", "items.dialog.note.underline"}) test::check(tree.get({id})->role == Role::button, "a style button above the note");
+    test::check(tree.get({"items.dialog.note.color"})->role == Role::dropdown && demo.item_note_color.describe()->options.size() == 4, "a color list with default, red, green and blue");
+    test::check(bool(demo.item_note.set_value(u"重要通知內容")) && bool(demo.item_name.set_value(u"Styled")), "write the note");
+    auto& host = detail::access(demo.ui);
+    demo.item_note.focus(); demo.item_note.select(0, 2);
+    // A button press moves the focus to the button; invoking it applies the style and returns the focus.
+    host.focus("items.dialog.note.bold");
+    test::check(bool(demo.item_note_bold.invoke()), "press the bold button");
+    auto spans = [&] { return demo.item_note.rich_value()->spans; };
+    test::check(spans() == std::vector<StyleSpan>{{.start = 0, .length = 2, .bold = true}}, "the selection is bold");
+    test::check(host.focused() == "items.dialog.note" && host.edit("items.dialog.note")->selection.anchor == 0 && host.edit("items.dialog.note")->selection.caret == 2,
+                "the focus is back in the note and the selection is unchanged");
+    host.focus("items.dialog.note.italic"); demo.item_note_italic.invoke();
+    host.focus("items.dialog.note.underline"); demo.item_note_underline.invoke();
+    test::check(spans() == std::vector<StyleSpan>{{.start = 0, .length = 2, .bold = true, .italic = true, .underline = true}}, "italic and underline combine with bold");
+    host.focus("items.dialog.note.bold"); demo.item_note_bold.invoke();
+    test::check(!spans().empty() && !spans()[0].bold && spans()[0].italic, "a second press removes bold");
+    demo.item_note.select(2, 4);
+    host.focus("items.dialog.note.color");
+    test::check(bool(demo.item_note_color.select({"red"})), "choose red");
+    test::check(spans().size() == 2 && spans()[1].start == 2 && spans()[1].length == 2 && spans()[1].color == "red" && host.focused() == "items.dialog.note",
+                "the selection is red and the focus is back in the note");
+    test::check(bool(demo.item_note_color.select({"default"})) && spans().size() == 1, "default returns the selection to the normal color");
+    demo.item_note_color.select({"green"});
+    test::check(bool(demo.item_ok.invoke()) && !*demo.item_dialog.is_open(), "the item is saved");
+    auto document = demo.document();
+    test::check(document.items.back().note == u"重要通知內容" && document.items.back().note_spans.size() == 2 && document.items.back().note_spans[1].color == "green",
+                "the saved item has the note's text and styles");
+    test::check(bool(demo.items_list.select(document.items.back().id)), "select it again");
+    demo.items_list.focus();
+    test::check(bool(host.key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter on the list opens the edit dialog");
+    test::check(demo.item_note.rich_value()->spans == document.items.back().note_spans, "editing loads the styles back");
+    test::check(!demo.item_note_color.describe()->options.empty() && demo.item_note_color.draft()->has_value() && (*demo.item_note_color.draft())->id == "default", "the color list starts at default for each opening");
+}
+// The note's named colors stay readable (WCAG AA 4.5:1) on the field's surface in both appearances and both themes.
+void note_colors_are_readable_in_every_appearance_and_theme() {
+    settings_demo::Demo demo; demo.nav.select({"items"}); demo.items_add.invoke();
+    auto colors = demo.item_note.colors();
+    test::check(colors && colors->size() == 3, "red, green and blue");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()})
+        for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+            if (!appearance->supports(variant)) continue;
+            const auto palette = appearance->palette(variant);
+            for (const auto& color : *colors) {
+                const auto value = variant == ThemeVariant::dark() ? color.dark : color.light;
+                test::check(contrast_ratio(value, palette.surface) >= 4.5, "a named note color is readable on the surface");
+                test::check(contrast_ratio(value, palette.selection) >= 3.0, "...and still distinguishable inside a selection");
+            }
+        }
+}
+// #73: the pointer-to-value basis is frozen at press, so a layout that moves under the pointer
+// (text size widens the navigation list) cannot make the value wander while the mouse is still.
+void slider_drag_basis_is_frozen_when_layout_moves() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        test::FakeMeasure measure; ScrollState scroll;
+        auto& state = detail::access(demo.ui);
+        auto frame = [&] { return arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll); };
+        auto first = frame(); const auto* item = first.find(demo.text_size);
+        test::check(item && item->slider_track.w > 0, "text size track is arranged");
+        const int mouse_x = item->slider_track.x + item->slider_track.w * 9 / 10;
+        test::check(bool(state.pointer_down(item->id)), "press text size");
+        state.slider_pointer_down(item->id, mouse_x, item->slider_track);
+        const int pressed = *demo.text_size.draft();
+        std::vector<int> seen{pressed}; std::vector<int> track_x{item->slider_track.x};
+        for (int i = 0; i < 6; ++i) {
+            auto moved = frame(); const auto* now = moved.find(demo.text_size);
+            track_x.push_back(now->slider_track.x);
+            state.slider_pointer(now->id, mouse_x);
+            seen.push_back(*demo.text_size.draft());
+        }
+        test::check(std::any_of(track_x.begin(), track_x.end(), [&](int x) { return x != track_x.front(); }), "the layout does move while dragging");
+        for (int v : seen) test::check(v == pressed, "a still mouse keeps the value while the layout moves");
+        state.pointer_up(item->id);
+    }
+}
+// What the slider paints, through the same entry the host uses.
+struct SliderProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    std::vector<Rect> thumbs; std::vector<std::u16string> texts;  // thumbs: content-role discs only (the #72 focus dot is not the thumb)
+    detail::PaintRole current = detail::PaintRole::content;
+    void role(detail::PaintRole r) override { current = r; }
+    void fill(Rect, Color) override {}
+    void rounded(Rect rect, int, Color) override { if (current != detail::PaintRole::focus_indicator) thumbs.push_back(rect); }
+    void clip(Rect) override {}
+    void text(std::u16string_view value, int, int, int, Color) override { texts.emplace_back(value); }
+    int thumb_center() const { return thumbs.empty() ? -1 : thumbs.back().x + thumbs.back().w / 2; }
+    bool titled(std::u16string_view title) const { return std::find(texts.begin(), texts.end(), std::u16string(title)) != texts.end(); }
+};
+SliderProbe paint_slider(settings_demo::Demo& demo, const Appearance& appearance, const lcars::SliderHandle& slider, Rect& track) {
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(demo.page(), demo.ui, appearance, measure, 960, 720, 1.f, scroll);
+    const auto* item = frame.find(slider); test::check(item != nullptr, "slider is arranged");
+    track = item->slider_track;
+    auto semantic = detail::access(demo.ui).describe(item->id);
+    SliderProbe probe(detail::access(demo.ui), *item, *semantic, appearance, 1.f, true);
+    detail::component_type(Kind::slider).paint(probe);
+    return probe;
+}
+bool near_px(int a, int b) { return std::abs(a - b) <= 1; }
+// #73: while pressed, the thumb is under the pointer and the value is the snapped one.
+void slider_thumb_follows_pointer_value_snaps() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; auto& state = detail::access(demo.ui);
+        Rect track{};
+        paint_slider(demo, *appearance, demo.volume, track);
+        const int x = track.x + static_cast<int>(track.w * 0.47);
+        test::check(bool(state.pointer_down("general.volume")) && bool(state.slider_pointer_down("general.volume", x, track)), "press volume at 47%");
+        auto held = paint_slider(demo, *appearance, demo.volume, track);
+        test::check(near_px(held.thumb_center(), x), "thumb is under the pointer, not on the 45 tick");
+        test::check(held.titled(u"音量: 45"), "title shows the snapped value");
+        test::check(*demo.volume.draft() == 45 && demo.ui.semantics().get({"general.volume"})->value == u"45", "semantic value is 45 while held");
+        test::check(bool(state.slider_pointer("general.volume", x - 40)) && near_px(paint_slider(demo, *appearance, demo.volume, track).thumb_center(), x - 40), "thumb keeps following");
+        state.slider_pointer("general.volume", x); state.pointer_up("general.volume");
+        auto released = paint_slider(demo, *appearance, demo.volume, track);
+        test::check(near_px(released.thumb_center(), track.x + static_cast<int>(std::lround(track.w * 0.45))), "release snaps the thumb to the 45 tick");
+        test::check(!state.slider_drag_x("general.volume"), "no drag display position after release");
+    }
+}
+void slider_thumb_stops_at_track_ends() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", track.x + 10, track);
+    state.slider_pointer("general.volume", track.x - 80);
+    auto left = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 0 && near_px(left.thumb_center(), track.x), "beyond the left end: minimum, thumb at the end");
+    state.slider_pointer("general.volume", track.x + track.w + 80);
+    auto right = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 100 && near_px(right.thumb_center(), track.x + track.w), "beyond the right end: maximum, thumb at the end");
+    state.pointer_up("general.volume");
+}
+void slider_interrupted_drag_returns_to_tick() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    const int x = track.x + static_cast<int>(track.w * 0.47);
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", x, track);
+    state.cancel_input();
+    auto after = paint_slider(demo, web_appearance(), demo.volume, track);
+    test::check(*demo.volume.draft() == 45, "the last snapped value is kept");
+    test::check(near_px(after.thumb_center(), track.x + static_cast<int>(std::lround(track.w * 0.45))), "an interrupted drag puts the thumb on the value's tick");
+    test::check(!bool(state.slider_pointer("general.volume", x + 100)), "an interrupted drag takes no more pointer moves");
+}
+void slider_drag_is_one_write_per_value_and_one_undo() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    int writes = 0; std::vector<int> values;
+    Ui ui; auto bare = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
+    int model = 40; bare.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+    bare.connect_immediate([&](const NumericChange& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
+    auto& bare_state = detail::access(ui); const Rect bare_track{100, 0, 200, 20};
+    bare_state.pointer_down("v"); bare_state.slider_pointer_down("v", 100 + 94, bare_track);
+    for (int x : {93, 94, 92, 91}) bare_state.slider_pointer("v", 100 + x);
+    bare_state.pointer_up("v");
+    test::check(writes == 1 && values == std::vector<int>{45}, "repeated moves inside one step write once");
+    const int before = *demo.volume.draft();
+    state.pointer_down("general.volume"); state.slider_pointer_down("general.volume", track.x, track);
+    for (double r : {0.2, 0.5, 0.7, 0.9, 0.3}) state.slider_pointer("general.volume", track.x + static_cast<int>(track.w * r));
+    state.slider_pointer("general.volume", track.x + static_cast<int>(track.w * 0.47)); state.pointer_up("general.volume");
+    test::check(*demo.volume.draft() == 45, "drag ended on 45");
+    test::check(bool(state.key_down({.ctrl = true, .letter = u'Z'})) && *demo.volume.draft() == before, "one undo restores the value before the whole drag");
+}
+// #75: Ctrl+Z / Ctrl+Y restore the value through the application, so the thumb lands at once,
+// while the user's own arrow key on the same slider slides.
+void slider_undo_redo_land_at_once() {
+    settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
+    std::uint64_t now = 0; state.animation_time([&] { return now; });
+    paint_slider(demo, web_appearance(), demo.volume, track);
+    auto tick = [&](int value) { return track.x + static_cast<int>(std::lround(track.w * value / 100.0)); };
+    auto thumb = [&] { return paint_slider(demo, web_appearance(), demo.volume, track).thumb_center(); };
+    test::check(bool(demo.volume.focus()) && bool(state.key_down({.key = Key::right})), "arrow right on the focused volume");
+    test::check(*demo.volume.draft() == 45 && near_px(thumb(), tick(40)), "the arrow key slides: 45 now, thumb still on 40");
+    now = 150;
+    test::check(near_px(thumb(), tick(45)) && !demo.ui.animating().value.value(), "the slide lands on 45");
+    test::check(bool(state.key_down({.ctrl = true, .letter = u'Z'})) && *demo.volume.draft() == 40, "undo restores 40");
+    test::check(near_px(thumb(), tick(40)) && !demo.ui.animating().value.value(), "undo: the thumb is on 40 at once");
+    test::check(bool(state.key_down({.ctrl = true, .letter = u'Y'})) && *demo.volume.draft() == 45, "redo restores 45");
+    test::check(near_px(thumb(), tick(45)) && !demo.ui.animating().value.value(), "redo: the thumb is on 45 at once");
+}
+
+// Right-clicking a row of the Items page: the row is selected, and the menu's Edit and Delete are the
+// buttons' own actions, so they match the Enter / Del shortcuts exactly.
+void items_context_menu_acts_on_the_clicked_row() {
+    settings_demo::Demo demo;
+    auto& core = detail::access(demo.ui);
+    test::check(bool(demo.nav.select({"items"})), "open items page");
+    auto row_of = [&](const char* id) {
+        auto options = demo.items_list.describe()->options;
+        auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value.id == id; });
+        return static_cast<std::size_t>(it - options.begin());
+    };
+    auto has_menu_verb = [&](const char* id) {
+        auto verbs = demo.ui.semantics().get({id})->verbs;
+        return std::find(verbs.begin(), verbs.end(), Verb::context_menu) != verbs.end();
+    };
+    test::check(has_menu_verb("items.search") && has_menu_verb("items.list") && !has_menu_verb("items.add"),
+                "the search field has the built-in menu, the list has the demo's, buttons have none");
+    test::check(bool(core.menu_pointer_open("items.list", std::nullopt, std::nullopt, {10, 10})), "right button on empty space opens the list menu");
+    auto menu = demo.ui.context_menu();
+    test::check(menu && menu->items.size() == 2 && menu->items[0].id == "items.edit" && menu->items[0].label == u"編輯(E)" && menu->items[0].shortcut_hint == u"Enter" &&
+                menu->items[1].id == "items.delete" && menu->items[1].label == u"刪除(D)" && menu->items[1].shortcut_hint == u"Del" &&
+                menu->items[0].access_key == u'E' && menu->items[1].access_key == u'D', "Edit(E) and Delete(D), with their shortcut hints");
+    test::check(!menu->items[0].enabled && !menu->items[1].enabled, "both are off while nothing is selected, like the buttons");
+    demo.ui.close_context_menu();
+    // Delete the clicked row, not the previous selection.
+    test::check(bool(demo.items_list.select({"T001"})), "a different row is selected first");
+    test::check(bool(core.menu_pointer_open("items.list", row_of("T003"), std::nullopt, {10, 10})), "right button on row T003");
+    test::check(demo.items_list.describe()->options[row_of("T003")].selected && !demo.items_list.describe()->options[row_of("T001")].selected, "the clicked row is selected");
+    menu = demo.ui.context_menu();
+    test::check(menu->items[0].enabled && menu->items[1].enabled, "Edit and Delete are on");
+    test::check(bool(demo.ui.invoke_menu_item("items.delete")) && *demo.delete_dialog.is_open(), "Delete opens the confirmation");
+    const auto by_menu = demo.ui.semantics().get({"items.delete_dialog.message"})->value;
+    test::check(by_menu.find(u"範本 03") != std::u16string::npos, "it names the clicked row");
+    core.key_down({.key = Key::escape});
+    test::check(!*demo.delete_dialog.is_open() && core.focused() == "items.list", "cancelling returns focus to the list");
+    test::check(bool(core.key_down({.key = Key::del})) && *demo.delete_dialog.is_open() && demo.ui.semantics().get({"items.delete_dialog.message"})->value == by_menu,
+                "the Del key opens the very same confirmation");
+    core.key_down({.key = Key::tab}); core.key_down({.key = Key::space}); core.key_up(Key::space);
+    test::check(!*demo.delete_dialog.is_open() && row_of("T003") == demo.items_list.describe()->options.size() && demo.items_list.describe()->options.size() == 19,
+                "confirming deletes row T003");
+    // Edit through the menu with the keyboard: the menu key, then the quick key.
+    test::check(bool(core.menu_pointer_open("items.list", row_of("T005"), std::nullopt, {10, 10})), "right button on row T005");
+    core.text_input(u"e");
+    test::check(*demo.item_dialog.is_open() && demo.item_name.draft().value.value() == u"共用範本", "the quick key E opens Edit on that row");
+    demo.item_dialog.settle(false);
+    // The menu key on the focused list hangs the menu from the current row.
+    demo.items_list.focus();
+    test::check(bool(core.key_down({.key = Key::menu})) && *demo.ui.context_menu_open(), "the menu key opens the list menu");
+    core.key_down({.key = Key::down}); core.key_down({.key = Key::down});
+    test::check(bool(core.key_down({.key = Key::enter})) && *demo.delete_dialog.is_open(), "Down, Down, Enter runs Delete(D)");
+}
+
+int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"item note rich", item_note_is_rich_with_a_style_bar}, {"note colors readable", note_colors_are_readable_in_every_appearance_and_theme}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"justify-left checkbox", the_justify_left_checkbox_switches_the_presentation_setting}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

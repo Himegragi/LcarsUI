@@ -4,6 +4,8 @@
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
+#include "animation.hpp"
+#include "word_break.hpp"
 #include <array>
 #include <map>
 #include <set>
@@ -13,6 +15,7 @@
 namespace lcars {
 using Id = std::string;
 namespace detail {
+struct TextHit { unsigned offset = 0; bool upstream = false; };
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
     friend class lcars::SemanticTree;
@@ -56,6 +59,22 @@ public:
     void tooltip_hover(std::string_view id);
     const std::u16string* tooltip_text(std::string_view id) const;
     void window_active(bool active);
+    // Pointer hover. The host (or a test) reports the real mouse in window coordinates; touch and pen
+    // messages (touch = true) are ignored. One call moves both the hover target and the tooltip dwell.
+    void pointer_over(const Frame& frame, int x, int y, bool touch = false);
+    void pointer_left();  // the pointer left the client area
+    // A drag that must keep the hover where it started (text selection, scrollbar thumb). An id first
+    // makes that component the target; an empty id freezes the current one. A slider drag holds it by itself.
+    void hover_capture(std::string_view id);
+    void hover_release();
+    // Re-evaluates the real pointer at its last position; arrange calls it after every layout.
+    void hover_refresh(const Frame& frame);
+    // The admitted target (see Ui::hover) and whether the overlay is drawn for it.
+    std::optional<HoverTarget> hover_target() const;
+    bool hover_drawn(std::string_view id, const OptionValue* item) const;
+    Result simulate_hover(std::string_view id, const std::optional<OptionValue>& item);
+    Result clear_simulated_hover();
+    Query<std::optional<HoverTarget>> hover_query() const;
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
     ScrollState& dropdown_scroll(const Id& id) { return dropdowns_.at(id).scroll; }
@@ -72,13 +91,35 @@ public:
     ComponentHandle slider_layout_handle(const Control& control);
     Result slider_key_down(KeyPress key);
     Result slider_set_value(const Id& id, int value);
-    Result slider_pointer(const Id& id, int x, Rect track);
+    // A pointer drag converts the mouse x to a value against the track captured at press, so a layout
+    // that moves under the pointer cannot change the value. The thumb is drawn at the pointer, not the value.
+    Result slider_pointer_down(const Id& id, int x, Rect track, float scale = 1.f);
+    Result slider_pointer(const Id& id, int x);
+    void slider_track_refresh(const Frame& frame);  // end of every arrange: where the held thumb is drawn now
+    std::optional<int> slider_drag_x(std::string_view id) const;
+    // #75 shared animation clock. The host (or a test) supplies the time source in milliseconds; with
+    // none installed every change is instant. Motion plays only when the source exists, presentation
+    // motion is automatic, the system animation preference is on and the window is visible.
+    void animation_time(std::function<std::uint64_t()> source) { animations_.time_source(std::move(source)); }
+    void set_system_animations(bool enabled);  // Windows "Show animations in Windows"; false ends running ones
+    void set_window_hidden(bool hidden);       // minimized / fully covered; true ends running ones
+    bool motion_enabled() const;
+    void finish_animations();                  // every running animation jumps to its end
+    // The one query behind Ui::animating and SemanticTree::animating (same admission and statuses).
+    Query<bool> animating() const;
+    bool animation_running() const;            // host: schedule the next frame only while true
+    // Thumb position as a 0..1 share of the track while a transition runs; nothing otherwise.
+    std::optional<double> slider_animated_ratio(std::string_view id) const;
+    // Pointer x the thumb is drawn at while the pointer holds it (a drag, or any press with motion off).
+    std::optional<int> slider_held_x(std::string_view id) const;
     ComponentHandle radio_layout_handle(const Control& control);
     Result radio_key_down(KeyPress key);
     ComponentHandle checkbox_layout_handle(const Control& control);
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
+    Result connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate);
+    bool is_rich(std::string_view id) const;
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
@@ -134,9 +175,34 @@ public:
     // Host requests a new frame when a source notification changes the view.
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const { return presentation_; }
+    // Focus indicator display state. Only real input moves it: key_down and the host's pointer press.
+    // Programmatic focus, semantic operations and UIA never change it.
+    bool focus_indicator_visible() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
+    // The per-component answer the paint code uses: focused, and either shown or an editable text field.
+    bool draws_focus_indicator(const Semantics& semantics) const {
+        return semantics.focused && (focus_indicator_visible() || (semantics.kind == Kind::text && !semantics.read_only && semantics.enabled));
+    }
+    // A pointer press anywhere in the client area, including empty space and inert components.
+    void pointer_pressed();
+    // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
+    void set_system_keyboard_cues(bool enabled);
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
+    Result set_palette_overrides(std::vector<PaletteOverride> overrides);
+    const std::vector<PaletteOverride>& palette_overrides() const { return palette_overrides_; }
+    // The single color entry for painting: built-in palette of this appearance for the current
+    // theme variant (or an explicit one), with the override list applied.
+    Palette effective_palette(const Appearance& appearance, const ThemeVariant& variant) const;
+    Palette effective_palette(const Appearance& appearance) const { return effective_palette(appearance, presentation_.variant); }
+    void bind_appearance(const Appearance* appearance) { bound_appearance_ = appearance; }
+    const Appearance* bound_appearance() const { return bound_appearance_; }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void on_relayout(std::function<void()> callback) { relayout_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
+    // Sideways scrolling of a vertical-writing label. The state belongs to the label; the offset counts pixels
+    // from the start of the text (right edge). A label that does not scroll is not focusable.
+    ScrollState& vertical_scroll(const Id& id) { return vertical_scrolls_[id]; }
+    void set_vertical_scroll(const Id& id, int maximum, int column_width);
+    void clear_vertical_scroll(const Id& id);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
         if (semantic_schedule_ && !semantic_pending_.empty()) semantic_schedule_();
@@ -170,6 +236,7 @@ public:
     Result undo(std::string_view id);
     Result redo(std::string_view id);
     Result paste(std::string_view id, std::u16string_view text);
+    Result paste_clipboard(std::string_view id);  // Ctrl+V: styles come along when the clipboard holds a matching payload
     Result copy(std::string_view id);  // writes the selection to the clipboard
     Result cut(std::string_view id);
     void set_clipboard(Clipboard* clipboard) { clipboard_ = clipboard; }
@@ -185,19 +252,117 @@ public:
     void set_text_offset(std::string_view id, float offset);
     unsigned text_anchor(std::string_view id, int text_size) const;
     void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
+    // Multi-line view state. arrange hands over the lines it measured and gets the settled first
+    // visible line back (view.first): layout is the only place that knows where lines break.
+    void settle_lines(std::string_view id, FieldView& view, int text_size, int width);
+    const FieldView* field_view(std::string_view id) const;  // lines as last arranged; null for other kinds
+    ScrollState& line_scroll(const Id& id) { return edits_.at(id).multi.scroll; }
+    bool scroll_lines_to(std::string_view id, unsigned first);  // clamps; true when the position changed
+    // A pointer click or drag: like select, but may place the caret at the end of a wrapped line.
+    Result select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream);
+    // Multi-line configuration and view position, shared by the typed handle and the semantic verb.
+    Result set_visible_lines(std::string_view id, unsigned lines);
+    Result set_scroll_line(std::string_view id, unsigned first);
+    Query<unsigned> scroll_line(std::string_view id) const;
+    // Text flow (#80), labels and text fields; shared by the typed handles and the semantic verbs.
+    Result set_text_align(std::string_view id, TextAlign align);
+    Result set_justify_method(std::string_view id, JustifyMethod method);
+    Result set_line_spacing(std::string_view id, double multiple);
+    Result set_paragraph_spacing(std::string_view id, int dip);
+    // Words, paragraphs and multi-click (#83). Queries and selections share select()'s admission rules.
+    void set_word_breaker(std::shared_ptr<const WordBreaker> breaker) { word_breaker_ = std::move(breaker); }  // null: the system ICU
+    Result set_word_segmentation(std::string_view id, WordSegmentation mode);
+    Query<WordSegmentation> word_segmentation(std::string_view id) const;
+    Query<WordSegmentation> word_segmentation_in_use(std::string_view id) const;
+    Query<TextSpan> word_at(std::string_view id, unsigned offset) const;
+    Query<TextSpan> paragraph_at(std::string_view id, unsigned offset) const;
+    Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
+    // The UIA word and paragraph unit boundaries of a field's committed text (empty for anything that is not a text field).
+    std::vector<unsigned> word_unit_boundaries(std::string_view id) const;
+    std::vector<unsigned> paragraph_boundaries(std::string_view id) const;
+    Result select_word(std::string_view id, unsigned offset);
+    Result select_paragraph(std::string_view id, unsigned offset);
+    Result double_click(std::string_view id, unsigned offset);
+    Result triple_click(std::string_view id, unsigned offset);
+    // The host reads the system double-click settings and a clock and lets core count the clicks, so tests
+    // can inject both. Without a clock every press counts as a single click.
+    struct ClickSettings { std::uint64_t interval_ms = 500; int width = 4, height = 4; };
+    void set_click_settings(ClickSettings settings) { click_settings_ = settings; }
+    void set_click_clock(std::function<std::uint64_t()> clock) { click_clock_ = std::move(clock); }
+    // A primary-button press on a text field: `caret` is the nearest caret position (single click), `cell` the
+    // character under the pointer (double and triple click), x/y the press position in the click's coordinates.
+    Result text_pointer_down(std::string_view id, TextHit caret, unsigned cell, int x, int y, bool extend);
+    // A drag with the button held: extends by the unit the press started with (character, word or paragraph).
+    Result text_pointer_drag(std::string_view id, TextHit caret, unsigned cell);
+    void end_text_drag();
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
     void set_read_only(std::string_view id, bool read_only);
     void check(std::string_view id, bool checked);
+    // Label owner configuration (vertical writing). A change asks the host for a new frame.
+    static Result writing_support(const Control& control);
+    void set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
-    void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
+    void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } hover_clear(); refresh_tooltips(); }
+    void replace_rich(std::string_view id, RichText value);  // owner refresh of a rich field: text and spans
+    // Rich text (Control::rich fields; others answer not_supported). Shared by the typed handle, the semantic
+    // layer, Ctrl+B/I/U and any menu: they all run these same functions.
+    Result set_rich_value(std::string_view id, RichText value);
+    Query<RichText> rich_value(std::string_view id) const;
+    Result set_style(std::string_view id, unsigned begin, unsigned end, const StyleChange& change);
+    Result toggle_style(std::string_view id, StyleAttribute attribute);  // selection, or the typing style at a caret
+    Result apply_style(std::string_view id, const StyleChange& change);  // selection, or the typing style at a caret
+    Query<TextStyle> typing_style(std::string_view id) const;
+    Result set_typing_style(std::string_view id, TextStyle style);
+    Result set_colors(std::string_view id, std::vector<NamedColor> colors);
+    Query<std::vector<NamedColor>> colors(std::string_view id) const;
+    // The committed spans of a rich field (null for others) and the spans of the visible text, which an
+    // IME composition is part of (the preedit takes the typing style), for layout and painting.
+    const std::vector<StyleSpan>* style_spans(std::string_view id) const;
+    std::vector<StyleSpan> visible_style_spans(std::string_view id) const;
+    // The color of a name for the current theme variant, nullopt for an empty or unknown name.
+    std::optional<Color> named_color(std::string_view id, std::string_view name) const;
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
     void renderer_failed(bool failed);
+    // ---- Context menu (src/context_menu.cpp). One menu is open per window; it never changes focus_.
+    struct MenuEntry { std::string id; std::u16string label, hint; bool enabled = true, separator = false; char16_t access_key = 0; };
+    struct MenuView {
+        Id target;
+        std::optional<OptionValue> item;      // list row the menu was opened for
+        std::optional<OptionValue> anchor_item;  // row a keyboard-opened menu hangs from
+        std::optional<MenuPosition> at;       // none: the keyboard position of the target
+        std::vector<MenuEntry> entries;
+        std::string highlighted;
+    };
+    bool has_menu(const Control& control) const;
+    bool menu_open() const { return menu_.has_value(); }
+    Query<bool> menu_open_query() const;
+    Query<MenuInfo> menu_info() const;
+    Query<ContextMenuHandle> attach_menu(const Id& target, std::vector<MenuItem> items, MenuMode mode);
+    std::optional<MenuView> menu_view() const;
+    ScrollState* menu_scroll() { return menu_ ? &menu_->scroll : nullptr; }
+    bool menu_reveal() { return menu_ && std::exchange(menu_->reveal, false); }
+    // at: where to open (window pixels); none for the keyboard position. text_offset: the pointer's caret offset.
+    Result open_menu(std::string_view id, std::optional<MenuPosition> at, std::optional<OptionValue> item,
+                     std::optional<unsigned> text_offset = std::nullopt);
+    // Right-button release over a component: option is the pointer's row (lists).
+    Result menu_pointer_open(std::string_view id, std::optional<std::size_t> option, std::optional<unsigned> text_offset, MenuPosition at);
+    Result close_menu();
+    Result menu_execute(std::string_view item_id);
+    Result menu_highlight(std::string_view item_id);
+    Result menu_pointer_down(std::string_view item_id);
+    Result menu_pointer_up(std::string_view item_id);
+    Result menu_key_down(KeyPress key);
+    Result menu_text(std::u16string_view text);
+    void menu_frame(const Frame& frame);
+    std::optional<Query<SemanticNode>> menu_node(const NodeRef& ref);
+    std::optional<std::vector<NodeRef>> menu_children(const NodeRef& parent) const;
 private:
+    friend class ::lcars::ContextMenuHandle;
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
     friend class ::lcars::TextHandle;
@@ -213,28 +378,54 @@ private:
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id, bool read_only = false) const;
-    Result connect_source(const Id& id, TextSource source);
+    Result connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read = {});
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
     std::function<void()> presentation_changed_;
+    std::vector<PaletteOverride> palette_overrides_;
+    const Appearance* bound_appearance_ = nullptr;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
     std::map<Id, std::uint64_t, std::less<>> semantic_instances_;
     std::uint64_t next_semantic_instance_ = 0;
-    struct Snapshot { std::u16string text; Selection selection; };
+    struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     struct Field {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
         int offset_text_size = 0;
         unsigned offset_anchor = 0;
+        struct MultiView {
+            FieldView view;               // lines as last arranged (geometry rectangles are unused here)
+            std::u16string text;          // the visible text those lines were laid out from
+            std::vector<StyleSpan> styles; // and its styled runs (rich fields): a style change can re-wrap too
+            int size = 0, width = 0;      // text size and wrap width they were laid out at
+            unsigned revision = 0;        // layout_revision_ they were laid out at: a property change makes them stale
+            unsigned first = 0;           // first visible line
+            unsigned anchor = 0;          // visible-text offset where that line starts: survives a re-wrap
+            unsigned caret = 0;           // caret seen by the last arrange: a different one reveals itself
+            bool upstream = false, placed = false;
+            std::optional<unsigned> pending_first;  // set before the first arrange
+            float want_x = 0;             // the column an Up/Down run keeps, in pixels from the line start
+            unsigned want_from = ~0u;     // the caret that run last left it at: any other caret starts a new run
+            ScrollState scroll;           // pixel offset = first * line height, for the field's scrollbar region
+        } multi;
+        WordSegmentation segmentation = WordSegmentation::dictionary;
+        // A double or triple click arms a drag that grows by that unit while the selection stays as the click left it.
+        struct UnitDrag { enum class Unit { character, word, paragraph } unit = Unit::character; TextSpan origin; Selection last; } drag;
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;
         bool submitting = false;
         bool confirmation_member = false;
         std::function<Result(const TextChange&)> immediate, confirmed;
+        bool rich = false;                     // Control::rich
+        std::vector<StyleSpan> spans, source_spans, origin_spans;  // committed styles, last source value, last written value
+        std::function<RichText()> rich_read;   // the rich source (the TextSource subscribe half is shared)
+        std::optional<TextStyle> typing;       // the temporary typing style, valid while the selection has not moved
+        std::uint64_t typing_moves = 0;
+        std::vector<NamedColor> colors;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
@@ -287,12 +478,40 @@ private:
         std::uint64_t deadline = 0;
         bool eligible = false, visible = false, dismissed = false;
     };
+    struct MenuAttachment { MenuMode mode = MenuMode::append; std::vector<MenuItem> items; };
+    std::map<Id, MenuAttachment, std::less<>> menu_attachments_;
+    struct OpenMenu {
+        Id target;
+        std::optional<OptionValue> item;
+        std::optional<MenuPosition> at;
+        std::string highlighted, pressed;
+        ScrollState scroll;
+        bool reveal = false, clipboard_text = false;
+    };
+    std::optional<OpenMenu> menu_;
+    std::map<std::string, Rect, std::less<>> semantic_menu_rows_;
+    std::vector<MenuEntry> menu_entries(const Id& target) const;
+    Result menu_run_builtin(const Id& target, std::string_view command);
+    Result validate_menu_items(const std::vector<MenuItem>& items) const;
+    void menu_items_changed(const Id& target);
+    bool field_editable(const Control& control, const Field& field) const;
+    Result delete_selection(std::string_view id);
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
+    // Pointer hover. hover_ is the raw target; hover_target() filters it against the live state.
+    std::optional<HoverTarget> hover_;
+    bool hover_simulated_ = false, hover_capture_ = false;
+    std::optional<std::pair<int, int>> hover_position_;  // last real pointer position
+    bool hover_locked() const;
+    bool hover_admitted(const HoverTarget& target) const;
+    void hover_set(std::optional<HoverTarget> target);
+    void hover_from_frame(const Frame& frame, int x, int y);
+    void hover_clear();
     std::uint64_t tooltip_now_ = 0;
     std::optional<std::uint64_t> tooltip_paused_at_;
     std::function<std::uint64_t()> tooltip_clock_;
-    bool window_active_ = false, pointer_focus_ = false;
+    bool window_active_ = false, keyboard_cues_ = false, system_cues_ = false;
+    void focus_cues_changed();
     Id popup_source_;
     std::map<Id, bool, std::less<>> visibility_;
     bool has_frame_visibility_ = false;
@@ -355,24 +574,60 @@ private:
     struct ShortcutBinding { Shortcut chord; Id target, scope; };
     std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
+    // origin/width: the track captured at press (the value basis). seen_*: the track the latest frame drew the thumb on.
+    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, press_x = 0; bool held = false; double seen_origin = 0, seen_width = 1; int threshold = 4; };
+    std::optional<SliderDrag> slider_drag_;
+    AnimationClock animations_;
+    bool system_animations_ = true, window_hidden_ = false;
+    std::map<Id, int, std::less<>> slider_targets_;  // value each running thumb transition is heading to
+    static std::string slider_animation_key(std::string_view id) { return "slider:" + std::string(id); }
+    bool slider_transition_live(std::string_view id) const;
+    double slider_display_ratio(std::string_view id) const;
+    void slider_started_moving(const Id& id, double from, int value_before);
+    void end_slider_drag(bool slide);  // slide: the release of a drag eases to the tick; an interruption lands at once
+    void slider_land(std::string_view id);  // drop a running thumb transition: the thumb is at its value now
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;
+    std::shared_ptr<const WordBreaker> word_breaker_;
+    const WordBreaker& dictionary() const { return word_breaker_ ? *word_breaker_ : system_icu_breaker(); }
+    Words words_of(const Field& field) const { return segment_words(field.session.text, field.segmentation, dictionary()); }
+    ClickSettings click_settings_;
+    std::function<std::uint64_t()> click_clock_;
+    struct ClickRun { Id id; int x = 0, y = 0; std::uint64_t time = 0; unsigned count = 0; } click_run_;
+    unsigned count_click(const Id& id, int x, int y);
+    Result select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm);
     Result focusable(const Control& control) const;
     Result move_focus(Id next);
     std::vector<std::pair<Id, Id>> pending_focus_;  // focus notifications queued behind the current one
     bool notifying_focus_ = false;
     Result writable(std::string_view id, Field*& field);
+    Result rich_writable(std::string_view id, Field*& field);
     Result replace_selection(std::string_view id, Field& field, std::u16string_view insertion);
+    // Replaces [first, last) of the text; inserted_spans (relative to the insertion) override the typing style.
+    Result replace_range(std::string_view id, Field& field, unsigned first, unsigned last, std::u16string_view insertion,
+                         const std::vector<StyleSpan>* inserted_spans);
+    Result commit_style(std::string_view id, Field& field, std::vector<StyleSpan> spans);
+    TextStyle insertion_style(const Field& field, unsigned first, unsigned last) const;
+    bool source_matches(const Field& field) const { return field.session.text == field.source_value && field.spans == field.source_spans; }
     Result finish_edit(std::string_view id, Field& field);
     Result submit_field(std::string_view id, Field& field,
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
+    // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
+    // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
+    FieldView vertical_view(const Id& id);
+    // Bumped by every property that changes how text lines up (alignment, justification, spacing, the
+    // justify-as-left setting): the lines cursor keys use are stale until an arrange sees the new value.
+    unsigned layout_revision_ = 0;
+    Result move_lines(const Id& id, int direction, unsigned count, bool shift);
+    Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
-    std::function<void()> changed_, invalidate_;
-    struct TextScroll { ScrollState* state; int maximum, line_height; };
+    std::function<void()> changed_, invalidate_, relayout_;
+    struct TextScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
     std::map<std::string, TextScroll, std::less<>> text_scrolls_;
+    std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
@@ -380,6 +635,10 @@ private:
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);
 unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);
+// The caret position a pointer at (x, y) means; y only matters for multi-line fields.
+TextHit placement_text_hit(const Frame& frame, std::string_view id, int x, int y);
+// The character under a pointer rather than the nearest caret stop: what a double or triple click means.
+unsigned placement_text_cell(const Frame& frame, std::string_view id, int x, int y);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
 }

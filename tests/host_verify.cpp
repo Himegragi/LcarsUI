@@ -272,6 +272,24 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
                  "bounded atlas segmentation preserves GPU output");
 }
 
+// #78: the desktop host paints with the Ui's palette overrides, and the semantic layer reads the same colors.
+void palette_override_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    f.host.force_scale(1.f);
+    f.settle();
+    auto original = appearance.palette().background;
+    const Color changed{240, 240, 240};
+    auto first_pixel = [](const auto& image) { return Color{image.reference.pixels[0], image.reference.pixels[1], image.reference.pixels[2]}; };
+    auto before = f.host.compare_gpu(960, 720, 1.f);
+    report.check("PO-before", bool(before) && first_pixel(before) == original, "built-in background paints before any override");
+    auto result = f.form.ui.set_palette_overrides({{std::string(appearance.name()), ThemeVariant::light(), "background", changed}});
+    auto after = f.host.compare_gpu(960, 720, 1.f);
+    report.check("PO-override", bool(result) && bool(after) && first_pixel(after) == changed, "the next host frame paints the overridden background and the GPU agrees");
+    auto semantic = f.form.ui.semantics().effective_palette();
+    report.check("PO-semantic", semantic && semantic->background == changed, "the host binds its appearance so the semantic layer reads the overridden palette");
+    report.check("PO-clear", bool(f.form.ui.set_palette_overrides({})) && first_pixel(f.host.compare_gpu(960, 720, 1.f)) == original, "clearing the list restores the built-in background");
+}
+
 std::string windows_build() {
     using QueryVersion=LONG (WINAPI*)(OSVERSIONINFOW*);
     auto proc=reinterpret_cast<QueryVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
@@ -295,13 +313,14 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
             if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); setup=setup && h.region.describe()->candidate==OptionValue{"south"}; }
         } else if(scenario<8) {
             setup=bool(h.tabs.activate({"v02"})); auto& list=*f.form.list;
+            state.set_system_keyboard_cues(true);  // indicator shown, as after a key press; programmatic focus alone does not show it
             if(scenario==5) setup=setup && bool(list.handles.twenty.invoke()) && bool(list.handles.list.select({"T003"})) && bool(list.handles.list.focus());
             if(scenario==6) { setup=setup && bool(list.handles.hundred.invoke()) && bool(list.handles.list.focus()); f.tap(VK_END); setup=setup && list.selection()==OptionValue{"T100"} && list.handles.list.describe()->candidate==OptionValue{"T100"}; }
             if(scenario==7) setup=setup && bool(list.handles.zero.invoke());
         } else {
             setup=bool(h.tabs.activate({"v03"}));
-            if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
-            if(scenario==9) setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open();
+            if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.tap(VK_RIGHT); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
+            if(scenario==9) { state.set_system_keyboard_cues(true); setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open(); }
         }
         int width=960,height=720;
         if(scenario==6 && setup) {
@@ -356,7 +375,7 @@ int demo_compare(const std::filesystem::path& evidence) {
     out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
     int failures=0, rows=0;
     for (const auto* appearance : {&web_appearance(), &material_appearance()})
-    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<8; ++scenario) {
+    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<9; ++scenario) {
         settings_demo::AboutInfo info;
         info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
@@ -368,6 +387,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         auto settings=demo.ui.presentation(); settings.variant=dark?ThemeVariant::dark():ThemeVariant::light();
         bool setup=bool(demo.ui.set_presentation(settings));
         auto tap=[&](WPARAM key){ PostMessageW(host.window(),WM_KEYDOWN,key,key_lparam(key,false,false)); PostMessageW(host.window(),WM_KEYUP,key,key_lparam(key,false,true)); host.pump(); };
+        if(scenario==2 || scenario==7) detail::access(demo.ui).set_system_keyboard_cues(true);  // indicator shown, as after a key press; programmatic focus alone does not show it
         if(scenario==0) setup &= bool(demo.name.focus());
         if(scenario==1) { setup &= bool(demo.name.focus()) && bool(demo.name.set_value(u"")); tap(VK_TAB); setup &= demo.name.describe()->invalid; }
         if(scenario==2 || scenario==3) {
@@ -377,7 +397,14 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
         if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
         if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.is_open().value.value_or(false); }
-        if(scenario==7) setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+        if(scenario==7) {
+            setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+            // The About page is taller since #82 added the vertical label, which pushes the centered navigation list
+            // out of a small window: scroll it into view the way a user would, so its focus indicator is on screen.
+            host.pump();
+            if(const auto* nav=host.frame().find(demo.nav)) { demo.scroll.offset+=nav->bounds.y+nav->bounds.h/2-(scale==1.f?720:480)/2; host.pump(); }
+        }
+        if(scenario==8) setup &= bool(demo.nav.select({"about"}));  // the vertical writing label (#82)
         host.pump(); auto result=host.compare_gpu(960,720,scale);
         auto has_role=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
         bool cues=true;
@@ -385,6 +412,17 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==1) cues=has_role("general.name",32) && (has_role("general.name",16) || has_role("general.name.error",16));
         if(scenario==2) cues=has_role("items.list",1) && has_role("items.list",4);
         if(scenario==7) cues=has_role("app.nav",1);
+        if(scenario==8) {
+            // The vertical label is plain content: compare its own box between the CPU reference and OpenGL, and require ink in it.
+            const auto* label=host.frame().find(demo.about_vertical());
+            cues=label && label->vertical;
+            if(cues) {
+                auto box=intersect(label->bounds,label->clip);
+                auto same=compare_images(result.reference,result.actual,{box});
+                int ink=0; for(int y=box.y;y<box.y+box.h;++y) for(int x=box.x;x<box.x+box.w;++x) { auto i=(static_cast<std::size_t>(y)*result.reference.width+x)*4; ink+=result.reference.pixels[i]!=result.reference.pixels[(static_cast<std::size_t>(box.y)*result.reference.width+box.x)*4]; }
+                cues=same.regions_ok && ink>box.w*box.h/40;
+            }
+        }
         bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
         std::string name="SD-"+std::string(1,char('a'+scenario));
         std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
@@ -400,7 +438,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
     }
-    return out && rows==64 && !failures ? 0 : 1;
+    return out && rows==72 && !failures ? 0 : 1;
 }
 
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -468,7 +506,7 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
     auto& h = f.form.handles;
     h.tabs.activate({"v03"});
     SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
-    h.progress_half.focus(); f.settle();
+    h.progress_half.focus(); f.tap(VK_RIGHT); f.settle();  // the focus tooltip needs keyboard use first
     bool initially_hidden = h.progress_tip.visible() && !*h.progress_tip.visible();
     Sleep(550); f.host.pump(); f.host.paint();
     bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused &&
@@ -498,6 +536,158 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
         "initial=" + std::to_string(initially_hidden) + ", focus=" + std::to_string(shown) + ", escape=" + std::to_string(escaped) +
         ", refocus-delay=" + std::to_string(refocus_waits) + ", returned=" + std::to_string(returned) + ", geometry=" + std::to_string(geometry) +
         ", space=" + std::to_string(space));
+}
+
+// #74: pointer hover through the real window procedure, with posted mouse messages (no real cursor).
+void hover_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    auto& ui = detail::access(f.form.ui);
+    h.tabs.activate({"v03"});
+    SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+    f.settle();
+    auto hovered = [&](const std::string& id) { auto t = f.form.ui.hover(); return t && *t && (**t).id == id && !(**t).item; };
+    auto none = [&] { auto t = f.form.ui.hover(); return t && !*t; };
+    // Drain what the system already queued (a real WM_KILLFOCUS from another program taking the foreground),
+    // then activate, so contention on a shared desktop cannot undo the activation before the posted move.
+    // Mouse messages are sent, not posted: a real cursor resting over the window cannot slip its own
+    // WM_MOUSEMOVE between the message and the check.
+    auto send = [&](UINT msg, POINT p, WPARAM w = 0) { SendMessageW(f.host.window(), msg, w, MAKELPARAM(p.x, p.y)); };
+    auto activate = [&] { f.host.pump(); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0); };
+    const std::string half = h.progress_half.describe()->id, dialog_opener = h.dialog_open.describe()->id;
+    // Another program taking the foreground queues a real WM_KILLFOCUS ahead of a posted move; retry so
+    // contention on a shared desktop cannot fail what is being checked.
+    auto rest_on = [&](const std::string& id, POINT at) {
+        for (int attempt = 0; attempt < 5; ++attempt) { activate(); send(WM_MOUSEMOVE, at); if (hovered(id)) return true; }
+        return false;
+    };
+    bool moved = rest_on(half, f.center(half));
+    // The CPU reference and the GPU agree on the overlay; the role is part of the observed draw list.
+    auto compared = f.host.compare_gpu(960, 720, 1.f);
+    bool drawn = bool(compared) && (compared.roles & static_cast<unsigned>(detail::PaintRole::hover)) != 0;
+    // A touch-synthesized mouse message neither moves nor clears the hover (Windows marks it in the extra info).
+    // A posted message cannot carry the signature, so the host reads it through a seam here; the decoding
+    // of the extra info is checked on literals.
+    bool pretend_touch = false, touch_kept = false;
+    f.host.touch_source([&] { return pretend_touch; });
+    for (int attempt = 0; attempt < 5 && !touch_kept; ++attempt) {
+        pretend_touch = false;
+        if (!rest_on(half, f.center(half))) continue;
+        pretend_touch = true;
+        send(WM_MOUSEMOVE, f.center(dialog_opener));
+        send(WM_MOUSEMOVE, POINT{2, 2});
+        touch_kept = hovered(half);
+    }
+    pretend_touch = false; f.host.touch_source({});
+    bool touch_ignored = touch_kept && DesktopHost::touch_signature(0xFF515780) && DesktopHost::touch_signature(0xFF515700) &&
+        !DesktopHost::touch_signature(0) && !DesktopHost::touch_signature(0xFF515600) && !DesktopHost::touch_signature(0x00515700);
+    bool followed = rest_on(dialog_opener, f.center(dialog_opener));
+    activate();
+    SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
+    bool left = none();
+    bool back = rest_on(half, f.center(half));
+    SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0);
+    bool deactivated = none();
+    send(WM_MOUSEMOVE, f.center(half));
+    bool inactive_quiet = none();
+    activate();
+    h.dialog_open.invoke(); f.settle();
+    bool modal_clears = none();
+    h.dialog_cancel.invoke(); f.settle();
+    activate();
+    // The switch hides the overlay while the target stays queryable.
+    auto settings = ui.presentation(); settings.hover = Hover::off;
+    ui.set_presentation(settings);
+    send(WM_MOUSEMOVE, f.center(half));
+    auto switched = f.host.compare_gpu(960, 720, 1.f);
+    bool off_hidden = hovered(half) && bool(switched) && (switched.roles & static_cast<unsigned>(detail::PaintRole::hover)) == 0;
+    // Dragging (text selection, slider) keeps the hover on the dragged component; the release hands it to
+    // whatever lies under the pointer.
+    h.tabs.activate({"v01"}); f.host.client_size(900, 420); f.settle(); activate();
+    auto hovered_id = [&](const std::string& id) { return hovered(id); };
+    // The window is deliberately short (and a CI desktop is smaller than the page anyway), so each drag first scrolls the
+    // dragged control to the top third of the window and releases over the nearest other control that is on screen with it.
+    auto center_of = [&](const std::string& id) { return f.center(id); };
+    auto on_screen = [&](POINT p) { RECT c{}; GetClientRect(f.host.window(), &c); return p.x >= 0 && p.y >= 0 && p.x < c.right && p.y < c.bottom; };
+    auto reveal = [&](const std::string& id) {
+        f.form.scroll.offset = 0; f.settle();
+        RECT c{}; GetClientRect(f.host.window(), &c);
+        int y = detail::find_placement(f.host.frame(), id)->bounds.y;
+        f.form.scroll.offset = std::clamp(y - static_cast<int>(c.bottom) / 3, 0, static_cast<int>(f.host.frame().maximum)); f.settle(); activate();
+    };
+    auto drag = [&](const std::string& id, bool& held, bool& released) {
+        for (int attempt = 0; attempt < 5 && !(held && released); ++attempt) {
+            reveal(id);
+            std::string target;
+            for (const auto& candidate : {f.ids.apply, f.ids.reset, f.ids.name, f.ids.volume})
+                if (candidate != id && on_screen(center_of(candidate))) { target = candidate; break; }
+            if (target.empty()) continue;
+            POINT from = center_of(id), to = center_of(target);
+            activate();
+            send(WM_MOUSEMOVE, from); send(WM_LBUTTONDOWN, from, MK_LBUTTON);
+            send(WM_MOUSEMOVE, to, MK_LBUTTON);
+            held = hovered_id(id);
+            send(WM_LBUTTONUP, to);
+            released = hovered_id(target);
+        }
+    };
+    bool text_held = false, text_released = false, slider_held = false, slider_released = false;
+    drag(f.ids.name, text_held, text_released);
+    drag(f.ids.volume, slider_held, slider_released);
+    bool drags = text_held && text_released && slider_held && slider_released;
+    report.check("DF-hover-drag-native", drags,
+        "text-held=" + std::to_string(text_held) + ", text-released=" + std::to_string(text_released) +
+        ", slider-held=" + std::to_string(slider_held) + ", slider-released=" + std::to_string(slider_released));
+    report.check("DF-hover-native", moved && drawn && touch_ignored && followed && left && back && deactivated && inactive_quiet && modal_clears && off_hidden,
+        "moved=" + std::to_string(moved) + ", gpu-overlay=" + std::to_string(drawn) + ", touch-ignored=" + std::to_string(touch_ignored) +
+        ", followed=" + std::to_string(followed) + ", leave=" + std::to_string(left) + ", back=" + std::to_string(back) +
+        ", deactivate=" + std::to_string(deactivated) + ", inactive=" + std::to_string(inactive_quiet) + ", modal=" + std::to_string(modal_clears) +
+        ", switch-off=" + std::to_string(off_hidden) + ", now=" + (f.form.ui.hover() && *f.form.ui.hover() ? (**f.form.ui.hover()).id : std::string("none")));
+}
+// Native twin of the core focus-visibility cases (#72): real window messages drive the display state.
+void focus_visibility_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& state = detail::access(f.form.ui);
+    BOOL system_on = FALSE; SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &system_on, 0);
+    auto shown = [&] { return f.form.ui.focus_indicator_visible(); };
+    state.set_system_keyboard_cues(false);  // deterministic start whatever the desktop setting is
+    bool started_hidden = !shown();
+    f.tap(VK_TAB);
+    bool key_shows = shown() && !state.focused().empty();
+    SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), MAKELPARAM(10, 10));
+    bool wheel_keeps = shown();
+    f.mouse(WM_LBUTTONDOWN, f.center(f.ids.title), MK_LBUTTON); f.mouse(WM_LBUTTONUP, f.center(f.ids.title));
+    bool inert_press_hides = !shown();  // the title label does not accept the pointer, yet the press still hides
+    f.chord('S');
+    bool chord_keeps_hidden = !shown();
+    f.tap(VK_RIGHT);
+    bool plain_key_shows = shown();
+    // Code review 2026-11-12 item 1: the right button is a press in the client area too. Over the title label (no menu to open) it must hide.
+    f.mouse(WM_RBUTTONDOWN, f.center(f.ids.title), MK_RBUTTON); f.mouse(WM_RBUTTONUP, f.center(f.ids.title));
+    bool inert_right_press_hides = !shown();
+    f.tap(VK_RIGHT);
+    bool right_key_shows_again = shown();
+    POINT blank{-1, -1};
+    f.host.paint();
+    for (int y = 690; y > 0 && blank.x < 0; y -= 7) for (int x = 3; x < 900; x += 11)
+        if (!f.host.frame().hit(x, y)) { blank = {x, y}; break; }
+    bool found_blank = blank.x >= 0;
+    if (found_blank) { f.mouse(WM_LBUTTONDOWN, blank, MK_LBUTTON); f.mouse(WM_LBUTTONUP, blank); }
+    bool blank_press_hides = found_blank && !shown();
+    f.tap(VK_RIGHT);
+    const bool before_blank_right = shown();
+    if (found_blank) { f.mouse(WM_RBUTTONDOWN, blank, MK_RBUTTON); f.mouse(WM_RBUTTONUP, blank); }
+    bool blank_right_press_hides = found_blank && before_blank_right && !shown();
+    state.set_system_keyboard_cues(!system_on);
+    SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETKEYBOARDCUES, 0);
+    bool setting_change_rereads = shown() == bool(system_on);  // recorded state is hidden, so only the system value shows it
+    report.check("F72-native-focus-visibility", started_hidden && key_shows && wheel_keeps && inert_press_hides && chord_keeps_hidden &&
+                 plain_key_shows && blank_press_hides && setting_change_rereads && inert_right_press_hides && right_key_shows_again && blank_right_press_hides,
+                 "hidden at start=" + std::to_string(started_hidden) + ", key shows=" + std::to_string(key_shows) + ", wheel keeps=" + std::to_string(wheel_keeps) +
+                 ", inert press hides=" + std::to_string(inert_press_hides) + ", Ctrl chord keeps hidden=" + std::to_string(chord_keeps_hidden) +
+                 ", plain key shows=" + std::to_string(plain_key_shows) + ", blank press hides=" + std::to_string(blank_press_hides) +
+                 ", WM_SETTINGCHANGE re-reads=" + std::to_string(setting_change_rereads) + ", right press on a label hides=" + std::to_string(inert_right_press_hides) +
+                 ", key shows again=" + std::to_string(right_key_shows_again) + ", right press on blank hides=" + std::to_string(blank_right_press_hides));
 }
 
 void dialog_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -851,6 +1041,601 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
                      "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
+// Context menu (#85) through the real window procedure: right button, menu key, Shift+F10, Alt, Space.
+// The core-seam twin is tests/context_menu.cpp; this proves the messages reach it and the menu is painted.
+void context_menu_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    auto& ui = f.form.ui;
+    auto& core = detail::access(ui);
+    const std::string field = f.ids.name;
+    core.set_value(field, u"Alpha 中文");
+    f.settle();
+    const Placement name = *detail::find_placement(f.host.frame(), field);
+    const int y = name.bounds.y + name.field.editor.y + name.field.editor.h / 2;
+    auto x_of = [&](unsigned offset) { return name.bounds.x + name.field.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
+    auto panel = [&]() -> const Placement* { return f.host.frame().menu_panel(); };
+    auto open = [&] { return core.menu_open(); };
+    auto selection = [&] { return core.edit(field)->selection; };
+    auto highlighted = [&]() -> std::string {
+        auto menu = ui.context_menu();
+        if (menu) for (const auto& item : menu->items) if (item.highlighted) return item.id;
+        return {};
+    };
+    auto row_center = [&](std::string_view id) -> POINT {
+        for (const auto& row : panel()->menu_rows) if (row.id == id) return {row.bounds.x + row.bounds.w / 2, row.bounds.y + row.bounds.h / 2};
+        return {-1, -1};
+    };
+    auto right_click = [&](POINT p) { f.mouse(WM_RBUTTONDOWN, p, MK_RBUTTON); f.mouse(WM_RBUTTONUP, p); f.settle(); };
+    auto left_click = [&](POINT p) { f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p); f.settle(); };
+
+    // 1. Release of the right button opens the menu beside the pointer, focusing the field.
+    core.select(field, 0, 0);
+    f.mouse(WM_RBUTTONDOWN, {x_of(5), y}, MK_RBUTTON);
+    f.settle();
+    const bool not_on_press = !open();
+    f.mouse(WM_RBUTTONUP, {x_of(5), y});
+    f.settle();
+    const bool beside = open() && panel() && panel()->bounds.x == x_of(5) && panel()->bounds.y == y;
+    report.check("CM-open-on-release", not_on_press && beside && core.focused() == field && selection().caret == 5,
+                 std::string("not on press=") + (not_on_press ? "yes" : "NO") + ", panel=" + (panel() ? str(panel()->bounds) : "none") + ", pointer=" + std::to_string(x_of(5)) + "," + std::to_string(y) + ", caret moved to " + std::to_string(selection().caret));
+    // 2. It is painted: items with their letters and hints reach the draw list as visible ink.
+    f.host.observe_paint(true);
+    f.host.paint();
+    auto painted = [&](std::u16string_view text) {
+        return std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
+            [&](const auto& event) { return event.type == detail::PaintObservation::Type::text && event.text == text && event.visible && event.popup && !event.tooltip; });
+    };
+    const bool inked = painted(u"復原(U)") && painted(u"剪下(T)") && painted(u"全選(A)") && painted(u"Ctrl+X");
+    f.host.observe_paint(false);
+    report.check("CM-painted", inked, std::string("labels and hints drawn as visible popup ink: ") + (inked ? "yes" : "NO"));
+    // 3. Hover highlights a row; a press and release on a disabled row leaves the menu open.
+    f.mouse(WM_MOUSEMOVE, row_center(menu_cut), 0);
+    f.settle();
+    const bool hovered = highlighted() == menu_cut;
+    left_click(row_center(menu_cut));
+    const bool stays = open() && !ui.context_menu()->items[3].enabled;
+    f.mouse(WM_LBUTTONDOWN, row_center("separator:2"), MK_LBUTTON); f.mouse(WM_LBUTTONUP, row_center("separator:2")); f.settle();
+    report.check("CM-hover-disabled-line", hovered && stays && open(), std::string("hover highlights cut=") + (hovered ? "yes" : "NO") + ", disabled click keeps it open=" + (stays ? "yes" : "NO") + ", a line does nothing=" + (open() ? "yes" : "NO"));
+    // 4. Release on an enabled item runs it and closes the menu; focus is on the field.
+    left_click(row_center(menu_select_all));
+    report.check("CM-click-runs-item", !open() && selection().anchor == 0 && selection().caret == 8 && core.focused() == field,
+                 "select all: selection " + std::to_string(selection().anchor) + ".." + std::to_string(selection().caret) + ", closed=" + (!open() ? "yes" : "NO"));
+    // 5. Right button inside the selection keeps it; outside it moves the caret.
+    core.select(field, 1, 4);
+    f.settle();
+    right_click({x_of(2), y});
+    const auto inside = selection();
+    core.close_menu(); f.settle();
+    right_click({x_of(7), y});
+    const auto outside = selection();
+    core.close_menu(); f.settle();
+    report.check("CM-selection-rules", inside.anchor == 1 && inside.caret == 4 && outside.anchor == 7 && outside.caret == 7,
+                 "inside kept " + std::to_string(inside.anchor) + ".." + std::to_string(inside.caret) + ", outside caret " + std::to_string(outside.caret));
+    // 6. Menu key opens at the caret; Down/Up walk; Escape closes and focus stays on the field.
+    core.select(field, 3, 3); f.settle();
+    f.tap(VK_APPS); f.settle();
+    const int caret_x = name.bounds.x + name.field.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
+    const int line_bottom = name.bounds.y + name.field.editor.y + name.field.editor.h;
+    const bool at_caret = open() && panel() && panel()->bounds.x == caret_x && panel()->bounds.y == line_bottom;
+    const std::string placed = panel() ? str(panel()->bounds) : "none";
+    f.key(VK_DOWN); f.key(VK_DOWN); f.key(VK_DOWN); f.settle();
+    const bool walked = highlighted() == menu_cut;
+    f.tap(VK_ESCAPE); f.settle();
+    report.check("CM-menu-key", at_caret && walked && !open() && core.focused() == field,
+                 std::string("menu key at caret=") + (at_caret ? "yes" : "NO") + " (panel " + placed + ", caret " + std::to_string(caret_x) + "," + std::to_string(line_bottom) + "), Down x3 lands on cut=" + (walked ? "yes" : "NO") + ", Escape closed=" + (!open() ? "yes" : "NO"));
+    // 7. Shift+F10 (a system key message) opens; F10 and Alt close; their releases are not left for the system menu.
+    auto with_shift = [&](auto&& act) {
+        BYTE state[256]{}; GetKeyboardState(state); state[VK_SHIFT] = 0x80; SetKeyboardState(state);
+        act();
+        state[VK_SHIFT] = 0; SetKeyboardState(state);
+    };
+    with_shift([&] { f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); });
+    f.post(WM_SYSKEYUP, VK_F10, key_lparam(VK_F10, false, true) | (1LL << 29)); f.host.pump(); f.settle();
+    const bool shift_f10 = open();
+    f.post(WM_SYSKEYDOWN, VK_MENU, key_lparam(VK_MENU, false, false) | (1LL << 29)); f.host.pump(); f.settle();
+    const bool alt_closed = !open();
+    const auto alt_up = SendMessageW(f.host.window(), WM_SYSKEYUP, VK_MENU, key_lparam(VK_MENU, false, true) | (1LL << 29));
+    with_shift([&] { f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); });
+    f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); f.settle();
+    const bool f10_closed = !open();
+    report.check("CM-shift-f10-alt-f10", shift_f10 && alt_closed && alt_up == 0 && f10_closed,
+                 std::string("Shift+F10 opens=") + (shift_f10 ? "yes" : "NO") + ", Alt closes=" + (alt_closed ? "yes" : "NO") + ", Alt release swallowed=" + (alt_up == 0 ? "yes" : "NO") + ", F10 closes=" + (f10_closed ? "yes" : "NO"));
+    // 8. Space runs the highlighted item and its character does not type into the field.
+    core.select(field, 0, 5); f.settle();
+    const auto before_text = core.text(field);
+    f.tap(VK_APPS); f.key(VK_END); f.settle();
+    f.key(VK_SPACE);  // TranslateMessage turns this key message into the WM_CHAR a real Space produces
+    f.key_up(VK_SPACE); f.settle();
+    report.check("CM-space-runs-no-typing", !open() && core.text(field) == before_text && selection().anchor == 0 && selection().caret == static_cast<unsigned>(before_text.size()),
+                 "select all ran, text unchanged: " + std::string(core.text(field) == before_text ? "yes" : "NO") + " open=" + (open() ? "yes" : "NO") + " text=" + narrow(core.text(field)) + " before=" + narrow(before_text) + " sel=" + std::to_string(selection().anchor) + ".." + std::to_string(selection().caret));
+    // 9. A click outside only closes the menu: a button under the pointer is not pressed (focus stays on the
+    //    field), nor is its release acted on; the next click works as usual.
+    core.open_menu(field, MenuPosition{5, 5}, std::nullopt); f.settle();
+    std::string button; POINT button_at{};
+    for (const auto& item : f.host.frame().items) {
+        auto visible = intersect(item.bounds, item.clip);
+        if (item.kind == Kind::button && visible.w > 0 && visible.h > 0 && panel() && !panel()->bounds.contains(visible.x + visible.w / 2, visible.y + visible.h / 2)) {
+            button = item.id; button_at = {visible.x + visible.w / 2, visible.y + visible.h / 2}; break;
+        }
+    }
+    const bool target_clear = open() && !button.empty() && f.host.frame().hit(button_at.x, button_at.y) && f.host.frame().hit(button_at.x, button_at.y)->id == button;
+    left_click(button_at);
+    const bool swallowed = !open() && core.focused() == field;
+    left_click(button_at);
+    const bool works_again = core.focused() == button;
+    report.check("CM-outside-click-swallowed", target_clear && swallowed && works_again,
+                 "button " + button + " at " + std::to_string(button_at.x) + "," + std::to_string(button_at.y) + " clear of the menu=" + (target_clear ? "yes" : "NO") +
+                 ", the click that closed the menu did not focus or press it=" + (swallowed ? "yes" : "NO") + ", the next click does=" + (works_again ? "yes" : "NO"));
+    // 10. The window losing focus closes the menu.
+    core.window_active(true);
+    core.open_menu(field, MenuPosition{5, 5}, std::nullopt); f.settle();
+    const bool opened = open();
+    SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0); f.settle();
+    report.check("CM-deactivation-closes", opened && !open(), std::string("closed by WM_KILLFOCUS=") + (!open() ? "yes" : "NO"));
+    // 11. At the bottom right corner it opens up and to the left; in a small window it scrolls.
+    RECT client{}; GetClientRect(f.host.window(), &client);
+    core.open_menu(field, MenuPosition{client.right - 3, client.bottom - 3}, std::nullopt); f.settle();
+    const bool flipped = panel() && panel()->bounds.x + panel()->bounds.w == client.right - 3 && panel()->bounds.y + panel()->bounds.h == client.bottom - 3;
+    core.close_menu();
+    f.host.client_size(300, 140); f.settle();
+    GetClientRect(f.host.window(), &client);
+    // The window cannot shrink below WM_GETMINMAXINFO (400x300 window DIP) and how much of that is frame depends on the
+    // system theme (CI had a taller client than the author machine, where the 9 built-in items only just overflowed).
+    // So the application adds enough items that the menu is taller than any client this window can have.
+    std::vector<MenuItem> extra;
+    for (int i = 0; i < 8; ++i) extra.push_back({.id = "cm.extra" + std::to_string(i), .label = u"Extra item " + std::u16string(1, static_cast<char16_t>(u'A' + i)), .action = [](const MenuContext&) { return Result{}; }});
+    const bool extras_added = bool(ui.add_context_menu(f.form.handles.name, extra, MenuMode::append));
+    core.open_menu(field, MenuPosition{20, 20}, std::nullopt); f.settle();
+    const bool scrolls = extras_added && panel() && panel()->menu_maximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
+        panel()->bounds.x + panel()->bounds.w <= client.right && panel()->bounds.y + panel()->bounds.h <= client.bottom;
+    const int panel_height = panel() ? panel()->bounds.h : -1, panel_maximum = panel() ? panel()->menu_maximum : -1;
+    f.mouse(WM_MOUSEWHEEL, {panel() ? panel()->bounds.x + 4 : 0, panel() ? panel()->bounds.y + 4 : 0}, MAKEWPARAM(0, -WHEEL_DELTA));
+    core.close_menu();
+    report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO") +
+                 " (client " + std::to_string(client.right) + "x" + std::to_string(client.bottom) + ", menu panel height " + std::to_string(panel_height) + ", scroll maximum " + std::to_string(panel_maximum) + ")");
+}
+
+// #82 twin of tests/vertical.cpp on a real window: posted messages scroll a vertical-writing label sideways.
+// Reading starts at the right edge; wheel down (also with Shift) goes toward the end of the text, the horizontal
+// wheel and the thumb go both ways, Left and Right read on and back. The 300 characters make 25 columns of 24 px
+// (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
+void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto note = ui.add_label({.id = "note", .kind = Kind::label, .value = std::u16string(300, u'字'),
+                              .writing_mode = WritingMode::vertical}).value.value();
+    DesktopOptions options; options.title = u"LcarsUI vertical label verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(420, 300);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto region = [&]() -> std::optional<ScrollRegion> {  // a copy: repaints replace the frame
+        for (const auto& r : host.frame().regions) if (r.horizontal) return r;
+        return std::nullopt;
+    };
+    auto label = [&]() { return *detail::find_placement(host.frame(), "note"); };
+    auto offset = [&] { auto r = region(); return r ? r->offset : -1; };
+    auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
+    auto start = region();
+    report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
+                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w,
+        "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
+    const auto bounds = label().bounds;
+    POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_wheel = offset();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(MK_SHIFT, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_shift = offset();
+    post(WM_MOUSEHWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(WHEEL_DELTA))), screen(inside));
+    const int after_horizontal = offset();
+    report.check("VT02-wheels", after_wheel > 0 && after_shift > after_wheel && after_horizontal < after_shift && scroll.offset == 0,
+        "Wheel down and Shift+wheel move toward the end of the text, the horizontal wheel to the right moves back, and the page does not scroll; offsets " +
+            std::to_string(after_wheel) + ", " + std::to_string(after_shift) + ", " + std::to_string(after_horizontal));
+    // Thumb: press it, drag it to the far left, release.
+    auto drag = region();
+    bool dragged = false;
+    if (drag) {
+        POINT grab{drag->thumb.x + drag->thumb.w / 2, drag->thumb.y + drag->thumb.h / 2};
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+        post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(drag->track.x - 40, grab.y));
+        const int at_left = offset();
+        post(WM_LBUTTONUP, 0, MAKELPARAM(drag->track.x - 40, grab.y));
+        post(WM_MOUSEMOVE, 0, MAKELPARAM(grab.x, grab.y));
+        dragged = at_left == drag->maximum && offset() == drag->maximum;
+    }
+    report.check("VT03-thumb-drag", dragged, "Dragging the horizontal thumb to the left end shows the last column; offset=" + std::to_string(offset()));
+    // Focus and keys: a label that scrolls takes focus and reads on with Left, back with Right.
+    ui.semantics().perform({"note"}, Verb::focus);
+    host.pump(); host.paint();
+    auto key = [&](WPARAM vk) { post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true)); };
+    key(VK_HOME);
+    const int home = offset();
+    key(VK_LEFT);
+    const int left = offset();
+    key(VK_RIGHT);
+    const int right = offset();
+    key(VK_END);
+    const int end = offset();
+    report.check("VT04-keys", home == 0 && left > 0 && right == 0 && end == region()->maximum && detail::access(ui).focused() == "note",
+        "Home, Left, Right and End scroll the focused label; offsets " + std::to_string(home) + ", " + std::to_string(left) + ", " + std::to_string(right) + ", " + std::to_string(end));
+    if (!folder.empty()) {
+        std::filesystem::create_directories(folder);
+        host.render(420, 300, 1.f, folder / ("vertical-label-" + report.appearance + ".bmp"));
+    }
+    auto comparison = host.compare_gpu(420, 300, 1.f);
+    report.check("VT05-gpu", bool(comparison), "The CPU reference and the OpenGL picture of the vertical label agree");
+}
+
+// #79 twin of tests/multiline.cpp on a real window: posted messages drive a multi-line field. The input
+// method position is asked through WM_IME_REQUEST, as a real IME does; typing through an IME needs the
+// author's machine (see the author-run list).
+void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>();
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
+    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    DesktopOptions options; options.title = u"LcarsUI multi-line verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 400);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto placed = [&]() { return *detail::find_placement(host.frame(), "note"); };  // a copy: repaints replace the frame
+    auto caret = [&]() { return detail::access(ui).edit("note")->selection; };
+    auto line = [&] { return note.scroll_line().value.value_or(~0u); };
+    note.focus(); host.pump(); host.paint();
+    for (char16_t digit = u'1'; digit <= u'6'; ++digit) {
+        post(WM_CHAR, digit, 1);
+        if (digit != u'6') key(VK_RETURN);
+    }
+    const auto first_text = detail::access(ui).text("note");
+    report.check("ML01-enter-and-reveal", first_text == u"1\n2\n3\n4\n5\n6" && line() == 3 && placed().view.lines.size() == 6,
+        "Enter breaks lines through WM_KEYDOWN, typing to line six scrolls to the caret; first line=" + std::to_string(line()));
+    key(VK_PRIOR);
+    const bool page_up = caret().caret == 5 && line() == 0;  // three lines up, keeping the column after the last character
+    key(VK_END, true);
+    const bool ctrl_end = caret().caret == 11 && line() == 3;
+    key(VK_HOME, true, true);
+    report.check("ML02-cursor-keys", page_up && ctrl_end && caret().anchor == 11 && caret().caret == 0 && line() == 0,
+        "PageUp moves a page, Ctrl+End and Shift+Ctrl+Home move over the whole text and extend the selection; PageUp=" + std::to_string(page_up) + ", Ctrl+End=" + std::to_string(ctrl_end) +
+        ", selection=" + std::to_string(caret().anchor) + ".." + std::to_string(caret().caret) + ", first line=" + std::to_string(line()));
+
+    auto field = placed();
+    POINT inside{field.view.text.x + 20, field.view.text.y + 10};
+    POINT screen = inside; ClientToScreen(hwnd, &screen);
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    const unsigned after_notch = line();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), MAKELPARAM(screen.x, screen.y));
+    report.check("ML03-wheel", after_notch == 2 && line() == 3 && caret().caret == 0,
+        "One wheel notch scrolls two lines and stops at the last page without moving the caret; first line " + std::to_string(after_notch) + " then " + std::to_string(line()));
+
+    field = placed();
+    auto track = field.view.track, thumb = field.view.thumb;
+    POINT grab{thumb.x + thumb.w / 2, thumb.y + thumb.h / 2};
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(grab.x, track.y - 30));
+    const unsigned top = line();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(grab.x, track.y - 30));
+    report.check("ML04-thumb-drag", thumb.h > 0 && top == 0, "Dragging the field's scrollbar thumb to the top scrolls to the first line; line " + std::to_string(top));
+
+    field = placed();
+    auto row = [&](int index) { return POINT{field.view.text.x + 2, field.view.text.y + index * field.view.line_height + 3}; };
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(1).x, row(1).y));
+    post(WM_LBUTTONUP, 0, MAKELPARAM(row(1).x, row(1).y));
+    const auto clicked = caret();
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(0).x, row(0).y));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, row(2).y));
+    const auto dragged = caret();
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, field.view.text.y + 3 * field.view.line_height + 8));
+    const unsigned scrolled_by_drag = line();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(row(2).x, row(2).y));
+    report.check("ML05-click-and-drag", clicked.caret == 2 && clicked.anchor == 2 && dragged.anchor == 0 && dragged.caret == 4 && scrolled_by_drag >= 1,
+        "A click puts the caret on its line, a drag selects across lines, dragging below the field scrolls a line; click=" + std::to_string(clicked.caret) +
+        ", drag=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) + ", first line=" + std::to_string(scrolled_by_drag));
+
+    if (!folder.empty()) host.render(600, 220, 1.f, folder / (report.appearance + "-multiline.bmp"));  // evidence: selection across lines, scrollbar
+    detail::access(ui).select("note", 8, 8); host.paint();
+    detail::access(ui).composition_update(u"你", 1); host.paint();
+    IMECHARPOSITION info{}; info.dwSize = sizeof(info); info.dwCharPos = 0;
+    auto handled = SendMessageW(hwnd, WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&info));
+    auto anchor = placed().caret_rect(8);  // dwCharPos 0 is the start of the composition
+    POINT expected{anchor.x, anchor.y}; ClientToScreen(hwnd, &expected);
+    report.check("ML06-ime-anchor", handled == 1 && info.pt.x == expected.x && info.pt.y == expected.y && info.cLineHeight == static_cast<UINT>(anchor.h) && anchor.h == placed().view.line_height,
+        "The input method asks where the caret is and is told the caret's own line, not the field's top; y=" + std::to_string(info.pt.y) + " expected " + std::to_string(expected.y));
+    detail::access(ui).composition_cancel();
+}
+
+// #81 twin of tests/richtext.cpp on a real window with the real fonts: Ctrl+B through WM_KEYDOWN, what the host
+// actually draws (faces, colors per theme, underline) read from the paint observations, and the real clipboard's
+// private format. Typing through an IME and the look of the faces on screen are the author's to confirm.
+void richtext_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto make = [&](const char* id, std::u16string value) {
+        auto model = std::make_shared<RichText>(RichText{value, {}});
+        auto field = ui.add_text({.id = id, .kind = Kind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+        field.connect_rich_confirmed([](const RichTextChange&) { return Result{}; });
+        return field;
+    };
+    auto note = make("note", u"Alpha 重要 Beta");
+    auto other = make("other", u"");
+    note.set_colors({{"red", {200, 0, 0}, {255, 140, 140}}});
+    DesktopOptions options; options.title = u"LcarsUI rich text verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note), layout::control(other)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 420);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto spans = [&](const TextHandle& field) { return field.rich_value()->spans; };
+
+    note.focus(); host.pump(); host.paint();
+    note.select(0, 5);
+    key('B', true);
+    const bool bold_applied = spans(note) == std::vector<StyleSpan>{{.start = 0, .length = 5, .bold = true}};
+    key('I', true); key('U', true);
+    note.select(6, 8);
+    key('U', true);
+    note.set_style(9, 13, {.color = "red"});
+    host.observe_paint(true); host.paint();
+    const auto& seen = host.paint_observations();
+    auto find_text = [&](std::u16string_view text) { return std::find_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == text; }); };
+    auto alpha = find_text(u"Alpha"), red = find_text(u"Beta");
+    const auto light_text = detail::access(ui).effective_palette(appearance).text;
+    report.check("RT01-faces-colors-underline", bold_applied && alpha != seen.end() && alpha->bold && alpha->italic && alpha->color == light_text &&
+                     red != seen.end() && !red->bold && red->color == Color{200, 0, 0} &&
+                     std::count_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::fill && o.owner == "note" && o.bounds.h <= 2 && o.bounds.w > 8 && o.color == light_text; }) >= 1,
+                 std::string("Ctrl+B/I/U through WM_KEYDOWN style the selection; the host draws the run bold+italic with a thin underline rect, and the red run in the light value of its name; bold=") +
+                     (alpha != seen.end() && alpha->bold ? "yes" : "no") + ", italic=" + (alpha != seen.end() && alpha->italic ? "yes" : "no"));
+    if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-light.bmp"));  // evidence: faces and colors, light theme
+    ui.set_presentation({.variant = ThemeVariant::dark()});
+    host.paint();
+    const auto& dark = host.paint_observations();
+    auto dark_red = std::find_if(dark.begin(), dark.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == u"Beta"; });
+    report.check("RT02-theme-recolors-by-name", dark_red != dark.end() && dark_red->color == Color{255, 140, 140},
+                 "After switching to the dark theme the same color name is drawn in its dark value");
+    if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-dark.bmp"));
+    ui.set_presentation({});
+    host.observe_paint(false); host.paint();
+
+    // Typing takes the previous character's style; the real clipboard carries the styles between two fields
+    // and plain text from elsewhere takes the typing style.
+    note.select(5, 5);
+    post(WM_CHAR, u'x', 1);
+    const bool typed_bold = detail::access(ui).text("note") == u"Alphax 重要 Beta" && spans(note).front().length == 6;
+    detail::WindowsClipboard clipboard(host.window());
+    auto saved = clipboard.read();
+    bool kept = false, plain_ok = false, copied = false;
+    if (saved.status == Status::ok || saved.status == Status::not_supported) {
+        note.select(0, 5);
+        key('C', true);
+        other.focus(); host.pump(); host.paint();
+        key('V', true);
+        kept = other.rich_value()->text == u"Alpha" && !spans(other).empty() && spans(other).front().bold && spans(other).front().italic && spans(other).front().underline;
+        copied = true;
+        other.select(5, 5);
+        clipboard.write(u"plain");
+        key('V', true);
+        plain_ok = other.rich_value()->text == u"Alphaplain" && !spans(other).empty() && spans(other).front().length == 10;  // plain text from elsewhere follows the previous character
+        if (saved.status == Status::ok) clipboard.write(*saved);
+    }
+    report.check("RT03-typing-and-real-clipboard", typed_bold && (!copied || (kept && plain_ok)),
+                 std::string("A typed character after a bold one is bold=") + (typed_bold ? "yes" : "no") + "; Ctrl+C then Ctrl+V into the other field kept the styles (real private clipboard format)=" +
+                     (copied ? (kept ? "yes" : "NO") : "skipped (clipboard text could not be saved)") + "; external plain text pasted with the typing style=" + (copied ? (plain_ok ? "yes" : "NO") : "skipped"));
+}
+
+// #83 twin of tests/word_select.cpp on a real window: posted WM_LBUTTONDOWN messages are counted by the host
+// against the system double-click time and box, WM_KEYDOWN with Ctrl goes by words. ASCII text and an explicit
+// per-character mode keep the expectations independent of the system dictionary. The real mouse and the user's own
+// double-click settings are not involved (the messages are posted), so the author-run trial still covers feel.
+void word_select_native(const Appearance& appearance, Report& report) {
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
+    auto field_handle = ui.add_text({.id = "line", .kind = Kind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    field_handle.connect_confirmed([](const TextChange&) { return Result{}; });
+    auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
+    note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    field_handle.set_word_segmentation(WordSegmentation::per_character);
+    note.set_word_segmentation(WordSegmentation::per_character);
+    DesktopOptions options; options.title = u"LcarsUI word selection verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(field_handle), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 400);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
+    auto selection = [&](const char* id) { return detail::access(ui).edit(id)->selection; };
+    // The middle of the character starting at `offset` in the single-line field, and of a row's first characters in the note.
+    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, p.bounds.y + p.field.editor.y + p.field.editor.h / 2}; };
+    auto click = [&](POINT point) { post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y)); post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y)); };
+    auto range = [&](const char* id) { auto s = selection(id); return std::to_string(std::min(s.anchor, s.caret)) + ".." + std::to_string(std::max(s.anchor, s.caret)); };
+    field_handle.focus(); host.pump(); host.paint();
+
+    auto collapsed = [&](const char* id) { auto s = selection(id); return s.anchor == s.caret; };
+    click(at_char(7));
+    const auto single = range("line"); const bool single_caret = collapsed("line");
+    click(at_char(7));
+    const auto word = range("line");
+    click(at_char(7));
+    const auto paragraph = range("line");
+    click(at_char(7));
+    const auto again = range("line"); const bool again_caret = collapsed("line");
+    report.check("WS01-double-and-triple-click", single_caret && word == "6..10" && paragraph == "0..16" && again_caret,
+        "Presses in quick succession on 'e' of beta: caret " + single + ", word " + word + ", whole text " + paragraph + ", fourth press " + again);
+
+    Sleep(GetDoubleClickTime() + 150);
+    click(at_char(7)); Sleep(GetDoubleClickTime() + 150); click(at_char(7));
+    report.check("WS02-slow-presses-stay-single", collapsed("line"), "Two presses further apart than the system double-click time are two single clicks: " + range("line"));
+
+    Sleep(GetDoubleClickTime() + 150);
+    click(at_char(2)); post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(at_char(2).x, at_char(2).y));
+    const auto picked = range("line");
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(at_char(12).x, at_char(12).y));
+    const auto grown = range("line");
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(at_char(2).x, at_char(2).y));
+    const auto shrunk = range("line");
+    post(WM_LBUTTONUP, 0, MAKELPARAM(at_char(2).x, at_char(2).y));
+    report.check("WS03-drag-by-words", picked == "0..6" && grown == "0..16" && shrunk == "0..6",
+        "Holding the second press and dragging grows by words and keeps the first one: " + picked + " -> " + grown + " -> " + shrunk);
+
+    detail::access(ui).select("line", 0, 0); host.paint();
+    std::vector<unsigned> stops;
+    for (int i = 0; i < 4; ++i) { key(VK_RIGHT, true); stops.push_back(selection("line").caret); }
+    key(VK_LEFT, true, true);
+    const auto extended = range("line");
+    key(VK_BACK, true);
+    const auto after_delete = detail::access(ui).text("line");
+    report.check("WS04-ctrl-arrows-and-delete", stops == std::vector<unsigned>{6, 10, 11, 16} && extended == "11..16" && after_delete == u"alpha beta,",
+        "Ctrl+Right stops at 6 10 11 16; Ctrl+Shift+Left selects " + extended + "; Ctrl+Backspace then removes only the selection (text length " + std::to_string(after_delete.size()) + ")");
+
+    note.focus(); host.pump(); host.paint();
+    auto row = [&](int index) { auto p = placed("note"); return POINT{p.view.text.x + 10, p.view.text.y + index * p.view.line_height + p.view.line_height / 2}; };
+    Sleep(GetDoubleClickTime() + 150);
+    click(row(1)); click(row(1)); click(row(1));
+    report.check("WS05-triple-click-paragraph", range("note") == "8..18",
+        "Three quick presses in the middle row of the note select that paragraph without its line feed: " + range("note"));
+}
+
+// #84 twin of tests/justify.cpp on a real window with the real shaper: justified lines end flush at the
+// edge, real clicks and drags land on the characters as drawn, and the user's "justified text as left"
+// setting draws everything left. The glyph pixels themselves and a real input method need the author's
+// machine (see the author-run list).
+void justify_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    const std::u16string text =
+        u"LcarsUI 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
+        u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>(text);
+    auto sample = ui.add_label({.id = "sample", .kind = Kind::label, .value = text, .text_align = TextAlign::justify}).value.value();
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
+    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    DesktopOptions options; options.title = u"LcarsUI justified text verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(sample), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(560, 460);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
+    auto caret = [&]() { return detail::access(ui).edit("note")->selection; };
+    detail::Text shaper; detail::ShapedMeasure measure(shaper);
+
+    // JU01: the label. Every line but the last is stretched, its visible text ends at the label's right edge.
+    auto label = placed("sample");
+    bool label_flush = label.lines.size() > 2;
+    std::string label_detail;
+    for (std::size_t i = 0; i < label.lines.size(); ++i) {
+        const auto& line = label.lines[i];
+        const bool last = i + 1 == label.lines.size();
+        if (last) { label_flush &= line.segments.empty(); continue; }
+        if (line.segments.empty()) { label_flush = false; label_detail += " line " + std::to_string(i) + " not stretched;"; continue; }
+        const auto content_end = static_cast<unsigned>(line.text.find_last_not_of(u' ') + 1);
+        float right = 0;
+        for (const auto& piece : line.segments)
+            if (piece.begin < content_end) right = static_cast<float>(line.bounds.x - label.bounds.x) + piece.x + measure.measure(line.text.substr(piece.begin, std::min(piece.end, content_end) - piece.begin), label.text_size).width;
+        label_flush &= std::abs(right - static_cast<float>(label.bounds.w)) <= 2.f;
+        label_detail += " line " + std::to_string(i) + " right=" + std::to_string(right) + ";";
+    }
+    report.check("JU01-label-flush", label_flush, "A justified label's lines end at its width (" + std::to_string(label.bounds.w) + " px), the last stays left;" + label_detail);
+
+    // JU02: the multi-line field, same rule at the wrap edge; caret stops equal what is drawn.
+    auto field = placed("note");
+    bool field_flush = field.multiline && field.view.lines.size() > 2;
+    float edge = 0; std::string field_detail; int stretched_lines = 0;
+    for (unsigned i = 0; i < field.view.lines.size(); ++i) {
+        const auto& line = field.view.lines[i];
+        const auto visible = std::u16string_view(text).substr(line.begin, line.end - line.begin);
+        const auto content_end = line.begin + static_cast<unsigned>(visible.find_last_not_of(u' ') + 1);
+        const float right = field.view.x_in_line(i, content_end); field_detail += " [" + std::to_string(i) + ": soft=" + std::to_string(line.soft) + " pieces=" + std::to_string(line.segments.size()) + " right=" + std::to_string(right) + "]";
+        // A line that happens to fill the width exactly (31 wide characters) needs no stretching and has no pieces.
+        if (line.soft) { if (edge == 0) edge = right; stretched_lines += line.segments.size() > 1; field_flush &= std::abs(right - edge) <= 2.f; }
+        else field_flush &= line.segments.empty();
+    }
+    report.check("JU02-field-flush", field_flush && stretched_lines > 0 && edge > 0.8f * static_cast<float>(field.view.text.w), "Wrapped lines of the field end at one edge (" + std::to_string(edge) + " px of " + std::to_string(field.view.text.w) + ")" + field_detail);
+
+    // JU03: a real click at every drawn caret stop of line 0 puts the caret there.
+    detail::access(ui).focus("note"); host.pump(); host.paint();
+    field = placed("note");
+    const int y0 = field.view.row_y(0) + field.view.row_height / 2;
+    unsigned wrong = 0, probed = 0;
+    std::string wrong_detail;
+    const int y_reset = field.view.row_y(3) + field.view.row_height / 2;
+    const auto first_stops = field.view.lines[0].run.stops;  // a copy: repainting replaces the view
+    for (const auto& stop : first_stops) {
+        const unsigned offset = field.view.lines[0].begin + stop.first;
+        const int x = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(0, offset)));
+        // A click elsewhere first, so two probes close together are never taken for a double click.
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y_reset)); post(WM_LBUTTONUP, 0, MAKELPARAM(field.view.text.x + 1, y_reset));
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y0)); post(WM_LBUTTONUP, 0, MAKELPARAM(x, y0));
+        ++probed;
+        if (caret().caret != offset) { ++wrong; if (wrong <= 5) wrong_detail += " offset " + std::to_string(offset) + " at x=" + std::to_string(x) + " got " + std::to_string(caret().caret) + ";"; }
+        field = placed("note");
+    }
+    report.check("JU03-click-on-stops", probed > 8 && wrong == 0, "Clicking each drawn stop of the first line puts the caret there; probed " + std::to_string(probed) + ", wrong " + std::to_string(wrong) + wrong_detail);
+
+    // JU04: a drag into the second line selects up to the character under the pointer.
+    const auto& second = field.view.lines[1];
+    const unsigned target = second.begin + second.run.stops[second.run.stops.size() / 2].first;
+    const int y1 = field.view.row_y(1) + field.view.row_height / 2;
+    const int x1 = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(1, target)));
+    post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y0));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x1, y1));
+    const auto dragged = caret();
+    post(WM_LBUTTONUP, 0, MAKELPARAM(x1, y1));
+    if (!folder.empty()) host.render(560, 460, 1.f, folder / (report.appearance + "-justify.bmp"));
+    report.check("JU04-drag-select", dragged.anchor == 0 && dragged.caret == target, "A drag into the second line selects to the drawn character; selection=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) + ", expected " + std::to_string(target));
+
+    // JU05: the user's setting draws both left-aligned and changes no property; the UIA-facing node still says justify.
+    auto settings = ui.presentation(); settings.justify_as_left = true;
+    ui.set_presentation(settings); host.pump(); host.paint();
+    label = placed("sample"); field = placed("note");
+    bool left = std::all_of(label.lines.begin(), label.lines.end(), [](const Line& l) { return l.segments.empty(); }) &&
+                std::all_of(field.view.lines.begin(), field.view.lines.end(), [](const FieldLine& l) { return l.segments.empty() && l.shift == 0; });
+    report.check("JU05-user-setting", left && *sample.text_align() == TextAlign::justify && *note.text_align() == TextAlign::justify,
+                 "With 'justified text as left' on both draw left-aligned and keep their property");
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -944,22 +1729,130 @@ void slider_native(const Appearance& appearance, Report& report) {
     f.tap(VK_END); bool end = *f.form.handles.volume.draft() == 100;
     f.host.paint();
     const auto* item = f.host.frame().find(f.form.handles.volume);
-    bool dragged = false;
+    bool dragged = false, held = false, released = false, canceled = false;
     if (item) {
-        auto r = item->slider_track;
+        auto r = item->slider_track; const std::string id = item->id;
         POINT start{r.x, r.y + r.h / 2}, middle{r.x + r.w / 2, r.y + r.h / 2};
         f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON);
         bool at_start = *f.form.handles.volume.draft() == 0;
         f.mouse(WM_MOUSEMOVE, middle, MK_LBUTTON);
         f.mouse(WM_LBUTTONUP, middle);
         dragged = at_start && *f.form.handles.volume.draft() == 50;
+        // #73: native messages hold the thumb under the pointer until release or interruption.
+        auto& state = detail::access(f.form.ui);
+        POINT off_tick{r.x + static_cast<LONG>(r.w * 0.47), r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, off_tick, MK_LBUTTON);
+        held = state.slider_drag_x(id) == off_tick.x;
+        f.mouse(WM_LBUTTONUP, off_tick);
+        released = !state.slider_drag_x(id);
+        f.mouse(WM_LBUTTONDOWN, off_tick, MK_LBUTTON);
+        SendMessageW(f.host.window(), WM_CANCELMODE, 0, 0);
+        canceled = !state.slider_drag_x(id);
+        f.mouse(WM_LBUTTONUP, off_tick);
+        f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, middle, MK_LBUTTON); f.mouse(WM_LBUTTONUP, middle);  // back to 50 for the apply check
     }
+    dragged = dragged && held && released && canceled;
     bool applied = f.form.volume_applied() == 40 && bool(f.form.handles.apply.invoke()) && f.form.volume_applied() == 50;
     f.form.handles.disabled.invoke();
     bool disabled = f.form.handles.volume.set_value(75).status == Status::disabled && *f.form.handles.volume.draft() == 50;
     report.check("F09-slider", step && home && end && dragged && applied && disabled,
         "arrow=" + std::to_string(step) + ", Home=" + std::to_string(home) + ", End=" + std::to_string(end) +
-        ", native drag=" + std::to_string(dragged) + ", apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
+        ", native drag=" + std::to_string(dragged) + " (held=" + std::to_string(held) + ", released=" + std::to_string(released) + ", canceled=" + std::to_string(canceled) + "), apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
+}
+
+// #75: the host drives the shared animation clock. Frames are scheduled only while a transition runs,
+// the Windows animation preference (simulated here) and a hidden window end and prevent transitions.
+void slider_animation_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    bool system_on = true;
+    f.host.system_animation_source([&] { return system_on; });
+    f.host.hidden_source([&] { return IsIconic(f.host.window()) != FALSE; });
+    auto& ui = f.form.ui;
+    auto animating = [&] { return ui.animating().value.value_or(false); };
+    auto pump_for = [&](int milliseconds) {
+        auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(milliseconds);
+        while (std::chrono::steady_clock::now() < end) {
+            f.host.pump();
+            MsgWaitForMultipleObjectsEx(0, nullptr, 5, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        f.host.pump();
+    };
+    // Sent synchronously, so the answer is read before a slow frame could outlast the 150 ms transition.
+    auto tap_now = [&](WPARAM vk) {
+        SendMessageW(f.host.window(), WM_KEYDOWN, vk, key_lparam(vk, false, false));
+        SendMessageW(f.host.window(), WM_KEYUP, vk, key_lparam(vk, false, true));
+    };
+    f.form.handles.volume.focus(); f.settle();
+    // A key starts a transition; frames follow while it runs and stop once it has ended.
+    const int frames_before = f.host.frames();
+    tap_now(VK_RIGHT);
+    const bool started = animating() && *f.form.handles.volume.draft() == 45;
+    pump_for(100);
+    const int frames_during = f.host.frames() - frames_before;
+    pump_for(400);
+    const bool ended = !animating();
+    const int settled = f.host.frames(); pump_for(300);
+    const bool idle = f.host.frames() == settled;
+    report.check("A75-schedule", started && frames_during >= 2 && ended && idle,
+        "started=" + std::to_string(started) + ", frames during=" + std::to_string(frames_during) + ", ended=" + std::to_string(ended) + ", no frames after=" + std::to_string(idle));
+    // The system preference, changed while running, lands the transition at once and holds for later changes.
+    tap_now(VK_RIGHT); const bool running = animating();
+    system_on = false; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
+    const bool landed = !animating();
+    tap_now(VK_RIGHT); const bool instant = !animating() && *f.form.handles.volume.draft() == 55;
+    system_on = true; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
+    tap_now(VK_LEFT); const bool again = animating();
+    report.check("A75-system-setting", running && landed && instant && again,
+        "running=" + std::to_string(running) + ", landed on change=" + std::to_string(landed) + ", instant while off=" + std::to_string(instant) + ", plays after on=" + std::to_string(again));
+    pump_for(400);
+    // #72 x #75: both tickets follow WM_SETTINGCHANGE through ONE case. The "everything changed" broadcast (wParam 0)
+    // re-reads the keyboard-cue setting AND the animation preference; a single-setting message still re-reads the other.
+    {
+        auto& state = detail::access(ui);
+        BOOL cues_on = FALSE; SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &cues_on, 0);
+        state.pointer_pressed();  // hide what the earlier key presses showed, so only the system value can show the indicator
+        state.set_system_keyboard_cues(!cues_on);  // the recorded values are stale on purpose
+        system_on = false;
+        SendMessageW(f.host.window(), WM_SETTINGCHANGE, 0, 0); f.host.pump();
+        const bool cues_reread = ui.focus_indicator_visible() == (cues_on != FALSE);
+        tap_now(VK_RIGHT);
+        const bool animation_reread = !animating();  // off now: the arrow key lands at once
+        state.pointer_pressed();
+        system_on = true;
+        SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETKEYBOARDCUES, 0); f.host.pump();
+        tap_now(VK_LEFT);
+        const bool animation_back = animating();  // a keyboard-cues message also re-read the animation preference
+        report.check("A75-setting-change-shared", cues_reread && animation_reread && animation_back,
+            "cues re-read=" + std::to_string(cues_reread) + ", animation re-read on broadcast=" + std::to_string(animation_reread) +
+            ", animation re-read on SPI_SETKEYBOARDCUES=" + std::to_string(animation_back));
+        pump_for(400);
+    }
+    // Minimized: the transition ends at once and nothing is drawn while minimized.
+    tap_now(VK_RIGHT); const bool before_minimize = animating();
+    ShowWindow(f.host.window(), SW_MINIMIZE); f.host.pump();
+    const bool minimized_ended = IsIconic(f.host.window()) && !animating();
+    const int minimized_frames = f.host.frames(); pump_for(200);
+    const bool no_redraw = f.host.frames() == minimized_frames;
+    ShowWindow(f.host.window(), SW_SHOWNOACTIVATE); if (IsIconic(f.host.window())) ShowWindow(f.host.window(), SW_RESTORE);
+    f.host.pump(); f.settle();
+    tap_now(VK_LEFT); const bool after_restore = !IsIconic(f.host.window()) && animating();
+    report.check("A75-minimized", before_minimize && minimized_ended && no_redraw && after_restore,
+        "running=" + std::to_string(before_minimize) + ", ended on minimize=" + std::to_string(minimized_ended) + ", no frames while minimized=" + std::to_string(no_redraw) + ", plays after restore=" + std::to_string(after_restore));
+    pump_for(400);
+    // Fully covered by another opaque window (the real check, without the test reader).
+    f.host.hidden_source({});
+    RECT client{}; GetClientRect(f.host.window(), &client);
+    POINT corner{0, 0}; ClientToScreen(f.host.window(), &corner);
+    HWND cover = CreateWindowExW(WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, L"STATIC", L"", WS_POPUP | WS_VISIBLE,
+        corner.x - 20, corner.y - 20, client.right + 40, client.bottom + 40, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    f.host.pump();
+    tap_now(VK_RIGHT);
+    const bool covered_instant = cover && !animating() && f.host.window_hidden();
+    if (cover) DestroyWindow(cover);
+    f.host.hidden_source([&] { return false; });
+    tap_now(VK_LEFT); const bool uncovered_plays = animating();
+    report.check("A75-covered", covered_instant && uncovered_plays,
+        "covering window created=" + std::to_string(cover != nullptr) + ", instant while covered=" + std::to_string(covered_instant) + ", plays once uncovered=" + std::to_string(uncovered_plays));
 }
 
 void dropdown_native(const Appearance& appearance, Report& report) {
@@ -1426,7 +2319,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
             state.tooltip_clock([&] { return now; });
             SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
             f.post(WM_MOUSELEAVE, 0, 0); f.host.pump();
-            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.settle();
+            h.progress_half.focus(); f.tap(VK_RIGHT); f.settle(); now += 600; state.tooltip_time(now); f.settle();
             bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused;
             auto tip_scroll = f.host.frame().regions.front();
             bool tip_wheel = tip_scroll.maximum == 0;
@@ -1459,6 +2352,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 }
                 f.host.paint();
                 bool hid = f.form.scroll.offset != old && !*h.progress_tip.visible() && h.progress_half.describe()->focused;
+                f.tap(VK_RIGHT);  // the scrollbar press hid the indicator; a key shows it and starts the fresh dwell
                 now += 499; state.tooltip_time(now); bool waiting = !*h.progress_tip.visible();
                 ++now; state.tooltip_time(now); bool resumed = *h.progress_tip.visible();
                 f.host.paint();
@@ -1562,7 +2456,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                     ", reopened after fresh dwell=" + std::to_string(second_wait && reopened));
                 SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
             }
-            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.host.paint();
+            h.progress_half.focus(); f.tap(VK_RIGHT); f.settle(); now += 600; state.tooltip_time(now); f.host.paint();
             bool transparent = false;
             auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& item) { return item.tooltip; });
             if (tip != f.host.frame().overlays.end()) {
@@ -2006,7 +2900,7 @@ void x04_tooltip_matrix(const Appearance& appearance, Report& report) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui); std::uint64_t now = 100;
             f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             state.tooltip_clock([&] { return now; }); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
-            bool driven = x04::prepare_tip(f.form); auto semantic = f.form.handles.progress_half.describe();
+            bool driven = x04::prepare_tip(f.form); f.tap(VK_RIGHT); auto semantic = f.form.handles.progress_half.describe();
             f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
             f.host.paint(); now += 600; state.tooltip_time(now); f.host.paint();
             auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& p) { return p.tooltip; });
@@ -2046,7 +2940,8 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                 std::u16string ink; bool visible_owner_ink = false, accent = false, selected = false;
                 auto palette = appearance.palette();
                 for (const auto& draw : f.host.paint_observations()) {
-                    if (draw.owner != owner || !draw.visible) continue;
+                    const bool blank_piece = draw.type == detail::PaintObservation::Type::text && x04::blank_only(draw.text);  // no ink, but part of the text
+                    if (draw.owner != owner || !(draw.visible || blank_piece)) continue;
                     visible_owner_ink = true;
                     if (draw.type == detail::PaintObservation::Type::text && item &&
                         intersect(draw.bounds, intersect(draw.clip, item->bounds)).w == draw.bounds.w) ink += draw.text;
@@ -2795,7 +3690,7 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         bool pointer_left = !*live.form.handles.progress_tip.visible();
         report.check("P05-real-pointer", pointer_shown && pointer_left,
                      "Physical pointer dwell displays the tooltip without taking focus; leaving closes it");
-        live.form.handles.progress_half.focus();
+        live.form.handles.progress_half.focus(); live.tap(VK_RIGHT);  // the focus tooltip needs keyboard use first
         live.wait(650);
         bool visible_before = *live.form.handles.progress_tip.visible();
         live.foreground(live.helper);
@@ -3066,11 +3961,14 @@ int run(const std::filesystem::path& folder) {
         report.appearance = tag;
         presentation_before_input(*appearance, report);
         draw_list_initial(*appearance, report);
+        palette_override_native(*appearance, report);
         tabs_native(*appearance, report, folder);
         atlas_native(*appearance, report);
         progress_native(*appearance, report, folder);
+        hover_native(*appearance, report);
         dialog_native(*appearance, report, folder);
         tooltip_native(*appearance, report, folder);
+        focus_visibility_native(*appearance, report);
         long_dropdown_native(*appearance, report);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);
@@ -3078,11 +3976,18 @@ int run(const std::filesystem::path& folder) {
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);
+        slider_animation_native(*appearance, report);
         dropdown_native(*appearance, report);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
+        context_menu_native(*appearance, report);
+        multiline_native(*appearance, report, folder);
+        vertical_label_native(*appearance, report, folder);
+        richtext_native(*appearance, report, folder);
+        word_select_native(*appearance, report);
+        justify_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3114,6 +4019,26 @@ int run(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
+int run_focus(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "focus.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        focus_visibility_native(*appearance, report);
+    }
+    std::cout << report.checks << " focus native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
+int run_hover(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "hover.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        hover_native(*appearance, report);
+    }
+    std::cout << report.checks << " hover native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
 int run_x02(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x02.tsv");
@@ -3385,8 +4310,12 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
 }
 
 int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& appearance,
-             bool large, int delay, int duration_ms, bool alternate_font) {
-    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
+             bool large, int delay, int duration_ms, bool alternate_font, const char* report_file="demo-perf.tsv") {
+    // #73: slider-drag-text-size only reports per-frame and per-stage times; it never decides pass or fail.
+    const bool slider_drag=scenario==L"slider-drag-text-size";
+    // #75: the idle rule must still hold after one transition has played (arrow key on the volume slider).
+    const bool idle_after_animation=scenario==L"idle-after-animation";
+    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle" && !slider_drag && !idle_after_animation)
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
@@ -3406,6 +4335,7 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
     }
     DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
+    if (slider_drag && offscreen) throw std::runtime_error("slider-drag-text-size needs real mouse input, so it cannot run offscreen");
     host.perf_enable(delay,offscreen);
     auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
     x04_original_procs.emplace(host.window(),previous_proc);
@@ -3420,6 +4350,10 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
             throw std::runtime_error("Perf list setup failed");
     } else if (scenario==L"typing" || scenario==L"idle") {
         if (!form.nav.select({"general"}) || !form.name.focus()) throw std::runtime_error("Perf typing setup failed");
+    } else if (idle_after_animation) {
+        if (!form.nav.select({"general"}) || !form.volume.focus()) throw std::runtime_error("Perf animation setup failed");
+    } else if (slider_drag) {
+        if (!form.nav.select({"appearance"})) throw std::runtime_error("Perf slider setup failed");
     }
     host.pump();
     if(scenario!=L"startup") host.perf_reset();
@@ -3428,6 +4362,44 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
     if(scenario==L"list-hold-down") {
         int duration=duration_ms ? duration_ms : 5000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration);
         while(std::chrono::steady_clock::now()<end) { send(VK_DOWN,0); wait(33); } send(VK_DOWN,KEYEVENTF_KEYUP); host.pump();
+    } else if(slider_drag) {
+        const std::string slider_id="appearance.text_size";
+        auto thumb=[&]() -> POINT {
+            const auto* item=host.frame().find(form.text_size);
+            if (!item) { host.paint(); item=host.frame().find(form.text_size); }
+            if (!item || item->slider_track.w<=0) throw std::runtime_error("Perf slider track not arranged");
+            const auto& track=item->slider_track; int value=*form.text_size.draft();
+            return {track.x+static_cast<int>(std::lround(track.w*(value-12)/16.0)), track.y+track.h/2};
+        };
+        auto mouse=[&](POINT client, DWORD flags) {
+            if (GetForegroundWindow()!=host.window()) throw std::runtime_error("Perf window lost foreground focus");
+            POINT screen=client; ClientToScreen(host.window(),&screen);
+            const int vx=GetSystemMetrics(SM_XVIRTUALSCREEN), vy=GetSystemMetrics(SM_YVIRTUALSCREEN), vw=GetSystemMetrics(SM_CXVIRTUALSCREEN), vh=GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            INPUT input{}; input.type=INPUT_MOUSE;
+            input.mi.dx=static_cast<LONG>((static_cast<long long>(screen.x-vx)*65535+(vw-1)/2)/(vw-1));
+            input.mi.dy=static_cast<LONG>((static_cast<long long>(screen.y-vy)*65535+(vh-1)/2)/(vh-1));
+            input.mi.dwFlags=flags|MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_VIRTUALDESK;
+            if (SendInput(1,&input,sizeof(input))!=1) throw std::runtime_error("SendInput failed");
+        };
+        auto start_point=thumb();
+        mouse(start_point,MOUSEEVENTF_MOVE); wait(100);
+        POINT cursor{}; GetCursorPos(&cursor); POINT want=start_point; ClientToScreen(host.window(),&want);
+        if (std::abs(cursor.x-want.x)>3 || std::abs(cursor.y-want.y)>3) throw std::runtime_error("Perf cursor did not reach the slider thumb");
+        mouse(start_point,MOUSEEVENTF_LEFTDOWN); wait(50);
+        if (!detail::access(form.ui).slider_drag_x(slider_id)) throw std::runtime_error("Perf slider drag did not start");
+        host.perf_reset();
+        // About 16 ms per move, sweeping the whole track back and forth every 2 s.
+        int duration=duration_ms ? duration_ms : 5000; auto begin=std::chrono::steady_clock::now(), until=begin+std::chrono::milliseconds(duration);
+        while(std::chrono::steady_clock::now()<until) {
+            double t=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count()/2000.0;
+            double phase=t-std::floor(t), ratio=phase<.5 ? phase*2 : 2-phase*2;
+            const auto* item=host.frame().find(form.text_size);
+            if (item && item->slider_track.w>0) mouse({item->slider_track.x+static_cast<int>(std::lround(item->slider_track.w*ratio)), item->slider_track.y+item->slider_track.h/2},MOUSEEVENTF_MOVE);
+            wait(16);
+        }
+        POINT release_point=start_point;
+        if (const auto* item=host.frame().find(form.text_size)) release_point={item->slider_track.x, item->slider_track.y+item->slider_track.h/2};
+        mouse(release_point,MOUSEEVENTF_LEFTUP); wait(100);
     } else if(scenario==L"typing") {
         int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
         while(std::chrono::steady_clock::now()<end) {
@@ -3437,19 +4409,29 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         }
     }
     int paints=0,presents=0; double cpu_ms=0;
-    if(scenario==L"idle") {
-        send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500);
+    if(scenario==L"idle" || idle_after_animation) {
+        if (idle_after_animation) {
+            // One real arrow key; the 150 ms slide must be over (and the host quiet) before measuring.
+            send(VK_RIGHT,0); send(VK_RIGHT,KEYEVENTF_KEYUP); wait(100);
+            if (!detail::access(form.ui).animation_running()) throw std::runtime_error("Perf animation did not start (animations are off in Windows, or the window is hidden)");
+            wait(1500);
+            if (detail::access(form.ui).animation_running()) throw std::runtime_error("Perf animation did not end");
+        } else { send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500); }
         int before_paints=host.paint_messages(), before_frames=host.frames(); FILETIME c{},e{},k1{},u1{},k2{},u2{};
         GetProcessTimes(GetCurrentProcess(),&c,&e,&k1,&u1); wait(duration_ms ? duration_ms : 10000); GetProcessTimes(GetCurrentProcess(),&c,&e,&k2,&u2);
         auto ticks=[](FILETIME t){ULARGE_INTEGER x{}; x.LowPart=t.dwLowDateTime; x.HighPart=t.dwHighDateTime; return x.QuadPart;};
         cpu_ms=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paint_messages()-before_paints; presents=host.frames()-before_frames;
     }
     auto warm=host.perf_samples().summary(true), steady=host.perf_samples().summary(false);
-    bool ok=scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
+    bool ok=slider_drag ? true : scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : (scenario==L"idle" || idle_after_animation) ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
-    std::filesystem::create_directories(evidence); std::ofstream out(evidence/"demo-perf.tsv");
-    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
+    if (slider_drag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
+    auto stages_warm=host.perf_breakdown().summary(true), stages_steady=host.perf_breakdown().summary(false);
+    std::filesystem::create_directories(evidence); std::ofstream out(evidence/report_file);
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus";
+    if (slider_drag) for (const char* stage : {"layout","list","gpu"}) for (const char* column : {"p50","p95","p99","max"}) out << '\t' << stage << '_' << column << "_ms";
+    out << '\n';
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
         out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (alternate_font?"non-default":"default") << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
 #ifdef NDEBUG
@@ -3457,7 +4439,12 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << '\n';
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (slider_drag?"REPORT":ok?"PASS":"FAIL");
+        if (slider_drag) {
+            const auto& stages=phase?stages_warm:stages_steady;
+            for (const auto* stage : {&stages.layout,&stages.list,&stages.gpu}) out << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+        }
+        out << '\n';
     }
     if(!out) throw std::runtime_error("Cannot write perf report");
     SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previous_proc)); x04_original_procs.erase(host.window());
@@ -3476,9 +4463,10 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
-        bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, context_menu_only = false, animation_only = false;
+        bool multiline_only = false, vertical_only = false, richtext_only = false, word_select_only = false, justify_only = false;
+                bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false, hover_only = false, focus_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_appearance=L"web";
         for (int i = 1; i < argc; ++i) {
@@ -3499,11 +4487,20 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
+            else if (arg == L"--context-menu-only") context_menu_only = true;
+            else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--justify-only") justify_only = true;
+            else if (arg == L"--animation-only") animation_only = true;
+            else if (arg == L"--vertical-only") vertical_only = true;
+            else if (arg == L"--richtext-only") richtext_only = true;
+            else if (arg == L"--word-select-only") word_select_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--x02-only") x02_only = true;
+            else if (arg == L"--hover-only") hover_only = true;
+            else if (arg == L"--focus-only") focus_only = true;
             else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--x04-executing-only") x04_executing_only = true;
@@ -3514,11 +4511,68 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (demo_comparison) return demo_compare(evidence);
         if (uia_ime) return run_uia_ime(evidence, perf_appearance);
+        if (animation_only) {
+            std::filesystem::create_directories(evidence); Report report(evidence / "animation.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                slider_animation_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 long_dropdown_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (context_menu_only) {
+            std::filesystem::create_directories(evidence); Report report(evidence / "context-menu.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                context_menu_native(*appearance, report);
+            }
+            std::cout << report.checks << " context menu checks, " << report.failures << " not passing\n";
+            return report.failures ? 1 : 0;
+        }
+        if (vertical_only) {  // #82 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "vertical.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                vertical_label_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (multiline_only) {  // #79 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "multiline.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                multiline_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (richtext_only) {  // #81 native checks alone (uses the real clipboard: run on an idle desktop)
+            std::filesystem::create_directories(evidence); Report report(evidence / "richtext.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                richtext_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (word_select_only) {  // #83 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "word-select.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                word_select_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (justify_only) {  // #84 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "justify.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                justify_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
@@ -3547,11 +4601,20 @@ int wmain(int argc, wchar_t** argv) {
             return 0;
         }
         if (demo_perf) return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,demo_perf_font);
+        // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
+        // Report-only (code review 2026-11-12, item 14): a setup problem (no real mouse, window not in front, ...) is printed and
+        // leaves no report; it never fails the run, so it can never fail an idle verification. verify-idle shows the missing report.
+        if (perf==L"slider-drag-text-size") {
+            try { return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv"); }
+            catch (const std::exception& e) { std::cerr << "slider-drag-text-size is report-only and could not run: " << e.what() << '\n'; return 0; }
+        }
+        // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
+        if (perf==L"idle-after-animation") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) + int(hover_only) + int(focus_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : hover_only ? run_hover(evidence) : focus_only ? run_focus(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

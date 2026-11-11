@@ -16,8 +16,15 @@ set(glcorearb_URL "https://github.com/KhronosGroup/OpenGL-Registry/blob/${glcore
 set(khrplatform_COMMIT "db3425b8246136faccb5e2782b5694960bd6edf1")
 set(khrplatform_SHA256 "7b1e01aaa7ad8f6fc34b5c7bdf79ebf5189bb09e2c4d2e79fc5d350623d11e83")
 set(khrplatform_URL "https://github.com/KhronosGroup/EGL-Registry/blob/${khrplatform_COMMIT}/api/KHR/khrplatform.h")
+# Unicode Character Database file the vertical-orientation table (src/vertical_orientation_data.inc) is generated from.
+set(unicode_vo_VERSION "18.0.0")
+set(unicode_vo_SHA256 "0803e09669d7aa7137de678e55b848bd418c6632694fa1b05f0b40941103c748")
+set(unicode_vo_URL "https://www.unicode.org/Public/${unicode_vo_VERSION}/ucd/VerticalOrientation.txt")
+set(unicode_license_URL "https://www.unicode.org/license.txt")
+set(unicode_license_SHA256 "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96")
 function(verify_third_party root)
-  foreach(entry "freetype|freetype.tar.gz" "harfbuzz|harfbuzz.tar.gz" "glcorearb|glcorearb.h" "khrplatform|KHR/khrplatform.h")
+  foreach(entry "freetype|freetype.tar.gz" "harfbuzz|harfbuzz.tar.gz" "glcorearb|glcorearb.h" "khrplatform|KHR/khrplatform.h"
+                "unicode_vo|unicode/VerticalOrientation-${unicode_vo_VERSION}.txt" "unicode_license|unicode/LICENSE-UNICODE-V3.txt")
     string(REPLACE "|" ";" parts "${entry}")
     list(GET parts 0 name)
     list(GET parts 1 path)

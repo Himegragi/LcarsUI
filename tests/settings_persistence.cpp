@@ -10,12 +10,54 @@ void round_trip() {
     settings_demo::Demo demo; auto document = demo.document();
     document.name=u"Station A"; document.notices=false; document.mode=lcars::OptionValue{"focus"}; document.region=lcars::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.next_item_id=22;
-    document.presentation.font_family=u"NoSuchFont"; document.presentation.text_size=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact;
+    document.presentation.font_family=u"NoSuchFont"; document.presentation.text_size=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact; document.accent="green";
     auto bytes = settings_demo::write_settings(document);
     test::check(bytes.starts_with("{\n  \"format\"") && bytes.back()=='\n' && bytes.find('\r')==std::string::npos && !bytes.starts_with("\xef\xbb\xbf"), "UTF-8 without BOM uses LF and fixed first key");
     test::check(bytes.find("\"general\"") < bytes.find("\"items\"") && bytes.find("\"items\"") < bytes.find("\"next_item_id\"") && bytes.find("\"next_item_id\"") < bytes.find("\"presentation\""), "top-level keys have specified order");
     auto decoded = settings_demo::parse_settings(bytes);
     test::check(decoded && *decoded == document, "settings survive JSON round trip");
+}
+void multiline_notes_round_trip_and_reject_carriage_returns() {
+    settings_demo::Demo demo; auto document = demo.document();
+    document.items[0].note = u"\u7b2c\u4e00\u884c\n\n\u7b2c\u4e09\u884c\nlast";
+    auto bytes = settings_demo::write_settings(document);
+    test::check(bytes.find("\\n\\n") != std::string::npos && bytes.find('\r') == std::string::npos, "line breaks are stored as JSON \\n escapes");
+    auto decoded = settings_demo::parse_settings(bytes);
+    test::check(decoded && *decoded == document && decoded->items[0].note == document.items[0].note, "a note with line breaks loads back identical");
+    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto replace = [&](std::string from, std::string to) { auto value = base; auto at = value.find(from); test::check(at != std::string::npos, "fixture field"); value.replace(at, from.size(), to); return value; };
+    test::check(bool(settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\nb\""))), "an LF in a note is valid");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\rb\"")), "a CR in a note is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"a\\tb\"")), "a tab in a note is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"name\":\"A\",\"note\"", "\"name\":\"A\\nB\",\"note\"")), "a line break in an item name is rejected");
+    test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"" + std::string(201, 'x') + "\"")), "the 200 character limit still applies");
+}
+// #81: a note is saved as {"text", "spans"}; files written before rich text (a plain string) load unstyled.
+void rich_notes_round_trip_and_old_string_notes_still_load() {
+    settings_demo::Demo demo; auto document = demo.document();
+    document.items[0].note = u"重要\n內容";
+    document.items[0].note_spans = {{.start = 0, .length = 2, .bold = true}, {.start = 3, .length = 2, .italic = true, .underline = true, .color = "red"}};
+    auto bytes = settings_demo::write_settings(document);
+    test::check(bytes.find("\"text\"") != std::string::npos && bytes.find("\"spans\"") != std::string::npos && bytes.find("\"bold\": true") != std::string::npos &&
+                bytes.find("\"color\": \"red\"") != std::string::npos, "a note is an object with its text and spans");
+    auto decoded = settings_demo::parse_settings(bytes);
+    test::check(decoded && *decoded == document && decoded->items[0].note_spans == document.items[0].note_spans, "a styled note loads back exactly");
+    test::check(decoded && settings_demo::write_settings(*decoded) == bytes, "writing what was loaded gives the same file");
+    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto with_note = [&](const std::string& note) { auto value = base; auto at = value.find("\"note\":\"x\""); test::check(at != std::string::npos, "fixture field"); value.replace(at, 10, "\"note\":" + note); return value; };
+    auto old = settings_demo::parse_settings(with_note("\"plain\""));
+    test::check(old && old->items[0].note == u"plain" && old->items[0].note_spans.empty(), "a note stored as a string loads with no styles");
+    auto object = settings_demo::parse_settings(with_note(R"({"text":"abcd","spans":[{"start":0,"length":2,"bold":true},{"start":2,"length":2,"bold":true}]})"));
+    test::check(object && object->items[0].note_spans.size() == 1 && object->items[0].note_spans[0].length == 4, "spans are loaded in their normal form (adjacent equal spans merge)");
+    test::check(settings_demo::parse_settings(with_note(R"({"text":"","spans":[]})")).has_value(), "an empty note object is valid");
+    for (const char* bad : {R"({"text":"abc","spans":[{"start":0,"length":2,"bold":true},{"start":1,"length":2,"italic":true}]})",  // overlap
+                            R"({"text":"abc","spans":[{"start":2,"length":2,"bold":true}]})",                                         // past the text
+                            R"({"text":"abc","spans":[{"start":0,"length":1,"bold":"yes"}]})",                                       // not a boolean
+                            R"({"text":"abc","spans":[{"start":0,"length":1,"blink":true}]})",                                       // unknown member
+                            R"({"text":"abc","spans":[{"length":1,"bold":true}]})",                                                   // no start
+                            R"({"text":"a\rb","spans":[]})", R"({"text":"abc"})", R"({"spans":[]})", "5"})
+        test::check(!settings_demo::parse_settings(with_note(bad)), "an invalid note object makes the file invalid");
+    test::check(!settings_demo::parse_settings(with_note("{\"text\":\"" + std::string(201, 'x') + "\",\"spans\":[]}")), "the 200 character limit applies to the text of a rich note");
 }
 void files() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-test";
@@ -79,13 +121,54 @@ void appearance_persistence() {
     test::check(font && font->selected && font->name==u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "saved missing font stays selected");
     std::filesystem::remove_all(path);
 }
+void accent_persistence() {
+    settings_demo::Demo demo; auto document=demo.document();
+    test::check(document.accent=="default" && settings_demo::write_settings(document).find("\"accent\": \"default\"")!=std::string::npos, "default accent is written");
+    const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto old=settings_demo::parse_settings(old_file); test::check(old && old->accent=="default", "a file without accent loads as default");
+    const std::string density="\"density\":\"standard\"";
+    auto with=[&](const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\"accent\":"+value); return copy; };
+    auto orange=settings_demo::parse_settings(with("\"orange\"")); test::check(orange && orange->accent=="orange", "accent orange loads");
+    for (const char* bad : {"\"purple\"","5","null","\"\""}) test::check(!settings_demo::parse_settings(with(bad)), "unknown accent rejects the whole document");
+    auto path=std::filesystem::temp_directory_path()/"lcars-persistence-accent";
+    std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
+    settings_demo::Demo saving; saving.on_save([&](const auto& doc) { return store.save(doc); });
+    test::check(bool(saving.set_accent("green")) && bool(saving.save()), "choose and save the accent");
+    test::check(bool(saving.set_accent("orange")), "make an unsaved accent change");
+    auto loaded=store.load(); test::check(loaded.document && loaded.document->accent=="green", "saved accent is in the file");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
+    test::check(reopened.accent_id()=="green" && reopened.ui.semantics().get({"appearance.accent",lcars::OptionValue{"green"}})->selected, "reopened demo shows the saved accent");
+    test::check(reopened.ui.effective_palette(lcars::web_appearance(),lcars::ThemeVariant::light())->accent==lcars::Color{20,110,50}, "reopened demo paints the saved accent");
+    std::filesystem::remove_all(path);
+}
+// #84: the "justified text as left" setting is saved with the presentation and comes back on load.
+void justify_as_left_persistence() {
+    settings_demo::Demo demo; auto document=demo.document();
+    test::check(!document.presentation.justify_as_left && settings_demo::write_settings(document).find("\"justify_as_left\": false")!=std::string::npos, "the default is written as off");
+    const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto old=settings_demo::parse_settings(old_file); test::check(old && !old->presentation.justify_as_left, "a file without the setting loads as off");
+    const std::string density="\"density\":\"standard\"";
+    auto with=[&](const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\"justify_as_left\":"+value); return copy; };
+    auto on=settings_demo::parse_settings(with("true")); test::check(on && on->presentation.justify_as_left, "the setting loads as on");
+    for (const char* bad : {"\"yes\"","1","null"}) test::check(!settings_demo::parse_settings(with(bad)), "a non-boolean rejects the whole document");
+    auto path=std::filesystem::temp_directory_path()/"lcars-persistence-justify";
+    std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
+    settings_demo::Demo saving; saving.on_save([&](const auto& doc) { return store.save(doc); });
+    saving.nav.select({"appearance"});
+    test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)) && bool(saving.save()), "turn it on and save");
+    test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)), "turn it off again, unsaved");
+    auto loaded=store.load(); test::check(loaded.document && loaded.document->presentation.justify_as_left, "the saved file has it on");
+    settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
+    test::check(reopened.ui.presentation().justify_as_left && *reopened.ui.semantics().get({"appearance.justify_left"})->checked, "the reopened demo applies it and shows the checkbox on");
+    std::filesystem::remove_all(path);
+}
 void failures();
 void load_failures();
 void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"settings round trip", round_trip},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"justify as left persistence",justify_as_left_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"rich notes",rich_notes_round_trip_and_old_string_notes_still_load},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

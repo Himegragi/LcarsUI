@@ -6,12 +6,12 @@ class Material final : public Appearance {
     std::string_view name() const override { return "Material-inspired"; }
     Palette palette() const override {
         return {{247,244,251},{255,251,255},{235,229,242},{35,30,44},{105,94,118},
-                {202,193,213},{105,74,153},{255,255,255},{221,205,249},{174,40,51}};
+                {202,193,213},{121,116,126},{105,74,153},{255,255,255},{221,205,249},{174,40,51},{0,0,0},110,{35,30,44},10};
     }
     bool supports(const ThemeVariant& variant) const override { return variant == ThemeVariant::light() || variant == ThemeVariant::dark(); }
     Palette palette(const ThemeVariant& variant) const override {
         if (variant == ThemeVariant::dark()) return {{20,18,24},{29,27,33},{43,40,49},{232,225,234},{202,196,208},
-                {88,82,98},{208,188,255},{56,30,114},{79,55,139},{242,184,181},{0,0,0},160};
+                {88,82,98},{147,143,153},{208,188,255},{56,30,114},{79,55,139},{242,184,181},{0,0,0},160,{232,225,234},20};
         return palette();
     }
     FieldParts field(Rect b, int size) const override {
@@ -44,4 +44,5 @@ class Material final : public Appearance {
 };
 }
 const Appearance& material_appearance() { static Material skin; return skin; }
+namespace { const bool registered = detail::register_builtin_appearance(material_appearance()); }
 }

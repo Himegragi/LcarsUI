@@ -1,4 +1,6 @@
-﻿#include "desktop_host.hpp"
+﻿#include "uia_demo_messages.hpp"
+#include "desktop_host.hpp"
+#include "core_internal.hpp"
 #include "settings_demo.hpp"
 #include "lcars/semantics.hpp"
 #include <windows.h>
@@ -7,7 +9,7 @@ namespace {
 settings_demo::Demo* active = nullptr;
 WNDPROC original_proc = nullptr;
 LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
-    if (message == WM_APP + 84) {
+    if (message == uia_demo::message_expect_page) {
         const char* pages[] = {"general", "items", "appearance", "about", "items", "items", "general", "appearance"};
         if (w > 7 || !active->nav.selected() || active->nav.selected()->id != pages[w]) return 0;
         if (w == 4) return active->item_dialog.is_open().value.value_or(false);
@@ -16,7 +18,7 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         if (w == 7) return active->ui.semantics().get({"appearance.font"})->expanded;
         return 1;
     }
-    if (message == WM_APP + 83) {
+    if (message == uia_demo::message_navigate) {
         if (w > 7) return 1;
         const char* pages[] = {"general", "items", "appearance", "about", "items", "items", "general", "appearance"};
         if (!active->nav.select({pages[w]})) return 2;
@@ -27,8 +29,41 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         InvalidateRect(window, nullptr, FALSE); UpdateWindow(window);
         return 0;
     }
-    if (message == WM_APP + 82) return static_cast<LRESULT>(active->items_search.select(0, 2).status);
-    if (message == WM_APP + 81) return static_cast<LRESULT>(active->items_search.set_value(w ? u"sample" : u"").status);
+    if (message == uia_demo::message_text_flow) {  // #80: the Items search box gets a centered, 1.5-spaced presentation (w = 1) or the defaults (w = 0);
+        // #84: w = 2 justifies it, w = 3 justifies it with the user's "justified text as left" setting on
+        auto& search = active->items_search;
+        auto settings = active->ui.presentation(); settings.justify_as_left = w == 3;
+        const auto align = w == 1 ? lcars::TextAlign::center : w >= 2 ? lcars::TextAlign::justify : lcars::TextAlign::left;
+        return static_cast<LRESULT>(search.set_text_align(align).status) |
+               static_cast<LRESULT>(search.set_line_spacing(w == 1 ? 1.5 : 1.0).status) |
+               static_cast<LRESULT>(active->ui.set_presentation(settings).status);
+    }
+    if (message == uia_demo::message_context_menu) {
+        // Context menu driver (#85). 0: open the Items list menu on row T003; 1: close; 2: open the search field's menu;
+        // 3: press Down; the result is the Status as an integer (0 is ok).
+        auto& tree = active->ui.semantics();
+        switch (w) {
+        case 0: return static_cast<LRESULT>(tree.perform({"items.list", lcars::OptionValue{"T003"}}, lcars::Verb::context_menu).status);
+        case 1: return static_cast<LRESULT>(active->ui.close_context_menu().status);
+        case 2: return static_cast<LRESULT>(tree.perform({"items.search"}, lcars::Verb::context_menu).status);
+        case 3: return static_cast<LRESULT>(lcars::detail::access(active->ui).key_down({.key = lcars::Key::down}).status);
+        case 4: return static_cast<LRESULT>(lcars::detail::access(active->ui).key_down({.key = lcars::Key::escape}).status);  // Escape closes the menu
+        case 5: lcars::detail::access(active->ui).window_active(true); return 0;   // the window counts as active (before opening a menu to deactivate)
+        case 6: lcars::detail::access(active->ui).window_active(false); return 0;  // deactivation closes an open menu
+        default: return 99;
+        }
+    }
+    if (message == uia_demo::message_hover) {  // #74: w=1 simulates a pointer hover on the Items search box, w=0 clears it; the Status as an integer
+        if (w == 1) return static_cast<LRESULT>(active->ui.simulate_hover(active->items_search).status);
+        return static_cast<LRESULT>(active->ui.clear_simulated_hover().status);
+    }
+    if (message == uia_demo::message_rich_text) {  // #81: w=1 gives the item note a styled value, w=2 switches the theme (l=1 dark, l=0 light)
+        if (w == 1) return static_cast<LRESULT>(active->item_note.set_rich_value({u"abcdef", {{.start = 0, .length = 2, .bold = true}, {.start = 2, .length = 2, .italic = true, .underline = true}, {.start = 4, .length = 2, .color = "red"}}}).status);
+        if (w == 2) { auto settings = active->ui.presentation(); settings.variant = l ? lcars::ThemeVariant::dark() : lcars::ThemeVariant::light(); return static_cast<LRESULT>(active->ui.set_presentation(settings).status); }
+        return 1;
+    }
+    if (message == uia_demo::message_select_in_search) return static_cast<LRESULT>(active->items_search.select(0, 2).status);
+    if (message == uia_demo::message_set_search_value) return static_cast<LRESULT>(active->items_search.set_value(w ? u"sample" : u"").status);
     return CallWindowProcW(original_proc, window, message, w, l);
 }
 }

@@ -21,11 +21,14 @@ struct PaintObservation {
     Rect bounds, clip;
     Color color;
     bool visible = false, popup = false, tooltip = false;
+    bool bold = false, italic = false;  // text: the face it was drawn in
 };
 class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
     bool write(std::u16string_view text) override;
+    bool write_rich(std::u16string_view text, std::string_view payload) override;
+    Query<std::string> read_rich() override;
     Query<std::u16string> read() override;
 private:
     HWND window_;
@@ -62,6 +65,10 @@ public:
     void client_size(int width_dip, int height_dip);
     float scale() const;
     void force_scale(float scale) { forced_scale_ = scale; }  // 0 follows the window DPI
+    // Mouse messages that touch or pen input synthesizes carry this signature in the message extra info.
+    static bool touch_signature(std::uintptr_t extra_info);
+    // Test seam: replaces the extra-info read, which a posted message cannot carry.
+    void touch_source(std::function<bool()> source) { touch_source_ = std::move(source); }
     void paint();                           // arrange, draw and present one frame
     // Arrange and raster offscreen at an arbitrary physical size; saves a 32-bit BMP.
     Frame render(int width, int height, float scale, const std::filesystem::path& bmp, Image* pixels = nullptr);
@@ -81,8 +88,9 @@ public:
     unsigned atlas_peak_pages() const { return text_.atlas_peak_pages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
     void perf_enable(int delay_ms=0, bool offscreen=false) { perf_enabled_=true; perf_delay_=delay_ms; perf_offscreen_=offscreen; }
-    void perf_reset() { perf_samples_.clear(); }
+    void perf_reset() { perf_samples_.clear(); perf_breakdown_.clear(); }
     const PerfSamples& perf_samples() const { return perf_samples_; }
+    const PerfBreakdown& perf_breakdown() const { return perf_breakdown_; }
     int paint_messages() const { return paint_messages_; }
     double first_present_ms() const { return first_present_ms_; }
     double input_present_ms() const { return input_present_ms_; }
@@ -92,6 +100,13 @@ public:
     const std::optional<RendererFailure>& renderer_failure() const { return renderer_failure_; }
     void on_renderer_failure(std::function<void(const RendererFailure&)> callback) { failure_callback_ = std::move(callback); }
     Result rebuild_renderer();
+    // #75: the system "Show animations in Windows" preference, re-read on WM_SETTINGCHANGE. Tests may
+    // replace the reader to simulate it being on or off (and flip it while running).
+    void system_animation_source(std::function<bool()> reader) { animation_reader_ = std::move(reader); refresh_system_animations(); }
+    // Tests replace the minimized / not shown / cloaked / covered check so another window on a shared
+    // desktop cannot decide the outcome; with no reader the real window state is used.
+    void hidden_source(std::function<bool()> reader) { hidden_reader_ = std::move(reader); refresh_visibility(); }
+    bool window_hidden() const { return hidden_; }
     void close() { release(); }
     void request_quit() { quit_ = true; }
     void on_close_request(std::function<CloseDecision()> callback) { close_callback_ = std::move(callback); }
@@ -126,6 +141,7 @@ private:
     double first_present_ms_=-1, input_present_ms_=0;
     std::chrono::steady_clock::time_point input_time_{};
     PerfSamples perf_samples_;
+    PerfBreakdown perf_breakdown_;
     int frames_ = 0;
     bool failed_ = false;
     bool painting_ = false;
@@ -143,6 +159,9 @@ private:
     int drag_origin_ = 0, drag_offset_ = 0;
     ScrollState* drag_scroll_ = nullptr;
     char16_t pending_high_ = 0;
+    bool swallow_left_ = false, swallow_right_ = false;  // a press that only closed a menu: its release is dropped too
+    bool menu_sys_swallow_ = false, drop_space_char_ = false;
+    void open_pointer_menu(int x, int y);
     std::vector<std::wstring> ime_log_, trace_;
     bool tracing_ = false;
     bool observe_paint_ = false;
@@ -155,10 +174,20 @@ private:
     template<class Target> void draw(Target& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
+    void drag_text(int x, int y);       // pointer drag over the focused text field
+    void follow_composition();          // re-anchor the input method after a scroll
+    void relayout();                    // arrange again now, outside a paint
     void schedule_tooltip();
-    void update_hover(int x, int y);
+    void update_hover(int x, int y, bool touch = false);  // pointer position in client pixels; touch/pen messages are ignored
+    bool synthesized_by_touch() const;  // the message being handled came from touch or pen
+    std::function<bool()> touch_source_;
     void follow_focus();               // notice focus moved by application or semantic calls
     std::string synced_focus_;
+    std::function<bool()> animation_reader_, hidden_reader_;
+    bool hidden_ = false;
+    void refresh_system_animations();
+    void refresh_visibility();         // minimized / not shown / cloaked / fully covered: motion ends at once
+    void schedule_animation();         // next frame while a transition runs, nothing otherwise
     void after_input(const std::string& focus_before);
     void log_ime(const wchar_t* event, std::u16string_view detail = {});
 };

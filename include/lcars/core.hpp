@@ -1,4 +1,5 @@
 #pragma once
+#include "lcars/appearance.hpp"
 #include "lcars/presentation.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -34,6 +35,26 @@ template<class T> struct Query {
 // Public text field limit in UTF-16 units. A field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
+// Horizontal placement of every display line inside the component's own width (#80). justify stretches
+// every display line but the last one of a paragraph to the full width (#84); distribute stretches the
+// last line, and a one-line text, too, and is for labels only (a text field refuses it with invalid_value).
+enum class TextAlign { left, center, right, justify, distribute };
+// Where justify and distribute may add the extra width (#84). automatic: around every CJK character and
+// full-width punctuation mark and at every ASCII space, never inside a Latin word; spaces: only at ASCII
+// spaces, so a line without any stays left-aligned; per_character: between any two characters, Latin
+// letters included (such a line is drawn without ligatures). Only used while the alignment is justify or distribute.
+enum class JustifyMethod { automatic, spaces, per_character };
+// Text flow limits. Line spacing multiplies the font's own line height; paragraph spacing is extra
+// space in DIP after each LF-ended paragraph (never between the pieces of one wrapped paragraph).
+inline constexpr double min_line_spacing = 1.0, max_line_spacing = 3.0;
+inline constexpr int max_paragraph_spacing = 48;
+inline bool valid_line_spacing(double value) { return value >= min_line_spacing && value <= max_line_spacing; }  // false for NaN
+inline bool valid_paragraph_spacing(int value) { return value >= 0 && value <= max_paragraph_spacing; }
+// Writing direction of a label (display only). Vertical runs top to bottom with columns from right to
+// left, laid out by the Taiwan Ministry of Education rules. Only labels support it.
+enum class WritingMode { horizontal, vertical };
+// Longest run of half-width digits that vertical text sets side by side in one cell (0 turns it off).
+inline constexpr int max_vertical_digits = 3;
 struct Control {
     std::string id;
     Kind kind;
@@ -46,9 +67,68 @@ struct Control {
     std::string target = {};         // labels: the control this text names, describes or reports errors for
     TextRole role = TextRole::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
+    // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
+    // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
+    bool multiline = false;
+    unsigned visible_lines = 3;  // multi-line height in lines, at least 1; later changed through the handle
+    // Labels and text fields only (any other kind needs the defaults, else invalid_value). They apply
+    // to the one component, can be changed at run time through its handle or the semantic layer, and
+    // out-of-range values are invalid_value. The defaults draw exactly as before.
+    TextAlign text_align = TextAlign::left;
+    JustifyMethod justify_method = JustifyMethod::automatic;  // #84: only read while text_align is justify or distribute
+    double line_spacing = 1.0;       // times the font's line height, 1.0-3.0; extra space splits above and below
+    int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
+    int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
+    // Multi-line text fields only (invalid_value on any other control); fixed when the field is created.
+    // A rich field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
+    bool rich = false;
+};
+// What one run of rich text looks like. An empty color means the field's normal text color; a color
+// name is looked up in the field's color list on every paint, so theme changes recolor it.
+struct TextStyle {
+    bool bold = false, italic = false, underline = false;
+    std::string color;
+    bool plain() const { return !bold && !italic && !underline && color.empty(); }
+    bool operator==(const TextStyle&) const = default;
+};
+// One styled run of a rich value: UTF-16 offsets into its plain text.
+struct StyleSpan {
+    unsigned start = 0, length = 0;
+    bool bold = false, italic = false, underline = false;
+    std::string color;
+    TextStyle style() const { return {bold, italic, underline, color}; }
+    bool operator==(const StyleSpan&) const = default;
+};
+// Plain text (the multi-line rule: LF only) plus the styled runs of it. Only styled text is listed.
+// The framework never parses a markup language. See normalize_rich_text for what a valid value is.
+struct RichText {
+    std::u16string text;
+    std::vector<StyleSpan> spans;
+    bool operator==(const RichText&) const = default;
+};
+// A rich value in its one canonical form: spans sorted by start, zero-length spans and spans of plain
+// style removed, adjacent spans of equal style merged, so equal content always reads back as an equal
+// value. Spans that overlap, run past the text or start/end inside a surrogate pair, and text that is not
+// valid multi-line text within max_length, give invalid_value.
+Query<RichText> normalize_rich_text(RichText value, std::size_t max_length = default_max_text_length);
+// An edit of a style: unset members are left as they are, a set member replaces it.
+// color == "" returns the text to the normal color.
+struct StyleChange {
+    std::optional<bool> bold, italic, underline;
+    std::optional<std::string> color;
+    bool operator==(const StyleChange&) const = default;
+};
+enum class StyleAttribute { bold, italic, underline };
+// A color a rich field can use by name, one value per theme: dark for ThemeVariant::dark(), light
+// for every other variant.
+struct NamedColor {
+    std::string name;
+    Color light, dark;
+    bool operator==(const NamedColor&) const = default;
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
-enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo };
+enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
@@ -60,6 +140,15 @@ struct Semantics {
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame
+    bool multiline = false;     // text fields: created multi-line
+    bool rich = false;          // text fields: created with Control::rich
+    unsigned visible_lines = 0; // multi-line text fields: configured height in lines
+    unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
+    unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
+    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. The property as set, even while the user's "justified text as left" setting shows it left-aligned
+    JustifyMethod justify_method = JustifyMethod::automatic;
+    double line_spacing = 1.0;
+    int paragraph_spacing = 0;
     std::vector<OptionSemantics> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
@@ -70,9 +159,12 @@ struct Semantics {
     TextRole role = TextRole::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
     std::vector<Operation> operations;
+    WritingMode writing_mode = WritingMode::horizontal;  // labels only
+    int vertical_digits = max_vertical_digits;           // labels only
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
-enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del };
+// menu is the application/menu key (VK_APPS); Shift+F10 arrives as f10 with shift; alt is a lone Alt press.
+enum class Key { other, tab, enter, space, escape, left, right, up, down, home, end, backspace, del, page_up, page_down, menu, f10, alt };
 struct KeyPress {
     Key key = Key::other;
     bool shift = false, ctrl = false, repeat = false;
@@ -80,6 +172,15 @@ struct KeyPress {
 };
 struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
 struct Selection { unsigned anchor = 0, caret = 0; };
+// A half-open range of UTF-16 offsets into a field's text.
+struct TextSpan { unsigned begin = 0, end = 0; bool operator==(const TextSpan&) const = default; };
+// How a text field decides where words are, for double click, Ctrl+arrow and UIA word units. Every mode
+// gives each punctuation mark its own word and keeps a run of spaces together. Set per field at any time.
+enum class WordSegmentation {
+    dictionary,     // the system ICU dictionary (zh_TW); falls back to per_character when it is unavailable
+    per_character,  // every Chinese or Japanese character is a word; a run of Latin letters and digits is one word
+    script_run      // a run of Chinese or Japanese characters is one word, a run of Latin letters and digits another
+};
 // Host-provided system clipboard. Core never touches OS services directly.
 class Clipboard {
 public:
@@ -87,9 +188,18 @@ public:
     virtual bool write(std::u16string_view text) = 0;
     // not_supported means no text; failed means the clipboard could not be read.
     virtual Query<std::u16string> read() = 0;
+    // Rich text. A copy from a rich field hands the plain text (CRLF) together with an opaque payload that
+    // carries the styles; the host stores the payload under one private format beside the plain text and
+    // returns it unchanged. A host that does not know the format keeps these defaults, so only plain text
+    // moves. A plain write replaces every format, as on Windows, so a stale payload never outlives its text.
+    virtual bool write_rich(std::u16string_view text, std::string_view payload) { (void)payload; return write(text); }
+    // not_supported means no payload is on the clipboard.
+    virtual Query<std::string> read_rich() { return {Status::not_supported, u"No rich text", std::nullopt}; }
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);
+// Multi-line fields keep breaks: CRLF, a lone CR and a lone LF each become one LF.
+std::u16string paste_as_multi_line(std::u16string_view text);
 // One session owns text and transient composition. Offsets are UTF-16.
 // The text backend supplies navigation stops; this is not a Unicode segmenter.
 class EditSession {
@@ -98,8 +208,12 @@ public:
     std::uint64_t revision = 0; // committed content changes, independent of layout and composition
     Selection selection;
     bool composing = false;
+    std::uint64_t selection_changes = 0;  // counts every select(); a temporary typing style ends when it moves
     std::u16string preedit;
     unsigned preedit_caret = 0;
+    // Multi-line fields: the caret sits at the end of a wrapped line, not the start of the next one.
+    // Only the End key and a click on a line's end set it; every other selection change clears it.
+    bool caret_upstream = false;
     unsigned begin() const { return std::min(selection.anchor, selection.caret); }
     unsigned end() const { return std::max(selection.anchor, selection.caret); }
     void select(unsigned anchor, unsigned caret);
@@ -111,10 +225,17 @@ public:
 };
 // Well-formed UTF-16, no control characters, within the given length.
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
+// As valid_single_line, but LF is allowed (one UTF-16 unit each) and CR still is not.
+bool valid_multi_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
 // The application owns the model. Notifications run on the UI thread; the source outlives the
 // connection. Its subscription returns a disconnection function.
 struct TextSource {
     std::function<std::u16string()> read;
+    std::function<std::function<void()>(std::function<void()>)> subscribe;
+};
+// The rich counterpart of TextSource, for fields created with Control::rich.
+struct RichTextSource {
+    std::function<RichText()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 struct BoolSource {
@@ -143,6 +264,7 @@ class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
+struct RichTextChange;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
 class TextHandle {
 public:
@@ -160,9 +282,76 @@ public:
     Result reset_to_source() const;
     Result enable(bool enabled) const;
     Result read_only(bool is_read_only) const;
+    // Multi-line fields only; any other field answers not_supported. The scroll position is the index of
+    // the first visible display line (a wrapped piece counts as a line), so it keeps its meaning when the
+    // text size or density changes. A position past the last page is invalid_value, as for the semantic scroll.
+    Result set_visible_lines(unsigned lines) const;  // owner configuration: at least 1; reflows at once
+    Query<unsigned> visible_lines() const;
+    Result set_scroll_line(unsigned first_visible_line) const;
+    Query<unsigned> scroll_line() const;
+    // Owner configuration (#80), live: the next frame reflows. Out-of-range values are invalid_value and
+    // leave the field unchanged. Horizontal alignment, line spacing and paragraph spacing; the field's
+    // caption, description and error text always stay left-aligned.
+    // A field refuses TextAlign::distribute with invalid_value (it is for labels). justify is accepted: the
+    // last line of each paragraph stays left-aligned, so a single-line field looks left-aligned.
+    Result set_text_align(TextAlign align) const;
+    Query<TextAlign> text_align() const;
+    Result set_justify_method(JustifyMethod method) const;  // #84; live, like the alignment
+    Query<JustifyMethod> justify_method() const;
+    Result set_line_spacing(double multiple) const;
+    Query<double> line_spacing() const;
+    Result set_paragraph_spacing(int dip) const;
+    Query<int> paragraph_spacing() const;
+    // Words and paragraphs (#83). A word is what the field's segmentation says it is; a paragraph is the text
+    // between line feeds (the whole text of a single-line field). Offsets are UTF-16 and name the character that
+    // starts there; one at or past the end of a paragraph means "after its last character". These work like
+    // select(): they need an available field, are refused while an input method composes, and ignore read-only.
+    Result set_word_segmentation(WordSegmentation mode) const;  // owner configuration; takes effect at once
+    Query<WordSegmentation> word_segmentation() const;          // the mode as set
+    Query<WordSegmentation> word_segmentation_in_use() const;   // the mode that segments the text now (dictionary may fall back)
+    Query<TextSpan> word_at(unsigned offset) const;             // what a double click there selects
+    Query<TextSpan> paragraph_at(unsigned offset) const;        // what a triple click there selects
+    Query<unsigned> next_word_stop(unsigned offset) const;      // where Ctrl+Right goes from offset
+    Query<unsigned> previous_word_stop(unsigned offset) const;  // where Ctrl+Left goes from offset
+    Result select_word(unsigned offset) const;
+    Result select_paragraph(unsigned offset) const;
+    // Like a double or triple click with the pointer there: the same selection, and a drag that follows (see
+    // Frame::select_to) grows it by words or paragraphs until the next selection change.
+    Result double_click(unsigned offset) const;
+    Result triple_click(unsigned offset) const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
+    // Rich fields (Control::rich) connect with the rich value type; the plain connect_* calls above answer
+    // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
+    // groups take rich fields through Ui::connect_mixed_confirmation (a RichTextChange per rich field).
+    Result connect_rich_source(RichTextSource source) const;
+    Result connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const;
+    Result connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const;
+    // Rich fields only; any other field answers not_supported. The same admission as every edit (a
+    // read-only, disabled, composing or unconnected field refuses with its usual status). set_rich_value
+    // normalizes (normalize_rich_text) and is one undo entry; set_value on a rich field replaces the text
+    // and leaves it unstyled. draft() is the plain text.
+    Result set_rich_value(RichText value) const;
+    Query<RichText> rich_value() const;
+    // Range of the committed text, begin <= end <= size, else invalid_value. Set members of the change
+    // replace the style of every character of the range (bold=false removes bold, color="" the color);
+    // one call is one undo entry.
+    Result set_style(unsigned begin, unsigned end, StyleChange change) const;
+    // What Ctrl+B / Ctrl+I / Ctrl+U do: with a selection, apply the attribute to all of it unless all of
+    // it already has it, then remove it; with a caret only, flip it in the typing style.
+    Result toggle_style(StyleAttribute attribute) const;
+    // set_style on the selection; with a caret only it changes the typing style (the style of the next typed text).
+    Result apply_style(StyleChange change) const;
+    // The style the next typed or pasted-as-plain text takes: the temporary setting if there is one (it ends
+    // when the caret moves or text is inserted), else the previous character's (the next character's at the
+    // start of a paragraph).
+    Query<TextStyle> typing_style() const;
+    Result set_typing_style(TextStyle style) const;
+    // The named colors this field draws with; replaced as a whole and repainted at once. Names must be
+    // non-empty and distinct. Text whose color name is not in the list is drawn in the normal text color.
+    Result set_colors(std::vector<NamedColor> colors) const;
+    Query<std::vector<NamedColor>> colors() const;
     Result confirm() const;
     Query<bool> source_conflict() const;
     Result use_latest() const;
@@ -205,6 +394,20 @@ class LabelHandle {
 public:
     LabelHandle() = default;
     Result connect_source(std::function<std::u16string()> read) const;
+    // Owner configuration (#80); same rules as the text field's.
+    Result set_text_align(TextAlign align) const;
+    Query<TextAlign> text_align() const;
+    Result set_justify_method(JustifyMethod method) const;
+    Query<JustifyMethod> justify_method() const;
+    Result set_line_spacing(double multiple) const;
+    Query<double> line_spacing() const;
+    Result set_paragraph_spacing(int dip) const;
+    Query<int> paragraph_spacing() const;
+    // Vertical writing: the text is re-arranged at once. The digit limit is 0-3 (invalid_value otherwise).
+    Result set_writing_mode(WritingMode mode) const;
+    Query<WritingMode> writing_mode() const;
+    Result set_vertical_digits(int digits) const;
+    Query<int> vertical_digits() const;
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
@@ -431,15 +634,80 @@ struct TextChange {
     TextHandle field;
     std::u16string value, origin;
 };
+struct RichTextChange {
+    TextHandle field;
+    RichText value, origin;
+};
 struct FieldError { TextHandle field; std::u16string message; };
 struct ConfirmationResult {
     Result result;
     std::vector<FieldError> errors;
 };
 using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
-using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange>;
+using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange, RichTextChange>;
 struct MixedFieldError { ConfirmField field; std::u16string message; };
 struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
+// ---- Context menu. A short list of commands opened beside a component.
+struct MenuContext;
+// A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
+// shortcut hint (display only; it registers no shortcut) and the code to run when chosen.
+// Ids beginning with "lcars." are reserved for the framework's built-in items.
+struct MenuItem {
+    std::string id;
+    std::u16string label;
+    bool enabled = true;
+    char16_t access_key = 0;
+    std::u16string shortcut_hint;
+    std::function<Result(const MenuContext&)> action;
+    bool separator = false;
+    static MenuItem divider() { MenuItem item; item.separator = true; return item; }
+};
+// What the application's code learns about the opening: the component, and for a list the row.
+struct MenuContext { ComponentHandle target; std::optional<OptionValue> item; };
+// How an attached menu relates to a component's built-in items (only text fields have any).
+enum class MenuMode { append, replace, off };
+struct MenuPosition { int x = 0, y = 0; };  // window client pixels, as in Frame
+struct MenuItemInfo {
+    std::string id;
+    std::u16string label;
+    bool enabled = true, separator = false, highlighted = false;
+    char16_t access_key = 0;
+    std::u16string shortcut_hint;
+};
+struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
+// Built-in text field items, by id. A rich text field (Control::rich) adds bold, italic and underline, which run
+// the same function as Ctrl+B / Ctrl+I / Ctrl+U.
+inline constexpr const char* menu_undo = "lcars.undo";
+inline constexpr const char* menu_redo = "lcars.redo";
+inline constexpr const char* menu_cut = "lcars.cut";
+inline constexpr const char* menu_copy = "lcars.copy";
+inline constexpr const char* menu_paste = "lcars.paste";
+inline constexpr const char* menu_delete = "lcars.delete";
+inline constexpr const char* menu_select_all = "lcars.select_all";
+inline constexpr const char* menu_bold = "lcars.bold";
+inline constexpr const char* menu_italic = "lcars.italic";
+inline constexpr const char* menu_underline = "lcars.underline";
+// The application's items attached to one component. Built-in items are not part of it.
+class ContextMenuHandle {
+public:
+    ContextMenuHandle() = default;
+    Result set_mode(MenuMode mode) const;
+    Result set_items(std::vector<MenuItem> items) const;
+    Result add_item(MenuItem item, std::string before = {}) const;  // before: id of the item to precede; empty appends
+    Result remove_item(std::string id) const;
+    Result update_item(MenuItem item) const;  // replaces the item with the same id
+    Result enable_item(std::string id, bool enabled) const;
+    Query<std::vector<MenuItemInfo>> items() const;
+private:
+    friend class detail::UiState;
+    ContextMenuHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    detail::UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+// What the pointer hovers: a component, plus the item when the pointer is over one item of it.
+struct HoverTarget { std::string id; std::optional<OptionValue> item; bool operator==(const HoverTarget&) const = default; };
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
@@ -468,9 +736,54 @@ public:
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    // Attach the application's menu to any component. Text fields have built-in items; with
+    // MenuMode::append (the default) the application's items follow them after a separator.
+    // Other components have no menu until one is attached. A component carries one attachment.
+    Query<ContextMenuHandle> add_context_menu(ComponentHandle target, std::vector<MenuItem> items = {}, MenuMode mode = MenuMode::append);
+    // Open the one window-wide menu for a component: at `at`, or at the keyboard position (a text
+    // field's caret, a list's current row, otherwise the component). For a list `item` names the
+    // row: it is selected first and handed to the application's code.
+    Result open_context_menu(ComponentHandle target, std::optional<MenuPosition> at = {}, std::optional<OptionValue> item = {});
+    Result close_context_menu();
+    Query<bool> context_menu_open() const;
+    Query<MenuInfo> context_menu() const;  // hidden while no menu is open
+    Result invoke_menu_item(std::string id);
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
+    // True while any on-screen transition (for example a slider thumb sliding to its new value) is
+    // still running. Values and semantics never wait for it, so this only says the picture has not
+    // settled; wait until it is false before comparing screenshots.
+    Query<bool> animating() const;
+    // Overrides individual palette colors of the built-in appearances for the whole Ui. The list
+    // replaces the previous one and applies on the next frame; an empty list restores built-in
+    // values. Unknown appearance, unsupported variant, unknown role, a value of the wrong kind,
+    // scrim_alpha outside 0-255, a repeated (appearance, variant, role) or any contrast failure
+    // (see check_palette_contrast, applied to every affected appearance and variant) returns
+    // invalid_value and leaves the active list unchanged. Custom appearances are never affected.
+    // The built-in appearance modules register their names when linked into the program.
+    Result set_palette_overrides(std::vector<PaletteOverride> overrides);
+    const std::vector<PaletteOverride>& palette_overrides() const;
+    // The palette that paints for this appearance and variant: built-in values with overrides applied.
+    Query<Palette> effective_palette(const Appearance& appearance, const ThemeVariant& variant) const;
+    // Tells the Ui which appearance it is shown with so SemanticTree::effective_palette can report
+    // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
+    // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
+    void bind_appearance(const Appearance* appearance);
+    // The component (and item, for lists, tabs, radio groups, navigation lists and dropdowns) the
+    // pointer hovers, from the real mouse or from simulate_hover. The value is empty when nothing is
+    // hovered, or the target was disabled or is blocked by a modal dialog. It answers the same with
+    // the presentation hover switch off: the switch only hides the overlay.
+    Query<std::optional<HoverTarget>> hover() const;
+    // Acts as if the real mouse rested on the target: same overlay, same tooltip delay, same exclusions
+    // (disabled, blocked by a modal dialog, an unknown item). The next real mouse move takes over.
+    // busy while a mouse drag holds the hover.
+    Result simulate_hover(const ComponentHandle& target, std::optional<OptionValue> item = {});
+    Result clear_simulated_hover();
+
+    // Whether focus indicators are being drawn now: the latest real input was a key, the system asks for
+    // keyboard cues, or the presentation forces them. Editable text fields are drawn focused regardless.
+    bool focus_indicator_visible() const;
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:

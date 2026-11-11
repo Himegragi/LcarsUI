@@ -379,7 +379,9 @@ int wmain(int argc, wchar_t** argv) {
         selected = selected && selected_count == 1 && start_cmp == 0 && end_cmp == 0;
         if (selected_range) selected_range->Release(); if (selected_ranges) selected_ranges->Release();
         bool whole_units = true;
-        for (auto unit : {TextUnit_Word, TextUnit_Line, TextUnit_Document}) {
+        // Words are real units now (#83, checked on ASCII text by UA11 in the demo client): this Chinese text's words
+        // would depend on the system dictionary, so only the units that stay whole here are listed.
+        for (auto unit : {TextUnit_Line, TextUnit_Paragraph, TextUnit_Document}) {
             IUIAutomationTextRange* expanded = nullptr; BSTR all = nullptr;
             HRESULT eh = range ? range->Clone(&expanded) : E_FAIL;
             if (SUCCEEDED(eh) && expanded) eh = expanded->ExpandToEnclosingUnit(unit);

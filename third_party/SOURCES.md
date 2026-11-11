@@ -30,6 +30,18 @@ MVP reuse: source archives and GL headers copied unchanged from prototype branch
 
 The generated [third-party notices](../THIRD_PARTY_NOTICES.txt) contain the shipped licenses. The original source archives remain unchanged.
 
+# Unicode data
+
+- VerticalOrientation-18.0.0.txt (Unicode Character Database, UAX #50 Vertical_Orientation), copied unchanged:
+  https://www.unicode.org/Public/18.0.0/ucd/VerticalOrientation.txt
+  SHA256 `0803e09669d7aa7137de678e55b848bd418c6632694fa1b05f0b40941103c748`
+- LICENSE-UNICODE-V3.txt (Unicode License v3), copied unchanged: https://www.unicode.org/license.txt
+  SHA256 `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96`
+
+`src/vertical_orientation_data.inc` is generated from the data file with `third_party/unicode/gen_vertical_orientation.py`
+(only the non-default values are written; every other code point is R). To move to a newer Unicode version, replace the
+two files, update `cmake/ThirdPartyManifest.cmake`, rerun the generator and regenerate the notices.
+
 # CI-only tools
 
 - mesa-dist-win 26.2.5 MSVC, used only for Windows llvmpipe CI, not distributed with LcarsUI:

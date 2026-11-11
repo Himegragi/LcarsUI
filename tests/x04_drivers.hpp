@@ -6,6 +6,12 @@
 #include <algorithm>
 
 namespace x04 {
+// Text a painter drew that has no ink by nature: spaces and ideographic spaces only. A justified or distributed line draws a
+// full-width space as a piece of its own (code review 2026-11-12, item 11), and a reader that wants every drawn character
+// must not drop it for lacking ink.
+inline bool blank_only(std::u16string_view text) {
+    return !text.empty() && std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == 0x3000; });
+}
 // Enumerate the semantic tree; the existing typed drivers still exercise each component.
 struct Entry { std::string page; lcars::ComponentHandle handle; };
 inline std::vector<Entry> inventory(lcars::Ui& ui) {

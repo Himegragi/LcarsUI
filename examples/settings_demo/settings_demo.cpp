@@ -35,6 +35,12 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
     items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
     items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    // Right-clicking a row selects it, then offers the same Edit and Delete as the buttons and the
+    // Enter / Del shortcuts: each item runs the button's own action.
+    items_menu = ui.add_context_menu(items_list, {
+        {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .access_key=u'E', .shortcut_hint=u"Enter", .action=[this](const MenuContext&) { return items_edit.invoke(); }},
+        {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .access_key=u'D', .shortcut_hint=u"Del", .action=[this](const MenuContext&) { return items_delete.invoke(); }},
+    }).value.value();
     font = ui.add_dropdown({.id="appearance.font",.kind=Kind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
     font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
@@ -54,14 +60,25 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     text_size.on_blur([this] { text_size_group_ = false; });
     dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
     compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
-    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
+    // WCAG 1.4.8: the user can turn justified text off for the whole window.
+    justify_left = ui.add_checkbox({.id="appearance.justify_left",.kind=Kind::checkbox,.label=u"左右對齊文字改為靠左"}).value.value();
+    accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    nav.add_member({"appearance"}, accent);
+    accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
+    accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
+    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
-    for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
+    for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
+    justify_left.connect_source({[this] { return ui.presentation().justify_as_left; }, subscribe_to(justify_left_changed_)});
+    justify_left.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
     dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
     compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
     dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
     compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
-    reset_appearance_.bind([this] { return set_presentation(PresentationSettings{}); });
+    reset_appearance_.bind([this] {
+        if (auto r = apply_accent("default"); !r) return r;
+        return set_presentation(PresentationSettings{});
+    });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
         about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
         nav.add_member({"about"}, about_labels_.back());
@@ -73,10 +90,13 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     about_labels_[4].connect_source([this] { return u"繪製：" + about_.renderer; });
     about_labels_[5].connect_source([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
     about_labels_[6].connect_source([this] { return about_.settings_path; });
+    // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
+    about_vertical_ = ui.add_label({.id="about.vertical",.kind=Kind::label,.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
+    nav.add_member({"about"}, about_vertical_);
     std::vector<RadioOption> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
     licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
-    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label}).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label,.line_spacing=1.4,.paragraph_spacing=8}).value.value();
     licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
     licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
@@ -94,7 +114,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return Result{};
     });
     items_list.connect_source({[this] { return selection_; }, subscribe_to(selection_changed_)});
-    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
+    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
     status_ = ui.add_label({.id="app.status",.kind=Kind::label,.value=u"使用預設值，尚未建立設定檔"}).value.value();
@@ -132,24 +152,43 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
     item_name_error_ = ui.add_label({.id="items.dialog.name.error",.kind=Kind::label,.target="items.dialog.name",.role=TextRole::error}).value.value();
     item_note_label_ = ui.add_label({.id="items.dialog.note.label",.kind=Kind::label,.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
-    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200}).value.value();
+    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.kind=Kind::button,.label=u"粗體"}).value.value();
+    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.kind=Kind::button,.label=u"斜體"}).value.value();
+    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.kind=Kind::button,.label=u"底線"}).value.value();
+    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.kind=Kind::dropdown,.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
+    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
+    // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
+    item_note.set_colors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
     item_cancel_ = ui.add_button({.id="items.dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
     item_ok = ui.add_button({.id="items.dialog.ok",.kind=Kind::button,.label=u"\u78ba\u5b9a"}).value.value();
     delete_title_ = ui.add_label({.id="items.delete_dialog.title",.kind=Kind::label,.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
     delete_message_ = ui.add_label({.id="items.delete_dialog.message",.kind=Kind::label}).value.value();
     delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
     delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=Kind::button,.label=u"\u522a\u9664"}).value.value();
-    item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
+    item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note_bold,item_note_italic,item_note_underline,item_note_color,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
     item_name.connect_source({[this] { return item_name_source_; }, subscribe_to(item_name_changed_)});
-    item_note.connect_source({[this] { return item_note_source_; }, subscribe_to(item_note_changed_)});
+    item_note.connect_rich_source({[this] { return item_note_source_; }, subscribe_to(item_note_changed_)});
+    // The style buttons act on the note's selection (or the typing style at a caret); the selection stays and the note takes the focus back.
+    auto style_button = [this](lcars::ButtonHandle& button, lcars::StyleAttribute attribute) {
+        button.bind([this, attribute] { auto result = item_note.toggle_style(attribute); item_note.focus(); return result; });
+    };
+    style_button(item_note_bold, lcars::StyleAttribute::bold); style_button(item_note_italic, lcars::StyleAttribute::italic); style_button(item_note_underline, lcars::StyleAttribute::underline);
+    item_note_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{note_color_value_}; }, subscribe_to(note_color_changed_)});
+    item_note_color.connect_immediate([this](const DropdownChange& c) {
+        note_color_value_ = c.value ? c.value->id : "default"; if (note_color_changed_) note_color_changed_();
+        auto result = item_note.apply_style({.color = note_color_value_ == "default" ? std::string{} : note_color_value_});
+        item_note.focus();
+        return result;
+    });
     auto open_item = [this](bool edit) -> Result {
         editing_=edit;
         auto found=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
         if (edit && found==items_.end()) return {Status::invalid_value,u"No selection"};
         item_title_.connect_source([edit] { return edit ? u"\u7de8\u8f2f\u9805\u76ee" : u"\u65b0\u589e\u9805\u76ee"; });
         auto result=item_dialog.open(); if (!result) return result;
-        item_name_source_=edit ? found->name : u""; item_note_source_=edit ? found->note : u"";
+        item_name_source_=edit ? found->name : u""; item_note_source_=edit ? lcars::RichText{found->note, found->note_spans} : lcars::RichText{};
+        note_color_value_="default"; if (note_color_changed_) note_color_changed_();
         if (item_name_changed_) item_name_changed_(); if (item_note_changed_) item_note_changed_();
         if (auto r = item_name.reset_to_source(); !r) return r;
         if (auto r = item_note.reset_to_source(); !r) return r;
@@ -158,8 +197,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<TextChange>& changes) -> ConfirmationResult {
-        const auto& value=changes[0].value; const auto& note=changes[1].value;
+    ui.connect_mixed_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> MixedConfirmationResult {
+        const auto& value=std::get<TextChange>(changes[0]).value; const auto& rich=std::get<RichTextChange>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
@@ -168,9 +207,9 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (editing_) {
             auto it=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
             if (it==items_.end()) return {{Status::not_found,u"Item not found"}, {}};
-            id=it->id; changed=it->name!=value || it->note!=note; it->name=value; it->note=note;
+            id=it->id; changed=it->name!=value || it->note!=rich.text || it->note_spans!=rich.spans; it->name=value; it->note=rich.text; it->note_spans=rich.spans;
         } else {
-            char buffer[16]; std::snprintf(buffer,sizeof(buffer),"T%03d",next_item_id_++); id={buffer}; items_.push_back({id,value,note}); changed=true;
+            char buffer[16]; std::snprintf(buffer,sizeof(buffer),"T%03d",next_item_id_++); id={buffer}; items_.push_back({id,value,rich.text,rich.spans}); changed=true;
         }
         auto result=item_dialog.settle(true); if (!result) return {result, {}};
         if (fold_ascii(value).find(fold_ascii(search_value_))==std::u16string::npos) {
@@ -277,12 +316,44 @@ void Demo::refresh_fonts() {
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
     font_status_.connect_source([status] { return status; });
 }
+std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
+    struct Colors { Color accent, on_accent, selection; };
+    struct Row { const char* appearance; const char* variant; Colors green, orange; };
+    // Every row passes check_palette_contrast on top of that appearance's built-in palette.
+    static const Row rows[] = {
+        {"Minimal Web", "light", {{20,110,50}, {255,255,255}, {205,235,210}}, {{170,70,0}, {255,255,255}, {255,225,195}}},
+        {"Minimal Web", "dark", {{110,200,130}, {8,40,16}, {36,92,52}}, {{255,170,90}, {50,24,0}, {120,66,20}}},
+        {"Material-inspired", "light", {{28,106,60}, {255,255,255}, {200,235,205}}, {{160,70,0}, {255,255,255}, {255,220,190}}},
+        {"Material-inspired", "dark", {{150,220,160}, {10,50,20}, {40,95,55}}, {{255,184,120}, {70,30,0}, {110,62,20}}},
+    };
+    std::vector<PaletteOverride> list;
+    if (id != "green" && id != "orange") return list;
+    for (const auto& row : rows) {
+        if (!builtin_appearance(row.appearance)) continue;
+        const auto& c = id == "green" ? row.green : row.orange;
+        ThemeVariant variant{row.variant};
+        list.push_back({row.appearance, variant, "accent", c.accent});
+        list.push_back({row.appearance, variant, "on_accent", c.on_accent});
+        list.push_back({row.appearance, variant, "selection", c.selection});
+    }
+    return list;
+}
+Result Demo::apply_accent(const std::string& id) {
+    auto result = ui.set_palette_overrides(accent_overrides(id));
+    if (result) { accent_value_ = id; if (accent_changed_) accent_changed_(); }
+    return result;
+}
+Result Demo::set_accent(const std::string& id) {
+    auto result = apply_accent(id);
+    if (result) dirty();
+    return result;
+}
 Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
-    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); dirty(coalesce); } return result;
+    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); dirty(coalesce); } return result;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
-    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation()};
+    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation(), accent_value_};
 }
 void Demo::update_history_controls() {
     auto description = name.describe();
@@ -309,7 +380,8 @@ void Demo::apply(const SettingsDocument& value) {
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
-    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); refresh_items(); current_=value; update_history_controls();
+    apply_accent(value.accent);
+    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); refresh_items(); current_=value; update_history_controls();
 }
 void Demo::load_document(const SettingsDocument& value) {
     apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
@@ -369,9 +441,10 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
+        content.push_back(vertical_text(about_vertical_, 200));
         content.push_back(control(licenses));
         content.push_back(scroll_text(license_text_, license_scroll, 200));
     }
@@ -379,7 +452,7 @@ layout::Node Demo::page() const {
     content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));
     auto background=layout::scroll(row({control(nav),column(std::move(content),12,24)},16));
     return layout::modal(std::move(background), {
-        {item_dialog,column({control(item_title_,24),control(item_name),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
+        {item_dialog,column({control(item_title_,24),control(item_name),row({control(item_note_bold),control(item_note_italic),control(item_note_underline),control(item_note_color)},8),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
         {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
         {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
         {close_dialog,column({control(close_title_,24),control(close_message_),row({control(close_save),control(close_discard),control(close_cancel)},8)},12)},

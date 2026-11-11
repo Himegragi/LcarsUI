@@ -4,6 +4,7 @@
 #include "component_type.hpp"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 
@@ -23,13 +24,27 @@ unsigned TextRun::hit(float x) const {
         if (std::abs(position - x) < distance) { distance = std::abs(position - x); best = stop; }
     return best;
 }
-std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
-    std::vector<std::u16string> lines;
+unsigned TextRun::cell(float x) const {
+    unsigned result = 0;
+    for (const auto& [stop, position] : stops) {
+        if (position > x) break;
+        result = stop;
+    }
+    return result;
+}
+namespace {
+// Measures text[begin, end) as one run (stops relative to begin).
+using RangeMeasure = std::function<TextRun(unsigned begin, unsigned end)>;
+// The paragraphs of text cut into display lines of at most width: [begin, end) pairs of offsets, LFs excluded.
+std::vector<std::pair<unsigned, unsigned>> wrap_ranges(std::u16string_view text, int width, const RangeMeasure& run_of) {
+    std::vector<std::pair<unsigned, unsigned>> lines;
     std::size_t start = 0;
     while (true) {
         auto end = text.find(u'\n', start);
-        auto paragraph = text.substr(start, end == std::u16string_view::npos ? std::u16string_view::npos : end - start);
-        auto run = measure.measure(paragraph, pixels);
+        const unsigned p0 = static_cast<unsigned>(start);
+        const unsigned p1 = static_cast<unsigned>(end == std::u16string_view::npos ? text.size() : end);
+        auto paragraph = text.substr(p0, p1 - p0);
+        auto run = run_of(p0, p1);
         // A break may follow a space or touch a non-ASCII (CJK) character; Latin words stay whole
         // unless a single word is wider than the line.
         auto breakable = [&](unsigned k) {
@@ -43,17 +58,117 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
                 unsigned cut = previous;  // hard cut unless a caret stop on this line may break
                 for (auto it = run.stops.rbegin(); it != run.stops.rend(); ++it)
                     if (it->first > line_start && it->first <= previous && breakable(it->first)) { cut = it->first; break; }
-                lines.emplace_back(paragraph.substr(line_start, cut - line_start));
+                lines.emplace_back(p0 + line_start, p0 + cut);
                 line_start = cut;
                 base = run.x(cut);
             }
             previous = stop;
         }
-        lines.emplace_back(paragraph.substr(line_start));
+        lines.emplace_back(p0 + line_start, p1);
         if (end == std::u16string_view::npos) break;
         start = end + 1;
     }
     return lines;
+}
+// text[begin, end) in runs of one style, each measured with its own face; the stops continue across runs.
+TextRun styled_run(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<StyleSpan>& spans,
+                   unsigned begin, unsigned end, std::vector<FieldLine::Piece>* pieces) {
+    TextRun out;
+    out.stops.push_back({0, 0.f});
+    float x = 0;
+    auto emit = [&](unsigned from, unsigned to, const TextStyle& style) {
+        if (to <= from) return;
+        auto run = measure.measure(text.substr(from, to - from), pixels, FontStyle{style.bold, style.italic});
+        for (const auto& [offset, position] : run.stops)
+            if (offset > 0) out.stops.push_back({from - begin + offset, x + position});
+        if (pieces) pieces->push_back({from - begin, to - begin, style, x, run.width});
+        x += run.width;
+    };
+    unsigned cursor = begin;
+    for (const auto& span : spans) {
+        const unsigned from = std::max(span.start, begin), to = std::min(span.start + span.length, end);
+        if (from >= to || from < cursor) continue;
+        emit(cursor, from, {});
+        emit(from, to, span.style());
+        cursor = to;
+    }
+    emit(cursor, end, {});
+    out.width = x;
+    return out;
+}
+}
+std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    std::vector<std::u16string> lines;
+    for (auto [begin, end] : wrap_ranges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels); }))
+        lines.emplace_back(text.substr(begin, end - begin));
+    return lines;
+}
+std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    std::vector<WrappedLine> out;
+    std::size_t pos = 0;
+    for (auto& piece : wrap(measure, text, pixels, width)) {
+        WrappedLine line;
+        pos += piece.size();
+        line.text = std::move(piece);
+        // wrap() drops the LF between paragraphs; a wrapped piece is followed by more of its own text.
+        if (pos < text.size() && text[pos] == u'\n') ++pos;
+        else line.soft = pos < text.size();
+        out.push_back(std::move(line));
+    }
+    return out;
+}
+std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width, const std::vector<StyleSpan>* spans) {
+    RangeMeasure run_of = [&](unsigned a, unsigned b) {
+        return spans ? styled_run(measure, text, pixels, *spans, a, b, nullptr) : measure.measure(text.substr(a, b - a), pixels);
+    };
+    std::vector<FieldLine> out;
+    for (auto [begin, end] : wrap_ranges(text, width, run_of)) {
+        FieldLine line;
+        line.begin = begin;
+        line.end = end;
+        // The LF between paragraphs is not part of a line; a wrapped piece is followed by more of its own text.
+        if (end < text.size() && text[end] != u'\n') line.soft = true;
+        line.run = spans ? styled_run(measure, text, pixels, *spans, begin, end, &line.pieces) : measure.measure(text.substr(begin, end - begin), pixels);
+        out.push_back(std::move(line));
+    }
+    return out;
+}
+unsigned FieldView::line_of(unsigned offset) const {
+    if (lines.empty()) return 0;
+    auto it = std::upper_bound(lines.begin(), lines.end(), offset, [](unsigned o, const FieldLine& line) { return o < line.begin; });
+    unsigned index = it == lines.begin() ? 0 : static_cast<unsigned>(it - lines.begin()) - 1;
+    if (upstream && index > 0 && lines[index - 1].soft && lines[index - 1].end == offset) --index;
+    return index;
+}
+std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
+    if (lines.empty()) return {0, false};
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    unsigned offset = item.begin + item.run.hit(x - item.shift);
+    return {offset, item.soft && offset == item.end};
+}
+unsigned FieldView::cell_in_line(unsigned line, float x) const {
+    if (lines.empty()) return 0;
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    unsigned offset = item.begin + item.run.cell(x - item.shift);
+    if (item.soft && offset == item.end && offset > item.begin) --offset;  // right of a wrapped line: its last character
+    return offset;
+}
+float FieldView::x_in_line(unsigned line, unsigned offset) const {
+    if (lines.empty()) return 0;
+    const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
+    return item.shift + item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
+}
+int FieldView::row_y(unsigned line, unsigned first_line) const {
+    if (lines.empty()) return text.y;
+    const auto at = [&](unsigned i) { return lines[std::min<std::size_t>(i, lines.size() - 1)].top; };
+    return text.y + at(line) - at(first_line);
+}
+unsigned FieldView::line_at(int y, unsigned first_line) const {
+    if (lines.empty()) return 0;
+    const unsigned last = static_cast<unsigned>(std::min<std::size_t>(first_line + std::max(1u, visible), lines.size())) - 1;
+    unsigned found = std::min(first_line, last);
+    for (unsigned i = found + 1; i <= last && row_y(i, first_line) <= y; ++i) found = i;
+    return found;
 }
 
 namespace layout {
@@ -72,6 +187,10 @@ Node scroll(Node child, ScrollState& state, int height) {
 }
 Node scroll_text(LabelHandle label, ScrollState& state, int height) {
     Node n = scroll(control(label), state, height); n.scrollable_text = true; return n;
+}
+Node vertical_text(LabelHandle label, int height) {
+    if (height < 0) throw std::invalid_argument("Vertical text height must not be negative");
+    Node n = control(label); n.vertical_height = height; return n;
 }
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
@@ -131,50 +250,118 @@ std::optional<std::size_t> Frame::option_at(const Placement& item, int x, int y)
     for (std::size_t i = 0; i < item.options.size(); ++i) if (item.options[i].contains(x, y)) return item.option_start + i;
     return std::nullopt;
 }
+const Placement* Frame::menu_panel() const {
+    auto it = std::find_if(overlays.begin(), overlays.end(), [](const Placement& p) { return p.menu; });
+    return it == overlays.end() ? nullptr : &*it;
+}
+bool Frame::menu_contains(int x, int y) const {
+    const auto* panel = menu_panel();
+    return panel && panel->bounds.contains(x, y);
+}
+std::optional<std::string> Frame::menu_item_at(int x, int y) const {
+    const auto* panel = menu_panel();
+    if (!panel || !panel->menu_inner.contains(x, y)) return std::nullopt;
+    for (const auto& row : panel->menu_rows) if (row.bounds.contains(x, y)) return row.id;
+    return std::nullopt;
+}
 const Placement* Frame::hit(int x, int y) const {
     for (auto it = overlays.rbegin(); it != overlays.rend(); ++it)
-        if (!it->tooltip && detail::component_type(it->kind).hit(*it, x, y)) return &*it;
+        if (!it->tooltip && !it->menu && detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     if (modal) return nullptr;
     for (auto it = items.rbegin(); it != items.rend(); ++it)
         if (detail::component_type(it->kind).hit(*it, x, y)) return &*it;
     return nullptr;
 }
+detail::TextHit detail::placement_text_hit(const Frame& frame, std::string_view id, int x, int y) {
+    const auto* p = detail::find_placement(frame, id);
+    if (!p || !component_type(p->kind).selects_text()) return {};
+    if (!p->multiline) return {p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset), false};
+    auto [offset, upstream] = p->view.hit_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
+    return {offset, upstream};
+}
+unsigned detail::placement_text_cell(const Frame& frame, std::string_view id, int x, int y) {
+    const auto* p = detail::find_placement(frame, id);
+    if (!p || !component_type(p->kind).selects_text()) return 0;
+    if (!p->multiline) return p->run.cell(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+    return p->view.cell_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
+}
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return 0;
-    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset);
+    if (p->multiline) return placement_text_hit(frame, id, x, p->view.text.y).offset;
+    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
 }
 unsigned Frame::text_offset(const TextHandle& handle, int x) const {
     const auto* p = find(handle);
-    return p ? p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) + p->offset) : 0;
+    if (!p) return 0;
+    if (p->multiline) return detail::placement_text_hit(*this, p->id, x, p->view.text.y).offset;
+    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+}
+unsigned Frame::text_offset(const TextHandle& handle, int x, int y) const {
+    const auto* p = find(handle);
+    return p ? detail::placement_text_hit(*this, p->id, x, y).offset : 0;
 }
 int Placement::caret_x(unsigned offset) const {
-    return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
+    if (multiline) return view.text.x + static_cast<int>(std::lround(view.x_in_line(view.line_of(offset), offset)));
+    return bounds.x + field.editor.x + static_cast<int>(std::lround(shift + run.x(offset) - this->offset));
 }
-int ScrollRegion::offset_for_thumb(int thumb_top) const {
+Rect Placement::caret_rect(unsigned offset) const {
+    if (!multiline) return {caret_x(offset), bounds.y + field.editor.y, 1, field.editor.h};
+    const unsigned last = static_cast<unsigned>(std::min<std::size_t>(view.first + std::max(1u, view.visible), view.lines.size())) - 1;
+    return {caret_x(offset), view.row_y(std::clamp(view.line_of(offset), std::min(view.first, last), last)), 1, view.row_height};
+}
+int Placement::caret_y(unsigned offset) const {
+    if (!multiline) return bounds.y + field.editor.y;
+    return view.row_y(view.line_of(offset));
+}
+int ScrollRegion::offset_for_thumb(int thumb_position) const {
+    if (horizontal) {
+        // The text starts at the right end: the thumb at the right is offset 0, at the left the last column.
+        int travel = track.w - thumb.w;
+        if (maximum <= 0 || travel <= 0) return 0;
+        return std::clamp(maximum - static_cast<int>(std::lround(double(thumb_position - track.x) * maximum / travel)), 0, maximum);
+    }
     int travel = track.h - thumb.h;
     if (maximum <= 0 || travel <= 0) return 0;
-    return std::clamp(static_cast<int>(std::lround(double(thumb_top - track.y) * maximum / travel)), 0, maximum);
+    return std::clamp(static_cast<int>(std::lround(double(thumb_position - track.y) * maximum / travel)), 0, maximum);
 }
 bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
     bool popup_scroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) { return p.dropdown_panel && &owner.dropdown_scroll(p.id) == &state; });
-    if ((modal || owner.modal()) && !popup_scroll) return false;
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
     if (region == regions.end()) return false;
+    // An open dialog blocks the page behind it, but scrolls its own content.
+    if ((modal || owner.modal()) && !popup_scroll && !region->modal_content) return false;
     int next = std::clamp(offset, 0, region->maximum);
     if (next == state.offset) return false;
+    if (!region->field.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
+        int step = std::max(1, region->step), lines = (next + step / 2) / step, current = state.offset / step;
+        if (lines == current) lines += next > state.offset ? 1 : -1;
+        if (!owner.scroll_lines_to(region->field, static_cast<unsigned>(std::clamp(lines, 0, region->maximum / step)))) return false;
+        owner.scrolled();
+        return true;
+    }
     state.offset = next;
     if (popup_scroll) owner.popup_scrolled();
     else owner.scrolled();
     return true;
 }
-bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
+bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
+    // An open context menu owns the wheel: it scrolls itself and never the page behind it.
+    if (const auto* menu = menu_panel()) {
+        auto* state = owner.menu_scroll();
+        if (!state || !menu->bounds.contains(x, y)) return false;
+        int next = std::clamp(state->offset - delta, 0, menu->menu_maximum);
+        if (next == state->offset) return false;
+        state->offset = next;
+        owner.popup_scrolled();
+        return true;
+    }
     // A popup owns its own wheel input; it must not scroll the background beneath it.
-    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
+    for (auto it = overlays.rbegin(); it != overlays.rend() && !sideways_only; ++it) {
         if (!it->dropdown_panel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
         if (it->kind == Kind::dropdown) {
             auto current = detail::access(ui).describe(it->id);
@@ -184,12 +371,50 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
         }
         return false;
     }
-    if (modal || owner.modal()) return false;
+    const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
-        if (!it->clip.contains(x, y)) continue;
+        if (!it->clip.contains(x, y) || (blocked && !it->modal_content) || (sideways_only && !it->horizontal)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
     }
     return false;
+}
+
+bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
+    auto& owner = detail::access(ui);
+    if (owner_ != &owner) return false;
+    const bool blocked = modal || owner.modal();
+    for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
+        if (!it->horizontal || !it->clip.contains(x, y) || (blocked && !it->modal_content)) continue;
+        if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
+    }
+    return false;
+}
+bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
+    auto& owner = detail::access(ui);
+    if (owner_ != &owner) return false;
+    const auto* p = find(handle);
+    auto* session = p ? owner.edit(p->id) : nullptr;
+    if (!p || !session) return false;
+    const auto before = session->selection;
+    const bool upstream_before = session->caret_upstream;
+    bool scrolled = false;
+    if (!p->multiline) owner.text_pointer_drag(p->id, detail::placement_text_hit(*this, p->id, x, y), detail::placement_text_cell(*this, p->id, x, y));
+    else {
+        const auto& view = p->view;
+        const auto* current = owner.field_view(p->id);  // this frame may be older than the last scroll
+        const unsigned count = static_cast<unsigned>(view.lines.size());
+        unsigned first = current ? current->first : view.first;
+        const int top = view.text.y, bottom = top + view.text.h;
+        if (y < top && first > 0) { if ((scrolled = owner.scroll_lines_to(p->id, first - 1))) --first; }
+        else if (y >= bottom && first + view.visible < count) { if ((scrolled = owner.scroll_lines_to(p->id, first + 1))) ++first; }
+        unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : view.line_at(y);
+        auto [offset, upstream] = view.hit_in_line(line, static_cast<float>(x - view.text.x));
+        const unsigned cell = view.cell_in_line(line, static_cast<float>(x - view.text.x));
+        owner.text_pointer_drag(p->id, {offset, upstream}, cell);
+    }
+    if (scrolled) owner.scrolled();
+    const auto after = session->selection;
+    return scrolled || after.anchor != before.anchor || after.caret != before.caret || session->caret_upstream != upstream_before;
 }
 
 int Frame::offset_for_thumb(int thumb_top) const {
@@ -203,10 +428,13 @@ void translate(Placement& p, int dx, int dy) {
     move(p.bounds);
     if (p.clipped) move(p.clip);
     move(p.slider_track);
+    move(p.view.text); move(p.view.track); move(p.view.thumb);
     move(p.progress_track); move(p.progress_fill);
     for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
         for (auto& line : *lines) move(line.bounds);
+    for (auto& column : p.column_layout.columns) move(column.bounds);
+    move(p.column_layout.track); move(p.column_layout.thumb);
 }
 struct Arranger {
     detail::UiState& ui;
@@ -217,6 +445,7 @@ struct Arranger {
     std::string_view reveal;
     Frame frame;
     bool measuring = false;
+    bool in_modal = false;  // placing the open dialog's content
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
     int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
@@ -237,6 +466,7 @@ struct Arranger {
         p.id = control->id; p.kind = control->kind;
         p.text_size = pixels(node.text_size);
         detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
+        context.vertical_height = d(node.vertical_height);
         detail::component_type(control->kind).arrange(context);
         return p;
     }
@@ -270,6 +500,18 @@ struct Arranger {
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
+            if (p.vertical) {
+                // A vertical label never draws outside its own box; too many columns scroll sideways inside it.
+                p.clip = p.bounds; p.clipped = true;
+                if (!measuring && p.column_layout.maximum > 0) {
+                    ScrollRegion region; region.state = &ui.vertical_scroll(p.id); region.horizontal = true;
+                    region.viewport = region.clip = p.bounds;
+                    region.extent = p.column_layout.extent; region.maximum = p.column_layout.maximum; region.offset = p.column_layout.offset;
+                    region.track = p.column_layout.track; region.thumb = p.column_layout.thumb;
+                    frame.regions.push_back(region);
+                }
+            }
+            if (p.multiline && !measuring) frame.regions.push_back(field_region(p));
             out.push_back(std::move(p));
             return out.back().bounds.h;
         }
@@ -349,7 +591,14 @@ struct Arranger {
             Rect panel{r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h};
             frame.modal = true; frame.modal_panel = panel;
             std::vector<Placement> modal_items;
+            auto region_start = frame.regions.size();
+            in_modal = true;
             place(content, {panel.x + padding, panel.y + padding, content_width, std::max(0, h - 2 * padding)}, modal_items);
+            in_modal = false;
+            for (auto i = region_start; i < frame.regions.size(); ++i) {
+                frame.regions[i].modal_content = true;
+                frame.regions[i].clip = intersect(frame.regions[i].clip, panel);
+            }
             for (auto& p : modal_items) {
                 p.popup = true;
                 p.clip = p.clipped ? intersect(p.clip, panel) : panel;
@@ -360,6 +609,20 @@ struct Arranger {
         }
         }
         return 0;
+    }
+    // A multi-line field scrolls like any viewport: wheel, track and thumb find it among the regions.
+    ScrollRegion field_region(const Placement& p) {
+        const auto& v = p.view;
+        ScrollRegion region;
+        region.state = &ui.line_scroll(p.id);
+        region.field = p.id; region.step = v.row_height; region.modal_content = in_modal;
+        region.viewport = region.clip = {v.text.x, v.text.y, v.track.x + v.track.w - v.text.x, v.text.h};
+        region.track = v.track; region.thumb = v.thumb;
+        const int count = static_cast<int>(v.lines.size()), visible = static_cast<int>(v.visible);
+        region.extent = count * v.row_height;   // scrolling is by whole lines: a uniform row stands in for the gaps
+        region.maximum = std::max(0, count - visible) * v.row_height;
+        region.offset = static_cast<int>(v.first) * v.row_height;
+        return region;
     }
     int place_scroll(const Node& node, Rect r, std::vector<Placement>& out) {
         const auto& child = node.children.front();
@@ -374,8 +637,11 @@ struct Arranger {
         ScrollRegion region; region.state = &state; region.viewport = region.clip = r;
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
-        if (node.scrollable_text && placed.size() == 1)
-            ui.set_scrollable_text(placed.front().id, state, region.maximum, measure.line_height(placed.front().text_size));
+        if (node.scrollable_text && placed.size() == 1) {  // one Up/Down step is one row, line spacing included
+            const auto* label = ui.find(placed.front().id);
+            ui.set_scrollable_text(placed.front().id, state, region.maximum,
+                                   detail::text_row(measure.line_height(placed.front().text_size), label ? label->line_spacing : 1.0));
+        }
         int offset = std::clamp(state.offset, 0, region.maximum);
         bool size_changed = state.text_size != 0 && state.text_size != ui.presentation().text_size;
         auto target_id = !reveal.empty() ? reveal : (size_changed ? std::string_view(ui.focused()) : std::string_view{});
@@ -449,6 +715,104 @@ struct Arranger {
         return r.h;
     }
 };
+// Where a keyboard-opened menu hangs: a text field's caret line, a list's current row, else the component.
+Rect keyboard_anchor(detail::UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) {
+    if (target.kind == Kind::text) {
+        const auto* session = state.edit(target.id);
+        if (session) {  // the caret's own line, also in a multi-line field
+            const auto caret = target.caret_rect(session->visible_caret());
+            return {caret.x, caret.y, 0, caret.h};
+        }
+        return {target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
+    }
+    if (target.kind == Kind::list && item) {
+        auto semantic = state.describe(target.id);
+        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
+            if (semantic->options[i].value == *item) {
+                const auto& row = target.options[i];
+                return {row.x + row_inset, row.y, 0, row.h};
+            }
+    }
+    auto visible = intersect(target.bounds, target.clip);
+    if (visible.w <= 0 || visible.h <= 0) visible = target.bounds;
+    return {visible.x, visible.y, 0, visible.h};
+}
+// The open context menu is one overlay above everything: placed beside its anchor, flipped left and
+// up when the window edge is in the way, scrollable when even then it does not fit.
+void place_menu(Frame& frame, detail::UiState& state, const Appearance& appearance, TextMeasure& measure,
+                int width, int height, float scale) {
+    auto view = state.menu_view();
+    if (!view) return;
+    const auto look = appearance.component_presentation(state.presentation().density);
+    auto d = [&](int value) { return std::max(1, static_cast<int>(std::lround(value * scale))); };
+    const Placement* target = detail::find_placement(frame, view->target);
+    const int pixels = target && target->text_size ? target->text_size : static_cast<int>(std::lround(state.presentation().text_size * scale));
+    const int line = measure.line_height(pixels);
+    const int row_height = std::max(d(24), line + d(look.gap)), separator_height = d(look.gap);
+    const int pad_x = d(look.gap) + d(look.gap_small), pad_y = d(look.gap_small), border = d(look.thin), hint_gap = d(24);
+    int label_width = 0, hint_width = 0, rows_height = 0;
+    for (const auto& entry : view->entries) {
+        rows_height += entry.separator ? separator_height : row_height;
+        if (entry.separator) continue;
+        label_width = std::max(label_width, static_cast<int>(std::ceil(measure.measure(entry.label, pixels).width)));
+        if (!entry.hint.empty()) hint_width = std::max(hint_width, static_cast<int>(std::ceil(measure.measure(entry.hint, pixels).width)));
+    }
+    const int extent = rows_height + 2 * pad_y;
+    const int full_height = extent + 2 * border;
+    const int w = std::min(width, std::max(d(96), label_width + (hint_width ? hint_gap + hint_width : 0) + 2 * pad_x + 2 * border));
+    Rect anchor{0, 0, 0, 0};
+    if (view->at) anchor = {view->at->x, view->at->y, 0, 0};
+    else if (target) anchor = keyboard_anchor(state, *target, view->anchor_item, d(look.gap));
+    int x = anchor.x;
+    if (x + w > width) x = anchor.x - w;
+    x = std::clamp(x, 0, std::max(0, width - w));
+    const int below = anchor.y + anchor.h, space_below = height - below, space_above = anchor.y;
+    int h = std::min(full_height, height), y;
+    if (full_height <= space_below) y = below;
+    else if (full_height <= space_above) y = anchor.y - full_height;
+    else if (space_below >= h) y = below;
+    else if (space_above >= h) y = anchor.y - h;
+    else y = std::clamp(below, 0, std::max(0, height - h));
+    Placement popup;
+    popup.id = menu_node_id(view->target); popup.kind = target ? target->kind : Kind::label;
+    popup.menu = popup.popup = true;
+    popup.text_size = pixels; popup.menu_pad = pad_x;
+    popup.bounds = {x, y, w, h}; popup.clip = {0, 0, width, height}; popup.clipped = true;
+    const Rect inner{x + border, y + border, std::max(0, w - 2 * border), std::max(0, h - 2 * border)};
+    popup.menu_inner = inner;
+    const int maximum = std::max(0, extent - inner.h);
+    popup.menu_maximum = maximum;
+    auto* scroll = state.menu_scroll();
+    int offset = scroll ? std::clamp(scroll->offset, 0, maximum) : 0;
+    if (scroll && state.menu_reveal()) {
+        int top = 0;
+        for (const auto& entry : view->entries) {
+            const int rh = entry.separator ? separator_height : row_height;
+            if (!entry.separator && entry.id == view->highlighted) {
+                if (top < offset) offset = top;
+                else if (top + rh + 2 * pad_y > offset + inner.h) offset = top + rh + 2 * pad_y - inner.h;
+                break;
+            }
+            top += rh;
+        }
+        offset = std::clamp(offset, 0, maximum);
+    }
+    if (scroll) scroll->offset = offset;
+    const int bar = maximum ? d(6) : 0;
+    int row_y = inner.y + pad_y - offset;
+    for (const auto& entry : view->entries) {
+        const int rh = entry.separator ? separator_height : row_height;
+        popup.menu_rows.push_back({entry.id, {inner.x, row_y, std::max(0, inner.w - bar), rh}, entry.label, entry.hint,
+                                   entry.separator, entry.enabled, !entry.separator && entry.id == view->highlighted});
+        row_y += rh;
+    }
+    if (maximum) {
+        popup.menu_track = {inner.x + inner.w - bar, inner.y, bar, inner.h};
+        const int thumb = std::min(inner.h, std::max(d(24), inner.h * inner.h / std::max(1, extent)));
+        popup.menu_thumb = {popup.menu_track.x, inner.y + (inner.h - thumb) * offset / maximum, bar, thumb};
+    }
+    frame.overlays.push_back(std::move(popup));
+}
 }
 
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
@@ -465,8 +829,10 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     }
     a.frame.items = std::move(items);
     for (auto& region : a.frame.regions) region.clip = intersect(region.clip, window);
-    if (!a.frame.regions.empty()) {
-        const auto& outer = a.frame.regions.front();
+    // The frame-level scroll fields describe the page, never a sideways-scrolling label or a text field.
+    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal && r.field.empty(); });
+    if (page_region != a.frame.regions.end()) {
+        const auto& outer = *page_region;
         a.frame.viewport = outer.viewport; a.frame.track = outer.track; a.frame.thumb = outer.thumb;
         a.frame.extent = outer.extent; a.frame.maximum = outer.maximum; a.frame.offset = outer.offset;
     }
@@ -546,6 +912,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
                                     std::max(0, w - 2 * pad), line_height}, std::move(lines[i])});
         a.frame.overlays.push_back(std::move(popup));
     }
+    place_menu(a.frame, detail::access(ui), appearance, measure, width, height, scale);
     std::map<Id, bool, std::less<>> visibility;
     auto visible = [](Rect bounds, Rect clip) { auto area = intersect(bounds, clip); return area.w > 0 && area.h > 0; };
     auto record = [&](const Placement& p) {
@@ -562,9 +929,11 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         }
     };
     for (const auto& item : a.frame.items) record(item);
-    for (const auto& item : a.frame.overlays) if (!item.tooltip) record(item);
+    for (const auto& item : a.frame.overlays) if (!item.tooltip && !item.menu) record(item);
     a.ui.frame_visibility(std::move(visibility));
     a.ui.semantic_frame(a.frame);
+    a.ui.hover_refresh(a.frame);  // scrolling and reflow move components under a resting pointer
+    a.ui.slider_track_refresh(a.frame);  // a held slider thumb is drawn on this frame's track
     return std::move(a.frame);
 }
 }

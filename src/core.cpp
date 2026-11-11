@@ -1,6 +1,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "utf.hpp"
+#include "rich_text.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <cstdio>
@@ -27,17 +28,41 @@ std::u16string without_controls(std::u16string_view text) {
     return result;
 }
 }
-bool valid_single_line(std::u16string_view text, std::size_t max_length) {
+namespace {
+bool valid_text(std::u16string_view text, std::size_t max_length, bool allow_line_feed) {
     if (text.size() > max_length) return false;
     for (std::size_t i = 0; i < text.size(); ++i) {
         const auto ch = text[i];
-        if (ch < 0x20 || ch == 0x7f) return false;
+        if ((ch < 0x20 && !(allow_line_feed && ch == u'\n')) || ch == 0x7f) return false;
         if (ch >= 0xd800 && ch <= 0xdbff) {
             if (++i == text.size() || text[i] < 0xdc00 || text[i] > 0xdfff) return false;
         } else if (ch >= 0xdc00 && ch <= 0xdfff) return false;
     }
     return true;
 }
+// The value rule for one field: its kind decides whether a line feed is content.
+bool valid_value(const Control& control, std::u16string_view text) { return valid_text(text, control.max_length, control.multiline); }
+// A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
+constexpr unsigned max_visible_lines = 1000;
+bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
+// Text flow (#80) belongs to labels and text fields; every other kind must keep the defaults.
+bool supports_text_flow(Kind kind) { return kind == Kind::label || kind == Kind::text; }
+bool valid_text_align(TextAlign align) {
+    return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
+}
+bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
+// Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
+bool admits_text_align(Kind kind, TextAlign align) { return align != TextAlign::distribute || kind == Kind::label; }
+bool valid_text_flow(const Control& control) {
+    if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
+    if (!admits_text_align(control.kind, control.text_align)) return false;
+    return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
+}
+// A rich field is a multi-line text field; the option exists for no other control.
+bool valid_rich_option(const Control& control) { return !control.rich || (control.kind == Kind::text && control.multiline); }
+}
+bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
+bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
 void EditSession::select(unsigned anchor, unsigned caret) {
     if (composing) cancel_composition();
     auto clamp = [&](unsigned pos) {
@@ -47,6 +72,8 @@ void EditSession::select(unsigned anchor, unsigned caret) {
         return pos;
     };
     selection = {clamp(anchor), clamp(caret)};
+    caret_upstream = false;
+    ++selection_changes;
 }
 void EditSession::start_composition() {
     if (composing) return;
@@ -95,8 +122,11 @@ void detail::UiState::commit_removals() {
         if (focus_ == id) {
             try { move_focus({}); } catch (...) { stopped_ = true; focus_.clear(); }
         }
+        if (menu_ && menu_->target == id) close_menu();
+        menu_attachments_.erase(id);
         if (key_armed_ == id) key_armed_.clear();
-        if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
+        if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
+        slider_targets_.erase(id); animations_.cancel(slider_animation_key(id));
         if (tooltip_hover_ == id) tooltip_hover_.clear();
         for (auto& [key, dialog] : dialogs_) if (dialog.opener == id) dialog.opener.clear();
         if (auto member = page_members_.find(id); member != page_members_.end()) {
@@ -128,17 +158,93 @@ void detail::UiState::commit_removals() {
     }
     if (!pending_removals_.empty() && operation_depth_ == 0) commit_removals();
 }
+void detail::UiState::focus_cues_changed() {
+    refresh_tooltips();
+    if (invalidate_) invalidate_();
+}
+void detail::UiState::pointer_pressed() {
+    if (!keyboard_cues_) return;
+    keyboard_cues_ = false;
+    focus_cues_changed();
+}
+void detail::UiState::set_system_keyboard_cues(bool enabled) {
+    if (system_cues_ == enabled) return;
+    system_cues_ = enabled;
+    focus_cues_changed();
+}
 Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
-        (settings.density != Density::standard && settings.density != Density::compact))
+        (settings.density != Density::standard && settings.density != Density::compact) ||
+        (settings.hover != Hover::on && settings.hover != Hover::off) ||
+        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always) ||
+        (settings.motion != Motion::automatic && settings.motion != Motion::off))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
     if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};
     if (settings == presentation_) return {};
+    auto reflows = presentation_;  // the focus and motion modes alone change no layout or font
+    reflows.focus_indicator = settings.focus_indicator;
+    reflows.motion = settings.motion;
+    const bool reflow = !(reflows == settings);
     presentation_ = settings;
-    if (presentation_changed_) presentation_changed_();
+    if (reflow) ++layout_revision_;
+    refresh_tooltips();
+    if (!motion_enabled()) finish_animations();  // switching motion off lands every running transition at once
+    if (reflow && presentation_changed_) presentation_changed_();
+    if (invalidate_) invalidate_();
+    return {};
+}
+namespace {
+bool is_builtin_appearance(const Appearance& appearance) {
+    const auto& list = detail::builtin_appearances();
+    return std::find(list.begin(), list.end(), &appearance) != list.end();
+}
+Palette apply_overrides(Palette palette, const std::vector<PaletteOverride>& overrides, std::string_view appearance, const ThemeVariant& variant) {
+    for (const auto& entry : overrides)
+        if (entry.appearance == appearance && entry.variant == variant) set_palette_value(palette, entry.role, entry.value);
+    return palette;
+}
+std::u16string ascii16(const std::string& text) { return std::u16string(text.begin(), text.end()); }
+}
+Palette detail::UiState::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
+    auto palette = appearance.palette(variant);
+    if (palette_overrides_.empty() || !is_builtin_appearance(appearance)) return palette;
+    return apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+}
+Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overrides) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    std::u16string problems;
+    auto reject = [&](const std::string& text) { problems += (problems.empty() ? u"" : u"; ") + ascii16(text); };
+    std::vector<std::pair<const Appearance*, ThemeVariant>> affected;
+    for (std::size_t i = 0; i < overrides.size(); ++i) {
+        const auto& entry = overrides[i];
+        const auto* appearance = builtin_appearance(entry.appearance);
+        if (!appearance) { reject("unknown appearance \"" + entry.appearance + "\""); continue; }
+        if (!appearance->supports(entry.variant)) { reject(entry.appearance + " does not support theme variant \"" + entry.variant.name + "\""); continue; }
+        Palette scratch = appearance->palette(entry.variant);
+        if (!set_palette_value(scratch, entry.role, entry.value)) { reject("invalid palette value for role \"" + entry.role + "\" of " + entry.appearance + " / " + entry.variant.name); continue; }
+        bool repeated = false;
+        for (std::size_t j = 0; j < i; ++j)
+            repeated = repeated || (overrides[j].appearance == entry.appearance && overrides[j].variant == entry.variant && overrides[j].role == entry.role);
+        if (repeated) { reject("role \"" + entry.role + "\" of " + entry.appearance + " / " + entry.variant.name + " is overridden twice"); continue; }
+        if (std::none_of(affected.begin(), affected.end(), [&](const auto& pair) { return pair.first == appearance && pair.second == entry.variant; }))
+            affected.emplace_back(appearance, entry.variant);
+    }
+    if (problems.empty()) {
+        for (const auto& [appearance, variant] : affected) {
+            auto failures = check_palette_contrast(apply_overrides(appearance->palette(variant), overrides, appearance->name(), variant));
+            for (const auto& failure : failures) {
+                char numbers[64];
+                std::snprintf(numbers, sizeof numbers, "%.2f:1 (needs %.1f:1)", std::floor(failure.ratio * 100) / 100, failure.required);
+                reject(std::string(appearance->name()) + " / " + variant.name + ": " + failure.pair + " contrast " + numbers);
+            }
+        }
+    }
+    if (!problems.empty()) return {Status::invalid_value, u"Palette overrides rejected: " + problems};
+    palette_overrides_ = std::move(overrides);
     if (invalidate_) invalidate_();
     return {};
 }
@@ -150,11 +256,12 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs || control.kind == Kind::progress) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
+        if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         if (control.kind == Kind::text) {
-            if (!valid_single_line(control.value, control.max_length)) throw std::invalid_argument("Invalid initial text");
+            if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
             Field field;
-            field.session.text = control.value;
+            field.session.text = control.value; field.rich = control.rich;
             edits_.emplace(control.id, std::move(field));
         }
     }
@@ -206,10 +313,10 @@ Query<Semantics> ProgressHandle::describe() const {
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
-        !valid_single_line(control.value, control.max_length))
+        !valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
-    field.session.text = control.value;
+    field.session.text = control.value; field.rich = control.rich;
     Id id = control.id;
     controls_.push_back(std::move(control));
     edits_.emplace(id, std::move(field));
@@ -835,6 +942,7 @@ Result SliderHandle::use_latest() const {
     if (auto r = ui_->available(id_); !r) return r;
     auto& f = ui_->numerics_.at(id_);
     if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    if (f.value != f.source_value) ui_->slider_land(id_);
     f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
 }
 Result SliderHandle::connect_source(NumericSource source) const {
@@ -862,7 +970,7 @@ void detail::UiState::numeric_source_changed(const Id& id) {
     if (f.source_invalid) { f.source_invalid = false; set_error(id, std::move(f.error_before_source)); }
     bool clean = !f.connected || f.value == f.source_value;
     f.source_value = value; f.connected = true;
-    if (clean && !f.submitting) f.value = f.origin = value;
+    if (clean && !f.submitting) { if (f.value != value) slider_land(id); f.value = f.origin = value; }
     if (invalidate_) invalidate_();
 }
 Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
@@ -908,6 +1016,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (f.value == value) return {};
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = value;
+    slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
     NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
     if (!f.immediate || f.submitting) return notify();
     f.submitting = true; Result result;
@@ -916,17 +1025,56 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::slider_pointer(const Id& id, int x, Rect track) {
+namespace {
+double slider_share(const SliderRange& range, int value) {
+    return (static_cast<double>(value) - range.minimum) / (static_cast<double>(range.maximum) - range.minimum);
+}
+// Pointer movement up to this many device-independent pixels from the press still counts as a click, not a drag.
+constexpr double slider_drag_threshold_dip = 4;
+// The thumb's place on a track as a share of it: the pointer x clamped to the track's ends.
+double track_share(double x, double origin, double width) { return std::clamp((x - origin) / width, 0.0, 1.0); }
+}
+Result detail::UiState::slider_pointer_down(const Id& id, int x, Rect track, float scale) {
     OperationScope operation(this);
     if (pointer_armed_ != id || track.w <= 0) return {Status::invalid_value, u"No slider drag is active"};
+    // With motion the thumb stays on its tick (sliding there after a value change) until the pointer
+    // moves like a drag; without motion it follows the pointer from the press, as in #73.
+    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x, x, !motion_enabled(),
+                              static_cast<double>(track.x), static_cast<double>(track.w), static_cast<int>(std::lround(slider_drag_threshold_dip * std::max(scale, 0.f)))};
+    return slider_pointer(id, x);
+}
+Result detail::UiState::slider_pointer(const Id& id, int x) {
+    OperationScope operation(this);
+    if (pointer_armed_ != id || !slider_drag_ || slider_drag_->id != id) return {Status::invalid_value, u"No slider drag is active"};
+    slider_drag_->x = x;
+    if (!slider_drag_->held && std::abs(x - slider_drag_->press_x) > slider_drag_->threshold) {
+        // A real drag: the thumb follows the hand, so a running slide to a tick is dropped.
+        slider_drag_->held = true;
+        slider_land(id);
+    }
+    const bool held = slider_drag_->held;
+    const auto basis = *slider_drag_;
     auto& f = numerics_.at(id);
-    double ratio = std::clamp((static_cast<double>(x) - track.x) / track.w, 0.0, 1.0);
+    const double from = slider_display_ratio(id);
+    const int before = f.value;
+    double ratio = track_share(x, basis.origin, basis.width);
     double value = static_cast<double>(f.range.minimum) + ratio * (static_cast<double>(f.range.maximum) - f.range.minimum);
-    return slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+    auto result = slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+    if (!held) slider_started_moving(id, from, before);
+    return result;
+}
+std::optional<int> detail::UiState::slider_drag_x(std::string_view id) const {
+    if (slider_drag_ && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
+    return std::nullopt;
+}
+std::optional<int> detail::UiState::slider_held_x(std::string_view id) const {
+    if (slider_drag_ && slider_drag_->held && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
+    return std::nullopt;
 }
 Result detail::UiState::slider_key_down(KeyPress key) {
     OperationScope operation(this);
-    auto& f = numerics_.at(focus_);
+    const Id id = focus_;
+    auto& f = numerics_.at(id);
     const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
     long long target = value;
     switch (key.key) {
@@ -940,7 +1088,91 @@ Result detail::UiState::slider_key_down(KeyPress key) {
         break;
     default: return {};
     }
-    return slider_set_value(focus_, static_cast<int>(target));
+    const double from = slider_display_ratio(id);
+    auto result = slider_set_value(id, static_cast<int>(target));
+    slider_started_moving(id, from, static_cast<int>(value));
+    return result;
+}
+// A thumb transition is live only while it is still heading to the slider's current value: any
+// other change (application code, undo, a semantic or UIA set, the data source) leaves it stale
+// and the thumb is drawn at the new value at once.
+bool detail::UiState::slider_transition_live(std::string_view id) const {
+    auto target = slider_targets_.find(id);
+    auto field = numerics_.find(id);
+    return target != slider_targets_.end() && field != numerics_.end() && field->second.value == target->second &&
+           animations_.active(slider_animation_key(id));
+}
+std::optional<double> detail::UiState::slider_animated_ratio(std::string_view id) const {
+    if (!slider_transition_live(id)) return std::nullopt;
+    return animations_.value(slider_animation_key(id));
+}
+// Where the thumb is shown now, as a share of the track.
+double detail::UiState::slider_display_ratio(std::string_view id) const {
+    if (auto animated = slider_animated_ratio(id)) return *animated;
+    const auto& f = numerics_.find(id)->second;
+    // The held thumb is drawn at the pointer on the track of the latest frame, so its share is measured there.
+    if (slider_drag_ && slider_drag_->held && slider_drag_->id == id)
+        return track_share(slider_drag_->x, slider_drag_->seen_origin, slider_drag_->seen_width);
+    return slider_share(f.range, f.value);
+}
+// The value changed through the user's own input on this slider: slide the thumb from where it was shown.
+void detail::UiState::slider_started_moving(const Id& id, double from, int value_before) {
+    auto it = numerics_.find(id);
+    if (it == numerics_.end() || it->second.value == value_before || !motion_enabled()) return;
+    animations_.start(slider_animation_key(id), from, slider_share(it->second.range, it->second.value));
+    slider_targets_.insert_or_assign(id, it->second.value);
+}
+// The drag ended while holding the thumb off its tick. Letting go slides it there from the pixel it was drawn at;
+// an interruption (capture loss, focus move, a new press) puts it on the tick at once.
+void detail::UiState::end_slider_drag(bool slide) {
+    if (!slider_drag_) return;
+    const auto drag = *slider_drag_;
+    slider_drag_.reset();
+    auto it = numerics_.find(drag.id);
+    if (!slide || !drag.held || it == numerics_.end() || !motion_enabled()) return;
+    const double from = track_share(drag.x, drag.seen_origin, drag.seen_width);
+    const double to = slider_share(it->second.range, it->second.value);
+    if (std::abs(from - to) < 1e-9) return;
+    animations_.start(slider_animation_key(drag.id), from, to);
+    slider_targets_.insert_or_assign(drag.id, it->second.value);
+}
+// The latest frame's track for the dragged slider: the held thumb is drawn on it, wherever layout moved it.
+void detail::UiState::slider_track_refresh(const Frame& frame) {
+    if (!slider_drag_) return;
+    if (const auto* item = find_placement(frame, slider_drag_->id); item && item->slider_track.w > 0) {
+        slider_drag_->seen_origin = item->slider_track.x;
+        slider_drag_->seen_width = item->slider_track.w;
+    }
+}
+// The thumb is at its value from now on: nothing slides (any change that is not the user's own input on the slider).
+void detail::UiState::slider_land(std::string_view id) {
+    slider_targets_.erase(Id(id));
+    animations_.cancel(slider_animation_key(id));
+}
+bool detail::UiState::motion_enabled() const {
+    return animations_.has_time_source() && presentation_.motion == Motion::automatic && system_animations_ && !window_hidden_;
+}
+void detail::UiState::finish_animations() {
+    const bool was_running = animation_running();
+    animations_.finish_all(); slider_targets_.clear();
+    if (was_running && invalidate_) invalidate_();  // draw the landed frame
+}
+void detail::UiState::set_system_animations(bool enabled) {
+    system_animations_ = enabled;
+    if (!motion_enabled()) finish_animations();
+}
+void detail::UiState::set_window_hidden(bool hidden) {
+    window_hidden_ = hidden;
+    if (!motion_enabled()) finish_animations();
+}
+bool detail::UiState::animation_running() const {
+    for (const auto& [id, target] : slider_targets_) if (slider_transition_live(id)) return true;
+    return false;
+}
+Query<bool> detail::UiState::animating() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread", std::nullopt};
+    if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
+    return {Status::ok, {}, animation_running()};
 }
 Query<Semantics> SliderHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -1050,7 +1282,7 @@ void detail::UiState::refresh_tooltips() {
     for (auto& [id, tip] : tooltips_) {
         auto visible = visibility_.find(id);
         bool on_screen = !has_frame_visibility_ || (visible != visibility_.end() && visible->second);
-        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && !pointer_focus_) || tooltip_hover_ == id) && bool(available(id));
+        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && focus_indicator_visible()) || tooltip_hover_ == id) && bool(available(id));
         if (eligible != tip.eligible) {
             tip.eligible = eligible;
             tip.visible = false;
@@ -1067,6 +1299,7 @@ void detail::UiState::refresh_tooltips() {
 void detail::UiState::renderer_failed(bool failed) {
     if (renderer_failed_ == failed) return;
     if (failed) {
+        close_menu();
         if (tooltip_clock_) tooltip_paused_at_ = tooltip_clock_();
         renderer_failed_ = true;
         return;
@@ -1088,6 +1321,7 @@ void detail::UiState::frame_visibility(std::map<Id, bool, std::less<>> visibilit
 void detail::UiState::scrolled() {
     OperationScope operation(this);
     close_popup();
+    close_menu();
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1129,8 +1363,112 @@ void detail::UiState::window_active(bool active) {
     OperationScope operation(this);
     if (window_active_ == active) return;
     window_active_ = active;
-    if (!active) tooltip_hover_.clear();
+    if (!active) { tooltip_hover_.clear(); hover_clear(); close_menu(); }  // a menu does not outlive window activation
     refresh_tooltips();
+}
+bool detail::UiState::hover_locked() const {
+    return hover_capture_ || (slider_drag_ && pointer_armed_ == slider_drag_->id);
+}
+bool detail::UiState::hover_admitted(const HoverTarget& target) const {
+    if (menu_open() || !available(target.id)) return false;  // an open context menu takes the pointer: its own row highlight is the hover
+    if (!target.item) return true;
+    auto semantics = describe(target.id);
+    if (!semantics) return false;
+    auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *target.item; });
+    return option != semantics->options.end() && option->enabled;
+}
+void detail::UiState::hover_set(std::optional<HoverTarget> target) {
+    if (hover_ == target) return;
+    hover_ = std::move(target);
+    if (invalidate_) invalidate_();
+}
+void detail::UiState::hover_clear() {
+    hover_simulated_ = hover_capture_ = false;
+    hover_position_.reset();
+    hover_set(std::nullopt);
+}
+void detail::UiState::hover_from_frame(const Frame& frame, int x, int y) {
+    const auto* hit = frame.hit(x, y);
+    tooltip_hover(hit && !hit->popup ? std::string_view(hit->id) : std::string_view{});
+    if (!window_active_ || hover_locked()) return;
+    std::optional<HoverTarget> target;
+    // Labels and progress bars ignore the pointer, so they are never hovered (the tooltip above still sees them).
+    if (hit && !menu_open() && component_type(hit->kind).accepts_pointer()) {
+        target = HoverTarget{hit->id, std::nullopt};
+        if (auto index = frame.option_at(*hit, x, y)) {
+            auto semantics = describe(hit->id);
+            // A disabled item hovers nothing: the target keeps the component without the item.
+            if (semantics && *index < semantics->options.size() && semantics->options[*index].enabled)
+                target->item = semantics->options[*index].value;
+        }
+        if (!hover_admitted(*target)) target.reset();
+    }
+    hover_set(std::move(target));
+}
+void detail::UiState::pointer_over(const Frame& frame, int x, int y, bool touch) {
+    if (touch) return;
+    OperationScope operation(this);
+    if (window_active_) { hover_position_ = {x, y}; hover_simulated_ = false; }
+    hover_from_frame(frame, x, y);
+}
+void detail::UiState::pointer_left() {
+    OperationScope operation(this);
+    tooltip_hover({});
+    hover_clear();
+}
+void detail::UiState::hover_capture(std::string_view id) {
+    OperationScope operation(this);
+    if (!id.empty()) { hover_simulated_ = false; hover_set(HoverTarget{Id(id), std::nullopt}); }
+    hover_capture_ = true;
+}
+void detail::UiState::hover_release() { hover_capture_ = false; }
+void detail::UiState::hover_refresh(const Frame& frame) {
+    if (hover_simulated_ || hover_locked() || !hover_position_ || !window_active_) return;
+    OperationScope operation(this);
+    hover_from_frame(frame, hover_position_->first, hover_position_->second);
+}
+std::optional<HoverTarget> detail::UiState::hover_target() const {
+    if (hover_ && hover_admitted(*hover_)) return hover_;
+    return std::nullopt;
+}
+bool detail::UiState::hover_drawn(std::string_view id, const OptionValue* item) const {
+    if (presentation_.hover != Hover::on || !hover_ || hover_->id != id) return false;
+    if (item ? !hover_->item || !(*hover_->item == *item) : hover_->item.has_value()) return false;
+    return hover_admitted(*hover_);
+}
+Query<std::optional<HoverTarget>> detail::UiState::hover_query() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread", std::nullopt};
+    if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
+    return {Status::ok, {}, hover_target()};
+}
+Result detail::UiState::simulate_hover(std::string_view id, const std::optional<OptionValue>& item) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    if (menu_open()) return {Status::blocked_by_modal, u"A context menu is open"};
+    if (hover_locked()) return {Status::busy, u"A pointer drag holds the hover"};
+    const auto* control = find(id);
+    if (item) {
+        auto semantics = describe(id);
+        if (!semantics) return {Status::not_found, u"Component no longer exists"};
+        auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *item; });
+        if (option == semantics->options.end()) return {Status::not_found, u"Item no longer exists"};
+        if (!option->enabled) return {Status::disabled, u"目前無法執行"};
+    }
+    hover_simulated_ = true;
+    hover_set(HoverTarget{control->id, item});
+    // An item of an open dropdown lives in its popup, which never starts a tooltip.
+    tooltip_hover(item && control->kind == Kind::dropdown ? std::string_view{} : std::string_view(control->id));
+    return {};
+}
+Result detail::UiState::clear_simulated_hover() {
+    OperationScope operation(this);
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (!hover_simulated_) return {};
+    hover_simulated_ = false;
+    hover_set(std::nullopt);
+    tooltip_hover({});
+    return {};
 }
 Query<bool> TooltipHandle::visible() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -1252,6 +1590,7 @@ Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     if (auto member = page_members_.find(focus_); member != page_members_.end() && member->second.first == id && member->second.second == t.active)
         if (auto r = move_focus(id); !r) return r;
     close_popup();
+    close_menu();
     auto old = t.pages[t.active].value;
     t.active = t.candidate = next;
     refresh_tooltips();
@@ -1415,6 +1754,50 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     ui_->bind_text(id_, std::move(read));
     return {};
 }
+Result detail::UiState::writing_support(const Control& control) {
+    if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
+        return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
+    if (control.kind != Kind::label && control.writing_mode == WritingMode::vertical)
+        return {Status::invalid_value, u"Only labels support vertical writing"};
+    return {};
+}
+Result LabelHandle::set_writing_mode(WritingMode mode) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (mode != WritingMode::horizontal && mode != WritingMode::vertical) return {Status::invalid_value, u"Unknown writing mode"};
+    ui_->set_label_writing(id_, mode, std::nullopt);
+    return {};
+}
+Query<WritingMode> LabelHandle::writing_mode() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->find(id_)->writing_mode};
+}
+Result LabelHandle::set_vertical_digits(int digits) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (digits < 0 || digits > max_vertical_digits) return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
+    ui_->set_label_writing(id_, std::nullopt, digits);
+    return {};
+}
+Query<int> LabelHandle::vertical_digits() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+    return {Status::ok, {}, ui_->find(id_)->vertical_digits};
+}
+void detail::UiState::set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits) {
+    OperationScope operation(this);
+    auto* control = const_cast<Control*>(find(id));
+    if (!control) return;
+    bool changed = (mode && *mode != control->writing_mode) || (digits && *digits != control->vertical_digits);
+    if (mode) control->writing_mode = *mode;
+    if (digits) control->vertical_digits = *digits;
+    if (changed && invalidate_) invalidate_();
+}
 Result ButtonHandle::focus() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -1498,8 +1881,9 @@ Result detail::UiState::reset_to_source(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.has_source_value)
         return {Status::invalid_value, u"Text source is not connected"};
-    replace_text(id, it->second.source_value);
+    replace_rich(id, RichText{it->second.source_value, it->second.source_spans});
     it->second.origin = it->second.source_value;
+    it->second.origin_spans = it->second.source_spans;
     return set_error(id, u"");
 }
 Result ButtonHandle::invoke() const {
@@ -1561,7 +1945,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate || it->second.confirmed || !members.insert(field.id_).second)
+            it->second.confirmation_member || it->second.immediate || it->second.confirmed || it->second.rich || !members.insert(field.id_).second)
             return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -1644,7 +2028,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
+            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}}); else changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); changes.emplace_back(DropdownChange{h, f.value, f.origin}); f.submitting = true; }
@@ -1665,7 +2049,13 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         }
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
+            if constexpr (std::is_same_v<T, TextHandle>) {
+                auto& f = edits_.at(h.id_); f.submitting = false;
+                if (outcome.result) {
+                    if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
+                    else f.origin = std::get<TextChange>(changes[i]).value;
+                }
+            }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<DropdownChange>(changes[i]).value; }
@@ -1691,12 +2081,36 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
 Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
     return ui_->connect_write(id_, std::move(write), true);
 }
 Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
     return ui_->connect_write(id_, std::move(write), false);
+}
+Result TextHandle::connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->connect_rich_write(id_, std::move(write), true);
+}
+Result TextHandle::connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->connect_rich_write(id_, std::move(write), false);
+}
+// The shared write path hands over plain TextChange; a rich write reads the field's spans at that moment.
+Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate) {
+    OperationScope operation(this);
+    if (auto result = configuration_access(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
+    if (!write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    return connect_write(id, [this, write = std::move(write)](const TextChange& change) {
+        auto& field = edits_.at(change.field.id_);
+        return write(RichTextChange{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
+    }, immediate);
 }
 Result detail::UiState::connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate) {
     OperationScope operation(this);
@@ -1727,9 +2141,19 @@ Result detail::UiState::confirm(const Id& id) {
 Result TextHandle::connect_source(TextSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
     return ui_->connect_source(id_, std::move(source));
 }
-Result detail::UiState::connect_source(const Id& id, TextSource source) {
+Result TextHandle::connect_rich_source(RichTextSource source) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
+    auto read = source.read;
+    return ui_->connect_source(id_, TextSource{[read] { return read().text; }, std::move(source.subscribe)}, std::move(read));
+}
+Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
@@ -1737,6 +2161,7 @@ Result detail::UiState::connect_source(const Id& id, TextSource source) {
     if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
     if (it->second.disconnect) it->second.disconnect();
     it->second.source = std::move(source);
+    it->second.rich_read = std::move(rich_read);
     it->second.has_source_value = false;
     auto weak = std::weak_ptr<void>(lifetime_);
     it->second.disconnect = it->second.source.subscribe([weak, this, id] {
@@ -1750,14 +2175,23 @@ void detail::UiState::source_changed(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.source.read) return;
     auto& field = it->second;
-    auto latest = field.source.read();
-    if (!valid_single_line(latest, find(id)->max_length)) return;
-    const bool clean = !field.has_source_value || field.session.text == field.source_value;
-    field.source_value = latest;
+    RichText latest;
+    if (field.rich_read) {  // a rich source: only a value in normal form (or one that normalizes) is adopted
+        auto read = normalize_rich_text(field.rich_read(), find(id)->max_length);
+        if (!read) return;
+        latest = std::move(*read);
+    } else {
+        latest.text = field.source.read();
+        if (!valid_value(*find(id), latest.text)) return;
+    }
+    const bool clean = !field.has_source_value || source_matches(field);
+    field.source_value = latest.text;
+    field.source_spans = latest.spans;
     field.has_source_value = true;
     if (clean && !field.submitting && !field.session.composing) {
-        replace_text(id, latest);
-        field.origin = latest;
+        field.origin = latest.text;
+        field.origin_spans = latest.spans;
+        replace_rich(id, std::move(latest));
     }
     if (invalidate_) invalidate_();
 }
@@ -1778,12 +2212,14 @@ Result detail::UiState::use_latest(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
+    auto latest_spans = it->second.source_spans;
     const bool was_submitting = it->second.submitting;
     it->second.submitting = true;
-    auto result = set_value(id, latest);
+    auto result = it->second.rich ? set_rich_value(id, RichText{latest, latest_spans}) : set_value(id, latest);
     it->second.submitting = was_submitting;
     if (result) {
         it->second.origin = std::move(latest);
+        it->second.origin_spans = std::move(latest_spans);
         set_error(id, u"");
     }
     return result;
@@ -1793,11 +2229,217 @@ Result TextHandle::set_value(std::u16string value) const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->set_value(id_, std::move(value));
 }
+Result TextHandle::set_rich_value(RichText value) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_rich_value(id_, std::move(value));
+}
+Query<RichText> TextHandle::rich_value() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->rich_value(id_);
+}
+Result TextHandle::set_style(unsigned begin, unsigned end, StyleChange change) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_style(id_, begin, end, change);
+}
+Result TextHandle::toggle_style(StyleAttribute attribute) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->toggle_style(id_, attribute);
+}
+Result TextHandle::apply_style(StyleChange change) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->apply_style(id_, change);
+}
+Query<TextStyle> TextHandle::typing_style() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->typing_style(id_);
+}
+Result TextHandle::set_typing_style(TextStyle style) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_typing_style(id_, std::move(style));
+}
+Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_colors(id_, std::move(colors));
+}
+Query<std::vector<NamedColor>> TextHandle::colors() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->colors(id_);
+}
 Query<Semantics> TextHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
     if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
     return {Status::ok, {}, ui_->describe(id_)};
+}
+Result TextHandle::set_visible_lines(unsigned lines) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_visible_lines(id_, lines);
+}
+Query<unsigned> TextHandle::visible_lines() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+    const auto* control = ui_->find(id_);
+    if (!control->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
+    return {Status::ok, {}, control->visible_lines};
+}
+Result TextHandle::set_scroll_line(unsigned first_visible_line) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_scroll_line(id_, first_visible_line);
+}
+Query<unsigned> TextHandle::scroll_line() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->scroll_line(id_);
+}
+Result TextHandle::set_word_segmentation(WordSegmentation mode) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_word_segmentation(id_, mode);
+}
+Query<WordSegmentation> TextHandle::word_segmentation() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_segmentation(id_);
+}
+Query<WordSegmentation> TextHandle::word_segmentation_in_use() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_segmentation_in_use(id_);
+}
+Query<TextSpan> TextHandle::word_at(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_at(id_, offset);
+}
+Query<TextSpan> TextHandle::paragraph_at(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->paragraph_at(id_, offset);
+}
+Query<unsigned> TextHandle::next_word_stop(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_stop(id_, offset, true);
+}
+Query<unsigned> TextHandle::previous_word_stop(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_stop(id_, offset, false);
+}
+Result TextHandle::select_word(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_word(id_, offset);
+}
+Result TextHandle::select_paragraph(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_paragraph(id_, offset);
+}
+Result TextHandle::double_click(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->double_click(id_, offset);
+}
+Result TextHandle::triple_click(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->triple_click(id_, offset);
+}
+Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!control->multiline) return {Status::not_supported, u"Not a multi-line field"};
+    if (lines < 1 || lines > max_visible_lines) return {Status::invalid_value, u"A multi-line field shows at least one line"};
+    control->visible_lines = lines;
+    auto& m = edits_.find(id)->second.multi;
+    if (m.placed) {  // keep the position valid for the new page size until the next arrange settles it
+        m.view.visible = lines;
+        const auto count = static_cast<unsigned>(m.view.lines.size());
+        scroll_lines_to(id, std::min(m.first, count > lines ? count - lines : 0));
+    }
+    if (invalidate_) invalidate_();
+    return {};
+}
+// Text flow (#80): owner configuration shared by the typed handles and the semantic verbs.
+Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields align their text"};
+    if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
+    if (!admits_text_align(control->kind, align)) return {Status::invalid_value, u"Only a label can distribute its text"};
+    control->text_align = align;
+    ++layout_revision_;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod method) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields justify their text"};
+    if (!valid_justify_method(method)) return {Status::invalid_value, u"Unknown justification method"};
+    control->justify_method = method;
+    ++layout_revision_;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have line spacing"};
+    if (!valid_line_spacing(multiple)) return {Status::invalid_value, u"Line spacing is 1.0 to 3.0 times the line height"};
+    control->line_spacing = multiple;
+    ++layout_revision_;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have paragraph spacing"};
+    if (!valid_paragraph_spacing(dip)) return {Status::invalid_value, u"Paragraph spacing is 0 to 48 DIP"};
+    control->paragraph_spacing = dip;
+    ++layout_revision_;
+    if (invalidate_) invalidate_();
+    return {};
+}
+#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_text_align(id_, align); } Result Handle::set_line_spacing(double multiple) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_line_spacing(id_, multiple); } Result Handle::set_paragraph_spacing(int dip) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_paragraph_spacing(id_, dip); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; } Result Handle::set_justify_method(JustifyMethod method) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_justify_method(id_, method); } Query<JustifyMethod> Handle::justify_method() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->justify_method}; }
+LCARS_TEXT_FLOW_HANDLE(TextHandle)
+LCARS_TEXT_FLOW_HANDLE(LabelHandle)
+#undef LCARS_TEXT_FLOW_HANDLE
+Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
+    OperationScope operation(this);
+    if (auto r = available(id); !r) return r;
+    if (!find(id)->multiline) return {Status::not_supported, u"Not a multi-line field"};
+    auto& m = edits_.find(id)->second.multi;
+    if (!m.placed) { m.pending_first = first; if (invalidate_) invalidate_(); return {}; }  // clamped by the first arrange
+    const auto count = static_cast<unsigned>(m.view.lines.size());
+    if (first > (count > m.view.visible ? count - m.view.visible : 0)) return {Status::invalid_value, u"No such scroll position"};
+    scroll_lines_to(id, first);
+    return {};
+}
+Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    if (!find(id)->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
+    const auto& m = edits_.find(id)->second.multi;
+    return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
 Query<std::u16string> TextHandle::draft() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -1830,6 +2472,16 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
+    s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
+    if (control->kind == Kind::text) {
+        s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
+        if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
+            const auto& m = it->second.multi;
+            s.scroll_line = m.pending_first.value_or(m.first);
+            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
+        }
+    }
+    s.writing_mode = control->writing_mode; s.vertical_digits = control->vertical_digits;
     if (auto it = bools_.find(id); it != bools_.end()) {
         s.checked = it->second.value;
         s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
@@ -1905,7 +2557,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
         const auto& field = it->second;
-        s.source_conflict = field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
+        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !source_matches(field);
+        s.rich = field.rich;
     }
     if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
@@ -1935,10 +2588,12 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
             std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
+        if (control->multiline) s.operations.push_back(Operation::scroll);
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
         if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
+            if (field.rich) s.operations.push_back(Operation::style);
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
         }
@@ -2000,9 +2655,11 @@ Result detail::UiState::set_value(std::string_view id, std::u16string value) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    if (field->session.text == value) return {};
+    if (field->session.text == value && field->spans.empty()) return {};
     field->session.select(0, static_cast<unsigned>(field->session.text.size()));
-    return replace_selection(id, *field, value);
+    // On a rich field the new text is unstyled: the inserted spans are empty, not the typing style.
+    static const std::vector<StyleSpan> unstyled;
+    return replace_range(id, *field, 0, static_cast<unsigned>(field->session.text.size()), value, field->rich ? &unstyled : nullptr);
 }
 Result detail::UiState::writable(std::string_view id, Field*& field) {
     OperationScope operation(this);
@@ -2019,25 +2676,172 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
 // Every content change funnels through here so history, value mirror and notification agree.
 Result detail::UiState::replace_selection(std::string_view id, Field& field, std::u16string_view insertion) {
     OperationScope operation(this);
+    return replace_range(id, field, field.session.begin(), field.session.end(), insertion, nullptr);
+}
+Result detail::UiState::replace_range(std::string_view id, Field& field, unsigned first, unsigned last, std::u16string_view insertion,
+                                      const std::vector<StyleSpan>* inserted_spans) {
+    OperationScope operation(this);
     auto& session = field.session;
-    auto first = session.begin();
     auto next = session.text;
-    next.replace(first, session.end() - first, insertion);
-    const auto limit = find(id)->max_length;
-    if (!valid_single_line(next, limit)) {
+    next.replace(first, last - first, insertion);
+    const auto& control = *find(id);
+    const auto limit = control.max_length;
+    if (!valid_value(control, next)) {
         auto digits = std::to_string(limit);
-        return {Status::invalid_value, u"請輸入有效單行文字（最多 " + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
+        return {Status::invalid_value, std::u16string(control.multiline ? u"請輸入有效文字（最多 " : u"請輸入有效單行文字（最多 ") + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
     }
     auto caret = first + static_cast<unsigned>(insertion.size());
-    if (next == session.text) { session.select(caret, caret); return {}; }
-    if (field.has_source_value && !field.submitting && session.text == field.source_value)
+    // Typed or plain-pasted text takes the typing style; inserted spans (a rich paste, a rich value) bring their own.
+    std::vector<StyleSpan> next_spans;
+    if (field.rich) {
+        const auto length = static_cast<unsigned>(insertion.size());
+        next_spans = detail::splice_spans(field.spans, first, last - first, length,
+                                          inserted_spans ? *inserted_spans : detail::uniform_spans(length, insertion_style(field, first, last)));
+    }
+    if (next == session.text && next_spans == field.spans) { session.select(caret, caret); return {}; }
+    if (field.has_source_value && !field.submitting && source_matches(field)) {
         field.origin = field.source_value;
-    field.past.push_back({session.text, session.selection});
+        field.origin_spans = field.source_spans;
+    }
+    field.past.push_back({session.text, session.selection, field.spans});
     field.future.clear();
     session.text = std::move(next);
+    field.spans = std::move(next_spans);
+    field.typing.reset();
     ++session.revision;
     session.select(caret, caret);
     return finish_edit(id, field);
+}
+// The style of text inserted at [first, last): the temporary typing style while the caret has not moved, else the
+// character before (a paragraph's first character takes the one after it; an empty paragraph is plain).
+TextStyle detail::UiState::insertion_style(const Field& field, unsigned first, unsigned last) const {
+    if (field.typing && field.typing_moves == field.session.selection_changes) return *field.typing;
+    const auto& text = field.session.text;
+    if (first > 0 && text[first - 1] != u'\n') return detail::style_at(field.spans, first - 1);
+    if (last < text.size() && text[last] != u'\n') return detail::style_at(field.spans, last);
+    return {};
+}
+bool detail::UiState::is_rich(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.rich;
+}
+Result detail::UiState::rich_writable(std::string_view id, Field*& field) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    if (!is_rich(id)) return {Status::not_supported, u"Not a rich text field"};
+    return writable(id, field);
+}
+Result detail::UiState::commit_style(std::string_view id, Field& field, std::vector<StyleSpan> spans) {
+    OperationScope operation(this);
+    if (spans == field.spans) return {};
+    auto& session = field.session;
+    if (field.has_source_value && !field.submitting && source_matches(field)) {
+        field.origin = field.source_value;
+        field.origin_spans = field.source_spans;
+    }
+    field.past.push_back({session.text, session.selection, field.spans});
+    field.future.clear();
+    field.spans = std::move(spans);
+    ++session.revision;
+    return finish_edit(id, field);
+}
+Result detail::UiState::set_rich_value(std::string_view id, RichText value) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    auto normal = normalize_rich_text(std::move(value), find(id)->max_length);
+    if (!normal) return {normal.status, normal.message};
+    field->session.select(0, static_cast<unsigned>(field->session.text.size()));
+    return replace_range(id, *field, 0, static_cast<unsigned>(field->session.text.size()), normal->text, &normal->spans);
+}
+Query<RichText> detail::UiState::rich_value(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    return {Status::ok, {}, RichText{it->second.session.text, it->second.spans}};
+}
+Result detail::UiState::set_style(std::string_view id, unsigned begin, unsigned end, const StyleChange& change) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& text = field->session.text;
+    auto boundary = [&](unsigned pos) { return pos <= text.size() && !(pos > 0 && pos < text.size() && text[pos] >= 0xdc00 && text[pos] <= 0xdfff && text[pos - 1] >= 0xd800 && text[pos - 1] <= 0xdbff); };
+    if (begin > end || !boundary(begin) || !boundary(end)) return {Status::invalid_value, u"No such text range"};
+    return commit_style(id, *field, detail::apply_style_change(field->spans, begin, end, change));
+}
+Query<TextStyle> detail::UiState::typing_style(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    const auto& session = it->second.session;
+    return {Status::ok, {}, insertion_style(it->second, session.begin(), session.end())};
+}
+Result detail::UiState::set_typing_style(std::string_view id, TextStyle style) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    field->typing = std::move(style);
+    field->typing_moves = field->session.selection_changes;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::apply_style(std::string_view id, const StyleChange& change) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& session = field->session;
+    if (session.begin() != session.end()) return set_style(id, session.begin(), session.end(), change);
+    return set_typing_style(id, detail::changed(insertion_style(*field, session.begin(), session.end()), change));
+}
+Result detail::UiState::toggle_style(std::string_view id, StyleAttribute attribute) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& session = field->session;
+    auto flip = [&](bool on) { StyleChange change; (attribute == StyleAttribute::bold ? change.bold : attribute == StyleAttribute::italic ? change.italic : change.underline) = on; return change; };
+    if (session.begin() != session.end())
+        return set_style(id, session.begin(), session.end(), flip(!detail::all_have(field->spans, session.text, session.begin(), session.end(), attribute)));
+    auto current = insertion_style(*field, session.begin(), session.end());
+    bool on = attribute == StyleAttribute::bold ? current.bold : attribute == StyleAttribute::italic ? current.italic : current.underline;
+    return set_typing_style(id, detail::changed(current, flip(!on)));
+}
+Result detail::UiState::set_colors(std::string_view id, std::vector<NamedColor> colors) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
+    std::set<std::string> names;
+    for (const auto& color : colors)
+        if (color.name.empty() || !names.insert(color.name).second) return {Status::invalid_value, u"Color names must be non-empty and distinct"};
+    it->second.colors = std::move(colors);
+    if (invalidate_) invalidate_();
+    return {};
+}
+Query<std::vector<NamedColor>> detail::UiState::colors(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    return {Status::ok, {}, it->second.colors};
+}
+std::optional<Color> detail::UiState::named_color(std::string_view id, std::string_view name) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end() || name.empty()) return std::nullopt;
+    for (const auto& color : it->second.colors)
+        if (color.name == name) return presentation_.variant == ThemeVariant::dark() ? color.dark : color.light;
+    return std::nullopt;
+}
+const std::vector<StyleSpan>* detail::UiState::style_spans(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.rich ? &it->second.spans : nullptr;
+}
+std::vector<StyleSpan> detail::UiState::visible_style_spans(std::string_view id) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {};
+    const auto& field = it->second;
+    const auto& session = field.session;
+    if (!session.composing) return field.spans;
+    return detail::composition_spans(field.spans, session.begin(), session.end(), static_cast<unsigned>(session.preedit.size()),
+                                     insertion_style(field, session.begin(), session.end()));
 }
 Result detail::UiState::travel(std::string_view id, bool forward) {
     OperationScope operation(this);
@@ -2047,13 +2851,17 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     auto& to = forward ? field->past : field->future;
     if (from.empty()) return {Status::empty_history, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
     auto& session = field->session;
-    if (field->has_source_value && !field->submitting && session.text == field->source_value)
+    if (field->has_source_value && !field->submitting && source_matches(*field)) {
         field->origin = field->source_value;
-    to.push_back({session.text, session.selection});
+        field->origin_spans = field->source_spans;
+    }
+    to.push_back({session.text, session.selection, field->spans});
     auto snapshot = std::move(from.back());
     from.pop_back();
-    if (session.text != snapshot.text) ++session.revision;
+    if (session.text != snapshot.text || field->spans != snapshot.spans) ++session.revision;
     session.text = std::move(snapshot.text);
+    field->spans = std::move(snapshot.spans);
+    field->typing.reset();
     session.select(snapshot.selection.anchor, snapshot.selection.caret);
     return finish_edit(id, *field);
 }
@@ -2072,7 +2880,7 @@ Result detail::UiState::submit_field(std::string_view id, Field& field,
     }
     if (command) invoking_ = false;
     field.submitting = false;
-    if (result) { field.origin = change.value; set_error(id, u""); }
+    if (result) { field.origin = change.value; field.origin_spans = field.spans; set_error(id, u""); }
     else { set_error(id, result.message); if (command) focus(id); }
     auto notification = notify();
     return notification ? result : notification;
@@ -2096,6 +2904,7 @@ Result detail::UiState::notify() {
 }
 Result detail::UiState::text_input(std::u16string_view text) {
     OperationScope operation(this);
+    if (menu_) return menu_text(text);  // quick-key letters
     auto committed = without_controls(text);
     if (committed.empty()) return {};
     Field* field = nullptr;
@@ -2110,11 +2919,19 @@ std::u16string paste_as_single_line(std::u16string_view text) {
     }
     return result;
 }
+std::u16string paste_as_multi_line(std::u16string_view text) {
+    std::u16string result;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
+        result += text[i] == u'\r' ? u'\n' : text[i];
+    }
+    return result;
+}
 Result detail::UiState::paste(std::string_view id, std::u16string_view text) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    return replace_selection(id, *field, paste_as_single_line(text));
+    return replace_selection(id, *field, find(id)->multiline ? paste_as_multi_line(text) : paste_as_single_line(text));
 }
 Result detail::UiState::copy(std::string_view id) {
     OperationScope operation(this);
@@ -2123,9 +2940,37 @@ Result detail::UiState::copy(std::string_view id) {
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
     const auto& session = it->second.session;
     if (session.begin() == session.end()) return {};
-    if (!clipboard_ || !clipboard_->write(std::u16string_view(session.text).substr(session.begin(), session.end() - session.begin())))
-        return {Status::failed, u"無法寫入剪貼簿"};
+    auto selected = std::u16string(session.text, session.begin(), session.end() - session.begin());
+    if (find(id)->multiline) {  // the clipboard carries CRLF, as other Windows text does
+        std::u16string crlf;
+        for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
+        selected = std::move(crlf);
+    }
+    // A rich field also hands over the styles of the selection, beside the plain text.
+    const bool written = it->second.rich && clipboard_
+        ? clipboard_->write_rich(selected, detail::serialize_rich_payload(RichText{std::u16string(session.text, session.begin(), session.end() - session.begin()),
+                                                                                    detail::slice_spans(it->second.spans, session.begin(), session.end())}))
+        : clipboard_ && clipboard_->write(selected);
+    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
     return {};
+}
+// A paste from the clipboard: a rich field takes the styles of a payload that belongs to the plain text it
+// came with; anything else (another program's text, a payload left from another copy, a plain field) is plain text.
+Result detail::UiState::paste_clipboard(std::string_view id) {
+    OperationScope operation(this);
+    if (!clipboard_) return {Status::not_supported, u"剪貼簿不可用"};
+    auto content = clipboard_->read();
+    if (!content) return {content.status, content.message};
+    if (is_rich(id)) {
+        auto payload = clipboard_->read_rich();
+        auto rich = payload ? detail::parse_rich_payload(*payload) : std::nullopt;
+        if (rich && rich->text == paste_as_multi_line(*content)) {
+            Field* field = nullptr;
+            if (auto result = writable(id, field); !result) return result;
+            return replace_range(id, *field, field->session.begin(), field->session.end(), rich->text, &rich->spans);
+        }
+    }
+    return paste(id, *content);
 }
 Result detail::UiState::cut(std::string_view id) {
     OperationScope operation(this);
@@ -2151,6 +2996,64 @@ unsigned detail::UiState::text_anchor(std::string_view id, int text_size) const 
 void detail::UiState::set_text_anchor(std::string_view id, int text_size, unsigned anchor) {
     if (auto it = edits_.find(id); it != edits_.end()) { it->second.offset_text_size = text_size; it->second.offset_anchor = anchor; }
 }
+const FieldView* detail::UiState::field_view(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.multi.placed ? &it->second.multi.view : nullptr;
+}
+void detail::UiState::settle_lines(std::string_view id, FieldView& view, int text_size, int width) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end() || view.lines.empty()) return;
+    auto& f = it->second;
+    auto& m = f.multi;
+    const auto& session = f.session;
+    auto text = session.visible();
+    const auto count = static_cast<unsigned>(view.lines.size());
+    const unsigned most = count > view.visible ? count - view.visible : 0;
+    auto styles = visible_style_spans(id);
+    const bool relaid = m.text != text || m.size != text_size || m.width != width || m.styles != styles || m.revision != layout_revision_;
+    unsigned first = m.first;
+    // A new wrap (resize, text size, edit) keeps the same text on top: the anchor is a text offset.
+    if (m.placed && relaid) { view.upstream = false; first = view.line_of(std::min<unsigned>(m.anchor, static_cast<unsigned>(text.size()))); }
+    first = std::min(first, most);
+    const unsigned caret = session.visible_caret();
+    const bool upstream = session.caret_upstream && !session.composing;
+    view.upstream = upstream;
+    // A caret that moved since the last arrange scrolls itself into view; scrolling alone never does.
+    if (caret != m.caret || upstream != m.upstream) {
+        auto line = view.line_of(caret);
+        if (line < first) first = line;
+        else if (line >= first + view.visible) first = line + 1 - view.visible;
+    }
+    if (m.pending_first) { first = *m.pending_first; m.pending_first.reset(); }
+    first = std::min(first, most);
+    view.first = first;
+    m.view = view;
+    m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
+    if (relaid) { m.text = std::move(text); m.styles = std::move(styles); m.size = text_size; m.width = width; m.revision = layout_revision_; }
+    m.scroll.offset = static_cast<int>(first) * view.row_height;
+}
+bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.multi.placed) return false;
+    auto& m = it->second.multi;
+    const auto count = static_cast<unsigned>(m.view.lines.size());
+    first = std::min(first, count > m.view.visible ? count - m.view.visible : 0);
+    if (first == m.first) return false;
+    m.first = m.view.first = first;
+    m.anchor = m.view.lines[first].begin;
+    m.scroll.offset = static_cast<int>(first) * m.view.row_height;
+    if (invalidate_) invalidate_();
+    return true;
+}
+Result detail::UiState::select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream) {
+    OperationScope operation(this);
+    if (auto result = select(id, anchor, caret); !result) return result;
+    auto& session = edits_.find(id)->second.session;
+    session.caret_upstream = upstream && session.selection.caret == caret;
+    return {};
+}
 Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned caret) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
@@ -2164,7 +3067,130 @@ Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned ca
     };
     if (!boundary(anchor) || !boundary(caret)) return {Status::invalid_value, {}};
     it->second.session.select(anchor, caret);
+    it->second.drag = {};
     return {};
+}
+// ---- Words, paragraphs and multi-click (#83) --------------------------------------------------
+Result detail::UiState::set_word_segmentation(std::string_view id, WordSegmentation mode) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field"};
+    if (mode != WordSegmentation::dictionary && mode != WordSegmentation::per_character && mode != WordSegmentation::script_run)
+        return {Status::invalid_value, u"Unknown word segmentation"};
+    it->second.segmentation = mode;
+    it->second.drag = {};
+    return {};
+}
+Query<WordSegmentation> detail::UiState::word_segmentation(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    return {Status::ok, {}, it->second.segmentation};
+}
+Query<WordSegmentation> detail::UiState::word_segmentation_in_use(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    return {Status::ok, {}, segmentation_in_use(it->second.segmentation, dictionary())};
+}
+Query<TextSpan> detail::UiState::word_at(std::string_view id, unsigned offset) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, word_span(text, words_of(it->second), offset)};
+}
+Query<TextSpan> detail::UiState::paragraph_at(std::string_view id, unsigned offset) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, paragraph_span(text, offset)};
+}
+Query<unsigned> detail::UiState::word_stop(std::string_view id, unsigned offset, bool forward) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, next_word_stop(text, words_of(it->second), offset, forward)};
+}
+std::vector<unsigned> detail::UiState::word_unit_boundaries(std::string_view id) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {};
+    return word_unit_bounds(it->second.session.text, words_of(it->second));
+}
+std::vector<unsigned> detail::UiState::paragraph_boundaries(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it == edits_.end() ? std::vector<unsigned>{} : paragraph_bounds(it->second.session.text);
+}
+Result detail::UiState::select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    auto& field = it->second;
+    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    const auto& text = field.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text"};
+    const bool word = unit == Field::UnitDrag::Unit::word;
+    const TextSpan span = word ? word_span(text, words_of(field), offset) : paragraph_span(text, offset);
+    field.session.select(span.begin, span.end);
+    field.drag = {};
+    if (arm) field.drag = {unit, span, field.session.selection};
+    return {};
+}
+Result detail::UiState::select_word(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::word, false); }
+Result detail::UiState::select_paragraph(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::paragraph, false); }
+Result detail::UiState::double_click(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::word, true); }
+Result detail::UiState::triple_click(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::paragraph, true); }
+unsigned detail::UiState::count_click(const Id& id, int x, int y) {
+    if (!click_clock_) return 1;
+    const std::uint64_t now = click_clock_();
+    const bool continues = click_run_.count > 0 && click_run_.count < 3 && click_run_.id == id && now >= click_run_.time &&
+        now - click_run_.time <= click_settings_.interval_ms &&
+        std::abs(x - click_run_.x) <= click_settings_.width / 2 && std::abs(y - click_run_.y) <= click_settings_.height / 2;
+    if (continues) { ++click_run_.count; click_run_.time = now; }
+    else click_run_ = {id, x, y, now, 1};
+    return click_run_.count;
+}
+Result detail::UiState::text_pointer_down(std::string_view id, TextHit caret, unsigned cell, int x, int y, bool extend) {
+    OperationScope operation(this);
+    const unsigned count = count_click(Id(id), x, y);
+    if (count == 2) return double_click(id, cell);
+    if (count == 3) return triple_click(id, cell);
+    auto it = edits_.find(id);
+    const unsigned anchor = extend && it != edits_.end() ? it->second.session.selection.anchor : caret.offset;
+    return select_pointer(id, anchor, caret.offset, caret.upstream);
+}
+Result detail::UiState::text_pointer_drag(std::string_view id, TextHit caret, unsigned cell) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    auto& field = it->second;
+    auto& drag = field.drag;
+    const auto& selection = field.session.selection;
+    const bool armed = drag.unit != Field::UnitDrag::Unit::character && drag.last.anchor == selection.anchor && drag.last.caret == selection.caret;
+    if (!armed) return select_pointer(id, selection.anchor, caret.offset, caret.upstream);
+    if (auto result = available(id); !result) return result;
+    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    const auto& text = field.session.text;
+    cell = std::min<unsigned>(cell, static_cast<unsigned>(text.size()));
+    const TextSpan span = drag.unit == Field::UnitDrag::Unit::word ? word_span(text, words_of(field), cell) : paragraph_span(text, cell);
+    // The unit first selected always stays inside the selection; the pointer decides which side grows.
+    const bool before = span.begin < drag.origin.begin;
+    const auto kept = drag;
+    field.session.select(before ? kept.origin.end : kept.origin.begin, before ? span.begin : std::max(span.end, kept.origin.end));
+    field.drag = kept;
+    field.drag.last = field.session.selection;
+    return {};
+}
+void detail::UiState::end_text_drag() {
+    OperationScope operation(this);
+    for (auto& [id, field] : edits_) field.drag = {};
 }
 Result detail::UiState::invoke(std::string_view id) {
     OperationScope operation(this);
@@ -2193,6 +3219,12 @@ Result detail::UiState::focusable(const Control& control) const {
 void detail::UiState::set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height) {
     text_scrolls_.insert_or_assign(std::move(id), TextScroll{&state, maximum, std::max(1, line_height)});
 }
+void detail::UiState::set_vertical_scroll(const Id& id, int maximum, int column_width) {
+    text_scrolls_.insert_or_assign(id, TextScroll{&vertical_scrolls_[id], maximum, std::max(1, column_width), true});
+}
+void detail::UiState::clear_vertical_scroll(const Id& id) {
+    if (auto it = text_scrolls_.find(id); it != text_scrolls_.end() && it->second.horizontal) text_scrolls_.erase(it);
+}
 std::vector<Id> detail::UiState::focus_order() const {
     std::vector<Id> order;
     for (const auto& control : controls_)
@@ -2206,7 +3238,8 @@ Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
     if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
-    key_armed_.clear(); pointer_armed_.clear();
+    if (menu_ && next != menu_->target) close_menu();
+    key_armed_.clear(); pointer_armed_.clear(); end_slider_drag(false);
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
         auto preedit = edits_.at(composing_).session.preedit;
@@ -2276,7 +3309,6 @@ Result detail::UiState::focus(std::string_view id) {
     const auto* control = find(id);
     if (auto result = available(id); !result) return result;
     if (auto result = focusable(*control); !result) return result;
-    pointer_focus_ = false;
     refresh_tooltips();
     return move_focus(control->id);
 }
@@ -2301,7 +3333,12 @@ Result detail::UiState::key_down(KeyPress key) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
+    // A key that uses the keyboard shows the focus indicator. A modifier on its own does not (code review 2026-11-12,
+    // item 2): Ctrl chords, a lone Alt, and the F10 that only closes an open menu all leave the state alone.
+    const bool modifier_only = key.ctrl || key.key == Key::alt || (key.key == Key::f10 && menu_);
+    if (!modifier_only && !keyboard_cues_) { keyboard_cues_ = true; focus_cues_changed(); }
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
+    if (menu_) return menu_key_down(key);  // an open context menu owns the keyboard
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
             if (tip.visible) {
@@ -2317,8 +3354,6 @@ Result detail::UiState::key_down(KeyPress key) {
         return settle_dialog(active_dialog_, false);
     }
     if (key.key == Key::tab) {
-        pointer_focus_ = false;
-        refresh_tooltips();
         auto order = focus_order();
         if (order.empty()) return {Status::not_found, u"沒有可聚焦的元件"};
         auto it = std::find(order.begin(), order.end(), focus_);
@@ -2327,6 +3362,10 @@ Result detail::UiState::key_down(KeyPress key) {
         index = (index + (key.shift ? -1 : 1) + n) % n;
         return move_focus(order[static_cast<std::size_t>(index)]);
     }
+    if ((key.key == Key::menu || (key.key == Key::f10 && key.shift)) && !key.ctrl) {
+        if (key.repeat || focus_.empty()) return {};
+        return open_menu(focus_, std::nullopt, std::nullopt);
+    }
     const auto* control = find(focus_);
     if (control) {
         if (auto result = available(focus_); !result) return result;
@@ -2334,7 +3373,11 @@ Result detail::UiState::key_down(KeyPress key) {
             auto& scroll = it->second;
             int next = scroll.state->offset;
             bool handled = true;
-            if (key.key == Key::up) next -= scroll.line_height;
+            // Sideways text: the offset counts from the start (right edge), so Left reads on, Right reads back.
+            if (scroll.horizontal && key.key == Key::left) next += scroll.line_height;
+            else if (scroll.horizontal && key.key == Key::right) next -= scroll.line_height;
+            else if (scroll.horizontal && (key.key == Key::up || key.key == Key::down)) handled = false;
+            else if (key.key == Key::up) next -= scroll.line_height;
             else if (key.key == Key::down) next += scroll.line_height;
             else if (key.key == Key::home) next = 0;
             else if (key.key == Key::end) next = scroll.maximum;
@@ -2347,8 +3390,15 @@ Result detail::UiState::key_down(KeyPress key) {
         }
         bool handled = false;
         if (control->kind == Kind::text) {
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y') :
-                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del);
+            // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
+            const bool multi = control->multiline;
+            // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
+            const bool style_key = control->rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
+                                  (!key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) ||
+                                  (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
+                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
+                 (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
         } else if (!key.ctrl || !key.letter) {
             switch (control->kind) {
             case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
@@ -2406,17 +3456,29 @@ Result detail::UiState::edit_key(KeyPress key) {
     if (session.composing) return {Status::busy, u"組字中，按鍵交由輸入法處理"};
     const auto size = static_cast<unsigned>(session.text.size());
     auto move = [&](unsigned pos) { session.select(key.shift ? session.selection.anchor : pos, pos); return Result{}; };
+    const bool multi = find(focus_)->multiline;
+    if (multi && key.ctrl && !key.letter && (key.key == Key::home || key.key == Key::end)) return move(key.key == Key::home ? 0 : size);
+    // Ctrl+arrows and Ctrl+Backspace/Delete go by words: the stops a double click's words define (#83).
+    if (key.ctrl && !key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) {
+        const bool forward = key.key == Key::right || key.key == Key::del;
+        if (key.key == Key::left || key.key == Key::right)
+            return move(next_word_stop(session.text, words_of(edits_.at(focus_)), session.selection.caret, forward));
+        Field* field = nullptr;
+        if (auto result = writable(focus_, field); !result) return result;
+        if (session.begin() == session.end())
+            session.select(session.selection.caret, next_word_stop(session.text, words_of(*field), session.selection.caret, forward));
+        if (session.begin() == session.end()) return {};
+        return replace_selection(focus_, *field, u"");
+    }
     if (key.ctrl) {
         if (key.letter == u'Z') return travel(focus_, key.shift);
         if (key.letter == u'Y') return travel(focus_, true);
         if (key.letter == u'A') { session.select(0, size); return {}; }
         if (key.letter == u'C') return copy(focus_);
         if (key.letter == u'X') return cut(focus_);
-        if (key.letter == u'V') {
-            if (!clipboard_) return {Status::not_supported, u"\u526a\u8cbc\u7c3f\u4e0d\u53ef\u7528"};
-            auto content = clipboard_->read();
-            return content ? paste(focus_, *content) : Result{content.status, content.message};
-        }
+        if (is_rich(focus_) && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U'))
+            return toggle_style(focus_, key.letter == u'B' ? StyleAttribute::bold : key.letter == u'I' ? StyleAttribute::italic : StyleAttribute::underline);
+        if (key.letter == u'V') return paste_clipboard(focus_);
         return {};
     }
     switch (key.key) {
@@ -2426,19 +3488,87 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (!key.shift && session.begin() != session.end()) return move(direction < 0 ? session.begin() : session.end());
         return move(step(session.text, session.selection.caret, direction));
     }
-    case Key::home: return move(0);
-    case Key::end: return move(size);
+    case Key::home: return multi ? move_line_edge(focus_, false, key.shift) : move(0);
+    case Key::end: return multi ? move_line_edge(focus_, true, key.shift) : move(size);
+    case Key::up: case Key::down:
+        return multi ? move_lines(focus_, key.key == Key::up ? -1 : 1, 1, key.shift) : Result{};
+    case Key::page_up: case Key::page_down:
+        return multi ? move_lines(focus_, key.key == Key::page_up ? -1 : 1, find(focus_)->visible_lines, key.shift) : Result{};
+    case Key::enter: {
+        if (!find(focus_)->multiline) return {};
+        Field* field = nullptr;
+        if (auto result = writable(focus_, field); !result) return result;
+        return replace_selection(focus_, *field, u"\n");
+    }
     case Key::backspace:
     case Key::del: {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
         if (session.begin() == session.end())
             session.select(session.selection.caret, step(session.text, session.selection.caret, key.key == Key::del ? 1 : -1));
-        if (session.begin() == session.end()) return {};
-        return replace_selection(focus_, *field, u"");
+        return delete_selection(focus_);  // the Delete menu item runs the same path
     }
     default: return {};
     }
+}
+// The lines cursor keys move over: the last arrange's when they still describe the text, else a fresh
+// arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
+FieldView detail::UiState::vertical_view(const Id& id) {
+    auto& field = edits_.find(id)->second;
+    auto fresh = [&] {
+        return field.multi.placed && field.multi.revision == layout_revision_ && field.multi.text == field.session.visible() &&
+               field.multi.styles == visible_style_spans(id);
+    };
+    if (!fresh() && relayout_) relayout_();
+    FieldView view;
+    if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
+    const auto& text = field.session.text;
+    for (std::size_t start = 0;;) {
+        auto end = text.find(u'\n', start);
+        FieldLine line;
+        line.begin = static_cast<unsigned>(start);
+        line.end = static_cast<unsigned>(end == std::u16string::npos ? text.size() : end);
+        line.run.stops.push_back({0, 0.f});
+        for (unsigned i = 1; i <= line.end - line.begin; ++i) line.run.stops.push_back({i, static_cast<float>(i)});
+        line.run.width = static_cast<float>(line.end - line.begin);
+        view.lines.push_back(std::move(line));
+        if (end == std::u16string::npos) break;
+        start = end + 1;
+    }
+    view.visible = find(id)->visible_lines;
+    view.upstream = field.session.caret_upstream;
+    return view;
+}
+Result detail::UiState::move_line_edge(const Id& id, bool end, bool shift) {
+    OperationScope operation(this);
+    auto view = vertical_view(id);
+    auto& session = edits_.find(id)->second.session;
+    const auto& line = view.lines[view.line_of(session.selection.caret)];
+    const unsigned target = end ? line.end : line.begin;
+    session.select(shift ? session.selection.anchor : target, target);
+    session.caret_upstream = end && line.soft;  // the caret stays on the line it was moved to the end of
+    return {};
+}
+Result detail::UiState::move_lines(const Id& id, int direction, unsigned count, bool shift) {
+    OperationScope operation(this);
+    auto& field = edits_.find(id)->second;
+    auto& session = field.session;
+    auto view = vertical_view(id);
+    const unsigned from = view.line_of(session.selection.caret);
+    const bool real = field.multi.placed && field.multi.text == session.visible();
+    // One run of Up/Down presses keeps the column it started at.
+    if (field.multi.want_from != session.selection.caret || !real) field.multi.want_x = view.x_in_line(from, session.selection.caret);
+    const long target = std::clamp(static_cast<long>(from) + static_cast<long>(direction) * static_cast<long>(count), 0L, static_cast<long>(view.lines.size()) - 1);
+    if (target == static_cast<long>(from)) return {};
+    auto [offset, upstream] = view.hit_in_line(static_cast<unsigned>(target), field.multi.want_x);
+    session.select(shift ? session.selection.anchor : offset, offset);
+    session.caret_upstream = upstream;
+    field.multi.want_from = real ? offset : ~0u;
+    if (count > 1 && real) {  // a page key moves the view as far as the caret moved
+        const long moved = target - static_cast<long>(from);
+        scroll_lines_to(id, static_cast<unsigned>(std::max(0L, static_cast<long>(field.multi.first) + moved)));
+    }
+    return {};
 }
 Result detail::UiState::key_up(Key key) {
     OperationScope operation(this);
@@ -2448,6 +3578,7 @@ Result detail::UiState::key_up(Key key) {
 }
 Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
+    pointer_pressed();
     if (auto result = available(id); !result) return result;
     const auto* control = find(id);
     if (auto result = focusable(*control); !result) return result;
@@ -2456,7 +3587,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
     }
-    pointer_focus_ = true;
+    end_slider_drag(false);
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
     // Focus notifications can remove, disable, hide, or add controls. Revalidate and
@@ -2481,7 +3612,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
-    auto armed = std::exchange(pointer_armed_, {});
+    auto armed = std::exchange(pointer_armed_, {}); end_slider_drag(true);
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
@@ -2509,7 +3640,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     return invoke(armed);
 }
 void detail::UiState::cancel_input() {
-    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
+    OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(false); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
@@ -2524,6 +3655,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Control*>(find(id));
     if (!control) return;
     control->enabled = enabled;
+    if (!enabled && menu_ && menu_->target == id) close_menu();
     if (!enabled && popup_source_ == id) close_popup();
     if (!enabled && focus_ == control->id) move_focus({});
     refresh_tooltips();
@@ -2537,17 +3669,23 @@ void detail::UiState::check(std::string_view id, bool checked) {
     if (auto* control = const_cast<Control*>(find(id))) control->checked = checked;
 }
 void detail::UiState::replace_text(std::string_view id, std::u16string value) {
+    replace_rich(id, RichText{std::move(value), {}});
+}
+void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     OperationScope operation(this);
     auto* control = const_cast<Control*>(find(id));
     auto it = edits_.find(id);
-    if (!control || it == edits_.end() || !valid_single_line(value, control->max_length)) throw std::invalid_argument("Invalid owner refresh");
+    if (!control || it == edits_.end() || !valid_value(*control, rich.text)) throw std::invalid_argument("Invalid owner refresh");
     if (composing_ == control->id) composition_cancel();
     auto& field = it->second;
     field.session.cancel_composition();
-    if (field.session.text != value) ++field.session.revision;
-    field.session.text = std::move(value);
+    if (field.session.text != rich.text || field.spans != rich.spans) ++field.session.revision;
+    field.session.text = std::move(rich.text);
+    field.spans = field.rich ? std::move(rich.spans) : std::vector<StyleSpan>{};
+    field.typing.reset();
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
+    field.multi.first = field.multi.anchor = 0; field.multi.caret = ~0u; field.multi.pending_first.reset();  // show the caret afresh
 }
 Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
@@ -2584,36 +3722,48 @@ const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnos
 Query<TextHandle> Ui::add_text(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ButtonHandle> Ui::add_button(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<LabelHandle> Ui::add_label(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<CheckboxHandle> Ui::add_checkbox(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
     try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
@@ -2621,30 +3771,40 @@ Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
 Query<ProgressHandle> Ui::add_progress(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<NavigationListHandle> Ui::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
     try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
@@ -2681,7 +3841,24 @@ Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmFi
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
+Query<bool> Ui::animating() const { return state_->animating(); }
+Query<std::optional<HoverTarget>> Ui::hover() const { return state_->hover_query(); }
+Result Ui::simulate_hover(const ComponentHandle& target, std::optional<OptionValue> item) {
+    auto id = state_->layout_id(target);
+    if (!id) return {Status::not_found, u"Component no longer exists"};
+    return state_->simulate_hover(*id, item);
+}
+Result Ui::clear_simulated_hover() { return state_->clear_simulated_hover(); }
 const PresentationSettings& Ui::presentation() const { return state_->presentation(); }
+Result Ui::set_palette_overrides(std::vector<PaletteOverride> overrides) { return state_->set_palette_overrides(std::move(overrides)); }
+const std::vector<PaletteOverride>& Ui::palette_overrides() const { return state_->palette_overrides(); }
+Query<Palette> Ui::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
+    if (!appearance.supports(variant)) return {Status::invalid_value, u"Appearance does not support this theme variant", {}};
+    return {Status::ok, {}, state_->effective_palette(appearance, variant)};
+}
+void Ui::bind_appearance(const Appearance* appearance) { state_->bind_appearance(appearance); }
+
+bool Ui::focus_indicator_visible() const { return state_->focus_indicator_visible(); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
 const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
@@ -2726,8 +3903,9 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         if (p.tooltip) {
             auto id = tooltip_ids_.find(p.id);
             if (id != tooltip_ids_.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semantic_bounds_[id->second] = r; }
-        } else store(p);
+        } else if (!p.menu) store(p);
     }
+    menu_frame(frame);
     if (frame.modal && !active_dialog_.empty()) semantic_bounds_[active_dialog_] = frame.modal_panel;
 #ifndef NDEBUG
     for (const auto& id : semantic_order_) {
@@ -2760,6 +3938,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
+    if (auto menu = u.menu_node(ref)) return *menu;
     auto c = u.find(ref.id);
     if (!c) {
         auto overlay = u.overlay_ids_.find(ref.id);
@@ -2805,6 +3984,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
                 case Key::down: n.accelerator_key += u"Down"; break;
                 case Key::home: n.accelerator_key += u"Home"; break;
                 case Key::end: n.accelerator_key += u"End"; break;
+                case Key::page_up: n.accelerator_key += u"PageUp"; break;
+                case Key::page_down: n.accelerator_key += u"PageDown"; break;
                 case Key::backspace: n.accelerator_key += u"Backspace"; break;
                 case Key::del: n.accelerator_key += u"Delete"; break;
                 default: break;
@@ -2814,16 +3995,28 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         }
     }
     if (n.role == Role::label) n.name = s.value;
-    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
+    // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
+    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
+    if (c->kind == Kind::label) { n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; }
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
+    if (edit != u.edits_.end() && edit->second.rich) {
+        n.rich = true; n.styles = edit->second.spans;
+        n.typing_style = u.insertion_style(edit->second, edit->second.session.begin(), edit->second.session.end());
+    }
+    if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
+    n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
+    if (edit != u.edits_.end() && !ref.item) {
+        n.word_segmentation = edit->second.segmentation;
+        n.word_segmentation_in_use = segmentation_in_use(edit->second.segmentation, u.dictionary());
+    }
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -2833,7 +4026,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         else if (c->kind == Kind::tabs) n.role = Role::tab_item;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
-        n.focused = n.role == Role::list_item && s.focused && s.candidate && *s.candidate == *ref.item;
+        n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
@@ -2841,10 +4034,14 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
         auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
+        add(Verb::set_writing_mode, !ref.item && c->kind == Kind::label);
+        add(Verb::set_vertical_digits, !ref.item && c->kind == Kind::label);
         if (ref.item) {
             add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
             add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
+            add(Verb::context_menu, n.role == Role::list_item && u.has_menu(*c) && !u.renderer_failed_);
         } else {
+            add(Verb::context_menu, u.has_menu(*c) && !u.renderer_failed_);
             add(Verb::focus, admits(Operation::focus));
             add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
             add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
@@ -2857,6 +4054,12 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::copy, n.role == Role::text && admits(Operation::copy));
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
+            add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
+            for (auto flow : {Verb::set_text_align, Verb::set_justify_method, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
+            add(Verb::set_style, n.role == Role::text && admits(Operation::style));
+            add(Verb::set_typing_style, n.role == Role::text && admits(Operation::style));
+            for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+                add(word_verb, n.role == Role::text && admits(Operation::select));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -2871,6 +4074,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
+    if (auto menu = u.menu_children(parent)) return {Status::ok, {}, *menu};
     std::vector<NodeRef> result;
     if (parent.id.empty() && !parent.item) {
         for (const auto& c : u.controls_) if (c.page != "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
@@ -2889,9 +4093,45 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
                 if (std::find(members.begin(), members.end(), c.id) != members.end() && !u.removal_pending(c.id)) result.push_back({c.id});
         } else if (!parent.item) {
             auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
+            if (u.menu_ && u.menu_->target == parent.id) result.push_back({menu_node_id(parent.id)});
         }
     }
     return {Status::ok, {}, result};
+}
+Query<bool> SemanticTree::animating() const { return state_->animating(); }
+Query<Palette> SemanticTree::effective_palette() const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
+    return {Status::ok, {}, u.effective_palette(*u.bound_appearance())};
+}
+Query<std::optional<NodeRef>> SemanticTree::hover() const {
+    auto target = state_->hover_query();
+    if (!target) return {target.status, target.message, std::nullopt};
+    if (!*target) return {Status::ok, {}, std::optional<NodeRef>{}};
+    return {Status::ok, {}, std::optional<NodeRef>{NodeRef{(*target)->id, (*target)->item}}};
+}
+Result SemanticTree::clear_simulated_hover() { return state_->clear_simulated_hover(); }
+Query<Color> SemanticTree::text_color(const NodeRef& ref, std::string_view name) const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    if (ref.item || !u.find(ref.id) || u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
+    if (!u.is_rich(ref.id)) return {Status::not_supported, u"Not a rich text field", {}};
+    if (auto named = u.named_color(ref.id, name)) return {Status::ok, {}, *named};
+    if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
+    return {Status::ok, {}, u.effective_palette(*u.bound_appearance()).text};
+}
+Query<TextSpan> SemanticTree::text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const {
+    auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
+    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    return unit == TextUnitKind::word ? state_->word_at(id, offset) : state_->paragraph_at(id, offset);
+}
+Query<unsigned> SemanticTree::word_stop(std::string_view id, unsigned offset, bool forward) const {
+    auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
+    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    return state_->word_stop(id, offset, forward);
 }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
@@ -2921,8 +4161,15 @@ void detail::UiState::semantic_diff() {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
         return i == nodes.end() ? nullptr : &*i;
     };
-    for (const auto& old : semantic_before_) if (!find(after, old.ref))
-        emit(SemanticEventKind::structure_changed, old.ref.item ? NodeRef{old.ref.id} : NodeRef{});
+    // A menu's structure changes belong to the component that owns it.
+    auto owner_of = [](const NodeRef& ref) -> NodeRef {
+        if (auto target = menu_target_id(ref.id)) return NodeRef{*target};
+        return ref.item ? NodeRef{ref.id} : NodeRef{};
+    };
+    for (const auto& old : semantic_before_) if (!find(after, old.ref)) {
+        if (old.role == Role::menu) emit(SemanticEventKind::menu_closed, old.ref);
+        emit(SemanticEventKind::structure_changed, owner_of(old.ref));
+    }
     for (const auto& node : after) if (!node.ref.item) {
         std::vector<NodeRef> before_items, after_items;
         for (const auto& old : semantic_before_) if (old.ref.item && old.ref.id == node.ref.id) before_items.push_back(old.ref);
@@ -2931,7 +4178,12 @@ void detail::UiState::semantic_diff() {
     }
     for (const auto& node : after) {
         auto old = find(semantic_before_, node.ref);
-        if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }
+        if (!old) {
+            if (node.role == Role::menu) emit(SemanticEventKind::menu_opened, node.ref);
+            emit(SemanticEventKind::structure_changed, node.role == Role::menu ? owner_of(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
+            if (node.role == Role::menu_item && node.focused) emit(SemanticEventKind::focus_changed, node.ref);
+            continue;
+        }
         if (node.hidden != old->hidden) {
             if (node.role == Role::dialog || node.role == Role::tooltip)
                 emit(SemanticEventKind::property_changed, node.ref, "hidden", node.hidden);
@@ -2948,6 +4200,16 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.text_align != old->text_align, "text_align"); property(node.justify_method != old->justify_method, "justify_method");
+        property(node.line_spacing != old->line_spacing, "line_spacing");
+        property(node.paragraph_spacing != old->paragraph_spacing, "paragraph_spacing");
+        property(node.styles != old->styles, "styles"); property(node.typing_style != old->typing_style, "typing_style");
+        property(node.word_segmentation != old->word_segmentation, "word_segmentation");
+        if (node.scroll && old->scroll) {
+            property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
+            property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
+        }
+        property(node.writing_mode != old->writing_mode, "writing_mode"); property(node.vertical_digits != old->vertical_digits, "vertical_digits");
         if (node.role == Role::text && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
         if (node.text_selection && old->text_selection && (node.text_selection->anchor != old->text_selection->anchor || node.text_selection->caret != old->text_selection->caret))
             emit(SemanticEventKind::text_selection_changed, node.ref);
@@ -2984,6 +4246,27 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->renderer_failed_) return {Status::renderer_failed, {}};
+    if (node->role == Role::menu) return verb == Verb::cancel ? state_->close_menu() : Result{Status::not_supported, {}};
+    if (node->role == Role::menu_separator) return {Status::not_supported, {}};
+    if (node->role == Role::menu_item) {
+        if (verb == Verb::invoke) return state_->menu_execute(ref.item->id);
+        if (verb == Verb::focus || verb == Verb::hover) return state_->menu_highlight(ref.item->id);  // a menu row's hover is its highlight
+        return {Status::not_supported, {}};
+    }
+    if (verb == Verb::set_writing_mode || verb == Verb::set_vertical_digits) {
+        if (ref.item || node->role != Role::label) return {Status::not_supported, {}};
+        if (auto result = state_->available(ref.id); !result) return result;  // hidden, or behind a modal dialog
+        auto handle = state_->layout_handle(ref.id);
+        const auto& label = std::get<LabelHandle>(handle);
+        if (verb == Verb::set_writing_mode) {
+            if (const auto* mode = std::get_if<WritingMode>(&argument)) return label.set_writing_mode(*mode);
+        } else if (const auto* digits = std::get_if<int>(&argument)) return label.set_vertical_digits(*digits);
+        return {Status::invalid_value, {}};
+    }
+    if (verb == Verb::hover) {
+        if (node->role == Role::dialog || node->role == Role::tooltip) return {Status::not_supported, {}};
+        return state_->simulate_hover(ref.id, ref.item);
+    }
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
@@ -2991,6 +4274,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
             return {Status::busy, {}};
         return {Status::invalid_value, {}};
     };
+    if (verb == Verb::context_menu) {
+        std::optional<MenuPosition> at; std::optional<OptionValue> item = ref.item;
+        if (auto position = std::get_if<MenuPosition>(&argument)) at = *position;
+        else if (auto value = std::get_if<OptionValue>(&argument)) item = *value;
+        else if (!std::holds_alternative<std::monostate>(argument)) return invalid_argument();
+        return state_->open_menu(ref.id, at, std::move(item));
+    }
     if (!ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) &&
         (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
         return invalid_argument();
@@ -3002,8 +4292,45 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_justify_method || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
+        // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
+        if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
+        if (verb == Verb::set_text_align) {
+            if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
+        } else if (verb == Verb::set_justify_method) {
+            if (auto method = std::get_if<JustifyMethod>(&argument)) return state_->set_justify_method(ref.id, *method);
+        } else if (verb == Verb::set_line_spacing) {
+            if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
+        } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::scroll) {
+        if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
+        if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
+        return invalid_argument();
+    }
+    if (node->role == Role::text && (verb == Verb::select_word || verb == Verb::select_paragraph || verb == Verb::double_click || verb == Verb::triple_click)) {
+        auto offset = std::get_if<int>(&argument);
+        if (!offset || *offset < 0) return invalid_argument();
+        const auto at = static_cast<unsigned>(*offset);
+        return verb == Verb::select_word ? state_->select_word(ref.id, at) : verb == Verb::select_paragraph ? state_->select_paragraph(ref.id, at)
+             : verb == Verb::double_click ? state_->double_click(ref.id, at) : state_->triple_click(ref.id, at);
+    }
+    if (node->role == Role::text && verb == Verb::set_word_segmentation) {
+        if (auto mode = std::get_if<WordSegmentation>(&argument)) return state_->set_word_segmentation(ref.id, *mode);
+        return invalid_argument();
+    }
     if (node->role == Role::text && verb == Verb::set_value) {
         if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
+        if (auto value = std::get_if<RichText>(&argument)) return state_->set_rich_value(ref.id, *value);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_style) {
+        if (auto edit = std::get_if<StyleEdit>(&argument)) return state_->set_style(ref.id, edit->begin, edit->end, edit->change);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_typing_style) {
+        if (auto style = std::get_if<TextStyle>(&argument)) return state_->set_typing_style(ref.id, *style);
         return invalid_argument();
     }
     if (node->role == Role::text) {

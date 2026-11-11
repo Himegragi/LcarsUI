@@ -4,6 +4,7 @@
 #include "desktop_host.hpp"
 #include "uia_provider.hpp"
 #include <windowsx.h>
+#include <dwmapi.h>
 #include <imm.h>
 #include <objbase.h>
 #include <UIAutomation.h>
@@ -17,8 +18,50 @@
 
 namespace lcars::detail {
 namespace {
+bool system_keyboard_cues() {
+    BOOL on = FALSE;
+    return SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &on, 0) && on;
+}
 const wchar_t* window_class = L"LcarsUI.DesktopHost";
 constexpr UINT_PTR tooltip_timer = 1;
+constexpr UINT_PTR drag_scroll_timer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
+constexpr UINT_PTR animation_timer = 3;    // distinct from the other timer ids: they run side by side
+constexpr UINT animation_frame_ms = 16;
+std::uint64_t animation_now_ms() {
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+// Windows "Show animations in Windows" (SPI_GETCLIENTAREAANIMATION). When it cannot be read, the
+// Windows default (on) applies.
+bool system_client_animations() {
+    BOOL enabled = TRUE;
+    return !SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0) || enabled != FALSE;
+}
+bool cloaked(HWND window) {
+    BOOL value = FALSE;
+    return SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &value, sizeof(value))) && value;
+}
+// Best effort: one visible, opaque, unshaped window above ours covers all of our client area.
+// A window covered by several smaller ones, or by a see-through one, still counts as visible.
+bool covered_by_another_window(HWND window) {
+    RECT client{};
+    if (!GetClientRect(window, &client)) return false;
+    POINT top_left{client.left, client.top}, bottom_right{client.right, client.bottom};
+    ClientToScreen(window, &top_left); ClientToScreen(window, &bottom_right);
+    if (bottom_right.x <= top_left.x || bottom_right.y <= top_left.y) return false;
+    for (HWND above = GetWindow(window, GW_HWNDPREV); above; above = GetWindow(above, GW_HWNDPREV)) {
+        if (!IsWindowVisible(above) || IsIconic(above)) continue;
+        if (GetWindowLongPtrW(above, GWL_EXSTYLE) & (WS_EX_TRANSPARENT | WS_EX_LAYERED)) continue;
+        if (cloaked(above)) continue;
+        HRGN shape = CreateRectRgn(0, 0, 0, 0);
+        const bool shaped = shape && GetWindowRgn(above, shape) != ERROR;
+        if (shape) DeleteObject(shape);
+        if (shaped) continue;
+        RECT bounds{};
+        if (FAILED(DwmGetWindowAttribute(above, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds))) && !GetWindowRect(above, &bounds)) continue;
+        if (bounds.left <= top_left.x && bounds.top <= top_left.y && bounds.right >= bottom_right.x && bounds.bottom >= bottom_right.y) return true;
+    }
+    return false;
+}
 
 Key map_key(WPARAM vk) {
     switch (vk) {
@@ -32,8 +75,13 @@ Key map_key(WPARAM vk) {
     case VK_DOWN: return Key::down;
     case VK_HOME: return Key::home;
     case VK_END: return Key::end;
+    case VK_PRIOR: return Key::page_up;
+    case VK_NEXT: return Key::page_down;
     case VK_BACK: return Key::backspace;
     case VK_DELETE: return Key::del;
+    case VK_APPS: return Key::menu;
+    case VK_F10: return Key::f10;
+    case VK_MENU: return Key::alt;
     default: return Key::other;
     }
 }
@@ -82,21 +130,69 @@ bool open_clipboard(HWND window) {
 }
 }
 
-bool WindowsClipboard::write(std::u16string_view text) {
-    if (!open_clipboard(window_)) return false;
+namespace {
+UINT rich_format() {
+    static const UINT format = RegisterClipboardFormatW(L"LcarsUI.RichText.1");
+    return format;
+}
+HGLOBAL global_text(std::u16string_view text) {
     auto memory = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(char16_t));
+    if (!memory) return nullptr;
+    auto data = static_cast<char16_t*>(GlobalLock(memory));
+    if (!data) { GlobalFree(memory); return nullptr; }
+    std::memcpy(data, text.data(), text.size() * sizeof(char16_t));
+    data[text.size()] = 0;
+    GlobalUnlock(memory);
+    return memory;
+}
+HGLOBAL global_bytes(std::string_view bytes) {  // NUL-terminated: a global block may be larger than asked for
+    auto memory = GlobalAlloc(GMEM_MOVEABLE, bytes.size() + 1);
+    if (!memory) return nullptr;
+    auto data = static_cast<char*>(GlobalLock(memory));
+    if (!data) { GlobalFree(memory); return nullptr; }
+    std::memcpy(data, bytes.data(), bytes.size());
+    data[bytes.size()] = 0;
+    GlobalUnlock(memory);
+    return memory;
+}
+}
+bool WindowsClipboard::write(std::u16string_view text) { return write_rich(text, {}); }
+// One clipboard transaction: the plain text and, for a copy from a rich field, the private payload beside it.
+// EmptyClipboard drops every older format, so a payload never outlives the text it belonged to.
+bool WindowsClipboard::write_rich(std::u16string_view text, std::string_view payload) {
+    if (!open_clipboard(window_)) return false;
+    auto memory = global_text(text);
+    auto rich = payload.empty() ? nullptr : global_bytes(payload);
     bool ok = false;
-    if (memory) {
-        if (auto data = static_cast<char16_t*>(GlobalLock(memory))) {
-            std::memcpy(data, text.data(), text.size() * sizeof(char16_t));
-            data[text.size()] = 0;
-            GlobalUnlock(memory);
-            ok = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+    if (memory && (payload.empty() || rich)) {
+        ok = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+        if (ok) memory = nullptr;  // the clipboard owns it now
+        if (ok && rich) {
+            if (SetClipboardData(rich_format(), rich) != nullptr) rich = nullptr;  // plain text still stands if only this fails
         }
-        if (!ok) GlobalFree(memory);
     }
+    if (memory) GlobalFree(memory);
+    if (rich) GlobalFree(rich);
     CloseClipboard();
     return ok;
+}
+Query<std::string> WindowsClipboard::read_rich() {
+    if (!open_clipboard(window_)) return {Status::failed, u"無法開啟剪貼簿", std::nullopt};
+    Query<std::string> result{Status::not_supported, u"No rich text", std::nullopt};
+    if (IsClipboardFormatAvailable(rich_format())) {
+        result = {Status::failed, u"Cannot read rich text", std::nullopt};
+        if (auto memory = GetClipboardData(rich_format())) {
+            if (auto data = static_cast<const char*>(GlobalLock(memory))) {
+                const auto size = GlobalSize(memory);
+                std::size_t n = 0;
+                while (n < size && data[n]) ++n;
+                if (n < size) result = {Status::ok, {}, std::string(data, n)};
+                GlobalUnlock(memory);
+            }
+        }
+    }
+    CloseClipboard();
+    return result;
 }
 Query<std::u16string> WindowsClipboard::read() {
     if (!open_clipboard(window_)) return {Status::failed, u"\u7121\u6cd5\u958b\u555f\u526a\u8cbc\u7c3f", std::nullopt};
@@ -122,6 +218,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
     hooks_ = hooks; debug_context_ = options.debug_context;
+    text_.set_styled_lookup(system_styled_font_file);
     configure_font(ui.presentation().font_family);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -150,8 +247,16 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
+        detail::access(ui_).bind_appearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
+        detail::access(ui_).animation_time(animation_now_ms);
+        refresh_system_animations();
+        detail::access(ui_).set_click_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
+        refresh_visibility();
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
+        detail::access(ui_).on_relayout([this] { relayout(); });
         detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
         detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlas_text_size_ = ui_.presentation().text_size;
@@ -209,7 +314,8 @@ Result DesktopHost::rebuild_renderer() {
 }
 void DesktopHost::fail_renderer(RendererFailure failure) {
     renderer_failure_=std::move(failure);
-    if (window_) KillTimer(window_, tooltip_timer);
+    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, animation_timer); }
+    detail::access(ui_).finish_animations();
     detail::access(ui_).renderer_failed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
@@ -241,11 +347,15 @@ void DesktopHost::release() {
         detail::access(ui_).composition_cancel();
     }
     detail::access(ui_).on_presentation({});
+    if (detail::access(ui_).bound_appearance() == &appearance_) detail::access(ui_).bind_appearance(nullptr);
     detail::access(ui_).on_invalidate({});
+    detail::access(ui_).on_relayout({});
     detail::access(ui_).on_semantic_pending({});
     detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
-    if (window_) KillTimer(window_, tooltip_timer);
+    detail::access(ui_).animation_time({});
+    detail::access(ui_).set_click_clock({});
+    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, drag_scroll_timer); KillTimer(window_, animation_timer); }
     detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
@@ -283,9 +393,25 @@ void DesktopHost::schedule_tooltip() {
         SetTimer(window_, tooltip_timer, static_cast<UINT>(std::min<std::uint64_t>(wait, USER_TIMER_MAXIMUM)), nullptr);
     }
 }
-void DesktopHost::update_hover(int x, int y) {
-    const auto* hit = frame_.hit(x, y);
-    detail::access(ui_).tooltip_hover(hit && !hit->popup ? hit->id : std::string_view{});
+void DesktopHost::refresh_system_animations() {
+    detail::access(ui_).set_system_animations(animation_reader_ ? animation_reader_() : system_client_animations());
+}
+void DesktopHost::refresh_visibility() {
+    const bool hidden = hidden_reader_ ? hidden_reader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || covered_by_another_window(window_);
+    if (hidden == hidden_) return;
+    hidden_ = hidden;
+    detail::access(ui_).set_window_hidden(hidden);  // hiding lands every running transition at once
+}
+void DesktopHost::schedule_animation() {
+    if (!window_) return;
+    if (!renderer_failure_ && !hidden_ && detail::access(ui_).animation_running()) SetTimer(window_, animation_timer, animation_frame_ms, nullptr);
+    else KillTimer(window_, animation_timer);
+}
+// Windows tags mouse messages that touch or pen input synthesizes in the message extra info.
+bool DesktopHost::touch_signature(std::uintptr_t extra_info) { return (extra_info & 0xFFFFFF00) == 0xFF515700; }
+bool DesktopHost::synthesized_by_touch() const { return touch_source_ ? touch_source_() : touch_signature(static_cast<std::uintptr_t>(GetMessageExtraInfo())); }
+void DesktopHost::update_hover(int x, int y, bool touch) {
+    detail::access(ui_).pointer_over(frame_, x, y, touch);
 }
 void DesktopHost::follow_focus() {
     if (detail::access(ui_).focused() == synced_focus_) return;
@@ -318,16 +444,18 @@ void DesktopHost::paint() {
     float s = scale();
     if(perf_enabled_ && perf_offscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
     frame_ = arrange(r.right, r.bottom, s);
+    auto after_layout=std::chrono::steady_clock::now();
     reveal_.clear();
-    RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(r.right, r.bottom, detail::access(ui_).effective_palette(appearance_).background);
     paint_observations_.clear();
     recording.count_ink = observe_paint_;
     draw(recording, frame_, s, GetFocus() == window_);
+    auto after_list=std::chrono::steady_clock::now();
     for (const auto& observation : recording.list.observations) {
         paint_observations_.push_back({static_cast<PaintObservation::Type>(observation.type), observation.owner, observation.text,
             observation.bounds, observation.clip, observation.color,
             command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
-            observation.popup, observation.tooltip});
+            observation.popup, observation.tooltip, observation.bold, observation.italic});
     }
     if(perf_enabled_ && perf_delay_) Sleep(static_cast<DWORD>(perf_delay_));
     auto before_gpu=std::chrono::steady_clock::now();
@@ -351,11 +479,15 @@ void DesktopHost::paint() {
         double age=double(n.QuadPart-c.QuadPart)/10000. - std::chrono::duration<double,std::milli>(end-presented).count();
         if(first_present_ms_<0) first_present_ms_=age;
         double cpu=std::chrono::duration<double,std::milli>(before_gpu-start).count();
-        perf_samples_.add(age-std::chrono::duration<double,std::milli>(presented-start).count(),cpu+submission+gpu);
+        double sample_age=age-std::chrono::duration<double,std::milli>(presented-start).count();
+        perf_samples_.add(sample_age,cpu+submission+gpu);
+        perf_breakdown_.add(sample_age,std::chrono::duration<double,std::milli>(after_layout-start).count(),
+            std::chrono::duration<double,std::milli>(after_list-after_layout).count(),submission+gpu);
         if(input_time_.time_since_epoch().count()) { input_present_ms_=std::chrono::duration<double,std::milli>(presented-input_time_).count(); input_time_={}; }
     }
     ++frames_;
     sync_ime();
+    schedule_animation();
     PostMessageW(window_,WM_APP+43,0,0);
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
@@ -365,7 +497,7 @@ Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, s
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     auto image = render_cpu(recording.list, width, height);
     if (copy) *copy = image;
@@ -388,7 +520,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 
 GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
     auto frame = arrange(width, height, s);
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     auto reference = render_cpu(recording.list, width, height);
     std::vector<Rect> regions;
@@ -430,16 +562,16 @@ std::string DesktopHost::renderer_name() const { return renderer_->name(); }
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
     auto frame = arrange(width, height, s);
-    Canvas old(width, height, appearance_.palette(ui_.presentation().variant).background);
+    Canvas old(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(old, frame, s, true);
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     return old.pixels == render_cpu(recording.list, width, height).pixels;
 }
 
 template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
-    const auto p = appearance_.palette(ui_.presentation().variant);
+    const auto p = detail::access(ui_).effective_palette(appearance_);
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
         Target& canvas;
@@ -449,10 +581,10 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
                      float scale, bool window_focused, Target& target, Text& text, std::vector<PaintObservation>* events)
             : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
         void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.current_role=value; }
-        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin, bool bold = false, bool italic = false) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) {
                 if (observations) canvas.list.observations.push_back({type, placement.id, std::move(text), bounds,
-                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size()});
+                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size(), bold, italic});
             }
         }
         std::size_t cursor() const {
@@ -467,13 +599,26 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             auto begin=cursor(); canvas.rounded(rect, radius, color);
             observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
+        void overlay(Rect rect, int radius, Color color, unsigned char alpha) override {
+            auto begin=cursor();
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.overlay(rect, radius, color, alpha);
+            else if (radius > 0) canvas.rounded(rect, radius, color, alpha);
+            else canvas.fill(rect, color, alpha);
+            observe(radius > 0 ? DrawObservation::Type::rounded : DrawObservation::Type::fill, {}, rect, color, begin);
+        }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
-        void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
-            auto layout = renderer.shape(value, pixels);
+        void vertical_text(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
+            auto begin=cursor();
+            renderer.draw_vertical(canvas, value, form, pixels, cell, color);
+            observe(DrawObservation::Type::text, std::u16string(value), cell, color, begin);
+        }
+        void text(std::u16string_view value, int pixels, int x, int y, Color color) override { styled_text(value, pixels, {}, x, y, color); }
+        void styled_text(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) override {
+            auto layout = renderer.shape(value, pixels, style);
             auto begin=cursor();
             renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
             observe(DrawObservation::Type::text, std::u16string(value),
-                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin);
+                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin, style.bold, style.italic);
         }
     };
     for (const auto& item : frame.items) {
@@ -488,7 +633,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         canvas.clip = intersect(region.clip, whole);
         if (region.thumb.h) {
             canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
         }
     }
     if (frame.modal) {
@@ -503,6 +648,63 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
+        if (item.menu) {
+            // The open context menu: a bordered panel, one row per item, a scrollbar when it overflows.
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id, true, false);
+            auto cursor = [&]() -> std::size_t {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+                return 0;
+            };
+            auto observe_menu = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                    if (observe_paint_ && canvas.count_ink) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
+                        canvas.clip, color, true, false, begin, canvas.list.commands.size()});
+                }
+            };
+            const int radius = static_cast<int>(appearance_.radius() * s);
+            const int border = std::max(1, static_cast<int>(std::lround(appearance_.component_presentation(ui_.presentation().density).thin * s)));
+            auto begin = cursor();
+            canvas.rounded(item.bounds, radius, p.border);
+            observe_menu(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
+            Rect panel{item.bounds.x + border, item.bounds.y + border, std::max(0, item.bounds.w - 2 * border), std::max(0, item.bounds.h - 2 * border)};
+            begin = cursor();
+            canvas.rounded(panel, radius, p.surface);
+            observe_menu(DrawObservation::Type::rounded, {}, panel, p.surface, begin);
+            canvas.clip = intersect(canvas.clip, item.menu_inner);
+            const int line = measure_.line_height(item.text_size);
+            for (const auto& row : item.menu_rows) {
+                if (row.bounds.y + row.bounds.h <= item.menu_inner.y || row.bounds.y >= item.menu_inner.y + item.menu_inner.h) continue;
+                if (row.separator) {
+                    Rect rule{row.bounds.x + item.menu_pad, row.bounds.y + row.bounds.h / 2, std::max(0, row.bounds.w - 2 * item.menu_pad), std::max(1, static_cast<int>(std::lround(s)))};
+                    begin = cursor(); canvas.fill(rule, p.border); observe_menu(DrawObservation::Type::fill, {}, rule, p.border, begin);
+                    continue;
+                }
+                if (row.highlighted) {
+                    const Color fill = row.enabled ? p.selection : p.panel;
+                    begin = cursor(); canvas.fill(row.bounds, fill); observe_menu(DrawObservation::Type::fill, {}, row.bounds, fill, begin);
+                }
+                const Color color = row.enabled ? p.text : p.muted;
+                const int top = row.bounds.y + (row.bounds.h - line) / 2;
+                auto draw_text = [&](const std::u16string& value, int x, Color paint_color) {
+                    auto layout = text_.shape(value, item.text_size);
+                    begin = cursor();
+                    text_.draw(canvas, layout, x, top + ShapedMeasure::baseline(item.text_size), paint_color);
+                    observe_menu(DrawObservation::Type::text, value, {x, top, static_cast<int>(std::ceil(layout.width)), line}, paint_color, begin);
+                    return static_cast<int>(std::ceil(layout.width));
+                };
+                draw_text(row.label, row.bounds.x + item.menu_pad, color);
+                if (!row.hint.empty()) {
+                    const int width = static_cast<int>(std::ceil(text_.shape(row.hint, item.text_size).width));
+                    draw_text(row.hint, row.bounds.x + row.bounds.w - item.menu_pad - width, p.muted);
+                }
+            }
+            if (item.menu_thumb.h) {
+                canvas.rounded(item.menu_track, item.menu_track.w / 2, p.panel);
+                canvas.rounded(item.menu_thumb, item.menu_thumb.w / 2, p.outline);
+            }
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
+            continue;
+        }
         if (item.tooltip) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,true,true);
             auto observe_tooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
@@ -543,7 +745,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         if (item.dropdown_panel) for (const auto& region : frame.regions) {
             if (region.state != &detail::access(ui_).dropdown_scroll(item.id) || !region.thumb.h) continue;
             canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.border);
+            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
         }
     }
     canvas.clip = whole;
@@ -592,8 +794,8 @@ void DesktopHost::sync_ime() {
     const auto* field = writable ? detail::find_placement(frame_, id) : nullptr;
     if (!field || GetFocus() != window_) return;
     const auto* session = detail::access(ui_).edit(id);
-    int x = field->caret_x(session->visible_caret());
-    int y = field->bounds.y + field->field.editor.y, h = field->field.editor.h;
+    const auto anchor = field->caret_rect(session->visible_caret());  // a wrapped line's own row in a multi-line field
+    int x = anchor.x, y = anchor.y, h = anchor.h;
     if (auto imc = ImmGetContext(window_)) {
         CANDIDATEFORM candidate{};
         candidate.dwStyle = CFS_EXCLUDE;
@@ -607,8 +809,49 @@ void DesktopHost::sync_ime() {
         ImmReleaseContext(window_, imc);
     }
 }
+// Right button released over a component: focus it, place the caret or select the row, open its menu.
+void DesktopHost::open_pointer_menu(int x, int y) {
+    auto before = detail::access(ui_).focused();
+    const auto* hit = frame_.hit(x, y);
+    if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
+    if (!hit || hit->dropdown_panel || hit->tooltip) return;
+    finish_composition();
+    std::optional<unsigned> offset;
+    if (detail::component_type(hit->kind).selects_text()) offset = detail::placement_text_offset(frame_, hit->id, x);
+    detail::access(ui_).menu_pointer_open(hit->id, frame_.option_at(*hit, x, y), offset, {x, y});
+    after_input(before);
+    if (hit->kind == Kind::list) reveal_.clear();  // the pressed row is already visible
+}
+// Extend the selection of the field being dragged; outside a multi-line field's top or bottom edge it
+// scrolls a line, and a timer repeats that while the pointer rests there.
+// Scrolling moves a composing caret's line; the input method's window must move with it.
+void DesktopHost::follow_composition() {
+    const auto* session = detail::access(ui_).edit(detail::access(ui_).focused());
+    if (!session || !session->composing) return;
+    relayout();
+    sync_ime();
+}
+void DesktopHost::relayout() {
+    RECT r{};
+    if (window_ && !painting_ && GetClientRect(window_, &r) && r.right > 0 && r.bottom > 0) frame_ = arrange(r.right, r.bottom, scale());
+}
+void DesktopHost::drag_text(int x, int y) {
+    const auto& id = detail::access(ui_).focused();
+    auto handle = detail::access(ui_).layout_handle(id);
+    if (auto* field = std::get_if<TextHandle>(&handle)) {
+        frame_.select_to(ui_, *field, x, y);
+        const auto* placed = detail::find_placement(frame_, id);
+        const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + placed->view.text.h);
+        if (outside) SetTimer(window_, drag_scroll_timer, 60, nullptr);
+        else KillTimer(window_, drag_scroll_timer);
+    }
+    sync_ime();
+    InvalidateRect(window_, nullptr, FALSE);
+}
 void DesktopHost::after_input(const Id& focus_before) {
     if (detail::access(ui_).focused() != focus_before) reveal_ = detail::access(ui_).focused();
+    // The input method anchors at the caret's wrapped line, so settle the lines this input changed first.
+    if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->multiline) relayout();
     sync_ime();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -618,6 +861,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     if (renderer_failure_ && !close_key && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
         (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || (msg >= WM_IME_STARTCOMPOSITION && msg <= WM_IME_COMPOSITION) ||
         msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_TIMER || msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE)) return 0;
+    // Whether motion may play is decided before the input that could start it (a window that was
+    // covered and is visible again sends us nothing).
+    if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN) refresh_visibility();
     if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));
     if (tracing_) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
@@ -654,7 +900,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_SIZE: InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SIZE: refresh_visibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SHOWWINDOW: case WM_WINDOWPOSCHANGED: refresh_visibility(); break;
     case WM_DPICHANGED: {
         auto r = reinterpret_cast<RECT*>(l);
         SetWindowPos(window_, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -682,10 +929,22 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         sync_ime(); InvalidateRect(window_, nullptr, FALSE); return 0;
     }
     case WM_TIMER:
+        if (w == animation_timer) {
+            KillTimer(window_, animation_timer);
+            refresh_visibility();  // covered windows are only noticed by looking
+            if (!hidden_ && detail::access(ui_).animation_running()) InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
         if (w == tooltip_timer) {
             KillTimer(window_, tooltip_timer);
             detail::access(ui_).tooltip_time(GetTickCount64());
             schedule_tooltip();
+            return 0;
+        }
+        if (w == drag_scroll_timer) {
+            POINT point{};
+            if (drag_ != Drag::text || !GetCursorPos(&point) || !ScreenToClient(window_, &point)) { KillTimer(window_, drag_scroll_timer); return 0; }
+            drag_text(point.x, point.y);
             return 0;
         }
         break;
@@ -697,40 +956,119 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_ACTIVATE:
-        if (LOWORD(w) == WA_INACTIVE) detail::access(ui_).cancel_input();
+        if (LOWORD(w) == WA_INACTIVE) {
+            detail::access(ui_).cancel_input();
+            // An interrupted slider drag returns its thumb to the value's tick.
+            if (drag_ == Drag::slider) { drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
+            detail::access(ui_).hover_release();
+        }
         break;
     case WM_CANCELMODE:
         detail::access(ui_).cancel_input();
         drag_ = Drag::none;
+        detail::access(ui_).hover_release();
         if (GetCapture() == window_) ReleaseCapture();
+        InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; }
+        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); detail::access(ui_).hover_release(); drag_ = Drag::none; KillTimer(window_, drag_scroll_timer); InvalidateRect(window_, nullptr, FALSE); }
         return 0;
     case WM_MOUSEWHEEL: {
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         ScreenToClient(window_, &point);
         int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
-        frame_.wheel(ui_, point.x, point.y, delta);
+        frame_.wheel(ui_, point.x, point.y, delta, (GET_KEYSTATE_WPARAM(w) & MK_SHIFT) != 0);
+        follow_composition();
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
-    case WM_LBUTTONDOWN: {
+    case WM_MOUSEHWHEEL: {
+        POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+        ScreenToClient(window_, &point);
+        int delta = GET_WHEEL_DELTA_WPARAM(w) * static_cast<int>(48 * scale()) / WHEEL_DELTA;
+        frame_.hwheel(ui_, point.x, point.y, delta);
+        InvalidateRect(window_, nullptr, FALSE);
+        return 0;
+    }
+    case WM_SETTINGCHANGE:  // one case for every system setting we follow (a second label would not compile)
+        refresh_system_animations();  // "Show animations in Windows"
+        // "Always underline access keys and show keyboard focus": takes effect without a restart.
+        if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
+        break;
+    case WM_RBUTTONDOWN: {
+        detail::access(ui_).pointer_pressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (detail::access(ui_).menu_open() && !frame_.menu_contains(x, y)) {
+            // A press outside only dismisses the menu; the release is swallowed with it.
+            auto before = detail::access(ui_).focused();
+            detail::access(ui_).close_menu();
+            swallow_right_ = true;
+            after_input(before);
+        }
+        return 0;
+    }
+    case WM_RBUTTONUP: {
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (std::exchange(swallow_right_, false)) return 0;
+        auto before = detail::access(ui_).focused();
+        if (detail::access(ui_).menu_open()) {
+            if (auto row = frame_.menu_item_at(x, y)) { detail::access(ui_).menu_pointer_down(*row); detail::access(ui_).menu_pointer_up(*row); }
+            after_input(before);
+            return 0;
+        }
+        open_pointer_menu(x, y);
+        return 0;
+    }
+    case WM_CONTEXTMENU: {
+        auto before = detail::access(ui_).focused();
+        if (detail::access(ui_).menu_open()) return 0;
+        if (l == -1) {
+            finish_composition();
+            detail::access(ui_).key_down({Key::menu, false, false, false, 0});
+            after_input(before);
+        } else {
+            POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            ScreenToClient(window_, &point);
+            open_pointer_menu(point.x, point.y);
+        }
+        return 0;
+    }
+    case WM_LBUTTONDOWN: {
+        detail::access(ui_).pointer_pressed();  // any press in the client area hides the indicator
+        SetFocus(window_);
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        const bool touch = synthesized_by_touch();
+        if (detail::access(ui_).menu_open()) {
+            auto before = detail::access(ui_).focused();
+            if (!frame_.menu_contains(x, y)) {
+                // Outside the menu the press only closes it: it reaches nothing underneath.
+                detail::access(ui_).close_menu();
+                swallow_left_ = true;
+            } else if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_pointer_down(*row);
+            after_input(before);
+            return 0;
+        }
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
         if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
-        if (!frame_.modal || (hit && hit->kind == Kind::dropdown && hit->popup)) {
+        {
+            // An open dialog blocks the page's scrollbars but not its own.
+            const bool popup_hit = hit && hit->kind == Kind::dropdown && hit->popup;
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
+                if (frame_.modal && !popup_hit && !it->modal_content) continue;
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
                 if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
-                drag_offset_ = it->thumb.contains(x, y) ? it->thumb.y : y - it->thumb.h / 2;
+                // A sideways-scrolling label has a horizontal bar: its thumb is dragged by x.
+                int along = it->horizontal ? x : y;
+                drag_offset_ = it->thumb.contains(x, y) ? (it->horizontal ? it->thumb.x : it->thumb.y)
+                                                        : along - (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
                 drag_scroll_ = it->state;
                 frame_.scroll_to(ui_, *drag_scroll_, it->offset_for_thumb(drag_offset_));
-                drag_ = Drag::thumb; drag_origin_ = y;
+                drag_ = Drag::thumb; drag_origin_ = along;
+                if (!touch) detail::access(ui_).hover_capture({});  // the thumb is not a component: keep what is hovered
                 SetCapture(window_);
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
@@ -738,46 +1076,58 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
+        const bool on_list = hit->kind == Kind::list;  // after_input may arrange again, which replaces the frame hit points into
         finish_composition();
         if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
             if (detail::component_type(hit->kind).selects_text()) {
-                auto offset = detail::placement_text_offset(frame_, id, x);
-                auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
-                detail::access(ui_).select(id, anchor, offset);
+                // Core counts the clicks (double click time and box come from the current Windows settings) and
+                // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
+                auto at = detail::placement_text_hit(frame_, id, x, y);
+                auto cell = detail::placement_text_cell(frame_, id, x, y);
+                detail::access(ui_).set_click_settings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
+                detail::access(ui_).text_pointer_down(id, at, cell, x, y, (w & MK_SHIFT) != 0);
                 drag_ = Drag::text;
+                if (!touch) detail::access(ui_).hover_capture(id);
             }
             if (hit->kind == Kind::slider) {
                 drag_ = Drag::slider;
-                detail::access(ui_).slider_pointer(id, x, hit->slider_track);
+                detail::access(ui_).slider_pointer_down(id, x, hit->slider_track, scale());
             }
             SetCapture(window_);
         }
         after_input(before);
         // A pointer already targets a visible row. Revealing the list's entry cursor here
         // would move the row before button-up and cancel or redirect the click.
-        if (hit->kind == Kind::list) reveal_.clear();
+        if (on_list) reveal_.clear();
         return 0;
     }
     case WM_MOUSELEAVE:
-        detail::access(ui_).tooltip_hover({});
+        detail::access(ui_).pointer_left();
         return 0;
     case WM_MOUSEMOVE: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
-        TrackMouseEvent(&track);
-        update_hover(x, y);
-        if (drag_ == Drag::text && (w & MK_LBUTTON)) {
-            const auto& id = detail::access(ui_).focused();
-            if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
+        const bool touch = synthesized_by_touch();
+        if (!touch) {
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
+            TrackMouseEvent(&track);
+        }
+        update_hover(x, y, touch);
+        if (detail::access(ui_).menu_open()) {
+            // A menu row's hover is its own highlight (lines are ignored); touch moves do not hover.
+            if (!touch) if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_highlight(*row);
             InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
+        if (drag_ == Drag::text && (w & MK_LBUTTON)) {
+            drag_text(x, y);
         } else if (drag_ == Drag::slider && (w & MK_LBUTTON)) {
-            const auto& id = detail::access(ui_).focused();
-            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            detail::access(ui_).slider_pointer(detail::access(ui_).focused(), x);
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
                 [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
-            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + (y - drag_origin_)));
+            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + ((region->horizontal ? x : y) - drag_origin_)));
+            follow_composition();
             InvalidateRect(window_, nullptr, FALSE);
         }
         return 0;
@@ -785,22 +1135,50 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_LBUTTONUP: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
+        if (std::exchange(swallow_left_, false)) return 0;
+        if (detail::access(ui_).menu_open()) {
+            // Releasing over the row that was pressed runs it; lines and disabled items do nothing.
+            auto row = frame_.menu_item_at(x, y);
+            detail::access(ui_).menu_pointer_up(row ? *row : std::string{});
+            after_input(before);
+            return 0;
+        }
         if (drag_ == Drag::slider) {
-            const auto& id = detail::access(ui_).focused();
-            if (const auto* item = detail::find_placement(frame_, id)) detail::access(ui_).slider_pointer(id, x, item->slider_track);
+            const auto id = detail::access(ui_).focused();
+            detail::access(ui_).slider_pointer(id, x);
             detail::access(ui_).pointer_up(id);
         } else if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
             // Settle the press before releasing capture; capture loss would cancel it.
             detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
         }
+        if (drag_ == Drag::text) detail::access(ui_).end_text_drag();
         drag_ = Drag::none; drag_scroll_ = nullptr;
+        KillTimer(window_, drag_scroll_timer);
         if (GetCapture() == window_) ReleaseCapture();
+        detail::access(ui_).hover_release();
+        update_hover(x, y, synthesized_by_touch());  // the pointer may have left the dragged component
         after_input(before);
         return 0;
     }
     case WM_SYSKEYDOWN:
         if (w == VK_F4 && (l & (1LL << 29))) { SendMessageW(window_, WM_CLOSE, 0, 0); return 0; }
+        if (w == VK_F10 || w == VK_MENU) {
+            // Alt and F10 close an open menu; Shift+F10 opens one. Their release must not reach the
+            // system menu, which would take focus away from the window.
+            const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            if (detail::access(ui_).menu_open() || (w == VK_F10 && shift)) {
+                auto before = detail::access(ui_).focused();
+                finish_composition();
+                detail::access(ui_).key_down({map_key(w), shift, false, (l & (1LL << 30)) != 0, 0});
+                after_input(before);
+                menu_sys_swallow_ = true;
+                return 0;
+            }
+        }
+        break;
+    case WM_SYSKEYUP:
+        if ((w == VK_F10 || w == VK_MENU) && std::exchange(menu_sys_swallow_, false)) return 0;
         break;
     case WM_KEYDOWN: {
         if (w == VK_PROCESSKEY || w == VK_PACKET) break;  // owned by the IME / injected text
@@ -810,6 +1188,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (key.key == Key::other && !key.letter) break;
         auto before = detail::access(ui_).focused();
         if (key.key == Key::tab) finish_composition();
+        // Space runs a menu item; the character it also produces must not then type into the field.
+        if (key.key == Key::space && detail::access(ui_).menu_open()) drop_space_char_ = true;
         detail::access(ui_).key_down(key);
         if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->kind == Kind::list &&
             (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
@@ -819,12 +1199,14 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     }
     case WM_KEYUP: {
         auto before = detail::access(ui_).focused();
+        drop_space_char_ = false;
         detail::access(ui_).key_up(map_key(w));
         after_input(before);
         return 0;
     }
     case WM_CHAR: {
         auto ch = static_cast<char16_t>(w);
+        if (ch == u' ' && std::exchange(drop_space_char_, false)) return 0;
         if (ch >= 0xd800 && ch <= 0xdbff) { pending_high_ = ch; return 0; }
         std::u16string text;
         if (ch >= 0xdc00 && ch <= 0xdfff) {
@@ -871,10 +1253,10 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))
                                          : session->selection.caret;
-            info->pt = {field->caret_x(at),
-                        field->bounds.y + field->field.editor.y};
+            const auto anchor = field->caret_rect(at);
+            info->pt = {anchor.x, anchor.y};
             ClientToScreen(window_, &info->pt);
-            info->cLineHeight = static_cast<UINT>(field->field.editor.h);
+            info->cLineHeight = static_cast<UINT>(anchor.h);
             GetWindowRect(window_, &info->rcDocument);
             return 1;
         }

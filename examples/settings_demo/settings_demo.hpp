@@ -2,7 +2,8 @@
 #include "lcars/layout.hpp"
 #include "lcars/fonts.hpp"
 namespace settings_demo {
-struct Item { lcars::OptionValue id; std::u16string name, note; bool operator==(const Item&) const = default; };
+// note and note_spans together are the item's rich text description (lcars::RichText): the text and its style spans.
+struct Item { lcars::OptionValue id; std::u16string name, note; std::vector<lcars::StyleSpan> note_spans; bool operator==(const Item&) const = default; };
 struct SettingsDocument {
     std::u16string name;
     bool notices;
@@ -11,6 +12,7 @@ struct SettingsDocument {
     std::vector<Item> items;
     int next_item_id;
     lcars::PresentationSettings presentation;
+    std::string accent = "default";  // "default", "green" or "orange": the palette override set chosen on the appearance page
     bool operator==(const SettingsDocument&) const = default;
 };
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
@@ -22,6 +24,9 @@ struct AboutInfo {
     std::u16string appearance, renderer, settings_path, build;
 };
 class Demo {
+public:
+    lcars::LabelHandle about_vertical() const { return about_vertical_; }
+private:
     std::u16string name_value_ = u"測試使用者";
     bool notices_value_ = true;
     std::optional<lcars::OptionValue> mode_value_ = lcars::OptionValue{"normal"}, region_value_ = lcars::OptionValue{"north"};
@@ -30,6 +35,7 @@ class Demo {
     lcars::LabelHandle title_, status_, name_label_, name_help_, name_error_;
     std::vector<lcars::LabelHandle> about_labels_;
     lcars::LabelHandle license_text_;
+    lcars::LabelHandle about_vertical_;  // vertical writing sample (display only)
     AboutInfo about_;
     std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
     std::function<void()> license_selection_changed_;
@@ -43,7 +49,10 @@ class Demo {
     std::u16string settings_path_;
     bool save_failed_ = false;
     std::vector<Item> items_;
-    std::u16string search_value_, item_name_source_, item_note_source_;
+    std::u16string search_value_, item_name_source_;
+    lcars::RichText item_note_source_;
+    std::string note_color_value_ = "default";  // the color last applied from the dropdown above the note
+    std::function<void()> note_color_changed_;
     std::function<void()> item_name_changed_, item_note_changed_;
     std::optional<lcars::OptionValue> selection_;
     std::function<void()> search_changed_, selection_changed_;
@@ -60,11 +69,14 @@ class Demo {
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
     bool saved_once_ = false, volume_group_ = false, text_size_group_ = false, dirty_state_ = false;
-    std::function<void()> text_size_changed_, dark_changed_, compact_changed_;
+    std::function<void()> text_size_changed_, dark_changed_, compact_changed_, justify_left_changed_;
     lcars::LabelHandle preview_, font_status_;
     std::function<void()> font_changed_;
     void refresh_fonts();
     lcars::ButtonHandle reset_appearance_;
+    std::string accent_value_ = "default";
+    std::function<void()> accent_changed_;
+    lcars::Result apply_accent(const std::string& id);
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
 public:
@@ -74,8 +86,11 @@ public:
     lcars::NavigationListHandle nav;
     lcars::TextHandle name, items_search;
     lcars::ListHandle items_list;
+    lcars::ContextMenuHandle items_menu;  // Edit / Delete on every row
     lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
+    lcars::ButtonHandle item_note_bold, item_note_italic, item_note_underline;  // style buttons above the note
+    lcars::DropdownHandle item_note_color;
     lcars::TextHandle item_name, item_note;
     lcars::DialogHandle item_dialog, delete_dialog, close_dialog;
     lcars::ButtonHandle close_save, close_discard, close_cancel;
@@ -84,9 +99,9 @@ public:
     bool is_dirty() const;
     bool blank_name_draft() const;
     std::u16string save_failed_renderer();
-    lcars::CheckboxHandle notices, dark, compact;
+    lcars::CheckboxHandle notices, dark, compact, justify_left;  // justify_left: PresentationSettings::justify_as_left (#84)
     lcars::RadioGroupHandle mode;
-    lcars::DropdownHandle region, font;
+    lcars::DropdownHandle region, font, accent;
     lcars::SliderHandle volume, text_size;
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
@@ -95,6 +110,12 @@ public:
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
     lcars::Result set_presentation(const lcars::PresentationSettings& settings, bool coalesce = false);
+    // Accent choices: "default" clears the palette overrides; "green" and "orange" override accent,
+    // on_accent and selection for every linked built-in appearance in light and dark.
+    lcars::Result set_accent(const std::string& id);
+    const std::string& accent_id() const { return accent_value_; }
+    // The palette overrides one accent choice stands for (appearances that are not linked are skipped).
+    static std::vector<lcars::PaletteOverride> accent_overrides(const std::string& id);
     explicit Demo(AboutInfo about = {});
     void set_renderer(std::u16string value);
     lcars::layout::Node page() const;
