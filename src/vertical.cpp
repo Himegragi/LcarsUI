@@ -1,4 +1,5 @@
 #include "vertical.hpp"
+#include "component_type.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iterator>
@@ -96,7 +97,15 @@ std::vector<VerticalSegment> segment_vertical(std::u16string_view text, int max_
     }
     return result;
 }
-VerticalParams vertical_params(const Control&) { return {}; }
+VerticalParams vertical_params(const Control& control, float scale) {
+    VerticalParams params;
+    // Anything else (left; #84's justify/distribute are meaningless for vertical text) reads from the top.
+    if (control.text_align == TextAlign::center) params.align = VerticalParams::Align::center;
+    else if (control.text_align == TextAlign::right) params.align = VerticalParams::Align::bottom;
+    params.line_spacing = control.line_spacing;
+    params.paragraph_spacing = paragraph_gap(control, scale);
+    return params;
+}
 
 std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_view text, int em, int max_digits, int height) {
     std::vector<VerticalColumn> columns;

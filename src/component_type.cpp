@@ -112,7 +112,7 @@ public:
         auto& p = c.placement;
         p.vertical = true;
         const int em = std::max(1, p.text_size);
-        const auto params = vertical_params(c.control);
+        const auto params = vertical_params(c.control, c.scale);
         const int pitch = std::max(1, static_cast<int>(std::lround(c.measure.line_height(em) * params.line_spacing)));
         const int bar = scaled(c.scale, 10), gap = scaled(c.scale, 4);
         const auto text = c.ui.text(c.control.id);

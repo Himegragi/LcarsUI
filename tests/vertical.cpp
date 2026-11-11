@@ -340,6 +340,87 @@ void text_size_and_scale_change_the_columns() {
     frame = page.arrange_in(600, 200);
     check(placed(frame, page.label).column_layout.em == 24 && placed(frame, page.label).column_layout.columns[0].pieces.size() == 8, "Fewer, larger cells per column: 8 x 24 = 192");
 }
+// ---- #80: alignment, line spacing and paragraph spacing of vertical labels ----
+void the_text_flow_properties_map_onto_columns() {
+    using Align = detail::VerticalParams::Align;
+    Control control{.id = "l", .kind = Kind::label};
+    auto params = detail::vertical_params(control);
+    check(params.align == Align::top && params.line_spacing == 1.0 && params.paragraph_spacing == 0, "The defaults are top, 1.0 and 0");
+    control.text_align = TextAlign::center; control.line_spacing = 1.5; control.paragraph_spacing = 8;
+    params = detail::vertical_params(control);
+    check(params.align == Align::center && params.line_spacing == 1.5 && params.paragraph_spacing == 8, "Center, 1.5 and 8 DIP at scale 1");
+    check(detail::vertical_params(control, 2.f).paragraph_spacing == 16, "The paragraph spacing is physical pixels at scale 2");
+    control.text_align = TextAlign::right;
+    check(detail::vertical_params(control).align == Align::bottom, "Right reads as the bottom of the column");
+    control.text_align = TextAlign::left;
+    check(detail::vertical_params(control).align == Align::top, "Left reads as the top of the column");
+}
+void alignment_places_each_column_at_the_top_center_or_bottom() {
+    Page page(cjk(25));  // columns of 12, 12 and 1 cells in a 200 px area
+    auto aligned = [&](TextAlign align) {
+        check(bool(page.label.set_text_align(align)), "The alignment is accepted");
+        auto frame = page.arrange_in(400, 200);
+        const auto& label = placed(frame, page.label);
+        std::vector<int> tops;
+        bool lines_agree = label.lines.size() == label.column_layout.columns.size();
+        for (std::size_t i = 0; i < label.column_layout.columns.size(); ++i) {
+            tops.push_back(label.column_layout.columns[i].bounds.y);
+            lines_agree = lines_agree && label.lines[i].bounds.y == tops.back();
+        }
+        check(lines_agree, "The lines follow the columns");
+        return std::make_pair(tops, label.column_layout.columns);
+    };
+    auto [top, columns] = aligned(TextAlign::left);
+    check(top == std::vector<int>{0, 0, 0}, "Left: every column starts at the top");
+    const int full = columns[0].bounds.h, last = columns[2].bounds.h;
+    check(full == 192 && last == 16, "The columns are 12 and 1 cells long");
+    check(aligned(TextAlign::center).first == std::vector<int>{(200 - full) / 2, (200 - full) / 2, (200 - last) / 2}, "Center: each column is centered in the label's height");
+    check(aligned(TextAlign::right).first == std::vector<int>{200 - full, 200 - full, 200 - last}, "Right: each column ends at the bottom");
+    check(aligned(TextAlign::left).first == top, "Back to left");
+}
+void line_spacing_is_the_distance_between_columns() {
+    Page page(cjk(25));
+    check(bool(page.label.set_line_spacing(1.5)), "A line spacing of 1.5 is accepted");
+    auto frame = page.arrange_in(400, 200);
+    const auto& label = placed(frame, page.label);
+    const auto& columns = label.column_layout.columns;
+    check(label.column_layout.pitch == 36 && label.bounds.w == 3 * 36, "The column pitch is 1.5 times the 24 px line height");
+    check(columns[1].bounds.x + 36 == columns[0].bounds.x && columns[2].bounds.x + 36 == columns[1].bounds.x, "Columns are 36 px apart");
+    check(columns[0].bounds.x + columns[0].bounds.w == label.bounds.x + label.bounds.w, "The first column still touches the right edge");
+    check(bool(page.ui.semantics().perform({"label"}, Verb::set_line_spacing, 2.0)), "The semantic layer sets 2.0");
+    frame = page.arrange_in(400, 200);
+    check(placed(frame, page.label).column_layout.pitch == 48, "The next arrangement uses the pitch 48");
+}
+void paragraph_spacing_separates_paragraphs_not_columns_of_one_paragraph() {
+    Page page(cjk(13) + u"\n" + cjk(13));  // two paragraphs of two columns each
+    check(bool(page.label.set_paragraph_spacing(8)), "A paragraph spacing of 8 DIP is accepted");
+    auto frame = page.arrange_in(800, 200);
+    const auto& label = placed(frame, page.label);
+    const auto& columns = label.column_layout.columns;
+    check(columns.size() == 4 && !columns[0].last_in_paragraph && columns[1].last_in_paragraph, "Two paragraphs of two columns");
+    check(columns[0].bounds.x - columns[1].bounds.x == 24, "Columns of one paragraph stay 24 px apart");
+    check(columns[1].bounds.x - columns[2].bounds.x == 24 + 8, "The paragraph gap is added between the paragraphs");
+    check(columns[2].bounds.x - columns[3].bounds.x == 24, "And not inside the second paragraph");
+    check(label.bounds.w == 4 * 24 + 8, "The width includes the gap");
+    check(bool(page.ui.semantics().perform({"label"}, Verb::set_paragraph_spacing, 0)), "The semantic layer resets it");
+    frame = page.arrange_in(800, 200);
+    check(placed(frame, page.label).bounds.w == 4 * 24, "No gap at 0");
+    // The spacing is DIP: at scale 2 it doubles together with the text.
+    check(bool(page.label.set_paragraph_spacing(8)), "Set again");
+    auto doubled = arrange(layout::vertical_text(page.label, 200), page.ui, look, page.measure, 1600, 800, 2.f, page.outer);
+    const auto& scaled_label = placed(doubled, page.label);
+    const int pitch = scaled_label.column_layout.pitch;
+    check(scaled_label.column_layout.columns[1].bounds.x - scaled_label.column_layout.columns[2].bounds.x == pitch + 16, "Eight DIP are 16 px at scale 2");
+}
+void the_three_properties_leave_a_horizontal_label_to_the_horizontal_rules() {
+    Page page(cjk(25), WritingMode::horizontal);
+    check(bool(page.label.set_text_align(TextAlign::center)) && bool(page.label.set_line_spacing(1.5)), "Set on a horizontal label");
+    auto frame = page.arrange_in(400, 200);
+    check(!placed(frame, page.label).vertical && placed(frame, page.label).column_layout.columns.empty(), "Still laid out as horizontal text");
+    check(bool(page.label.set_writing_mode(WritingMode::vertical)), "Switch to vertical");
+    frame = page.arrange_in(400, 200);
+    check(placed(frame, page.label).column_layout.pitch == 36, "The same properties now space the columns");
+}
 void the_scroll_position_follows_the_content_when_it_shrinks() {
     Page page(cjk(25));
     std::u16string shown = cjk(25);
@@ -389,6 +470,11 @@ int main() {
         {"a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page", a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page},
         {"text_size_and_scale_change_the_columns", text_size_and_scale_change_the_columns},
         {"the_scroll_position_follows_the_content_when_it_shrinks", the_scroll_position_follows_the_content_when_it_shrinks},
+        {"the_text_flow_properties_map_onto_columns", the_text_flow_properties_map_onto_columns},
+        {"alignment_places_each_column_at_the_top_center_or_bottom", alignment_places_each_column_at_the_top_center_or_bottom},
+        {"line_spacing_is_the_distance_between_columns", line_spacing_is_the_distance_between_columns},
+        {"paragraph_spacing_separates_paragraphs_not_columns_of_one_paragraph", paragraph_spacing_separates_paragraphs_not_columns_of_one_paragraph},
+        {"the_three_properties_leave_a_horizontal_label_to_the_horizontal_rules", the_three_properties_leave_a_horizontal_label_to_the_horizontal_rules},
     };
     return test::run("vertical", cases);
 }
