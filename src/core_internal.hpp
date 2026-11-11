@@ -223,6 +223,7 @@ public:
     Query<unsigned> scroll_line(std::string_view id) const;
     // Text flow (#80), labels and text fields; shared by the typed handles and the semantic verbs.
     Result set_text_align(std::string_view id, TextAlign align);
+    Result set_justify_method(std::string_view id, JustifyMethod method);
     Result set_line_spacing(std::string_view id, double multiple);
     Result set_paragraph_spacing(std::string_view id, int dip);
     // Owner (application) configuration. These are not user operations and skip admission checks.

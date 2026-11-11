@@ -35,9 +35,15 @@ template<class T> struct Query {
 // Public text field limit in UTF-16 units. A field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
-// Horizontal placement of every display line inside the component's own width (#80). There is no
-// justified alignment.
-enum class TextAlign { left, center, right };
+// Horizontal placement of every display line inside the component's own width (#80). justify stretches
+// every display line but the last one of a paragraph to the full width (#84); distribute stretches the
+// last line, and a one-line text, too, and is for labels only (a text field refuses it with invalid_value).
+enum class TextAlign { left, center, right, justify, distribute };
+// Where justify and distribute may add the extra width (#84). automatic: around every CJK character and
+// full-width punctuation mark and at every ASCII space, never inside a Latin word; spaces: only at ASCII
+// spaces, so a line without any stays left-aligned; per_character: between any two characters, Latin
+// letters included (such a line is drawn without ligatures). Only used while the alignment is justify or distribute.
+enum class JustifyMethod { automatic, spaces, per_character };
 // Text flow limits. Line spacing multiplies the font's own line height; paragraph spacing is extra
 // space in DIP after each LF-ended paragraph (never between the pieces of one wrapped paragraph).
 inline constexpr double min_line_spacing = 1.0, max_line_spacing = 3.0;
@@ -64,6 +70,7 @@ struct Control {
     // to the one component, can be changed at run time through its handle or the semantic layer, and
     // out-of-range values are invalid_value. The defaults draw exactly as before.
     TextAlign text_align = TextAlign::left;
+    JustifyMethod justify_method = JustifyMethod::automatic;  // #84: only read while text_align is justify or distribute
     double line_spacing = 1.0;       // times the font's line height, 1.0-3.0; extra space splits above and below
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
 };
@@ -84,7 +91,8 @@ struct Semantics {
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
     unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
-    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere
+    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. The property as set, even while the user's "justified text as left" setting shows it left-aligned
+    JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
     std::vector<OptionSemantics> options;
@@ -204,8 +212,12 @@ public:
     // Owner configuration (#80), live: the next frame reflows. Out-of-range values are invalid_value and
     // leave the field unchanged. Horizontal alignment, line spacing and paragraph spacing; the field's
     // caption, description and error text always stay left-aligned.
+    // A field refuses TextAlign::distribute with invalid_value (it is for labels). justify is accepted: the
+    // last line of each paragraph stays left-aligned, so a single-line field looks left-aligned.
     Result set_text_align(TextAlign align) const;
     Query<TextAlign> text_align() const;
+    Result set_justify_method(JustifyMethod method) const;  // #84; live, like the alignment
+    Query<JustifyMethod> justify_method() const;
     Result set_line_spacing(double multiple) const;
     Query<double> line_spacing() const;
     Result set_paragraph_spacing(int dip) const;
@@ -258,6 +270,8 @@ public:
     // Owner configuration (#80); same rules as the text field's.
     Result set_text_align(TextAlign align) const;
     Query<TextAlign> text_align() const;
+    Result set_justify_method(JustifyMethod method) const;
+    Query<JustifyMethod> justify_method() const;
     Result set_line_spacing(double multiple) const;
     Query<double> line_spacing() const;
     Result set_paragraph_spacing(int dip) const;

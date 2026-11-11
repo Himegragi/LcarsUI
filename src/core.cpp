@@ -46,10 +46,16 @@ constexpr unsigned max_visible_lines = 1000;
 bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
 // Text flow (#80) belongs to labels and text fields; every other kind must keep the defaults.
 bool supports_text_flow(Kind kind) { return kind == Kind::label || kind == Kind::text; }
-bool valid_text_align(TextAlign align) { return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right; }
+bool valid_text_align(TextAlign align) {
+    return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
+}
+bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
+// Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
+bool admits_text_align(Kind kind, TextAlign align) { return align != TextAlign::distribute || kind == Kind::label; }
 bool valid_text_flow(const Control& control) {
-    if (!valid_text_align(control.text_align) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
-    return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
+    if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
+    if (!admits_text_align(control.kind, control.text_align)) return false;
+    return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
@@ -1946,7 +1952,18 @@ Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
     auto* control = const_cast<Control*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields align their text"};
     if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
+    if (!admits_text_align(control->kind, align)) return {Status::invalid_value, u"Only a label can distribute its text"};
     control->text_align = align;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod method) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields justify their text"};
+    if (!valid_justify_method(method)) return {Status::invalid_value, u"Unknown justification method"};
+    control->justify_method = method;
     if (invalidate_) invalidate_();
     return {};
 }
@@ -1970,7 +1987,7 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     if (invalidate_) invalidate_();
     return {};
 }
-#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_text_align(id_, align); } Result Handle::set_line_spacing(double multiple) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_line_spacing(id_, multiple); } Result Handle::set_paragraph_spacing(int dip) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_paragraph_spacing(id_, dip); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; }
+#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_text_align(id_, align); } Result Handle::set_line_spacing(double multiple) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_line_spacing(id_, multiple); } Result Handle::set_paragraph_spacing(int dip) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_paragraph_spacing(id_, dip); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; } Result Handle::set_justify_method(JustifyMethod method) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_justify_method(id_, method); } Query<JustifyMethod> Handle::justify_method() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->justify_method}; }
 LCARS_TEXT_FLOW_HANDLE(TextHandle)
 LCARS_TEXT_FLOW_HANDLE(LabelHandle)
 #undef LCARS_TEXT_FLOW_HANDLE
@@ -2022,7 +2039,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
-    s.text_align = control->text_align; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
+    s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
     if (control->kind == Kind::text) {
         s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
         if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
@@ -3193,7 +3210,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
-    n.text_align = s.text_align; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
+    n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -3228,7 +3245,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
-            for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
+            for (auto flow : {Verb::set_text_align, Verb::set_justify_method, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3327,7 +3344,8 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
-        property(node.text_align != old->text_align, "text_align"); property(node.line_spacing != old->line_spacing, "line_spacing");
+        property(node.text_align != old->text_align, "text_align"); property(node.justify_method != old->justify_method, "justify_method");
+        property(node.line_spacing != old->line_spacing, "line_spacing");
         property(node.paragraph_spacing != old->paragraph_spacing, "paragraph_spacing");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
@@ -3387,11 +3405,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
-    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
+    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_justify_method || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
         // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
         if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
         if (verb == Verb::set_text_align) {
             if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
+        } else if (verb == Verb::set_justify_method) {
+            if (auto method = std::get_if<JustifyMethod>(&argument)) return state_->set_justify_method(ref.id, *method);
         } else if (verb == Verb::set_line_spacing) {
             if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
         } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
