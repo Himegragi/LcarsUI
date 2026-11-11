@@ -109,6 +109,17 @@ int wmain(int argc, wchar_t** argv) {
         about = about && text && SUCCEEDED(text->get_CurrentControlType(&type)) && type == UIA_TextControlTypeId && SUCCEEDED(text->get_CurrentName(&name)) && name && SysStringLen(name) == 3009 && SUCCEEDED(text->get_CurrentIsKeyboardFocusable(&focusable)) && focusable;
         if (!about) std::cout << "about details element=" << bool(text) << " type=" << type << " name-length=" << (name ? SysStringLen(name) : 0) << " focusable=" << focusable << '\n';
         SysFreeString(name); if (text) text->Release();
+        {
+            // #82: the vertical label reports its text in reading order as the name, and the box it is drawn in.
+            auto vertical = find_id(uia, root, L"about.vertical"); BSTR vname = nullptr; RECT box{}; CONTROLTYPEID vtype = 0;
+            double scale = GetDpiForWindow(s.window) / 96.0;
+            bool label = vertical && SUCCEEDED(vertical->get_CurrentControlType(&vtype)) && vtype == UIA_TextControlTypeId && SUCCEEDED(vertical->get_CurrentName(&vname)) && vname &&
+                std::wstring(vname) == L"LcarsUI 設定管理示範（第 12 版），謹此致謝。" &&
+                SUCCEEDED(vertical->get_CurrentBoundingRectangle(&box)) && box.right > box.left && std::abs((box.bottom - box.top) - 200 * scale) <= 2;
+            std::cout << "UA-vertical label: " << (label ? "PASS" : "FAIL") << '
+'; ok &= label;
+            SysFreeString(vname); if (vertical) vertical->Release();
+        }
         std::cout << "navigation=" << navigation << " long-dropdown=" << dropdown << " about-text=" << about << '\n'; ok = ok && navigation && dropdown && about;
         bool general = select(uia, nav, L"general"); BSTR before_title = nullptr, after_title = nullptr;
         const std::wstring expected_title = std::wstring(argv[2]) == L"material" ? L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Material-inspired" : L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Minimal Web";

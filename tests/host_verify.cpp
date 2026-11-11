@@ -356,7 +356,7 @@ int demo_compare(const std::filesystem::path& evidence) {
     out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
     int failures=0, rows=0;
     for (const auto* appearance : {&web_appearance(), &material_appearance()})
-    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<8; ++scenario) {
+    for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<9; ++scenario) {
         settings_demo::AboutInfo info;
         info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
@@ -377,7 +377,14 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
         if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
         if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.is_open().value.value_or(false); }
-        if(scenario==7) setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+        if(scenario==7) {
+            setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
+            // The About page is taller since #82 added the vertical label, which pushes the centered navigation list
+            // out of a small window: scroll it into view the way a user would, so its focus indicator is on screen.
+            host.pump();
+            if(const auto* nav=host.frame().find(demo.nav)) { demo.scroll.offset+=nav->bounds.y+nav->bounds.h/2-(scale==1.f?720:480)/2; host.pump(); }
+        }
+        if(scenario==8) setup &= bool(demo.nav.select({"about"}));  // the vertical writing label (#82)
         host.pump(); auto result=host.compare_gpu(960,720,scale);
         auto has_role=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
         bool cues=true;
@@ -385,6 +392,17 @@ int demo_compare(const std::filesystem::path& evidence) {
         if(scenario==1) cues=has_role("general.name",32) && (has_role("general.name",16) || has_role("general.name.error",16));
         if(scenario==2) cues=has_role("items.list",1) && has_role("items.list",4);
         if(scenario==7) cues=has_role("app.nav",1);
+        if(scenario==8) {
+            // The vertical label is plain content: compare its own box between the CPU reference and OpenGL, and require ink in it.
+            const auto* label=host.frame().find(demo.about_vertical());
+            cues=label && label->vertical;
+            if(cues) {
+                auto box=intersect(label->bounds,label->clip);
+                auto same=compare_images(result.reference,result.actual,{box});
+                int ink=0; for(int y=box.y;y<box.y+box.h;++y) for(int x=box.x;x<box.x+box.w;++x) { auto i=(static_cast<std::size_t>(y)*result.reference.width+x)*4; ink+=result.reference.pixels[i]!=result.reference.pixels[(static_cast<std::size_t>(box.y)*result.reference.width+box.x)*4]; }
+                cues=same.regions_ok && ink>box.w*box.h/40;
+            }
+        }
         bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
         std::string name="SD-"+std::string(1,char('a'+scenario));
         std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
@@ -400,7 +418,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
     }
-    return out && rows==64 && !failures ? 0 : 1;
+    return out && rows==72 && !failures ? 0 : 1;
 }
 
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {

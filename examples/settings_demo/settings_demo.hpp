@@ -22,6 +22,9 @@ struct AboutInfo {
     std::u16string appearance, renderer, settings_path, build;
 };
 class Demo {
+public:
+    lcars::LabelHandle about_vertical() const { return about_vertical_; }
+private:
     std::u16string name_value_ = u"測試使用者";
     bool notices_value_ = true;
     std::optional<lcars::OptionValue> mode_value_ = lcars::OptionValue{"normal"}, region_value_ = lcars::OptionValue{"north"};
