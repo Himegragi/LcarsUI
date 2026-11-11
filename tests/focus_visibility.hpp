@@ -199,7 +199,9 @@ void slider_thumb_stays_normal_after_pointer_use() {
     check(item != nullptr, "slider placed");
     auto normal = paint_slider(f).thumb;
     f.state().pointer_down("volume");
-    f.state().slider_pointer("volume", item->slider_track.x + item->slider_track.w / 2, item->slider_track);
+    const int middle = item->slider_track.x + item->slider_track.w / 2;
+    f.state().slider_pointer_down("volume", middle, item->slider_track);
+    f.state().slider_pointer("volume", middle + 3);
     auto dragging = paint_slider(f);
     check(dragging.thumb == normal && dragging.dots.empty(), "Dragging with the mouse keeps the normal thumb and no dot");
     f.state().pointer_up("volume");
