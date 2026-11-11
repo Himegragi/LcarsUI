@@ -135,6 +135,14 @@ public:
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const { return presentation_; }
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
+    Result set_palette_overrides(std::vector<PaletteOverride> overrides);
+    const std::vector<PaletteOverride>& palette_overrides() const { return palette_overrides_; }
+    // The single color entry for painting: built-in palette of this appearance for the current
+    // theme variant (or an explicit one), with the override list applied.
+    Palette effective_palette(const Appearance& appearance, const ThemeVariant& variant) const;
+    Palette effective_palette(const Appearance& appearance) const { return effective_palette(appearance, presentation_.variant); }
+    void bind_appearance(const Appearance* appearance) { bound_appearance_ = appearance; }
+    const Appearance* bound_appearance() const { return bound_appearance_; }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
     void on_semantic_pending(std::function<void()> callback) {
@@ -218,6 +226,8 @@ private:
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
     std::function<void()> presentation_changed_;
+    std::vector<PaletteOverride> palette_overrides_;
+    const Appearance* bound_appearance_ = nullptr;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Control> controls_;
     std::map<Id, std::uint64_t, std::less<>> semantic_instances_;

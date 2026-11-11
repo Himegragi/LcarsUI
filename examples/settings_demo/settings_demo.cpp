@@ -52,6 +52,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return Result{};
     });
     text_size.on_blur([this] { text_size_group_ = false; });
+    accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    nav.add_member({"appearance"}, accent);
+    accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
+    accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
     dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
     compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
@@ -61,7 +65,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
     dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
     compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
-    reset_appearance_.bind([this] { return set_presentation(PresentationSettings{}); });
+    reset_appearance_.bind([this] {
+        if (auto r = apply_accent("default"); !r) return r;
+        return set_presentation(PresentationSettings{});
+    });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
         about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
         nav.add_member({"about"}, about_labels_.back());
@@ -277,12 +284,44 @@ void Demo::refresh_fonts() {
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
     font_status_.connect_source([status] { return status; });
 }
+std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
+    struct Colors { Color accent, on_accent, selection; };
+    struct Row { const char* appearance; const char* variant; Colors green, orange; };
+    // Every row passes check_palette_contrast on top of that appearance's built-in palette.
+    static const Row rows[] = {
+        {"Minimal Web", "light", {{20,110,50}, {255,255,255}, {205,235,210}}, {{170,70,0}, {255,255,255}, {255,225,195}}},
+        {"Minimal Web", "dark", {{110,200,130}, {8,40,16}, {36,92,52}}, {{255,170,90}, {50,24,0}, {120,66,20}}},
+        {"Material-inspired", "light", {{28,106,60}, {255,255,255}, {200,235,205}}, {{160,70,0}, {255,255,255}, {255,220,190}}},
+        {"Material-inspired", "dark", {{150,220,160}, {10,50,20}, {40,95,55}}, {{255,184,120}, {70,30,0}, {110,62,20}}},
+    };
+    std::vector<PaletteOverride> list;
+    if (id != "green" && id != "orange") return list;
+    for (const auto& row : rows) {
+        if (!builtin_appearance(row.appearance)) continue;
+        const auto& c = id == "green" ? row.green : row.orange;
+        ThemeVariant variant{row.variant};
+        list.push_back({row.appearance, variant, "accent", c.accent});
+        list.push_back({row.appearance, variant, "on_accent", c.on_accent});
+        list.push_back({row.appearance, variant, "selection", c.selection});
+    }
+    return list;
+}
+Result Demo::apply_accent(const std::string& id) {
+    auto result = ui.set_palette_overrides(accent_overrides(id));
+    if (result) { accent_value_ = id; if (accent_changed_) accent_changed_(); }
+    return result;
+}
+Result Demo::set_accent(const std::string& id) {
+    auto result = apply_accent(id);
+    if (result) dirty();
+    return result;
+}
 Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
     auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); dirty(coalesce); } return result;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
-    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation()};
+    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation(), accent_value_};
 }
 void Demo::update_history_controls() {
     auto description = name.describe();
@@ -309,6 +348,7 @@ void Demo::apply(const SettingsDocument& value) {
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
+    apply_accent(value.accent);
     ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); refresh_items(); current_=value; update_history_controls();
 }
 void Demo::load_document(const SettingsDocument& value) {
@@ -369,7 +409,7 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(accent)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
         content.push_back(control(licenses));

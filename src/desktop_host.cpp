@@ -150,6 +150,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
+        detail::access(ui_).bind_appearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
@@ -241,6 +242,7 @@ void DesktopHost::release() {
         detail::access(ui_).composition_cancel();
     }
     detail::access(ui_).on_presentation({});
+    if (detail::access(ui_).bound_appearance() == &appearance_) detail::access(ui_).bind_appearance(nullptr);
     detail::access(ui_).on_invalidate({});
     detail::access(ui_).on_semantic_pending({});
     detail::access(ui_).on_reveal({});
@@ -319,7 +321,7 @@ void DesktopHost::paint() {
     if(perf_enabled_ && perf_offscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
     frame_ = arrange(r.right, r.bottom, s);
     reveal_.clear();
-    RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(r.right, r.bottom, detail::access(ui_).effective_palette(appearance_).background);
     paint_observations_.clear();
     recording.count_ink = observe_paint_;
     draw(recording, frame_, s, GetFocus() == window_);
@@ -365,7 +367,7 @@ Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, s
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     auto image = render_cpu(recording.list, width, height);
     if (copy) *copy = image;
@@ -388,7 +390,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 
 GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
     auto frame = arrange(width, height, s);
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     auto reference = render_cpu(recording.list, width, height);
     std::vector<Rect> regions;
@@ -430,16 +432,16 @@ std::string DesktopHost::renderer_name() const { return renderer_->name(); }
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
     auto frame = arrange(width, height, s);
-    Canvas old(width, height, appearance_.palette(ui_.presentation().variant).background);
+    Canvas old(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(old, frame, s, true);
-    RecordingCanvas recording(width, height, appearance_.palette(ui_.presentation().variant).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
     draw(recording, frame, s, true);
     return old.pixels == render_cpu(recording.list, width, height).pixels;
 }
 
 template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
-    const auto p = appearance_.palette(ui_.presentation().variant);
+    const auto p = detail::access(ui_).effective_palette(appearance_);
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
         Target& canvas;

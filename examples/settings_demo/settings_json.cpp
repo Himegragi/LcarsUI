@@ -45,6 +45,8 @@ std::optional<SettingsDocument> parse_settings(const std::string& bytes) {
         if (d.presentation.font_family.size()>128 || !integer(p,"text_size",d.presentation.text_size) || d.presentation.text_size<12 || d.presentation.text_size>28) return {};
         if (!string(p,"variant",v) || (v!="light" && v!="dark")) return {}; d.presentation.variant={v};
         if (!string(p,"density",v) || (v!="standard" && v!="compact")) return {}; d.presentation.density=v=="compact"?lcars::Density::compact:lcars::Density::standard;
+        // Files written before the accent choice existed have no "accent": they mean the default.
+        if (p.contains("accent")) { if (!string(p,"accent",v) || (v!="default" && v!="green" && v!="orange")) return {}; d.accent=v; }
         return d;
     } catch (const std::exception&) { return {}; }
 }
@@ -53,7 +55,7 @@ std::string write_settings(const SettingsDocument& d) {
     j["general"]={{"name",utf8_from_utf16(d.name)},{"notices",d.notices},{"mode",d.mode->id},{"region",d.region->id},{"volume",d.volume}};
     j["items"]=json::array(); for (auto& x:d.items) j["items"].push_back({{"id",x.id.id},{"name",utf8_from_utf16(x.name)},{"note",utf8_from_utf16(x.note)}});
     j["next_item_id"]=d.next_item_id;
-    j["presentation"]={{"font_family",utf8_from_utf16(d.presentation.font_family)},{"text_size",d.presentation.text_size},{"variant",d.presentation.variant.name},{"density",d.presentation.density==lcars::Density::compact?"compact":"standard"}};
+    j["presentation"]={{"font_family",utf8_from_utf16(d.presentation.font_family)},{"text_size",d.presentation.text_size},{"variant",d.presentation.variant.name},{"density",d.presentation.density==lcars::Density::compact?"compact":"standard"},{"accent",d.accent}};
     return j.dump(2)+"\n";
 }
 }

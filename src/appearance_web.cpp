@@ -43,4 +43,5 @@ class Web final : public Appearance {
 };
 }
 const Appearance& web_appearance() { static Web skin; return skin; }
+namespace { const bool registered = detail::register_builtin_appearance(web_appearance()); }
 }
