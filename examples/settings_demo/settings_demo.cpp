@@ -52,12 +52,12 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return Result{};
     });
     text_size.on_blur([this] { text_size_group_ = false; });
+    dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
+    compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
     accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
     accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
-    dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
-    compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
