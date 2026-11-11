@@ -5,8 +5,11 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue>;
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_style, set_typing_style };
+// Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
+struct StyleEdit { unsigned begin = 0, end = 0; StyleChange change; };
+// Rich fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, RichText, StyleEdit, TextStyle>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
@@ -41,6 +44,9 @@ struct SemanticNode {
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
     std::optional<TextScroll> scroll;  // multi-line text fields
+    bool rich = false;                 // text fields created with Control::rich
+    std::vector<StyleSpan> styles;     // rich fields: the styled runs of value, in normal form
+    std::optional<TextStyle> typing_style;  // rich fields: the style the next typed text takes
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.
@@ -52,6 +58,9 @@ public:
     // Read-only: the colors currently painted for the bound appearance and the current theme variant,
     // overrides applied. not_found until an appearance is bound (see Ui::bind_appearance).
     Query<Palette> effective_palette() const;
+    // Rich fields: the color a color name is painted in right now: the field's color for the current theme
+    // variant, or the theme's normal text color for an empty or unknown name (which needs a bound appearance).
+    Query<Color> text_color(const NodeRef& ref, std::string_view name) const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
     // Callbacks run on the UI thread. The desktop host dispatches queued notifications;
     // core-only hosts call dispatch_events() at their own safe event-loop boundary.

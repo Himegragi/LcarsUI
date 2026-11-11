@@ -2,6 +2,7 @@
 // #81 rich text through the public core seams: the value type, typed editing, shortcuts, clipboard,
 // data connections and the semantic layer. Expected values are worked out by hand in each case.
 #include "check.hpp"
+#include "component_type.hpp"
 #include "fake_measure.hpp"
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
@@ -519,6 +520,190 @@ void a_rich_paste_over_the_limit_is_refused_whole() {
           "A paste past max_length leaves text and styles untouched");
 }
 
+// ---- Semantic layer ------------------------------------------------------------------------
+void the_semantic_layer_reads_and_writes_styles_like_the_typed_calls() {
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", u"abcdef"));
+    auto& tree = ui.semantics();
+    auto node = tree.get({"note"});
+    check(bool(node) && node->rich && node->styles.empty() && node->typing_style.has_value() && node->typing_style->plain(), "A rich node reports its styles and typing style");
+    auto has = [&](Verb verb) { auto n = tree.get({"note"}); return std::find(n->verbs.begin(), n->verbs.end(), verb) != n->verbs.end(); };
+    check(has(Verb::set_style) && has(Verb::set_typing_style) && has(Verb::set_value), "The style verbs are offered to an editable rich field");
+    check(bool(tree.perform({"note"}, Verb::set_style, StyleEdit{1, 3, {.bold = true}})) && tree.get({"note"})->styles == Spans{bold(1, 2)} && spans_of(field) == Spans{bold(1, 2)},
+          "set_style applies a range, as TextHandle::set_style does");
+    check(tree.perform({"note"}, Verb::set_style, StyleEdit{3, 1, {.bold = true}}).status == field.set_style(3, 1, {.bold = true}).status &&
+          tree.perform({"note"}, Verb::set_style, StyleEdit{3, 1, {.bold = true}}).status == Status::invalid_value, "An invalid range gives the typed call's status");
+    check(tree.perform({"note"}, Verb::set_style, std::u16string(u"bold")).status == Status::invalid_value, "A wrong argument is invalid_value");
+    check(bool(tree.perform({"note"}, Verb::set_value, RichText{u"xy", {italic(0, 1)}})) && tree.get({"note"})->value == u"xy" && tree.get({"note"})->styles == Spans{italic(0, 1)},
+          "set_value with a rich value replaces text and styles");
+    check(tree.perform({"note"}, Verb::set_value, RichText{u"xy", {italic(0, 1), bold(0, 2)}}).status == Status::invalid_value && tree.get({"note"})->styles == Spans{italic(0, 1)},
+          "An overlapping value is invalid_value and changes nothing");
+    check(bool(tree.perform({"note"}, Verb::set_value, std::u16string(u"plain"))) && tree.get({"note"})->styles.empty(), "A plain set_value leaves the text unstyled");
+    check(bool(tree.perform({"note"}, Verb::set_typing_style, TextStyle{.bold = true})) && tree.get({"note"})->typing_style->bold && field.typing_style().value->bold,
+          "The typing style set through the tree is the one the typed call reads");
+    auto& host = detail::access(ui);
+    host.focus("note"); host.select("note", 5, 5);
+    host.select("note", 5, 5);
+    check(!tree.get({"note"})->typing_style->bold, "Moving the caret ends the temporary typing style");
+    field.read_only(true);
+    check(tree.perform({"note"}, Verb::set_style, StyleEdit{0, 1, {.bold = true}}).status == field.set_style(0, 1, {.bold = true}).status, "A read-only field gives the same status through both doors");
+    check(!has(Verb::set_style) && !has(Verb::set_typing_style), "A read-only field does not offer the style verbs");
+    Ui other;
+    auto plain = connect_plain(other, {.id = "p", .kind = Kind::text, .value = u"abc", .multiline = true});
+    check(!other.semantics().get({"p"})->rich && other.semantics().perform({"p"}, Verb::set_style, StyleEdit{0, 1, {.bold = true}}).status == Status::not_supported,
+          "A plain field is not rich and refuses the style verbs");
+}
+
+void style_changes_raise_a_property_event_and_colors_resolve_for_the_theme() {
+    Ui ui;
+    ui.bind_appearance(&web_appearance());
+    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    field.set_colors({{"red", {200, 0, 0}, {255, 120, 120}}});
+    auto& tree = ui.semantics();
+    std::vector<std::string> properties;
+    auto subscription = tree.subscribe([&](const SemanticEvent& e) { if (e.kind == SemanticEventKind::property_changed && e.ref.id == "note") properties.push_back(e.property); });
+    field.set_style(0, 1, {.bold = true});
+    tree.dispatch_events();
+    check(std::find(properties.begin(), properties.end(), "styles") != properties.end() && std::find(properties.begin(), properties.end(), "value") == properties.end(),
+          "A style change raises a 'styles' property event, and no 'value' event (the text did not change)");
+    check(tree.text_color({"note"}, "red").value == std::optional<Color>(Color{200, 0, 0}), "A named color resolves to its light value");
+    check(tree.text_color({"note"}, "").value == std::optional<Color>(web_appearance().palette().text), "No name resolves to the theme's normal text color");
+    check(tree.text_color({"note"}, "nope").value == std::optional<Color>(web_appearance().palette().text), "An unknown name resolves to the normal text color too");
+    ui.set_presentation({.variant = ThemeVariant::dark()});
+    check(tree.text_color({"note"}, "red").value == std::optional<Color>(Color{255, 120, 120}), "After a theme change it resolves to the dark value");
+    check(tree.text_color({"note"}, "").value == std::optional<Color>(web_appearance().palette(ThemeVariant::dark()).text), "...and the normal color to the dark text color");
+    Ui other;
+    check(connect_plain(other, {.id = "p", .kind = Kind::text, .multiline = true}).describe().value->rich == false && other.semantics().text_color({"p"}, "").status == Status::not_supported,
+          "Only rich fields resolve colors");
+}
+
+// ---- Layout and painting -------------------------------------------------------------------
+// FakeMeasure at 16 px: an ASCII character is 8 px, a bold one 10 px, a line is 24 px tall. A 200 px
+// field has a 176 px editor, a 14 px scrollbar reserve and 2 px of caret slack: 160 px of text per line.
+struct Laid {
+    test::FakeMeasure measure; ScrollState scroll; Frame frame;
+    const Placement* field = nullptr;
+    Laid(Ui& ui, const TextHandle& handle, int width = 200) {
+        frame = arrange(layout::control(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
+        field = frame.find(handle);
+        check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
+    }
+};
+using Lines = std::vector<std::pair<unsigned, unsigned>>;
+Lines lines_of(const Placement& p) {
+    Lines out;
+    for (const auto& line : p.view.lines) out.push_back({line.begin, line.end});
+    return out;
+}
+
+void wrapping_and_caret_stops_follow_the_width_of_bold_text() {
+    Ui plain_ui;
+    auto plain = connect_rich(plain_ui, rich_control("note", std::u16string(20, u'a')));
+    Laid unstyled(plain_ui, plain);
+    check(lines_of(*unstyled.field) == Lines{{0, 20}}, "Twenty plain characters fit one 160 px line");
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", std::u16string(20, u'a')));
+    field.set_style(0, 10, {.bold = true});
+    Laid laid(ui, field);
+    check(lines_of(*laid.field) == Lines{{0, 17}, {17, 20}}, "Ten bold (100 px) and seven plain (56 px) characters fill a line; the rest wraps");
+    check(laid.field->view.lines[0].soft, "The wrapped piece continues into the next line");
+    const auto& view = laid.field->view;
+    check(laid.field->caret_x(5) == view.text.x + 50 && laid.field->caret_x(10) == view.text.x + 100 && laid.field->caret_x(12) == view.text.x + 116,
+          "Caret stops add up the bold advances (10 px) and then the plain ones (8 px)");
+    check(laid.frame.text_offset(field, view.text.x + 116, view.text.y + 3) == 12 && laid.frame.text_offset(field, view.text.x + 52, view.text.y + 3) == 5,
+          "A click lands on the stop nearest to it");
+    const auto& pieces = view.lines[0].pieces;
+    check(pieces.size() == 2 && pieces[0].end == 10 && pieces[0].style.bold && pieces[0].x == 0 && pieces[0].width == 100 &&
+          pieces[1].begin == 10 && pieces[1].end == 17 && !pieces[1].style.bold && pieces[1].x == 100,
+          "The line is cut into a bold run and a plain run, with their left edges");
+    check(laid.field->bounds.h == unstyled.field->bounds.h, "Styling never changes the field's height");
+}
+
+void a_style_change_alone_re_wraps_the_next_arrange() {
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", std::u16string(20, u'a')));
+    Laid before(ui, field);
+    field.set_style(0, 20, {.bold = true});
+    Laid after(ui, field);
+    check(lines_of(*before.field) == Lines{{0, 20}} && lines_of(*after.field) == Lines{{0, 16}, {16, 20}}, "All bold: 16 characters per 160 px line");
+    check(detail::access(ui).field_view("note")->lines.size() == 2, "Core's copy of the lines (for the cursor keys) is the new wrapping");
+}
+
+// Records what a component paints, so what the host would draw can be compared with expectations.
+struct Recorder final : detail::ComponentPaint {
+    struct Text { std::u16string text; FontStyle style; int x, y; Color color; };
+    struct Fill { Rect rect; Color color; };
+    std::vector<Text> texts; std::vector<Fill> fills;
+    using ComponentPaint::ComponentPaint;
+    void fill(Rect rect, Color color) override { fills.push_back({rect, color}); }
+    void rounded(Rect, int, Color) override {}
+    void clip(Rect) override {}
+    void text(std::u16string_view value, int, int x, int y, Color color) override { texts.push_back({std::u16string(value), {}, x, y, color}); }
+    void styled_text(std::u16string_view value, int, FontStyle style, int x, int y, Color color) override { texts.push_back({std::u16string(value), style, x, y, color}); }
+};
+Recorder paint(Ui& ui, const Placement& field, std::string_view id) {
+    auto semantics = *detail::access(ui).describe(id);
+    Recorder recorder(detail::access(ui), field, semantics, web_appearance(), 1.f, true);
+    detail::component_type(Kind::text).paint(recorder);
+    return recorder;
+}
+
+void each_run_is_painted_in_its_face_color_and_underline() {
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", u"abcdef"));
+    field.set_colors({{"red", {200, 0, 0}, {255, 120, 120}}});
+    field.set_style(0, 2, {.bold = true});
+    field.set_style(2, 4, {.italic = true, .underline = true});
+    field.set_style(4, 6, {.color = "red"});
+    Laid laid(ui, field);
+    const auto& view = laid.field->view;
+    const auto text_color = detail::access(ui).effective_palette(web_appearance()).text;
+    auto recorded = paint(ui, *laid.field, "note");
+    check(recorded.texts.size() == 3, "Three runs, three draw calls");
+    check(recorded.texts[0].text == u"ab" && recorded.texts[0].style == FontStyle{true, false} && recorded.texts[0].x == view.text.x && recorded.texts[0].y == view.text.y && recorded.texts[0].color == text_color,
+          "The bold run, at the left edge, in the normal text color");
+    check(recorded.texts[1].text == u"cd" && recorded.texts[1].style == FontStyle{false, true} && recorded.texts[1].x == view.text.x + 20 && recorded.texts[1].color == text_color,
+          "The italic run starts after the 20 px of bold text");
+    check(recorded.texts[2].text == u"ef" && recorded.texts[2].style == FontStyle{false, false} && recorded.texts[2].x == view.text.x + 36 && recorded.texts[2].color == Color{200, 0, 0},
+          "The red run is in the light value of its name");
+    auto underline = std::find_if(recorded.fills.begin(), recorded.fills.end(), [&](const auto& f) { return f.rect == Rect{view.text.x + 20, view.text.y + 20, 16, 1}; });
+    check(underline != recorded.fills.end() && underline->color == text_color && std::count_if(recorded.fills.begin(), recorded.fills.end(), [&](const auto& f) { return f.rect.h == 1 && f.rect.x >= view.text.x && f.rect.y == view.text.y + 20; }) == 1,
+          "Exactly one underline: 1 px thick, under the italic run only (x 20, 16 px wide, at 5/6 of the line height)");
+    ui.set_presentation({.variant = ThemeVariant::dark()});
+    Laid dark(ui, field);
+    auto recolored = paint(ui, *dark.field, "note");
+    check(recolored.texts[2].color == Color{255, 120, 120} && recolored.texts[0].color == detail::access(ui).effective_palette(web_appearance()).text,
+          "After a theme change the same name paints in its dark value and plain text in the dark text color");
+}
+
+void unknown_color_names_and_disabled_fields_use_the_plain_colors() {
+    Ui ui;
+    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    field.set_style(0, 3, {.color = "missing", .underline = true});
+    Laid laid(ui, field);
+    const auto palette = detail::access(ui).effective_palette(web_appearance());
+    auto recorded = paint(ui, *laid.field, "note");
+    check(recorded.texts.size() == 1 && recorded.texts[0].color == palette.text && field.rich_value()->spans[0].color == "missing",
+          "A name that is not in the list paints in the normal text color and stays in the value");
+    field.set_colors({{"missing", {1, 2, 3}, {4, 5, 6}}});
+    check(paint(ui, *Laid(ui, field).field, "note").texts[0].color == Color{1, 2, 3}, "Adding the color to the list recolors the same value");
+    field.enable(false);
+    auto disabled = paint(ui, *Laid(ui, field).field, "note");
+    check(disabled.texts[0].color == palette.muted, "A disabled field paints in the muted color whatever the colors say");
+}
+
+void a_rich_field_without_styles_lays_out_like_a_plain_one() {
+    Ui rich_ui, plain_ui;
+    auto text = std::u16string(u"hello world again and more\n中文字\n") + std::u16string(45, u'x');
+    auto rich = connect_rich(rich_ui, rich_control("note", text));
+    auto plain = connect_plain(plain_ui, {.id = "note", .kind = Kind::text, .value = text, .multiline = true});
+    Laid a(rich_ui, rich), b(plain_ui, plain);
+    check(lines_of(*a.field) == lines_of(*b.field) && a.field->bounds == b.field->bounds && a.field->view.thumb == b.field->view.thumb,
+          "Wrapping, height and scrollbar match a plain multi-line field");
+    for (std::size_t i = 0; i < a.field->view.lines.size(); ++i)
+        check(a.field->view.lines[i].run.stops == b.field->view.lines[i].run.stops, "Caret stops match too");
+}
+
 const test::Case cases[] = {
     {"normalization_merges_sorts_and_drops_empty_spans", normalization_merges_sorts_and_drops_empty_spans},
     {"normalization_rejects_overlap_and_out_of_range_spans", normalization_rejects_overlap_and_out_of_range_spans},
@@ -543,6 +728,13 @@ const test::Case cases[] = {
     {"other_fields_and_hosts_get_plain_text_only", other_fields_and_hosts_get_plain_text_only},
     {"cut_removes_styled_text_and_undo_restores_it", cut_removes_styled_text_and_undo_restores_it},
     {"a_rich_paste_over_the_limit_is_refused_whole", a_rich_paste_over_the_limit_is_refused_whole},
+    {"the_semantic_layer_reads_and_writes_styles_like_the_typed_calls", the_semantic_layer_reads_and_writes_styles_like_the_typed_calls},
+    {"style_changes_raise_a_property_event_and_colors_resolve_for_the_theme", style_changes_raise_a_property_event_and_colors_resolve_for_the_theme},
+    {"wrapping_and_caret_stops_follow_the_width_of_bold_text", wrapping_and_caret_stops_follow_the_width_of_bold_text},
+    {"a_style_change_alone_re_wraps_the_next_arrange", a_style_change_alone_re_wraps_the_next_arrange},
+    {"each_run_is_painted_in_its_face_color_and_underline", each_run_is_painted_in_its_face_color_and_underline},
+    {"unknown_color_names_and_disabled_fields_use_the_plain_colors", unknown_color_names_and_disabled_fields_use_the_plain_colors},
+    {"a_rich_field_without_styles_lays_out_like_a_plain_one", a_rich_field_without_styles_lays_out_like_a_plain_one},
 };
 }
 

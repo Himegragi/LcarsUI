@@ -280,6 +280,7 @@ private:
         struct MultiView {
             FieldView view;               // lines as last arranged (geometry rectangles are unused here)
             std::u16string text;          // the visible text those lines were laid out from
+            std::vector<StyleSpan> styles; // and its styled runs (rich fields): a style change can re-wrap too
             int size = 0, width = 0;      // text size and wrap width they were laid out at
             unsigned first = 0;           // first visible line
             unsigned anchor = 0;          // visible-text offset where that line starts: survives a re-wrap

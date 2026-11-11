@@ -41,6 +41,8 @@ public:
     virtual void clip(Rect rect) = 0;
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
+    // The same in a bold and/or italic face. A painter that has no such faces draws the text plain.
+    virtual void styled_text(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) { (void)style; text(value, pixels, x, y, color); }
 };
 // Type-level applicability, independent of any instance's current semantic state.
 // Modal and tooltip content are declared by page membership, not by component kind.

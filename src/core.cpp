@@ -2597,7 +2597,8 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     auto text = session.visible();
     const auto count = static_cast<unsigned>(view.lines.size());
     const unsigned most = count > view.visible ? count - view.visible : 0;
-    const bool relaid = m.text != text || m.size != text_size || m.width != width;
+    auto styles = visible_style_spans(id);
+    const bool relaid = m.text != text || m.size != text_size || m.width != width || m.styles != styles;
     unsigned first = m.first;
     // A new wrap (resize, text size, edit) keeps the same text on top: the anchor is a text offset.
     if (m.placed && relaid) { view.upstream = false; first = view.line_of(std::min<unsigned>(m.anchor, static_cast<unsigned>(text.size()))); }
@@ -2616,7 +2617,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     view.first = first;
     m.view = view;
     m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
-    if (relaid) { m.text = std::move(text); m.size = text_size; m.width = width; }
+    if (relaid) { m.text = std::move(text); m.styles = std::move(styles); m.size = text_size; m.width = width; }
     m.scroll.offset = static_cast<int>(first) * view.line_height;
 }
 bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
@@ -2949,7 +2950,7 @@ Result detail::UiState::edit_key(KeyPress key) {
 // arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
 FieldView detail::UiState::vertical_view(const Id& id) {
     auto& field = edits_.find(id)->second;
-    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible(); };
+    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible() && field.multi.styles == visible_style_spans(id); };
     if (!fresh() && relayout_) relayout_();
     FieldView view;
     if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
@@ -3400,6 +3401,10 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
+    if (edit != u.edits_.end() && edit->second.rich) {
+        n.rich = true; n.styles = edit->second.spans;
+        n.typing_style = u.insertion_style(edit->second, edit->second.session.begin(), edit->second.session.end());
+    }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
@@ -3435,6 +3440,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
+            add(Verb::set_style, n.role == Role::text && admits(Operation::style));
+            add(Verb::set_typing_style, n.role == Role::text && admits(Operation::style));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3477,6 +3484,16 @@ Query<Palette> SemanticTree::effective_palette() const {
     if (u.stopped_) return {Status::failed, {}, {}};
     if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
     return {Status::ok, {}, u.effective_palette(*u.bound_appearance())};
+}
+Query<Color> SemanticTree::text_color(const NodeRef& ref, std::string_view name) const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    if (ref.item || !u.find(ref.id) || u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
+    if (!u.is_rich(ref.id)) return {Status::not_supported, u"Not a rich text field", {}};
+    if (auto named = u.named_color(ref.id, name)) return {Status::ok, {}, *named};
+    if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
+    return {Status::ok, {}, u.effective_palette(*u.bound_appearance()).text};
 }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
@@ -3533,6 +3550,7 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.styles != old->styles, "styles"); property(node.typing_style != old->typing_style, "typing_style");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
@@ -3598,6 +3616,15 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     }
     if (node->role == Role::text && verb == Verb::set_value) {
         if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
+        if (auto value = std::get_if<RichText>(&argument)) return state_->set_rich_value(ref.id, *value);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_style) {
+        if (auto edit = std::get_if<StyleEdit>(&argument)) return state_->set_style(ref.id, edit->begin, edit->end, edit->change);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_typing_style) {
+        if (auto style = std::get_if<TextStyle>(&argument)) return state_->set_typing_style(ref.id, *style);
         return invalid_argument();
     }
     if (node->role == Role::text) {

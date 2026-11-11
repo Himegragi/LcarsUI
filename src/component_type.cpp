@@ -144,7 +144,10 @@ public:
         if (!c.settle) return;  // a measurement probe only needs the fixed height
         const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
         const int wrap_width = std::max(1, view.text.w - slack);
-        view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
+        if (c.control.rich) {  // wrap and measure every run in its own face
+            const auto styles = c.ui.visible_style_spans(c.control.id);
+            view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width, &styles);
+        } else view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
         c.ui.settle_lines(c.control.id, view, p.text_size, wrap_width);
         const int count = static_cast<int>(view.lines.size()), visible = static_cast<int>(view.visible);
         if (count > visible) {
@@ -184,7 +187,21 @@ public:
                     else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, view.line_height}, p.selection); });
                 }
             }
-            if (line.end > line.begin) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, view.text.x, y, enabled ? p.text : p.muted);
+            if (line.end > line.begin && line.pieces.empty())
+                c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, view.text.x, y, enabled ? p.text : p.muted);
+            // A rich line is drawn run by run: its face, its color (by name, for the theme of the moment) and its underline.
+            for (const auto& piece : line.pieces) {
+                const int left = view.text.x + static_cast<int>(std::lround(piece.x));
+                Color color = enabled ? p.text : p.muted;  // a disabled field is muted whatever the colors say
+                if (enabled)
+                    if (auto named = c.ui.named_color(item.id, piece.style.color)) color = *named;
+                c.styled_text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size,
+                              FontStyle{piece.style.bold, piece.style.italic}, left, y, color);
+                if (piece.style.underline) {
+                    const int width = static_cast<int>(std::lround(piece.x + piece.width)) - static_cast<int>(std::lround(piece.x));
+                    c.fill({left, y + view.line_height * 5 / 6, width, std::max(1, item.text_size / 14)}, color);
+                }
+            }
         }
         if (focused && c.window_focused && enabled) {
             const unsigned caret_line = view.line_of(session->visible_caret());
