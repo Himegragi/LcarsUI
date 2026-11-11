@@ -210,6 +210,10 @@ public:
     Result set_visible_lines(std::string_view id, unsigned lines);
     Result set_scroll_line(std::string_view id, unsigned first);
     Query<unsigned> scroll_line(std::string_view id) const;
+    // Text flow (#80), labels and text fields; shared by the typed handles and the semantic verbs.
+    Result set_text_align(std::string_view id, TextAlign align);
+    Result set_line_spacing(std::string_view id, double multiple);
+    Result set_paragraph_spacing(std::string_view id, int dip);
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus

@@ -5,8 +5,9 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip };
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue>;
+// set_text_align takes a TextAlign, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing };
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed };
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
@@ -41,6 +42,9 @@ struct SemanticNode {
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
     std::optional<TextScroll> scroll;  // multi-line text fields
+    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere
+    double line_spacing = 1.0;
+    int paragraph_spacing = 0;
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.

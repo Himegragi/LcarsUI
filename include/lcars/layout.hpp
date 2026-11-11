@@ -27,6 +27,10 @@ public:
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width);
 
+// A wrapped piece of text; soft means the next piece continues the same paragraph (no LF between them).
+struct WrappedLine { std::u16string text; bool soft = false; };
+std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view text, int pixels, int width);
+
 // One display line of a multi-line field: a hard line (it ends at an LF) or one wrapped piece of it.
 // Offsets are UTF-16 offsets into the visible text (an IME composition included).
 struct FieldLine {
@@ -112,6 +116,8 @@ struct Placement {
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
     float offset = 0;             // text fields: horizontal display offset in pixels
+    float shift = 0;              // single-line fields: where text shorter than the room starts, by its alignment (#80)
+    int text_top = 0;             // single-line fields: top of the glyphs inside the editor row (line spacing)
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
     int caret_y(unsigned offset) const;  // multi-line fields: frame y of the top of the caret's line
     // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line field a caret scrolled

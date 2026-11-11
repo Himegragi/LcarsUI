@@ -35,6 +35,15 @@ template<class T> struct Query {
 // Public text field limit in UTF-16 units. A field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
+// Horizontal placement of every display line inside the component's own width (#80). There is no
+// justified alignment.
+enum class TextAlign { left, center, right };
+// Text flow limits. Line spacing multiplies the font's own line height; paragraph spacing is extra
+// space in DIP after each LF-ended paragraph (never between the pieces of one wrapped paragraph).
+inline constexpr double min_line_spacing = 1.0, max_line_spacing = 3.0;
+inline constexpr int max_paragraph_spacing = 48;
+inline bool valid_line_spacing(double value) { return value >= min_line_spacing && value <= max_line_spacing; }  // false for NaN
+inline bool valid_paragraph_spacing(int value) { return value >= 0 && value <= max_paragraph_spacing; }
 struct Control {
     std::string id;
     Kind kind;
@@ -51,6 +60,12 @@ struct Control {
     // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
     bool multiline = false;
     unsigned visible_lines = 3;  // multi-line height in lines, at least 1; later changed through the handle
+    // Labels and text fields only (any other kind needs the defaults, else invalid_value). They apply
+    // to the one component, can be changed at run time through its handle or the semantic layer, and
+    // out-of-range values are invalid_value. The defaults draw exactly as before.
+    TextAlign text_align = TextAlign::left;
+    double line_spacing = 1.0;       // times the font's line height, 1.0-3.0; extra space splits above and below
+    int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll };
@@ -69,6 +84,9 @@ struct Semantics {
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
     unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
+    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere
+    double line_spacing = 1.0;
+    int paragraph_spacing = 0;
     std::vector<OptionSemantics> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
@@ -183,6 +201,15 @@ public:
     Query<unsigned> visible_lines() const;
     Result set_scroll_line(unsigned first_visible_line) const;
     Query<unsigned> scroll_line() const;
+    // Owner configuration (#80), live: the next frame reflows. Out-of-range values are invalid_value and
+    // leave the field unchanged. Horizontal alignment, line spacing and paragraph spacing; the field's
+    // caption, description and error text always stay left-aligned.
+    Result set_text_align(TextAlign align) const;
+    Query<TextAlign> text_align() const;
+    Result set_line_spacing(double multiple) const;
+    Query<double> line_spacing() const;
+    Result set_paragraph_spacing(int dip) const;
+    Query<int> paragraph_spacing() const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
@@ -228,6 +255,13 @@ class LabelHandle {
 public:
     LabelHandle() = default;
     Result connect_source(std::function<std::u16string()> read) const;
+    // Owner configuration (#80); same rules as the text field's.
+    Result set_text_align(TextAlign align) const;
+    Query<TextAlign> text_align() const;
+    Result set_line_spacing(double multiple) const;
+    Query<double> line_spacing() const;
+    Result set_paragraph_spacing(int dip) const;
+    Query<int> paragraph_spacing() const;
     Query<Semantics> describe() const;
 private:
     friend class detail::UiState;
