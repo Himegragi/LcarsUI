@@ -85,21 +85,69 @@ bool open_clipboard(HWND window) {
 }
 }
 
-bool WindowsClipboard::write(std::u16string_view text) {
-    if (!open_clipboard(window_)) return false;
+namespace {
+UINT rich_format() {
+    static const UINT format = RegisterClipboardFormatW(L"LcarsUI.RichText.1");
+    return format;
+}
+HGLOBAL global_text(std::u16string_view text) {
     auto memory = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(char16_t));
+    if (!memory) return nullptr;
+    auto data = static_cast<char16_t*>(GlobalLock(memory));
+    if (!data) { GlobalFree(memory); return nullptr; }
+    std::memcpy(data, text.data(), text.size() * sizeof(char16_t));
+    data[text.size()] = 0;
+    GlobalUnlock(memory);
+    return memory;
+}
+HGLOBAL global_bytes(std::string_view bytes) {  // NUL-terminated: a global block may be larger than asked for
+    auto memory = GlobalAlloc(GMEM_MOVEABLE, bytes.size() + 1);
+    if (!memory) return nullptr;
+    auto data = static_cast<char*>(GlobalLock(memory));
+    if (!data) { GlobalFree(memory); return nullptr; }
+    std::memcpy(data, bytes.data(), bytes.size());
+    data[bytes.size()] = 0;
+    GlobalUnlock(memory);
+    return memory;
+}
+}
+bool WindowsClipboard::write(std::u16string_view text) { return write_rich(text, {}); }
+// One clipboard transaction: the plain text and, for a copy from a rich field, the private payload beside it.
+// EmptyClipboard drops every older format, so a payload never outlives the text it belonged to.
+bool WindowsClipboard::write_rich(std::u16string_view text, std::string_view payload) {
+    if (!open_clipboard(window_)) return false;
+    auto memory = global_text(text);
+    auto rich = payload.empty() ? nullptr : global_bytes(payload);
     bool ok = false;
-    if (memory) {
-        if (auto data = static_cast<char16_t*>(GlobalLock(memory))) {
-            std::memcpy(data, text.data(), text.size() * sizeof(char16_t));
-            data[text.size()] = 0;
-            GlobalUnlock(memory);
-            ok = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+    if (memory && (payload.empty() || rich)) {
+        ok = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+        if (ok) memory = nullptr;  // the clipboard owns it now
+        if (ok && rich) {
+            if (SetClipboardData(rich_format(), rich) != nullptr) rich = nullptr;  // plain text still stands if only this fails
         }
-        if (!ok) GlobalFree(memory);
     }
+    if (memory) GlobalFree(memory);
+    if (rich) GlobalFree(rich);
     CloseClipboard();
     return ok;
+}
+Query<std::string> WindowsClipboard::read_rich() {
+    if (!open_clipboard(window_)) return {Status::failed, u"無法開啟剪貼簿", std::nullopt};
+    Query<std::string> result{Status::not_supported, u"No rich text", std::nullopt};
+    if (IsClipboardFormatAvailable(rich_format())) {
+        result = {Status::failed, u"Cannot read rich text", std::nullopt};
+        if (auto memory = GetClipboardData(rich_format())) {
+            if (auto data = static_cast<const char*>(GlobalLock(memory))) {
+                const auto size = GlobalSize(memory);
+                std::size_t n = 0;
+                while (n < size && data[n]) ++n;
+                if (n < size) result = {Status::ok, {}, std::string(data, n)};
+                GlobalUnlock(memory);
+            }
+        }
+    }
+    CloseClipboard();
+    return result;
 }
 Query<std::u16string> WindowsClipboard::read() {
     if (!open_clipboard(window_)) return {Status::failed, u"\u7121\u6cd5\u958b\u555f\u526a\u8cbc\u7c3f", std::nullopt};

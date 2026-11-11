@@ -27,6 +27,8 @@ class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
     bool write(std::u16string_view text) override;
+    bool write_rich(std::u16string_view text, std::string_view payload) override;
+    Query<std::string> read_rich() override;
     Query<std::u16string> read() override;
 private:
     HWND window_;

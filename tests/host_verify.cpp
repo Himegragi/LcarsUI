@@ -961,6 +961,95 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     detail::access(ui).composition_cancel();
 }
 
+// #81 twin of tests/richtext.cpp on a real window with the real fonts: Ctrl+B through WM_KEYDOWN, what the host
+// actually draws (faces, colors per theme, underline) read from the paint observations, and the real clipboard's
+// private format. Typing through an IME and the look of the faces on screen are the author's to confirm.
+void richtext_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto make = [&](const char* id, std::u16string value) {
+        auto model = std::make_shared<RichText>(RichText{value, {}});
+        auto field = ui.add_text({.id = id, .kind = Kind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+        field.connect_rich_confirmed([](const RichTextChange&) { return Result{}; });
+        return field;
+    };
+    auto note = make("note", u"Alpha 重要 Beta");
+    auto other = make("other", u"");
+    note.set_colors({{"red", {200, 0, 0}, {255, 140, 140}}});
+    DesktopOptions options; options.title = u"LcarsUI rich text verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note), layout::control(other)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 420);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto spans = [&](const TextHandle& field) { return field.rich_value()->spans; };
+
+    note.focus(); host.pump(); host.paint();
+    note.select(0, 5);
+    key('B', true);
+    const bool bold_applied = spans(note) == std::vector<StyleSpan>{{.start = 0, .length = 5, .bold = true}};
+    key('I', true); key('U', true);
+    note.select(6, 8);
+    key('U', true);
+    note.set_style(9, 13, {.color = "red"});
+    host.observe_paint(true); host.paint();
+    const auto& seen = host.paint_observations();
+    auto find_text = [&](std::u16string_view text) { return std::find_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == text; }); };
+    auto alpha = find_text(u"Alpha"), red = find_text(u"Beta");
+    const auto light_text = detail::access(ui).effective_palette(appearance).text;
+    report.check("RT01-faces-colors-underline", bold_applied && alpha != seen.end() && alpha->bold && alpha->italic && alpha->color == light_text &&
+                     red != seen.end() && !red->bold && red->color == Color{200, 0, 0} &&
+                     std::count_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::fill && o.owner == "note" && o.bounds.h <= 2 && o.bounds.w > 8 && o.color == light_text; }) >= 1,
+                 std::string("Ctrl+B/I/U through WM_KEYDOWN style the selection; the host draws the run bold+italic with a thin underline rect, and the red run in the light value of its name; bold=") +
+                     (alpha != seen.end() && alpha->bold ? "yes" : "no") + ", italic=" + (alpha != seen.end() && alpha->italic ? "yes" : "no"));
+    if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-light.bmp"));  // evidence: faces and colors, light theme
+    ui.set_presentation({.variant = ThemeVariant::dark()});
+    host.paint();
+    const auto& dark = host.paint_observations();
+    auto dark_red = std::find_if(dark.begin(), dark.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == u"Beta"; });
+    report.check("RT02-theme-recolors-by-name", dark_red != dark.end() && dark_red->color == Color{255, 140, 140},
+                 "After switching to the dark theme the same color name is drawn in its dark value");
+    if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-dark.bmp"));
+    ui.set_presentation({});
+    host.observe_paint(false); host.paint();
+
+    // Typing takes the previous character's style; the real clipboard carries the styles between two fields
+    // and plain text from elsewhere takes the typing style.
+    note.select(5, 5);
+    post(WM_CHAR, u'x', 1);
+    const bool typed_bold = detail::access(ui).text("note") == u"Alphax 重要 Beta" && spans(note).front().length == 6;
+    detail::WindowsClipboard clipboard(host.window());
+    auto saved = clipboard.read();
+    bool kept = false, plain_ok = false, copied = false;
+    if (saved.status == Status::ok || saved.status == Status::not_supported) {
+        note.select(0, 5);
+        key('C', true);
+        other.focus(); host.pump(); host.paint();
+        key('V', true);
+        kept = other.rich_value()->text == u"Alpha" && !spans(other).empty() && spans(other).front().bold && spans(other).front().italic && spans(other).front().underline;
+        copied = true;
+        other.select(5, 5);
+        clipboard.write(u"plain");
+        key('V', true);
+        plain_ok = other.rich_value()->text == u"Alphaplain" && !spans(other).empty() && spans(other).front().length == 10;  // plain text from elsewhere follows the previous character
+        if (saved.status == Status::ok) clipboard.write(*saved);
+    }
+    report.check("RT03-typing-and-real-clipboard", typed_bold && (!copied || (kept && plain_ok)),
+                 std::string("A typed character after a bold one is bold=") + (typed_bold ? "yes" : "no") + "; Ctrl+C then Ctrl+V into the other field kept the styles (real private clipboard format)=" +
+                     (copied ? (kept ? "yes" : "NO") : "skipped (clipboard text could not be saved)") + "; external plain text pasted with the typing style=" + (copied ? (plain_ok ? "yes" : "NO") : "skipped"));
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -3208,6 +3297,7 @@ int run(const std::filesystem::path& folder) {
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
         multiline_native(*appearance, report, folder);
+        richtext_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3653,7 +3743,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool multiline_only = false;
+        bool multiline_only = false, richtext_only = false;
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
@@ -3678,6 +3768,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--richtext-only") richtext_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3706,6 +3797,14 @@ int wmain(int argc, wchar_t** argv) {
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 multiline_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (richtext_only) {  // #81 native checks alone (uses the real clipboard: run on an idle desktop)
+            std::filesystem::create_directories(evidence); Report report(evidence / "richtext.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                richtext_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }

@@ -139,24 +139,43 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
     item_name_error_ = ui.add_label({.id="items.dialog.name.error",.kind=Kind::label,.target="items.dialog.name",.role=TextRole::error}).value.value();
     item_note_label_ = ui.add_label({.id="items.dialog.note.label",.kind=Kind::label,.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
-    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200,.multiline=true,.visible_lines=3}).value.value();
+    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.kind=Kind::button,.label=u"粗體"}).value.value();
+    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.kind=Kind::button,.label=u"斜體"}).value.value();
+    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.kind=Kind::button,.label=u"底線"}).value.value();
+    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.kind=Kind::dropdown,.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
+    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
+    // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
+    item_note.set_colors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
     item_cancel_ = ui.add_button({.id="items.dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
     item_ok = ui.add_button({.id="items.dialog.ok",.kind=Kind::button,.label=u"\u78ba\u5b9a"}).value.value();
     delete_title_ = ui.add_label({.id="items.delete_dialog.title",.kind=Kind::label,.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
     delete_message_ = ui.add_label({.id="items.delete_dialog.message",.kind=Kind::label}).value.value();
     delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
     delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=Kind::button,.label=u"\u522a\u9664"}).value.value();
-    item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
+    item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note_bold,item_note_italic,item_note_underline,item_note_color,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
     item_name.connect_source({[this] { return item_name_source_; }, subscribe_to(item_name_changed_)});
-    item_note.connect_source({[this] { return item_note_source_; }, subscribe_to(item_note_changed_)});
+    item_note.connect_rich_source({[this] { return item_note_source_; }, subscribe_to(item_note_changed_)});
+    // The style buttons act on the note's selection (or the typing style at a caret); the selection stays and the note takes the focus back.
+    auto style_button = [this](lcars::ButtonHandle& button, lcars::StyleAttribute attribute) {
+        button.bind([this, attribute] { auto result = item_note.toggle_style(attribute); item_note.focus(); return result; });
+    };
+    style_button(item_note_bold, lcars::StyleAttribute::bold); style_button(item_note_italic, lcars::StyleAttribute::italic); style_button(item_note_underline, lcars::StyleAttribute::underline);
+    item_note_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{note_color_value_}; }, subscribe_to(note_color_changed_)});
+    item_note_color.connect_immediate([this](const DropdownChange& c) {
+        note_color_value_ = c.value ? c.value->id : "default"; if (note_color_changed_) note_color_changed_();
+        auto result = item_note.apply_style({.color = note_color_value_ == "default" ? std::string{} : note_color_value_});
+        item_note.focus();
+        return result;
+    });
     auto open_item = [this](bool edit) -> Result {
         editing_=edit;
         auto found=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
         if (edit && found==items_.end()) return {Status::invalid_value,u"No selection"};
         item_title_.connect_source([edit] { return edit ? u"\u7de8\u8f2f\u9805\u76ee" : u"\u65b0\u589e\u9805\u76ee"; });
         auto result=item_dialog.open(); if (!result) return result;
-        item_name_source_=edit ? found->name : u""; item_note_source_=edit ? found->note : u"";
+        item_name_source_=edit ? found->name : u""; item_note_source_=edit ? lcars::RichText{found->note, found->note_spans} : lcars::RichText{};
+        note_color_value_="default"; if (note_color_changed_) note_color_changed_();
         if (item_name_changed_) item_name_changed_(); if (item_note_changed_) item_note_changed_();
         if (auto r = item_name.reset_to_source(); !r) return r;
         if (auto r = item_note.reset_to_source(); !r) return r;
@@ -165,8 +184,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<TextChange>& changes) -> ConfirmationResult {
-        const auto& value=changes[0].value; const auto& note=changes[1].value;
+    ui.connect_mixed_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> MixedConfirmationResult {
+        const auto& value=std::get<TextChange>(changes[0]).value; const auto& rich=std::get<RichTextChange>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
@@ -175,9 +194,9 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (editing_) {
             auto it=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
             if (it==items_.end()) return {{Status::not_found,u"Item not found"}, {}};
-            id=it->id; changed=it->name!=value || it->note!=note; it->name=value; it->note=note;
+            id=it->id; changed=it->name!=value || it->note!=rich.text || it->note_spans!=rich.spans; it->name=value; it->note=rich.text; it->note_spans=rich.spans;
         } else {
-            char buffer[16]; std::snprintf(buffer,sizeof(buffer),"T%03d",next_item_id_++); id={buffer}; items_.push_back({id,value,note}); changed=true;
+            char buffer[16]; std::snprintf(buffer,sizeof(buffer),"T%03d",next_item_id_++); id={buffer}; items_.push_back({id,value,rich.text,rich.spans}); changed=true;
         }
         auto result=item_dialog.settle(true); if (!result) return {result, {}};
         if (fold_ascii(value).find(fold_ascii(search_value_))==std::u16string::npos) {
@@ -419,7 +438,7 @@ layout::Node Demo::page() const {
     content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));
     auto background=layout::scroll(row({control(nav),column(std::move(content),12,24)},16));
     return layout::modal(std::move(background), {
-        {item_dialog,column({control(item_title_,24),control(item_name),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
+        {item_dialog,column({control(item_title_,24),control(item_name),row({control(item_note_bold),control(item_note_italic),control(item_note_underline),control(item_note_color)},8),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
         {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
         {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
         {close_dialog,column({control(close_title_,24),control(close_message_),row({control(close_save),control(close_discard),control(close_cancel)},8)},12)},
