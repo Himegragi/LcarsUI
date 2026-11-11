@@ -155,6 +155,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).set_clipboard(clipboard_.get());
         detail::access(ui_).bind_appearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        detail::access(ui_).set_click_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
         detail::access(ui_).on_relayout([this] { relayout(); });
@@ -253,6 +254,7 @@ void DesktopHost::release() {
     detail::access(ui_).on_semantic_pending({});
     detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
+    detail::access(ui_).set_click_clock({});
     if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, drag_scroll_timer); }
     detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
@@ -798,9 +800,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         finish_composition();
         if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
             if (detail::component_type(hit->kind).selects_text()) {
+                // Core counts the clicks (double click time and box come from the current Windows settings) and
+                // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
                 auto at = detail::placement_text_hit(frame_, id, x, y);
-                auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : at.offset;
-                detail::access(ui_).select_pointer(id, anchor, at.offset, at.upstream);
+                auto cell = detail::placement_text_cell(frame_, id, x, y);
+                detail::access(ui_).set_click_settings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
+                detail::access(ui_).text_pointer_down(id, at, cell, x, y, (w & MK_SHIFT) != 0);
                 drag_ = Drag::text;
             }
             if (hit->kind == Kind::slider) {
@@ -849,6 +854,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             // Settle the press before releasing capture; capture loss would cancel it.
             detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
         }
+        if (drag_ == Drag::text) detail::access(ui_).end_text_drag();
         drag_ = Drag::none; drag_scroll_ = nullptr;
         KillTimer(window_, drag_scroll_timer);
         if (GetCapture() == window_) ReleaseCapture();

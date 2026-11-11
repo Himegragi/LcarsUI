@@ -89,6 +89,15 @@ struct KeyPress {
 };
 struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
 struct Selection { unsigned anchor = 0, caret = 0; };
+// A half-open range of UTF-16 offsets into a field's text.
+struct TextSpan { unsigned begin = 0, end = 0; bool operator==(const TextSpan&) const = default; };
+// How a text field decides where words are, for double click, Ctrl+arrow and UIA word units. Every mode
+// gives each punctuation mark its own word and keeps a run of spaces together. Set per field at any time.
+enum class WordSegmentation {
+    dictionary,     // the system ICU dictionary (zh_TW); falls back to per_character when it is unavailable
+    per_character,  // every Chinese or Japanese character is a word; a run of Latin letters and digits is one word
+    script_run      // a run of Chinese or Japanese characters is one word, a run of Latin letters and digits another
+};
 // Host-provided system clipboard. Core never touches OS services directly.
 class Clipboard {
 public:
@@ -183,6 +192,23 @@ public:
     Query<unsigned> visible_lines() const;
     Result set_scroll_line(unsigned first_visible_line) const;
     Query<unsigned> scroll_line() const;
+    // Words and paragraphs (#83). A word is what the field's segmentation says it is; a paragraph is the text
+    // between line feeds (the whole text of a single-line field). Offsets are UTF-16 and name the character that
+    // starts there; one at or past the end of a paragraph means "after its last character". These work like
+    // select(): they need an available field, are refused while an input method composes, and ignore read-only.
+    Result set_word_segmentation(WordSegmentation mode) const;  // owner configuration; takes effect at once
+    Query<WordSegmentation> word_segmentation() const;          // the mode as set
+    Query<WordSegmentation> word_segmentation_in_use() const;   // the mode that segments the text now (dictionary may fall back)
+    Query<TextSpan> word_at(unsigned offset) const;             // what a double click there selects
+    Query<TextSpan> paragraph_at(unsigned offset) const;        // what a triple click there selects
+    Query<unsigned> next_word_stop(unsigned offset) const;      // where Ctrl+Right goes from offset
+    Query<unsigned> previous_word_stop(unsigned offset) const;  // where Ctrl+Left goes from offset
+    Result select_word(unsigned offset) const;
+    Result select_paragraph(unsigned offset) const;
+    // Like a double or triple click with the pointer there: the same selection, and a drag that follows (see
+    // Frame::select_to) grows it by words or paragraphs until the next selection change.
+    Result double_click(unsigned offset) const;
+    Result triple_click(unsigned offset) const;
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;

@@ -17,6 +17,7 @@ struct TextRun {
     float width = 0;
     float x(unsigned offset) const;    // x of the last stop at or before offset
     unsigned hit(float x) const;       // nearest stop
+    unsigned cell(float x) const;      // the last stop at or before x: the character whose cell holds x
 };
 class TextMeasure {
 public:

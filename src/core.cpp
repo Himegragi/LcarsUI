@@ -1896,6 +1896,61 @@ Query<unsigned> TextHandle::scroll_line() const {
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
     return ui_->scroll_line(id_);
 }
+Result TextHandle::set_word_segmentation(WordSegmentation mode) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_word_segmentation(id_, mode);
+}
+Query<WordSegmentation> TextHandle::word_segmentation() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_segmentation(id_);
+}
+Query<WordSegmentation> TextHandle::word_segmentation_in_use() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_segmentation_in_use(id_);
+}
+Query<TextSpan> TextHandle::word_at(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_at(id_, offset);
+}
+Query<TextSpan> TextHandle::paragraph_at(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->paragraph_at(id_, offset);
+}
+Query<unsigned> TextHandle::next_word_stop(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_stop(id_, offset, true);
+}
+Query<unsigned> TextHandle::previous_word_stop(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->word_stop(id_, offset, false);
+}
+Result TextHandle::select_word(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_word(id_, offset);
+}
+Result TextHandle::select_paragraph(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->select_paragraph(id_, offset);
+}
+Result TextHandle::double_click(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->double_click(id_, offset);
+}
+Result TextHandle::triple_click(unsigned offset) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->triple_click(id_, offset);
+}
 Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
@@ -2375,7 +2430,121 @@ Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned ca
     };
     if (!boundary(anchor) || !boundary(caret)) return {Status::invalid_value, {}};
     it->second.session.select(anchor, caret);
+    it->second.drag = {};
     return {};
+}
+// ---- Words, paragraphs and multi-click (#83) --------------------------------------------------
+Result detail::UiState::set_word_segmentation(std::string_view id, WordSegmentation mode) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field"};
+    if (mode != WordSegmentation::dictionary && mode != WordSegmentation::per_character && mode != WordSegmentation::script_run)
+        return {Status::invalid_value, u"Unknown word segmentation"};
+    it->second.segmentation = mode;
+    it->second.drag = {};
+    return {};
+}
+Query<WordSegmentation> detail::UiState::word_segmentation(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    return {Status::ok, {}, it->second.segmentation};
+}
+Query<WordSegmentation> detail::UiState::word_segmentation_in_use(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    return {Status::ok, {}, words_of(it->second).used};
+}
+Query<TextSpan> detail::UiState::word_at(std::string_view id, unsigned offset) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, word_span(text, words_of(it->second), offset)};
+}
+Query<TextSpan> detail::UiState::paragraph_at(std::string_view id, unsigned offset) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, paragraph_span(text, offset)};
+}
+Query<unsigned> detail::UiState::word_stop(std::string_view id, unsigned offset, bool forward) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
+    const auto& text = it->second.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
+    return {Status::ok, {}, next_word_stop(text, words_of(it->second), offset, forward)};
+}
+Result detail::UiState::select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    auto& field = it->second;
+    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    const auto& text = field.session.text;
+    if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text"};
+    const bool word = unit == Field::UnitDrag::Unit::word;
+    const TextSpan span = word ? word_span(text, words_of(field), offset) : paragraph_span(text, offset);
+    field.session.select(span.begin, span.end);
+    field.drag = {};
+    if (arm) field.drag = {unit, span, field.session.selection};
+    return {};
+}
+Result detail::UiState::select_word(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::word, false); }
+Result detail::UiState::select_paragraph(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::paragraph, false); }
+Result detail::UiState::double_click(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::word, true); }
+Result detail::UiState::triple_click(std::string_view id, unsigned offset) { return select_unit(id, offset, Field::UnitDrag::Unit::paragraph, true); }
+unsigned detail::UiState::count_click(const Id& id, int x, int y) {
+    if (!click_clock_) return 1;
+    const std::uint64_t now = click_clock_();
+    const bool continues = click_run_.count > 0 && click_run_.count < 3 && click_run_.id == id && now >= click_run_.time &&
+        now - click_run_.time <= click_settings_.interval_ms &&
+        std::abs(x - click_run_.x) <= click_settings_.width / 2 && std::abs(y - click_run_.y) <= click_settings_.height / 2;
+    if (continues) { ++click_run_.count; click_run_.time = now; }
+    else click_run_ = {id, x, y, now, 1};
+    return click_run_.count;
+}
+Result detail::UiState::text_pointer_down(std::string_view id, TextHit caret, unsigned cell, int x, int y, bool extend) {
+    OperationScope operation(this);
+    const unsigned count = count_click(Id(id), x, y);
+    if (count == 2) return double_click(id, cell);
+    if (count == 3) return triple_click(id, cell);
+    auto it = edits_.find(id);
+    const unsigned anchor = extend && it != edits_.end() ? it->second.session.selection.anchor : caret.offset;
+    return select_pointer(id, anchor, caret.offset, caret.upstream);
+}
+Result detail::UiState::text_pointer_drag(std::string_view id, TextHit caret, unsigned cell) {
+    OperationScope operation(this);
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+    auto& field = it->second;
+    auto& drag = field.drag;
+    const auto& selection = field.session.selection;
+    const bool armed = drag.unit != Field::UnitDrag::Unit::character && drag.last.anchor == selection.anchor && drag.last.caret == selection.caret;
+    if (!armed) return select_pointer(id, selection.anchor, caret.offset, caret.upstream);
+    if (auto result = available(id); !result) return result;
+    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    const auto& text = field.session.text;
+    cell = std::min<unsigned>(cell, static_cast<unsigned>(text.size()));
+    const TextSpan span = drag.unit == Field::UnitDrag::Unit::word ? word_span(text, words_of(field), cell) : paragraph_span(text, cell);
+    // The unit first selected always stays inside the selection; the pointer decides which side grows.
+    const bool before = span.begin < drag.origin.begin;
+    const auto kept = drag;
+    field.session.select(before ? kept.origin.end : kept.origin.begin, before ? span.begin : std::max(span.end, kept.origin.end));
+    field.drag = kept;
+    field.drag.last = field.session.selection;
+    return {};
+}
+void detail::UiState::end_text_drag() {
+    OperationScope operation(this);
+    for (auto& [id, field] : edits_) field.drag = {};
 }
 Result detail::UiState::invoke(std::string_view id) {
     OperationScope operation(this);
@@ -2561,6 +2730,7 @@ Result detail::UiState::key_down(KeyPress key) {
             // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
             const bool multi = control->multiline;
             handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' ||
+                                  (!key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) ||
                                   (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
                 (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
                  (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
@@ -2623,6 +2793,18 @@ Result detail::UiState::edit_key(KeyPress key) {
     auto move = [&](unsigned pos) { session.select(key.shift ? session.selection.anchor : pos, pos); return Result{}; };
     const bool multi = find(focus_)->multiline;
     if (multi && key.ctrl && !key.letter && (key.key == Key::home || key.key == Key::end)) return move(key.key == Key::home ? 0 : size);
+    // Ctrl+arrows and Ctrl+Backspace/Delete go by words: the stops a double click's words define (#83).
+    if (key.ctrl && !key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) {
+        const bool forward = key.key == Key::right || key.key == Key::del;
+        if (key.key == Key::left || key.key == Key::right)
+            return move(next_word_stop(session.text, words_of(edits_.at(focus_)), session.selection.caret, forward));
+        Field* field = nullptr;
+        if (auto result = writable(focus_, field); !result) return result;
+        if (session.begin() == session.end())
+            session.select(session.selection.caret, next_word_stop(session.text, words_of(*field), session.selection.caret, forward));
+        if (session.begin() == session.end()) return {};
+        return replace_selection(focus_, *field, u"");
+    }
     if (key.ctrl) {
         if (key.letter == u'Z') return travel(focus_, key.shift);
         if (key.letter == u'Y') return travel(focus_, true);
@@ -2792,7 +2974,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     return invoke(armed);
 }
 void detail::UiState::cancel_input() {
-    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
+    OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
