@@ -119,6 +119,9 @@ struct Font {
 }
 struct Text::Impl {
     static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
+    // Font ids: 0..9 index `names` (the built-in fallback families; 9 is the emoji family), primary_font is the application's
+    // own family (set_primary_family), no_font means no family has the character.
+    static constexpr unsigned emoji_font=9, primary_font=10, no_font=11;
     FT_Library library=nullptr;
     GlyphAtlas atlas;
     unsigned rasterizations=0;
@@ -163,7 +166,7 @@ struct Text::Impl {
         if(id>=fonts[0].size() || slot>=fonts.size()) return nullptr;
         if(!attempted[slot][id]) {
             attempted[slot][id]=true;
-            const auto family=id==10?std::u16string_view(primary):names[id];
+            const auto family=id==primary_font?std::u16string_view(primary):names[id];
             auto file=slot==0?lookup(family):styled_lookup?styled_lookup(family,slot&1,(slot&2)!=0):FontFile{};
             if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[slot][id]->error); }
         }
@@ -209,7 +212,6 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
     auto& e=*this;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
-    constexpr unsigned no_font=11;
     for(unsigned i=0;i<text.size();){
         unsigned begin=i,cp=text[i++];
         if(cp>=0xd800&&cp<=0xdbff&&i<text.size()&&text[i]>=0xdc00&&text[i]<=0xdfff)cp=0x10000+((cp-0xd800)<<10)+(text[i++]-0xdc00);
@@ -220,9 +222,9 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
         unsigned selected=no_font;
         bool emoji=(cp>=0x1f000&&cp<=0x1faff) || (i<text.size() && text[i]==0xfe0f);
         auto supports=[&](unsigned n) {auto f=e.font(n);return f && f->size(size) && FT_Get_Char_Index(f->face,cp);};
-        if(emoji && supports(9)) selected=9;
-        else if(!e.primary.empty() && supports(10)) selected=10;
-        else for(unsigned n=0;n<10;++n) if(supports(n)){selected=n;break;}
+        if(emoji && supports(emoji_font)) selected=emoji_font;
+        else if(!e.primary.empty() && supports(primary_font)) selected=primary_font;
+        else for(unsigned n=0;n<names.size();++n) if(supports(n)){selected=n;break;}
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
         if(selected!=no_font && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
         else runs.push_back({begin,i,selected,script});
@@ -385,7 +387,7 @@ TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int 
     }
     case VerticalForm::upright: case VerticalForm::bracket: {
         auto h=shape(value,size);
-        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[](const Glyph& g) { return g.font==9 && g.id; });
+        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[](const Glyph& g) { return g.font==Impl::emoji_font && g.id; });
         if(emoji) {
             // Segoe UI Emoji has no vertical metrics and is wider than a cell: scale it into the cell and center it.
             auto parts=horizontal_parts(h,{});

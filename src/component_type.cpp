@@ -9,6 +9,8 @@
 
 namespace lcars::detail {
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
+ComponentPresentation ComponentPaint::presentation() const { return appearance.component_presentation(ui.presentation().density); }
+ComponentPresentation ComponentLayout::presentation() const { return appearance.component_presentation(ui.presentation().density); }
 int text_row(int line_height, double line_spacing) {
     return std::max(line_height, static_cast<int>(std::lround(line_height * line_spacing)));
 }
@@ -30,10 +32,11 @@ void ComponentPaint::overlay(Rect rect, int radius, Color color, unsigned char a
     overlay_alpha_ = 255;
 }
 
-TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings) {
-    const bool stretched = control.text_align == TextAlign::justify || control.text_align == TextAlign::distribute;
-    return stretched && settings.justify_as_left ? TextAlign::left : control.text_align;
+TextAlign drawn_text_align(TextAlign align, const PresentationSettings& settings) {
+    const bool stretched = align == TextAlign::justify || align == TextAlign::distribute;
+    return stretched && settings.justify_as_left ? TextAlign::left : align;
 }
+TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings) { return drawn_text_align(control.text_align, settings); }
 ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
                                const Appearance& look, float render_scale, bool active_window)
     : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window),
@@ -88,8 +91,8 @@ Flowed flowed_block(TextMeasure& measure, std::u16string_view text, int size, in
 std::u16string command_title(const ComponentLayout& c) {
     auto title = c.control.label;
     auto semantic = c.ui.describe(c.control.id);
-    if (semantic && !semantic->enabled) title += c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix;
-    if (semantic && semantic->executing) title += c.appearance.component_presentation(c.ui.presentation().density).executing_suffix;
+    if (semantic && !semantic->enabled) title += c.presentation().disabled_suffix;
+    if (semantic && semantic->executing) title += c.presentation().executing_suffix;
     return title;
 }
 int command_width(const ComponentLayout& c) {
@@ -101,7 +104,7 @@ Rect offset(Rect rect, Rect origin) { return {rect.x + origin.x, rect.y + origin
 int conflict_lines(ComponentLayout& c, int y, bool conflict) {
     if (!conflict) return y;
     auto& p = c.placement;
-    p.description_lines = block(c.measure, c.appearance.component_presentation(c.ui.presentation().density).conflict_suffix, p.text_size, c.width);
+    p.description_lines = block(c.measure, c.presentation().conflict_suffix, p.text_size, c.width);
     for (auto& line : p.description_lines) line.bounds.y += y;
     return y + height_of(p.description_lines);
 }
@@ -109,12 +112,19 @@ template<class F> void marked(ComponentPaint& c, PaintRole role, F&& paint) { c.
 void paint_errors(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
     marked(c, PaintRole::error_text, [&] { for (const auto& line : lines) c.text(line.text, pixels, line.bounds.x, line.bounds.y, color); });
 }
+// A justified line is drawn piece by piece, every piece at its own x, so nothing (a ligature, kerning) spans the added width.
+// Calls draw(text of the piece, x of the piece from the line's start) for each segment lying inside [from, to) of the line;
+// the caller turns x into a pixel the way its component rounds it. Offsets are relative to the line text's start.
+template<class Draw> void draw_segments(const std::vector<TextSegment>& segments, std::u16string_view line_text, unsigned from, unsigned to, Draw&& draw) {
+    for (const auto& piece : segments)
+        if (piece.begin >= from && piece.end <= to) draw(line_text.substr(piece.begin, piece.end - piece.begin), piece.x);
+}
 void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
     for (const auto& line : lines) {
         if (line.segments.empty()) { c.text(line.text, pixels, line.bounds.x, line.bounds.y, color); continue; }
-        // A justified line: every piece at its own x, so nothing (a ligature, kerning) spans the added width.
-        for (const auto& piece : line.segments)
-            c.text(std::u16string_view(line.text).substr(piece.begin, piece.end - piece.begin), pixels, line.bounds.x + static_cast<int>(std::floor(piece.x)), line.bounds.y, color);
+        draw_segments(line.segments, line.text, 0, static_cast<unsigned>(line.text.size()), [&](std::u16string_view piece, float x) {
+            c.text(piece, pixels, line.bounds.x + static_cast<int>(std::floor(x)), line.bounds.y, color);  // a label floors, so a piece never starts past its place
+        });
     }
 }
 // The slider's focus dot sits left of the title. Its room is always reserved, so the title never moves
@@ -204,7 +214,7 @@ public:
         if (c.focus_visible) {
             auto r = c.placement.clip;
             auto color = c.palette().accent;
-            int edge = std::max(1, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus));
+            int edge = std::max(1, scaled(c.scale, c.presentation().focus));
             marked(c, PaintRole::focus_indicator, [&] {
                 c.fill({r.x, r.y, r.w, edge}, color);
                 c.fill({r.x, r.y + r.h - edge, r.w, edge}, color);
@@ -230,15 +240,15 @@ public:
         int line = c.measure.line_height(p.text_size);
         auto semantics = *c.ui.describe(control.id);
         auto name = semantics.name;
-        if (control.read_only) name += c.appearance.component_presentation(c.ui.presentation().density).read_only_suffix;
-        if (!control.enabled) name += c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix;
+        if (control.read_only) name += c.presentation().read_only_suffix;
+        if (!control.enabled) name += c.presentation().disabled_suffix;
         int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
         auto probe = c.appearance.arrange_field(c.width, {line, line, line, line}, c.scale, c.ui.presentation().density);
         auto label = block(c.measure, name, caption, probe.label.w);
         auto description_text = semantics.description;
         if (semantics.source_conflict) {
             if (!description_text.empty()) description_text += u"\n";
-            description_text += c.appearance.component_presentation(c.ui.presentation().density).conflict_suffix;
+            description_text += c.presentation().conflict_suffix;
         }
         auto description = block(c.measure, description_text, caption, probe.description.w);
         auto error = block(c.measure, semantics.error, caption, probe.error.w);
@@ -259,7 +269,7 @@ public:
             auto anchor = c.ui.text_anchor(control.id, p.text_size);
             if (anchor) offset = p.run.x(anchor);
         }
-        float room = static_cast<float>(p.field.editor.w - static_cast<int>(std::lround(c.appearance.component_presentation(c.ui.presentation().density).inset * c.scale)));
+        float room = static_cast<float>(p.field.editor.w - static_cast<int>(std::lround(c.presentation().inset * c.scale)));
         if (c.ui.focused() == control.id) {
             float caret = p.run.x(session->visible_caret());
             if (caret - offset > room) offset = caret - room;
@@ -290,7 +300,7 @@ public:
         view.text = {editor.x, editor.y, std::max(0, editor.w - bar - gap), editor.h};
         view.track = {editor.x + editor.w - bar, editor.y, bar, editor.h};
         if (!c.settle) return;  // a measurement probe only needs the fixed height
-        const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
+        const int slack = scaled(c.scale, c.presentation().inset);  // room for a caret at a line end
         const int wrap_width = std::max(1, view.text.w - slack);
         const auto visible_text = c.ui.edit(c.control.id)->visible();
         if (c.control.rich) {  // wrap and measure every run in its own face
@@ -341,7 +351,7 @@ public:
         const auto* session = c.ui.edit(item.id);
         const bool focused = c.semantics.focused, enabled = c.semantics.enabled;
         auto d = [&](int value) { return scaled(c.scale, value); };
-        const int inset = d(c.appearance.component_presentation(c.ui.presentation().density).inset);
+        const int inset = d(c.presentation().inset);
         if (view.thumb.h) {
             c.rounded(view.track, view.track.w / 2, p.panel);
             c.rounded(view.thumb, view.thumb.w / 2, enabled ? p.outline : p.border);  // a control edge: outline when usable
@@ -368,9 +378,8 @@ public:
             const Color base = enabled ? p.text : p.muted;
             if (line.end > line.begin && line.pieces.empty()) {
                 if (line.segments.empty()) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, base);
-                else for (const auto& piece : line.segments)  // a justified line (it has text), piece by piece (#84)
-                    c.text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size,
-                           view.text.x + static_cast<int>(std::lround(line.shift + piece.x)), y + dy, base);
+                else draw_segments(line.segments, std::u16string_view(text).substr(line.begin, line.end - line.begin), 0, line.end - line.begin,  // a justified line, piece by piece (#84)
+                                   [&](std::u16string_view piece, float x) { c.text(piece, item.text_size, view.text.x + static_cast<int>(std::lround(line.shift + x)), y + dy, base); });
             }
             // A rich line is drawn run by run: its face, its color (by name, for the theme of the moment) and its underline.
             // piece.x already includes the line's alignment shift; a justified line is drawn segment by segment (#84),
@@ -383,10 +392,8 @@ public:
                 const FontStyle face{piece.style.bold, piece.style.italic};
                 if (line.segments.empty())
                     c.styled_text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size, face, left, y + dy, color);
-                else for (const auto& segment : line.segments)
-                    if (segment.begin >= piece.begin && segment.end <= piece.end)
-                        c.styled_text(std::u16string_view(text).substr(line.begin + segment.begin, segment.end - segment.begin), item.text_size, face,
-                                      view.text.x + static_cast<int>(std::lround(line.shift + segment.x)), y + dy, color);
+                else draw_segments(line.segments, std::u16string_view(text).substr(line.begin, line.end - line.begin), piece.begin, piece.end,
+                                   [&](std::u16string_view part, float x) { c.styled_text(part, item.text_size, face, view.text.x + static_cast<int>(std::lround(line.shift + x)), y + dy, color); });
                 if (piece.style.underline) {
                     const int width = static_cast<int>(std::lround(piece.x + piece.width)) - static_cast<int>(std::lround(piece.x));
                     c.fill({left, y + dy + view.line_height * 5 / 6, width, std::max(1, item.text_size / 14)}, color);
@@ -396,7 +403,7 @@ public:
         if (focused && c.window_focused && enabled) {
             const unsigned caret_line = view.line_of(session->visible_caret());
             if (caret_line >= view.first && caret_line < end_line)
-                marked(c, PaintRole::caret, [&] { c.fill({item.caret_x(session->visible_caret()), item.caret_y(session->visible_caret()), d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, view.row_height}, p.accent); });
+                marked(c, PaintRole::caret, [&] { c.fill({item.caret_x(session->visible_caret()), item.caret_y(session->visible_caret()), d(c.presentation().thin) + 1, view.row_height}, p.accent); });
         }
     }
     void paint(ComponentPaint& c) const override {
@@ -407,7 +414,7 @@ public:
         auto d = [&](int value) { return scaled(c.scale, value); };
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
         bool focused = semantics.focused, enabled = semantics.enabled, cue = c.focus_visible;
-        int ring = cue ? d(c.appearance.component_presentation(c.ui.presentation().density).inset) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
+        int ring = cue ? d(c.presentation().inset) : d(c.presentation().thin);
         // The edge identifies the field: outline when usable, the light divider color when disabled.
         Color edge = semantics.invalid ? p.error : cue ? p.accent : enabled ? p.outline : p.border;
         marked(c, (cue ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(surface, d(c.appearance.radius()), f.underline ? (enabled ? p.surface : p.background) : edge); });
@@ -430,12 +437,12 @@ public:
             unsigned first = session->begin();
             unsigned last = session->composing ? first + static_cast<unsigned>(session->preedit.size()) : session->end();
             if (last > first) {
-                if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({at(first), editor.y + editor.h - item.text_top - d(c.appearance.component_presentation(c.ui.presentation().density).inset), at(last) - at(first), d(c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
+                if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({at(first), editor.y + editor.h - item.text_top - d(c.presentation().inset), at(last) - at(first), d(c.presentation().inset)}, p.accent); });
                 else marked(c, PaintRole::selection, [&] { c.fill({at(first), editor.y, at(last) - at(first), editor.h}, p.selection); });
             }
         }
         c.text(session->visible(), item.text_size, item.caret_x(0), editor.y + item.text_top, enabled ? p.text : p.muted);
-        if (focused && c.window_focused && enabled) marked(c, PaintRole::caret, [&] { c.fill({at(session->visible_caret()), editor.y, d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, editor.h}, p.accent); });
+        if (focused && c.window_focused && enabled) marked(c, PaintRole::caret, [&] { c.fill({at(session->visible_caret()), editor.y, d(c.presentation().thin) + 1, editor.h}, p.accent); });
     }
     bool selects_text() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.text_key_down(key); }
@@ -466,7 +473,7 @@ public:
         auto p = c.palette();
         auto d = [&](int value) { return scaled(c.scale, value); };
         bool focused = c.focus_visible, enabled = c.semantics.enabled;
-        int ring = focused ? d(c.appearance.component_presentation(c.ui.presentation().density).focus) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
+        int ring = focused ? d(c.presentation().focus) : d(c.presentation().thin);
         marked(c, focused ? PaintRole::focus_indicator : PaintRole::content, [&] { c.rounded(item.bounds, d(c.appearance.radius()), focused ? p.accent : enabled ? p.border : p.background); });
         Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
         c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
@@ -488,7 +495,7 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.checkbox_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         Command::arrange(c);
-        int extra = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).checkbox_extra);
+        int extra = scaled(c.scale, c.presentation().checkbox_extra);
         c.placement.bounds.w = std::min(c.width, c.placement.bounds.w + extra);
         for (auto& line : c.placement.lines) line.bounds.x += extra;
         auto semantics = *c.ui.describe(c.control.id);
@@ -505,11 +512,11 @@ public:
         paint_lines(c, c.placement.description_lines, c.placement.text_size, c.palette().muted);
         paint_errors(c, c.placement.error_lines, c.placement.text_size, c.palette().error);
         auto p = c.palette();
-        int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), x = c.placement.bounds.x + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap);
+        int size = scaled(c.scale, c.presentation().indicator), x = c.placement.bounds.x + scaled(c.scale, c.presentation().gap);
         int y = c.placement.bounds.y + (c.appearance.button_height(c.placement.lines.front().bounds.h, c.scale, c.ui.presentation().density) - size) / 2;
 
         c.fill({x, y, size, size}, c.semantics.enabled ? p.outline : p.border);
-        int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
+        int inset = scaled(c.scale, c.presentation().inset);
         c.fill({x + inset, y + inset, size - inset * 2, size - inset * 2}, p.surface);
         if (c.semantics.checked.value_or(false))
             c.fill({x + 2 * inset, y + 2 * inset, size - 4 * inset, size - 4 * inset}, p.accent);
@@ -527,12 +534,12 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), row = std::max(scaled(c.scale, 24), line + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap));
-        p.lines.push_back({{0, 0, c.width, line}, semantics.name + (semantics.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix)});
-        int y = line + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
+        int line = c.measure.line_height(p.text_size), row = std::max(scaled(c.scale, 24), line + scaled(c.scale, c.presentation().gap));
+        p.lines.push_back({{0, 0, c.width, line}, semantics.name + (semantics.enabled ? u"" : c.presentation().disabled_suffix)});
+        int y = line + scaled(c.scale, c.presentation().gap_small);
         for (const auto& option : semantics.options) {
             p.options.push_back({0, y, c.width, row});
-            p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).radio_label_offset), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).radio_label_offset)), line}, option.label + (option.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix)});
+            p.lines.push_back({{scaled(c.scale, c.presentation().radio_label_offset), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().radio_label_offset)), line}, option.label + (option.enabled ? u"" : c.presentation().disabled_suffix)});
             y += row;
         }
         y = conflict_lines(c, y, semantics.source_conflict);
@@ -547,18 +554,18 @@ public:
         auto p = c.palette();
         const auto& item = c.placement;
         if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
-        if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), item.bounds.h}, p.accent); });
+        if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.presentation().inset), item.bounds.h}, p.accent); });
         for (std::size_t i = 0; i < item.options.size(); ++i) {
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
-            int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
-            int x = r.x + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small), y = r.y + (r.h - size) / 2;
+            int size = scaled(c.scale, c.presentation().indicator), inset = scaled(c.scale, c.presentation().focus);
+            int x = r.x + scaled(c.scale, c.presentation().gap_small), y = r.y + (r.h - size) / 2;
             if (c.hovered(option.value)) c.hover(r);
             auto color = option.enabled && c.semantics.enabled ? p.outline : p.border;
             c.rounded({x, y, size, size}, size / 2, color);
             c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
             const auto& label = item.lines[i + 1];
             c.text(label.text, item.text_size, label.bounds.x, label.bounds.y, option.enabled && c.semantics.enabled ? p.text : p.muted);
-            if (c.focus_visible && option.selected) marked(c, PaintRole::focus_indicator, [&] { c.fill({r.x, r.y + r.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), r.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
+            if (c.focus_visible && option.selected) marked(c, PaintRole::focus_indicator, [&] { c.fill({r.x, r.y + r.h - scaled(c.scale, c.presentation().inset), r.w, scaled(c.scale, c.presentation().inset)}, p.accent); });
         }
         paint_lines(c, item.description_lines, item.text_size, p.muted);
         paint_errors(c, item.error_lines, item.text_size, p.error);
@@ -571,19 +578,19 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).row_padding);
-        p.label_lines = block(c.measure, s.name + (s.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix), p.text_size, c.width);
+        int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.presentation().row_padding);
+        p.label_lines = block(c.measure, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix), p.text_size, c.width);
         int y = height_of(p.label_lines);
-        if (y) y += scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
+        if (y) y += scaled(c.scale, c.presentation().gap_small);
         if (s.options.empty()) {
-            p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap), y, c.width, line}, c.appearance.component_presentation(c.ui.presentation().density).no_items});
+            p.lines.push_back({{scaled(c.scale, c.presentation().gap), y, c.width, line}, c.presentation().no_items});
             y += row;
         }
         for (const auto& item : s.options) {
             p.options.push_back({0, y, c.width, row});
-            auto text = (item.selected ? c.appearance.component_presentation(c.ui.presentation().density).selected_marker : c.appearance.component_presentation(c.ui.presentation().density).unselected_marker) + item.label;
-            if (!item.enabled) text += c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix;
-            p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).body_spacing)), line}, std::move(text)});
+            auto text = (item.selected ? c.presentation().selected_marker : c.presentation().unselected_marker) + item.label;
+            if (!item.enabled) text += c.presentation().disabled_suffix;
+            p.lines.push_back({{scaled(c.scale, c.presentation().gap), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().body_spacing)), line}, std::move(text)});
             y += row;
         }
         p.bounds = {0, 0, c.width, y};
@@ -600,7 +607,7 @@ public:
             if (item.selected) marked(c, PaintRole::selection, [&] { c.fill(row, palette.selection); });
             if (c.hovered(item.value)) c.hover(row);
             if (c.focus_visible && c.semantics.candidate == item.value)
-                marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), row.h}, palette.accent); });
+                marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.presentation().focus), row.h}, palette.accent); });
             const auto& line = p.lines[i];
             c.text(line.text, p.text_size, line.bounds.x, line.bounds.y, item.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
@@ -614,8 +621,8 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         int line = c.measure.line_height(p.text_size), row = c.appearance.button_height(line, c.scale, c.ui.presentation().density);
-        p.lines.push_back({{0, 0, c.width, line}, s.name + (s.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix)});
-        p.lines.push_back({{scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).body_spacing)), line}, s.value.empty() ? c.appearance.component_presentation(c.ui.presentation().density).no_selection : s.value});
+        p.lines.push_back({{0, 0, c.width, line}, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix)});
+        p.lines.push_back({{scaled(c.scale, c.presentation().gap), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().body_spacing)), line}, s.value.empty() ? c.presentation().no_selection : s.value});
         int y = line + row;
         y = conflict_lines(c, y, s.source_conflict);
         if (s.invalid) {
@@ -641,19 +648,19 @@ public:
                 if (c.semantics.candidate && *c.semantics.candidate == o.value) marked(c, PaintRole::selection, [&] { c.fill(r, palette.selection); });
                 if (c.hovered(o.value)) c.hover(r);
                 const auto& line = c.placement.lines[i];
-                c.text(o.enabled ? line.text : line.text + c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix, c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
+                c.text(o.enabled ? line.text : line.text + c.presentation().disabled_suffix, c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
             }
             return;
         }
         marked(c, (c.focus_visible ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.focus_visible ? palette.accent : c.semantics.enabled ? palette.outline : palette.border); });
-        int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
+        int inset = scaled(c.scale, c.presentation().inset);
         Rect face{bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)};
         c.rounded(face, scaled(c.scale, c.appearance.radius()), palette.surface);
         if (c.hovered()) c.hover(face, scaled(c.scale, c.appearance.radius()));
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
         if (c.placement.lines.size() > 1) {
             const auto& line = c.placement.lines[1].bounds;
-            c.text(c.appearance.component_presentation(c.ui.presentation().density).dropdown_marker, c.placement.text_size, bounds.x + std::max(0, bounds.w - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).dropdown_marker_space)), line.y,
+            c.text(c.presentation().dropdown_marker, c.placement.text_size, bounds.x + std::max(0, bounds.w - scaled(c.scale, c.presentation().dropdown_marker_space)), line.y,
                    c.semantics.enabled ? palette.text : palette.muted);
         }
         paint_lines(c, c.placement.description_lines, c.placement.text_size, palette.muted);
@@ -668,13 +675,13 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).slider_pad), track_height = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).slider_height);
-        auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix);
-        if (semantics.source_conflict) title += c.appearance.component_presentation(c.ui.presentation().density).conflict_suffix;
+        int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, c.presentation().slider_pad), track_height = scaled(c.scale, c.presentation().slider_height);
+        auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : c.presentation().disabled_suffix);
+        if (semantics.source_conflict) title += c.presentation().conflict_suffix;
         auto dot = slider_dot(c.appearance, c.scale, p.text_size, c.ui.presentation().density);
         p.lines = block(c.measure, title, p.text_size, std::max(1, c.width - dot.room()));
         for (auto& l : p.lines) l.bounds.x += dot.room();
-        int y = height_of(p.lines) + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
+        int y = height_of(p.lines) + scaled(c.scale, c.presentation().gap_small);
         p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};
         y += track_height;
         if (semantics.invalid) {
@@ -688,7 +695,7 @@ public:
         const auto& item = c.placement; auto palette = c.palette();
         paint_lines(c, item.lines, item.text_size, c.semantics.enabled ? palette.text : palette.muted);
         paint_errors(c, item.error_lines, item.text_size, palette.error);
-        auto track = item.slider_track; int thickness = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
+        auto track = item.slider_track; int thickness = scaled(c.scale, c.presentation().focus);
         c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.outline : palette.border);
         if (c.semantics.slider_range && c.semantics.numeric_value) {
             const auto range = *c.semantics.slider_range;
@@ -722,8 +729,8 @@ public:
         auto semantic = *c.ui.describe(c.control.id);
         auto title = semantic.name + (semantic.value.empty() ? u"" : u": " + semantic.value);
         p.lines = block(c.measure, title, p.text_size, c.width);
-        int y = height_of(p.lines) + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
-        p.progress_track = {0, y, std::max(0, c.width), scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).row_padding)};
+        int y = height_of(p.lines) + scaled(c.scale, c.presentation().gap_small);
+        p.progress_track = {0, y, std::max(0, c.width), scaled(c.scale, c.presentation().row_padding)};
         p.progress_fill = p.progress_track;
         p.progress_fill.w = static_cast<int>(static_cast<long long>(p.progress_track.w) * semantic.numeric_value.value_or(0) / 100);
         p.bounds = {0, 0, c.width, y + p.progress_track.h};
@@ -747,23 +754,23 @@ public:
         int height = c.appearance.button_height(c.measure.line_height(c.placement.text_size), c.scale, c.ui.presentation().density);
         c.placement.label_lines = block(c.measure, semantics.name, c.placement.text_size, c.width);
         int top = height_of(c.placement.label_lines);
-        if (top) top += scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
+        if (top) top += scaled(c.scale, c.presentation().gap_small);
         int count = static_cast<int>(semantics.options.size());
         for (int i = 0; i < count; ++i) {
             int left = c.width * i / count, right = c.width * (i + 1) / count;
             c.placement.options.push_back({left, top, right - left, height});
             const auto& option = semantics.options[static_cast<std::size_t>(i)];
-            std::u16string prefix = option.invalid ? c.appearance.component_presentation(c.ui.presentation().density).invalid_tab_marker : u"";
-            if (!option.enabled) prefix += c.appearance.component_presentation(c.ui.presentation().density).disabled_tab_marker;
+            std::u16string prefix = option.invalid ? c.presentation().invalid_tab_marker : u"";
+            if (!option.enabled) prefix += c.presentation().disabled_tab_marker;
             auto label = option.label;
-            int room = std::max(0, right - left - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap));
+            int room = std::max(0, right - left - scaled(c.scale, c.presentation().gap));
             while (!label.empty() && c.measure.measure(prefix + label, c.placement.text_size).width > room) {
                 if (label.back() >= 0xdc00 && label.back() <= 0xdfff && label.size() > 1) label.pop_back();
                 label.pop_back();
             }
             label = prefix + label;
-            c.placement.lines.push_back({{left + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small), top + (height - c.measure.line_height(c.placement.text_size)) / 2,
-                                         std::max(0, right - left - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap)), height}, std::move(label)});
+            c.placement.lines.push_back({{left + scaled(c.scale, c.presentation().gap_small), top + (height - c.measure.line_height(c.placement.text_size)) / 2,
+                                         std::max(0, right - left - scaled(c.scale, c.presentation().gap)), height}, std::move(label)});
         }
         c.placement.bounds = {0, 0, c.width, top + height};
     }
@@ -774,9 +781,9 @@ public:
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             marked(c, option.selected ? PaintRole::selection : PaintRole::content, [&] { c.fill(rect, option.selected ? palette.selection : palette.surface); });
             if (c.hovered(option.value)) c.hover(rect);
-            if (option.selected) marked(c, PaintRole::selection, [&] { c.fill({rect.x, rect.y + rect.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus)}, palette.accent); });
+            if (option.selected) marked(c, PaintRole::selection, [&] { c.fill({rect.x, rect.y + rect.h - scaled(c.scale, c.presentation().focus), rect.w, scaled(c.scale, c.presentation().focus)}, palette.accent); });
             if (c.focus_visible && c.semantics.candidate && *c.semantics.candidate == option.value)
-                marked(c, PaintRole::focus_indicator, [&] { c.fill({rect.x, rect.y, rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, palette.accent); });
+                marked(c, PaintRole::focus_indicator, [&] { c.fill({rect.x, rect.y, rect.w, scaled(c.scale, c.presentation().inset)}, palette.accent); });
             const auto& line = c.placement.lines[i];
             marked(c, option.invalid ? PaintRole::error_text : PaintRole::content, [&] { c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted); });
         }

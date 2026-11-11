@@ -3,6 +3,7 @@
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
+#include "component_type.hpp"
 #include "rich_text.hpp"
 #include "lcars/layout.hpp"
 #include <objbase.h>
@@ -767,12 +768,12 @@ class TextRange final : public ITextRangeProvider {
                 // TextPattern. So `distribute` never reaches this line today; the branch stays so that a label
                 // TextPattern (should one ever be added) already reports it, and the "distribute reports Justified"
                 // line of the #84 spec contradicts #82 item 7 (labels are not text ranges) until then.
-                const bool stretched = n.text_align == TextAlign::justify || n.text_align == TextAlign::distribute;
-                const bool as_left = stretched && owner->ctx->ui->presentation().justify_as_left;
-                out->lVal = as_left ? HorizontalTextAlignment_Left
-                          : stretched ? HorizontalTextAlignment_Justified
-                          : n.text_align == TextAlign::center ? HorizontalTextAlignment_Centered
-                          : n.text_align == TextAlign::right ? HorizontalTextAlignment_Right : HorizontalTextAlignment_Left;
+                switch (detail::drawn_text_align(n.text_align, owner->ctx->ui->presentation())) {
+                case TextAlign::justify: case TextAlign::distribute: out->lVal = HorizontalTextAlignment_Justified; break;
+                case TextAlign::center: out->lVal = HorizontalTextAlignment_Centered; break;
+                case TextAlign::right: out->lVal = HorizontalTextAlignment_Right; break;
+                default: out->lVal = HorizontalTextAlignment_Left; break;
+                }
                 return S_OK;
             }
             if (id == UIA_LineSpacingAttributeId) {  // #80: a VT_BSTR; the multiple of the font's line height, e.g. "1.4" ("1" is single spacing)

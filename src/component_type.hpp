@@ -16,6 +16,8 @@ struct ComponentLayout {
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
     int vertical_height = 0; // physical pixels given by layout::vertical_text; 0 = columns never wrap
+    // The appearance's sizes and texts for the density in force now.
+    ComponentPresentation presentation() const;
 };
 enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32, hover = 64 };
 constexpr PaintRole operator|(PaintRole a, PaintRole b) {
@@ -32,6 +34,8 @@ public:
     const Appearance& appearance;
     float scale;
     bool window_focused;
+    // The appearance's sizes and texts for the density in force now.
+    ComponentPresentation presentation() const;
     // The only source of paint colors: the appearance's palette for the current theme variant,
     // with the Ui's palette overrides applied.
     Palette palette() const;
@@ -97,6 +101,8 @@ int paragraph_gap(const Control& control, float scale);
 // The alignment to draw now (#84): the control's own, except that the user's "justified text as left"
 // setting turns justify and distribute into left. Reads of the property itself stay unchanged.
 TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings);
+// The same rule for an alignment value alone (what UIA reports from a semantic node): the one place that knows it.
+TextAlign drawn_text_align(TextAlign align, const PresentationSettings& settings);
 
 // Temporary internal registration supports extension tests without changing any dispatch point.
 // Its lifetime must encompass every UI using the registered type, on the UI thread.
