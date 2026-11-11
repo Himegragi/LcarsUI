@@ -144,6 +144,58 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (invalidate_) invalidate_();
     return {};
 }
+namespace {
+bool is_builtin_appearance(const Appearance& appearance) {
+    const auto& list = detail::builtin_appearances();
+    return std::find(list.begin(), list.end(), &appearance) != list.end();
+}
+Palette apply_overrides(Palette palette, const std::vector<PaletteOverride>& overrides, std::string_view appearance, const ThemeVariant& variant) {
+    for (const auto& entry : overrides)
+        if (entry.appearance == appearance && entry.variant == variant) set_palette_value(palette, entry.role, entry.value);
+    return palette;
+}
+std::u16string ascii16(const std::string& text) { return std::u16string(text.begin(), text.end()); }
+}
+Palette detail::UiState::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
+    auto palette = appearance.palette(variant);
+    if (palette_overrides_.empty() || !is_builtin_appearance(appearance)) return palette;
+    return apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+}
+Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overrides) {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    std::u16string problems;
+    auto reject = [&](const std::string& text) { problems += (problems.empty() ? u"" : u"; ") + ascii16(text); };
+    std::vector<std::pair<const Appearance*, ThemeVariant>> affected;
+    for (std::size_t i = 0; i < overrides.size(); ++i) {
+        const auto& entry = overrides[i];
+        const auto* appearance = builtin_appearance(entry.appearance);
+        if (!appearance) { reject("unknown appearance \"" + entry.appearance + "\""); continue; }
+        if (!appearance->supports(entry.variant)) { reject(entry.appearance + " does not support theme variant \"" + entry.variant.name + "\""); continue; }
+        Palette scratch = appearance->palette(entry.variant);
+        if (!set_palette_value(scratch, entry.role, entry.value)) { reject("invalid palette value for role \"" + entry.role + "\" of " + entry.appearance + " / " + entry.variant.name); continue; }
+        bool repeated = false;
+        for (std::size_t j = 0; j < i; ++j)
+            repeated = repeated || (overrides[j].appearance == entry.appearance && overrides[j].variant == entry.variant && overrides[j].role == entry.role);
+        if (repeated) { reject("role \"" + entry.role + "\" of " + entry.appearance + " / " + entry.variant.name + " is overridden twice"); continue; }
+        if (std::none_of(affected.begin(), affected.end(), [&](const auto& pair) { return pair.first == appearance && pair.second == entry.variant; }))
+            affected.emplace_back(appearance, entry.variant);
+    }
+    if (problems.empty()) {
+        for (const auto& [appearance, variant] : affected) {
+            auto failures = check_palette_contrast(apply_overrides(appearance->palette(variant), overrides, appearance->name(), variant));
+            for (const auto& failure : failures) {
+                char numbers[64];
+                std::snprintf(numbers, sizeof numbers, "%.2f:1 (needs %.1f:1)", std::floor(failure.ratio * 100) / 100, failure.required);
+                reject(std::string(appearance->name()) + " / " + variant.name + ": " + failure.pair + " contrast " + numbers);
+            }
+        }
+    }
+    if (!problems.empty()) return {Status::invalid_value, u"Palette overrides rejected: " + problems};
+    palette_overrides_ = std::move(overrides);
+    if (invalidate_) invalidate_();
+    return {};
+}
 detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(controls)) {
     OperationScope operation(this);
     std::map<Id, bool> ids;
@@ -2702,6 +2754,13 @@ Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmFi
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
 const PresentationSettings& Ui::presentation() const { return state_->presentation(); }
+Result Ui::set_palette_overrides(std::vector<PaletteOverride> overrides) { return state_->set_palette_overrides(std::move(overrides)); }
+const std::vector<PaletteOverride>& Ui::palette_overrides() const { return state_->palette_overrides(); }
+Query<Palette> Ui::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
+    if (!appearance.supports(variant)) return {Status::invalid_value, u"Appearance does not support this theme variant", {}};
+    return {Status::ok, {}, state_->effective_palette(appearance, variant)};
+}
+void Ui::bind_appearance(const Appearance* appearance) { state_->bind_appearance(appearance); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
 const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
@@ -2919,6 +2978,13 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
         }
     }
     return {Status::ok, {}, result};
+}
+Query<Palette> SemanticTree::effective_palette() const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
+    return {Status::ok, {}, u.effective_palette(*u.bound_appearance())};
 }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
