@@ -887,6 +887,79 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
                      "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
+// #82 twin of tests/vertical.cpp on a real window: posted messages scroll a vertical-writing label sideways.
+// Reading starts at the right edge; wheel down (also with Shift) goes toward the end of the text, the horizontal
+// wheel and the thumb go both ways, Left and Right read on and back. The 300 characters make 25 columns of 24 px
+// (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
+void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
+    Ui ui; ScrollState scroll;
+    auto note = ui.add_label({.id = "note", .kind = Kind::label, .value = std::u16string(300, u'字'),
+                              .writing_mode = WritingMode::vertical}).value.value();
+    DesktopOptions options; options.title = u"LcarsUI vertical label verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(420, 300);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto region = [&]() -> std::optional<ScrollRegion> {  // a copy: repaints replace the frame
+        for (const auto& r : host.frame().regions) if (r.horizontal) return r;
+        return std::nullopt;
+    };
+    auto label = [&]() { return *detail::find_placement(host.frame(), "note"); };
+    auto offset = [&] { auto r = region(); return r ? r->offset : -1; };
+    auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
+    auto start = region();
+    report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
+                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w,
+        "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
+    const auto bounds = label().bounds;
+    POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};
+    post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_wheel = offset();
+    post(WM_MOUSEWHEEL, MAKEWPARAM(MK_SHIFT, static_cast<WORD>(static_cast<short>(-WHEEL_DELTA))), screen(inside));
+    const int after_shift = offset();
+    post(WM_MOUSEHWHEEL, MAKEWPARAM(0, static_cast<WORD>(static_cast<short>(WHEEL_DELTA))), screen(inside));
+    const int after_horizontal = offset();
+    report.check("VT02-wheels", after_wheel > 0 && after_shift > after_wheel && after_horizontal < after_shift && scroll.offset == 0,
+        "Wheel down and Shift+wheel move toward the end of the text, the horizontal wheel to the right moves back, and the page does not scroll; offsets " +
+            std::to_string(after_wheel) + ", " + std::to_string(after_shift) + ", " + std::to_string(after_horizontal));
+    // Thumb: press it, drag it to the far left, release.
+    auto drag = region();
+    bool dragged = false;
+    if (drag) {
+        POINT grab{drag->thumb.x + drag->thumb.w / 2, drag->thumb.y + drag->thumb.h / 2};
+        post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+        post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(drag->track.x - 40, grab.y));
+        const int at_left = offset();
+        post(WM_LBUTTONUP, 0, MAKELPARAM(drag->track.x - 40, grab.y));
+        post(WM_MOUSEMOVE, 0, MAKELPARAM(grab.x, grab.y));
+        dragged = at_left == drag->maximum && offset() == drag->maximum;
+    }
+    report.check("VT03-thumb-drag", dragged, "Dragging the horizontal thumb to the left end shows the last column; offset=" + std::to_string(offset()));
+    // Focus and keys: a label that scrolls takes focus and reads on with Left, back with Right.
+    ui.semantics().perform({"note"}, Verb::focus);
+    host.pump(); host.paint();
+    auto key = [&](WPARAM vk) { post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true)); };
+    key(VK_HOME);
+    const int home = offset();
+    key(VK_LEFT);
+    const int left = offset();
+    key(VK_RIGHT);
+    const int right = offset();
+    key(VK_END);
+    const int end = offset();
+    report.check("VT04-keys", home == 0 && left > 0 && right == 0 && end == region()->maximum && detail::access(ui).focused() == "note",
+        "Home, Left, Right and End scroll the focused label; offsets " + std::to_string(home) + ", " + std::to_string(left) + ", " + std::to_string(right) + ", " + std::to_string(end));
+    if (!folder.empty()) {
+        std::filesystem::create_directories(folder);
+        host.render(420, 300, 1.f, folder / ("vertical-label-" + report.appearance + ".bmp"));
+    }
+    auto comparison = host.compare_gpu(420, 300, 1.f);
+    report.check("VT05-gpu", bool(comparison), "The CPU reference and the OpenGL picture of the vertical label agree");
+}
+
 // #79 twin of tests/multiline.cpp on a real window: posted messages drive a multi-line field. The input
 // method position is asked through WM_IME_REQUEST, as a real IME does; typing through an IME needs the
 // author's machine (see the author-run list).
@@ -3226,6 +3299,7 @@ int run(const std::filesystem::path& folder) {
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
         multiline_native(*appearance, report, folder);
+        vertical_label_native(*appearance, report, folder);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3671,7 +3745,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool multiline_only = false;
+        bool multiline_only = false, vertical_only = false;
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
@@ -3696,6 +3770,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--vertical-only") vertical_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3716,6 +3791,14 @@ int wmain(int argc, wchar_t** argv) {
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 long_dropdown_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (vertical_only) {  // #82 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "vertical.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                vertical_label_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
