@@ -20,7 +20,7 @@ AboutInfo desktop_about_info(const lcars::Appearance& appearance) {
         about.settings_path.assign(path.begin(), path.end());
     } else about.settings_path = u"未知";
     about.licenses.push_back({{"lcars"}, u"LcarsUI 框架 — MIT", std::u16string(framework_license)});
-    const char* ids[] = {"freetype", "harfbuzz", "khronos"};
+    const char* ids[] = {"freetype", "harfbuzz", "khronos", "unicode"};
     std::size_t i = 0;
     for (const auto& notice : lcars::third_party_notices()) {
         auto label = std::u16string(notice.name) + u" " + std::u16string(notice.version) + u" — " + std::u16string(notice.license);

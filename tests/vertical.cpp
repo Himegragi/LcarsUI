@@ -257,6 +257,65 @@ void keyboard_arrows_scroll_a_focused_sideways_label() {
     auto wide = page.arrange_in(400, 200);
     check(!page.label.describe()->focusable && wide.regions.empty(), "When everything fits, the label neither scrolls nor takes focus");
 }
+void shift_wheel_reaches_only_the_sideways_label() {
+    Page page(cjk(25));
+    auto frame = page.arrange_in(48, 200);
+    int x = placed(frame, page.label).bounds.x + 10;
+    check(!frame.wheel(page.ui, x, 390, -10, true), "Shift+wheel outside the label scrolls nothing");
+    check(frame.wheel(page.ui, x, 50, -10, true), "Shift+wheel over the label scrolls it");
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 10, "...toward the later columns, like the plain wheel");
+}
+void a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page() {
+    Ui ui; test::FakeMeasure measure; ScrollState outer;
+    auto tall = ui.add_label({.id = "tall", .kind = Kind::label, .value = std::u16string(20, u'x')}).value.value();
+    auto label = vertical_label(ui, "label", cjk(25));
+    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
+    check(frame.regions.size() == 2 && !frame.regions[0].horizontal && frame.regions[1].horizontal, "The page region comes first, the label's region last");
+    check(frame.maximum > 0 && frame.viewport == frame.regions[0].viewport, "The frame's page fields describe the page, not the label");
+    const auto* item = frame.find(label);
+    int x = item->bounds.x + 10, y = item->bounds.y + 10;
+    check(item->clip.contains(x, y), "The label is on screen");
+    check(frame.wheel(ui, x, y, -10) && outer.offset == 0, "The label takes the step first");
+    frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
+    frame.wheel(ui, x, y, -1000);
+    frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
+    item = frame.find(label);
+    check(frame.regions[1].offset == frame.regions[1].maximum, "The label is scrolled to its end");
+    check(frame.wheel(ui, item->bounds.x + 10, item->bounds.y + 10, -20) && outer.offset > 0, "Then the page takes it");
+    frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
+    item = frame.find(label);
+    check(frame.regions[1].viewport == item->bounds && frame.regions[1].track.y + frame.regions[1].track.h == item->bounds.y + item->bounds.h,
+          "The label's region moves with the page");
+}
+void text_size_and_scale_change_the_columns() {
+    Page page(cjk(25));
+    auto frame = arrange(layout::vertical_text(page.label, 200), page.ui, look, page.measure, 600, 400, 1.5f, page.outer);
+    const auto& label = placed(frame, page.label);
+    check(label.bounds.h == 300 && label.column_layout.em == 24 && label.column_layout.pitch == 36, "At 150% the height and the cells scale together");
+    check(label.column_layout.columns[0].pieces.size() == 12, "300 px hold 12 cells of 24 px (288)");
+    PresentationSettings settings; settings.text_size = 24;
+    check(bool(page.ui.set_presentation(settings)), "A larger text size");
+    frame = page.arrange_in(600, 200);
+    check(placed(frame, page.label).column_layout.em == 24 && placed(frame, page.label).column_layout.columns[0].pieces.size() == 8, "Fewer, larger cells per column: 8 x 24 = 192");
+}
+void the_scroll_position_follows_the_content_when_it_shrinks() {
+    Page page(cjk(25));
+    std::u16string shown = cjk(25);
+    page.label.connect_source([&] { return shown; });
+    auto frame = page.arrange_in(48, 200);
+    detail::access(page.ui).focus("label");
+    detail::access(page.ui).key_down({.key = Key::end});
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 24, "Scrolled to the end");
+    shown = cjk(14);  // two columns: 48 px, exactly the slot
+    frame = page.arrange_in(48, 200);
+    check(frame.regions.empty() && !page.label.describe()->focusable, "When the text fits again the label stops scrolling");
+    shown = cjk(25);
+    frame = page.arrange_in(48, 200);
+    check(frame.regions.size() == 1 && frame.regions[0].offset == 0, "Growing again starts from the beginning, not the old position");
+}
 }
 
 int main() {
@@ -283,6 +342,10 @@ int main() {
         {"the_wheel_moves_a_sideways_label_toward_the_end_of_the_text", the_wheel_moves_a_sideways_label_toward_the_end_of_the_text},
         {"the_scrollbar_thumb_maps_back_to_an_offset", the_scrollbar_thumb_maps_back_to_an_offset},
         {"keyboard_arrows_scroll_a_focused_sideways_label", keyboard_arrows_scroll_a_focused_sideways_label},
+        {"shift_wheel_reaches_only_the_sideways_label", shift_wheel_reaches_only_the_sideways_label},
+        {"a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page", a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page},
+        {"text_size_and_scale_change_the_columns", text_size_and_scale_change_the_columns},
+        {"the_scroll_position_follows_the_content_when_it_shrinks", the_scroll_position_follows_the_content_when_it_shrinks},
     };
     return test::run("vertical", cases);
 }

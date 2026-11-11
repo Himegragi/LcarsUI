@@ -3,7 +3,7 @@
 VerticalOrientation.txt (UAX #50 Vertical_Orientation). Run by a maintainer when the Unicode
 version is bumped; the build never runs it.
 
-    python third_party/unicode/gen_vertical_orientation.py VerticalOrientation.txt src/vertical_orientation_data.inc
+    python third_party/unicode/gen_vertical_orientation.py third_party/unicode/VerticalOrientation-18.0.0.txt src/vertical_orientation_data.inc
 
 Only the non-default values are written: every code point that is not listed is R (the file's
 "@missing: 0000..10FFFF; R" line). Adjacent ranges with the same value are merged.
