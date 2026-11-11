@@ -1090,7 +1090,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             }
             if (hit->kind == Kind::slider) {
                 drag_ = Drag::slider;
-                detail::access(ui_).slider_pointer_down(id, x, hit->slider_track);
+                detail::access(ui_).slider_pointer_down(id, x, hit->slider_track, scale());
             }
             SetCapture(window_);
         }

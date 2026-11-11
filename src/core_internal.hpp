@@ -93,8 +93,9 @@ public:
     Result slider_set_value(const Id& id, int value);
     // A pointer drag converts the mouse x to a value against the track captured at press, so a layout
     // that moves under the pointer cannot change the value. The thumb is drawn at the pointer, not the value.
-    Result slider_pointer_down(const Id& id, int x, Rect track);
+    Result slider_pointer_down(const Id& id, int x, Rect track, float scale = 1.f);
     Result slider_pointer(const Id& id, int x);
+    void slider_track_refresh(const Frame& frame);  // end of every arrange: where the held thumb is drawn now
     std::optional<int> slider_drag_x(std::string_view id) const;
     // #75 shared animation clock. The host (or a test) supplies the time source in milliseconds; with
     // none installed every change is instant. Motion plays only when the source exists, presentation
@@ -572,7 +573,8 @@ private:
     struct ShortcutBinding { Shortcut chord; Id target, scope; };
     std::vector<ShortcutBinding> shortcuts_;
     Id focus_, key_armed_, pointer_armed_, composing_, executing_;
-    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, press_x = 0; bool held = false; };
+    // origin/width: the track captured at press (the value basis). seen_*: the track the latest frame drew the thumb on.
+    struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, press_x = 0; bool held = false; double seen_origin = 0, seen_width = 1; int threshold = 4; };
     std::optional<SliderDrag> slider_drag_;
     AnimationClock animations_;
     bool system_animations_ = true, window_hidden_ = false;
@@ -581,7 +583,8 @@ private:
     bool slider_transition_live(std::string_view id) const;
     double slider_display_ratio(std::string_view id) const;
     void slider_started_moving(const Id& id, double from, int value_before);
-    void end_slider_drag();
+    void end_slider_drag(bool slide);  // slide: the release of a drag eases to the tick; an interruption lands at once
+    void slider_land(std::string_view id);  // drop a running thumb transition: the thumb is at its value now
     std::optional<std::size_t> pointer_option_;
     std::optional<OptionValue> pointer_option_value_;
     Clipboard* clipboard_ = nullptr;

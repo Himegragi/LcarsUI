@@ -933,6 +933,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     a.ui.frame_visibility(std::move(visibility));
     a.ui.semantic_frame(a.frame);
     a.ui.hover_refresh(a.frame);  // scrolling and reflow move components under a resting pointer
+    a.ui.slider_track_refresh(a.frame);  // a held slider thumb is drawn on this frame's track
     return std::move(a.frame);
 }
 }

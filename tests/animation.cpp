@@ -34,6 +34,7 @@ struct Volume {
     std::uint64_t now = 0;
     const Appearance& appearance;
     Rect track{};
+    int width = 400;  // the window the slider is arranged in; a test narrows it to move the track under the pointer
     explicit Volume(const Appearance& look = web_appearance()) : appearance(look) {
         slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
@@ -45,7 +46,7 @@ struct Volume {
     detail::UiState& state() { return detail::access(ui); }
     ThumbProbe paint() {
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(slider), ui, appearance, measure, 400, 200, 1.f, scroll);
+        auto frame = arrange(layout::control(slider), ui, appearance, measure, width, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
         check(item != nullptr, "slider is arranged");
         track = item->slider_track;
@@ -148,12 +149,15 @@ void home_and_end_slide() {
 // Press, move and release the pointer on the slider the way the host does.
 struct Pointer {
     Volume& v;
-    explicit Pointer(Volume& volume) : v(volume) {}
+    float scale;
+    explicit Pointer(Volume& volume, float dpi_scale = 1.f) : v(volume), scale(dpi_scale) {}
     int at(double share) const { return v.track.x + static_cast<int>(v.track.w * share); }
-    void press(double share) {
+    void press(double share) { press_at(at(share)); }
+    void press_at(int x) {
         check(bool(v.state().pointer_down("volume")), "pointer down");
-        v.state().slider_pointer_down("volume", at(share), v.track);
+        v.state().slider_pointer_down("volume", x, v.track, scale);
     }
+    void move_to(int x) { v.state().slider_pointer("volume", x); }
     void move(double share) { v.state().slider_pointer("volume", at(share)); }
     void release() { v.state().pointer_up("volume"); }
 };
@@ -201,33 +205,88 @@ void press_then_drag_away_follows_the_hand() {
     check(!v.ui.animating().value.value(), "the click slide was dropped");
     check(*v.slider.draft() == 30, "value follows the drag");
 }
-void interrupted_drag_slides_back() {
+// Code review 2026-11-12 item 6: only the release of a drag slides; an interruption returns at once.
+void interrupted_drag_returns_to_the_tick_at_once() {
     Volume v; Pointer p(v);
     v.now = 1000; p.press(0.47); p.move(0.72);
     v.state().cancel_input();
-    check(v.ui.animating().value.value(), "an interrupted drag slides to the tick");
+    check(!v.ui.animating().value.value(), "an interrupted drag does not slide");
+    check(near_px(v.paint().center(), v.tick(70)), "the thumb is on the tick at once");
     v.now = 1150;
-    check(near_px(v.paint().center(), v.tick(70)), "and lands on the tick");
+    check(near_px(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "and stays there");
+}
+// Item 5: the held thumb is drawn on the CURRENT track, so the release slide starts from that pixel.
+void release_after_the_track_moved_slides_from_the_drawn_thumb() {
+    Volume v; Pointer p(v);
+    v.now = 1000; p.press(0.47); p.move(0.72);
+    v.width = 300;  // the layout shifts under the held thumb
+    const int drawn = v.paint().center();
+    check(drawn >= v.track.x && drawn <= v.track.x + v.track.w, "the held thumb sits on the current track");
+    v.now = 2000; p.release();
+    check(v.ui.animating().value.value(), "release starts the slide");
+    check(near_px(v.paint().center(), drawn), "t=0 after release: no jump from the drawn thumb");
+    v.now = 2075; int mid = v.paint().center();
+    check((mid < drawn && mid > v.tick(70)) || (mid > drawn && mid < v.tick(70)), "t=75ms: between the drawn thumb and the tick");
+    v.now = 2150;
+    check(near_px(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "t=150ms: on the tick of the current track");
+}
+// Item 7: the 4 px threshold is 4 device-independent pixels, so it grows with the display scale.
+void the_click_drag_threshold_scales_with_dpi() {
+    for (float scale : {1.f, 1.5f, 2.f}) {
+        const int threshold = static_cast<int>(std::lround(4 * scale));
+        for (int extra : {0, 1}) {
+            Volume v; Pointer p(v, scale);
+            v.now = 1000;
+            const int start = v.track.x + static_cast<int>(v.track.w * 0.80);
+            p.press_at(start);
+            check(*v.slider.draft() == 80 && v.ui.animating().value.value(), "a track click slides toward 80");
+            p.move_to(start + threshold + extra);
+            const std::string name = "scale " + std::to_string(scale) + ", " + std::to_string(threshold + extra) + " px";
+            if (extra == 0) check(v.ui.animating().value.value(), (name + ": still a click").c_str());
+            else check(!v.ui.animating().value.value() && near_px(v.paint().center(), start + threshold + extra), (name + ": a drag follows the hand").c_str());
+        }
+    }
 }
 
 // Every way the value changes that is not the user's own input on this slider lands at once,
 // even in the middle of a running slide.
 void other_value_changes_land_at_once() {
-    struct Change { const char* name; void (*apply)(Volume&); };
+    struct Change { const char* name; void (*apply)(Volume&, int); };
     const Change changes[] = {
-        {"application code", [](Volume& v) { check(bool(v.slider.set_value(10)), "set_value"); }},
-        {"semantic set_value", [](Volume& v) { check(bool(v.ui.semantics().perform({"volume"}, Verb::set_value, 10)), "semantic set_value"); }},
-        {"data source", [](Volume& v) { v.model = 10; v.changed(); }},
+        {"application code", [](Volume& v, int value) { check(bool(v.slider.set_value(value)), "set_value"); }},
+        {"semantic set_value", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::set_value, value)), "semantic set_value"); }},
+        // The UIA RangeValue provider receives a double and performs the same semantic verb with its int.
+        {"UIA SetValue", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::set_value, static_cast<int>(static_cast<double>(value)))), "UIA SetValue"); }},
+        {"data source", [](Volume& v, int value) { v.model = value; v.changed(); }},
     };
     for (const auto& change : changes) {
         for (bool running : {false, true}) {
             Volume v;
             if (running) { check(bool(v.press(Key::right)), "start a slide"); v.now = 40; }
-            change.apply(v);
+            change.apply(v, 10);
             check(*v.slider.draft() == 10, change.name);
             check(near_px(v.paint().center(), v.tick(10)), change.name);
             check(!v.ui.animating().value.value(), change.name);
         }
+        // Back to the value a still-live slide was heading to: that is an external change too, so it lands at once.
+        Volume v;
+        check(bool(v.press(Key::right)), "start a slide toward 50"); v.now = 40;
+        change.apply(v, 10); v.now = 80;
+        change.apply(v, 50);
+        check(*v.slider.draft() == 50, change.name);
+        check(near_px(v.paint().center(), v.tick(50)), (std::string(change.name) + ": back on the old target lands at once").c_str());
+        check(!v.ui.animating().value.value(), (std::string(change.name) + ": the old slide does not resume").c_str());
+    }
+}
+// Sliders have no edit history: Ctrl+Z / Ctrl+Y change nothing and leave a running slide alone.
+void undo_and_redo_keys_do_not_touch_a_slider() {
+    for (char16_t letter : {u'Z', u'Y'}) {
+        Volume v;
+        check(bool(v.press(Key::right)), "start a slide"); v.now = 40;
+        const int before = v.paint().center();
+        KeyPress chord; chord.key = Key::other; chord.ctrl = true; chord.letter = letter;
+        v.state().key_down(chord);
+        check(*v.slider.draft() == 50 && v.ui.animating().value.value() && near_px(v.paint().center(), before), "Ctrl+Z/Y neither change the value nor disturb the slide");
     }
 }
 void motion_off_and_system_setting_play_nothing() {
@@ -336,7 +395,10 @@ int main() {
         {"track click slides, release keeps the slide", track_click_slides_and_release_keeps_the_slide},
         {"drag follows the hand, release slides", drag_follows_the_hand_and_release_slides_to_the_tick},
         {"press then drag away follows the hand", press_then_drag_away_follows_the_hand},
-        {"interrupted drag slides back", interrupted_drag_slides_back},
+        {"interrupted drag returns at once", interrupted_drag_returns_to_the_tick_at_once},
+        {"release after the track moved starts from the drawn thumb", release_after_the_track_moved_slides_from_the_drawn_thumb},
+        {"click-drag threshold scales with dpi", the_click_drag_threshold_scales_with_dpi},
+        {"undo and redo keys do not touch a slider", undo_and_redo_keys_do_not_touch_a_slider},
         {"other value changes land at once", other_value_changes_land_at_once},
         {"motion off and system setting play nothing", motion_off_and_system_setting_play_nothing},
         {"presentation motion is validated", presentation_motion_is_validated_and_compared},

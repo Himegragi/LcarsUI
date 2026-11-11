@@ -941,6 +941,7 @@ Result SliderHandle::use_latest() const {
     if (auto r = ui_->available(id_); !r) return r;
     auto& f = ui_->numerics_.at(id_);
     if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+    if (f.value != f.source_value) ui_->slider_land(id_);
     f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
 }
 Result SliderHandle::connect_source(NumericSource source) const {
@@ -968,7 +969,7 @@ void detail::UiState::numeric_source_changed(const Id& id) {
     if (f.source_invalid) { f.source_invalid = false; set_error(id, std::move(f.error_before_source)); }
     bool clean = !f.connected || f.value == f.source_value;
     f.source_value = value; f.connected = true;
-    if (clean && !f.submitting) f.value = f.origin = value;
+    if (clean && !f.submitting) { if (f.value != value) slider_land(id); f.value = f.origin = value; }
     if (invalidate_) invalidate_();
 }
 Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
@@ -1014,6 +1015,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (f.value == value) return {};
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = value;
+    slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
     NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
     if (!f.immediate || f.submitting) return notify();
     f.submitting = true; Result result;
@@ -1026,32 +1028,35 @@ namespace {
 double slider_share(const SliderRange& range, int value) {
     return (static_cast<double>(value) - range.minimum) / (static_cast<double>(range.maximum) - range.minimum);
 }
-// Pointer movement under this many pixels from the press still counts as a click, not a drag.
-constexpr int slider_drag_threshold = 4;
+// Pointer movement up to this many device-independent pixels from the press still counts as a click, not a drag.
+constexpr double slider_drag_threshold_dip = 4;
+// The thumb's place on a track as a share of it: the pointer x clamped to the track's ends.
+double track_share(double x, double origin, double width) { return std::clamp((x - origin) / width, 0.0, 1.0); }
 }
-Result detail::UiState::slider_pointer_down(const Id& id, int x, Rect track) {
+Result detail::UiState::slider_pointer_down(const Id& id, int x, Rect track, float scale) {
     OperationScope operation(this);
     if (pointer_armed_ != id || track.w <= 0) return {Status::invalid_value, u"No slider drag is active"};
     // With motion the thumb stays on its tick (sliding there after a value change) until the pointer
     // moves like a drag; without motion it follows the pointer from the press, as in #73.
-    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x, x, !motion_enabled()};
+    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x, x, !motion_enabled(),
+                              static_cast<double>(track.x), static_cast<double>(track.w), static_cast<int>(std::lround(slider_drag_threshold_dip * std::max(scale, 0.f)))};
     return slider_pointer(id, x);
 }
 Result detail::UiState::slider_pointer(const Id& id, int x) {
     OperationScope operation(this);
     if (pointer_armed_ != id || !slider_drag_ || slider_drag_->id != id) return {Status::invalid_value, u"No slider drag is active"};
     slider_drag_->x = x;
-    if (!slider_drag_->held && std::abs(x - slider_drag_->press_x) > slider_drag_threshold) {
+    if (!slider_drag_->held && std::abs(x - slider_drag_->press_x) > slider_drag_->threshold) {
         // A real drag: the thumb follows the hand, so a running slide to a tick is dropped.
         slider_drag_->held = true;
-        slider_targets_.erase(id); animations_.cancel(slider_animation_key(id));
+        slider_land(id);
     }
     const bool held = slider_drag_->held;
     const auto basis = *slider_drag_;
     auto& f = numerics_.at(id);
     const double from = slider_display_ratio(id);
     const int before = f.value;
-    double ratio = std::clamp((static_cast<double>(x) - basis.origin) / basis.width, 0.0, 1.0);
+    double ratio = track_share(x, basis.origin, basis.width);
     double value = static_cast<double>(f.range.minimum) + ratio * (static_cast<double>(f.range.maximum) - f.range.minimum);
     auto result = slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
     if (!held) slider_started_moving(id, from, before);
@@ -1104,8 +1109,9 @@ std::optional<double> detail::UiState::slider_animated_ratio(std::string_view id
 double detail::UiState::slider_display_ratio(std::string_view id) const {
     if (auto animated = slider_animated_ratio(id)) return *animated;
     const auto& f = numerics_.find(id)->second;
+    // The held thumb is drawn at the pointer on the track of the latest frame, so its share is measured there.
     if (slider_drag_ && slider_drag_->held && slider_drag_->id == id)
-        return std::clamp((static_cast<double>(slider_drag_->x) - slider_drag_->origin) / slider_drag_->width, 0.0, 1.0);
+        return track_share(slider_drag_->x, slider_drag_->seen_origin, slider_drag_->seen_width);
     return slider_share(f.range, f.value);
 }
 // The value changed through the user's own input on this slider: slide the thumb from where it was shown.
@@ -1115,18 +1121,32 @@ void detail::UiState::slider_started_moving(const Id& id, double from, int value
     animations_.start(slider_animation_key(id), from, slider_share(it->second.range, it->second.value));
     slider_targets_.insert_or_assign(id, it->second.value);
 }
-// The pointer let go (or was interrupted) while holding the thumb off its tick: slide it there.
-void detail::UiState::end_slider_drag() {
+// The drag ended while holding the thumb off its tick. Letting go slides it there from the pixel it was drawn at;
+// an interruption (capture loss, focus move, a new press) puts it on the tick at once.
+void detail::UiState::end_slider_drag(bool slide) {
     if (!slider_drag_) return;
     const auto drag = *slider_drag_;
     slider_drag_.reset();
     auto it = numerics_.find(drag.id);
-    if (!drag.held || it == numerics_.end() || !motion_enabled()) return;
-    const double from = std::clamp((static_cast<double>(drag.x) - drag.origin) / drag.width, 0.0, 1.0);
+    if (!slide || !drag.held || it == numerics_.end() || !motion_enabled()) return;
+    const double from = track_share(drag.x, drag.seen_origin, drag.seen_width);
     const double to = slider_share(it->second.range, it->second.value);
     if (std::abs(from - to) < 1e-9) return;
     animations_.start(slider_animation_key(drag.id), from, to);
     slider_targets_.insert_or_assign(drag.id, it->second.value);
+}
+// The latest frame's track for the dragged slider: the held thumb is drawn on it, wherever layout moved it.
+void detail::UiState::slider_track_refresh(const Frame& frame) {
+    if (!slider_drag_) return;
+    if (const auto* item = find_placement(frame, slider_drag_->id); item && item->slider_track.w > 0) {
+        slider_drag_->seen_origin = item->slider_track.x;
+        slider_drag_->seen_width = item->slider_track.w;
+    }
+}
+// The thumb is at its value from now on: nothing slides (any change that is not the user's own input on the slider).
+void detail::UiState::slider_land(std::string_view id) {
+    slider_targets_.erase(Id(id));
+    animations_.cancel(slider_animation_key(id));
 }
 bool detail::UiState::motion_enabled() const {
     return animations_.has_time_source() && presentation_.motion == Motion::automatic && system_animations_ && !window_hidden_;
@@ -3214,7 +3234,7 @@ Result detail::UiState::move_focus(Id next) {
     if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
     if (menu_ && next != menu_->target) close_menu();
-    key_armed_.clear(); pointer_armed_.clear(); end_slider_drag();
+    key_armed_.clear(); pointer_armed_.clear(); end_slider_drag(false);
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
         auto preedit = edits_.at(composing_).session.preedit;
@@ -3556,7 +3576,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
     }
-    end_slider_drag();
+    end_slider_drag(false);
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
     // Focus notifications can remove, disable, hide, or add controls. Revalidate and
@@ -3581,7 +3601,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
-    auto armed = std::exchange(pointer_armed_, {}); end_slider_drag();
+    auto armed = std::exchange(pointer_armed_, {}); end_slider_drag(true);
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
@@ -3609,7 +3629,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     return invoke(armed);
 }
 void detail::UiState::cancel_input() {
-    OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(); }
+    OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(false); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
