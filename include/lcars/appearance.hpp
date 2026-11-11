@@ -18,8 +18,10 @@ inline Rect intersect(Rect a, Rect b) {
     return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
 }
 struct FieldParts { Rect label, surface, editor; bool underline = false; };
+// border: decorative lines and dividers (light). outline: the edge that identifies a control (text field box,
+// checkbox, radio circle, slider track, scrollbar thumb, ...), >= 3:1 against surface, background and panel.
 struct Palette {
-    Color background, panel, surface, text, muted, border, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110;
+    Color background, panel, surface, text, muted, border, outline, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110;
     bool operator==(const Palette&) const = default;
 };
 // Palette roles are addressed by name so an override list never needs a field list of its own:
@@ -33,7 +35,8 @@ bool set_palette_value(Palette& palette, std::string_view role, const PaletteVal
 double contrast_ratio(Color a, Color b);
 struct ContrastFailure { std::string pair; double ratio = 0, required = 0; };  // pair such as "text/surface"
 // Pairs below their WCAG threshold: text on background, panel, surface and selection, muted and error
-// on surface, on_accent on accent (4.5:1 each) and accent on surface (3:1). Empty when the palette passes.
+// on surface, on_accent on accent (4.5:1 each), accent on surface and outline on surface, background and
+// panel (3:1 each). border is a decorative divider color and is not checked. Empty when the palette passes.
 std::vector<ContrastFailure> check_palette_contrast(const Palette& palette);
 // One entry of Ui::set_palette_overrides: appearance name as reported by Appearance::name(), one
 // theme variant, one palette role, and the replacement value (Color, or int for "scrim_alpha").

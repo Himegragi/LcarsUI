@@ -137,7 +137,8 @@ public:
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
         bool focused = semantics.focused, enabled = semantics.enabled;
         int ring = focused ? d(c.appearance.component_presentation(c.ui.presentation().density).inset) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
-        Color edge = semantics.invalid ? p.error : focused ? p.accent : p.border;
+        // The edge identifies the field: outline when usable, the light divider color when disabled.
+        Color edge = semantics.invalid ? p.error : focused ? p.accent : enabled ? p.outline : p.border;
         marked(c, (focused ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(surface, d(c.appearance.radius()), f.underline ? (enabled ? p.surface : p.background) : edge); });
         if (!f.underline) {
             Rect inner{surface.x + ring, surface.y + ring, surface.w - 2 * ring, surface.h - 2 * ring};
@@ -230,7 +231,7 @@ public:
         int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), x = c.placement.bounds.x + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap);
         int y = c.placement.bounds.y + (c.appearance.button_height(c.placement.lines.front().bounds.h, c.scale, c.ui.presentation().density) - size) / 2;
 
-        c.fill({x, y, size, size}, c.semantics.enabled ? p.border : p.muted);
+        c.fill({x, y, size, size}, c.semantics.enabled ? p.outline : p.border);
         int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
         c.fill({x + inset, y + inset, size - inset * 2, size - inset * 2}, p.surface);
         if (c.semantics.checked.value_or(false))
@@ -274,7 +275,7 @@ public:
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
             int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
             int x = r.x + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small), y = r.y + (r.h - size) / 2;
-            auto color = option.enabled && c.semantics.enabled ? p.border : p.muted;
+            auto color = option.enabled && c.semantics.enabled ? p.outline : p.border;
             c.rounded({x, y, size, size}, size / 2, color);
             c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
             const auto& label = item.lines[i + 1];
@@ -364,7 +365,7 @@ public:
             }
             return;
         }
-        marked(c, (c.semantics.focused ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : palette.border); });
+        marked(c, (c.semantics.focused ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : c.semantics.enabled ? palette.outline : palette.border); });
         int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
         c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
@@ -404,7 +405,7 @@ public:
         paint_lines(c, item.lines, item.text_size, c.semantics.enabled ? palette.text : palette.muted);
         paint_errors(c, item.error_lines, item.text_size, palette.error);
         auto track = item.slider_track; int thickness = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
-        c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.border : palette.muted);
+        c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.outline : palette.border);
         if (c.semantics.slider_range && c.semantics.numeric_value) {
             const auto range = *c.semantics.slider_range;
             double ratio = (static_cast<double>(*c.semantics.numeric_value) - range.minimum) /
@@ -439,7 +440,8 @@ public:
     void paint(ComponentPaint& c) const override {
         auto palette = c.palette();
         paint_lines(c, c.placement.lines, c.placement.text_size, palette.text);
-        c.fill(c.placement.progress_track, palette.border);
+        // The track is the only cue of the bar's extent when no value text is shown; with text it stays decorative.
+        c.fill(c.placement.progress_track, c.semantics.value.empty() ? palette.outline : palette.border);
         if (c.placement.progress_fill.w > 0) c.fill(c.placement.progress_fill, palette.accent);
     }
     bool can_focus() const override { return false; }

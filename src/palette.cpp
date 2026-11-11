@@ -9,7 +9,7 @@ struct ColorRole { std::string_view name; Color Palette::* member; };
 // fails until it is, so new palette colors are overridable without any other change.
 constexpr std::array color_roles{
     ColorRole{"background", &Palette::background}, ColorRole{"panel", &Palette::panel}, ColorRole{"surface", &Palette::surface},
-    ColorRole{"text", &Palette::text}, ColorRole{"muted", &Palette::muted}, ColorRole{"border", &Palette::border},
+    ColorRole{"text", &Palette::text}, ColorRole{"muted", &Palette::muted}, ColorRole{"border", &Palette::border}, ColorRole{"outline", &Palette::outline},
     ColorRole{"accent", &Palette::accent}, ColorRole{"on_accent", &Palette::on_accent}, ColorRole{"selection", &Palette::selection},
     ColorRole{"error", &Palette::error}, ColorRole{"scrim", &Palette::scrim},
 };
@@ -60,6 +60,7 @@ std::vector<ContrastFailure> check_palette_contrast(const Palette& p) {
         {"text/surface", p.text, p.surface, 4.5}, {"text/selection", p.text, p.selection, 4.5},
         {"muted/surface", p.muted, p.surface, 4.5}, {"error/surface", p.error, p.surface, 4.5},
         {"on_accent/accent", p.on_accent, p.accent, 4.5}, {"accent/surface", p.accent, p.surface, 3.0},
+        {"outline/surface", p.outline, p.surface, 3.0}, {"outline/background", p.outline, p.background, 3.0}, {"outline/panel", p.outline, p.panel, 3.0},
     };
     std::vector<ContrastFailure> failures;
     for (const auto& pair : pairs) {
