@@ -1,6 +1,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "utf.hpp"
+#include "rich_text.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <cstdio>
@@ -51,6 +52,8 @@ bool valid_text_flow(const Control& control) {
     if (!valid_text_align(control.text_align) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
     return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
+// A rich field is a multi-line text field; the option exists for no other control.
+bool valid_rich_option(const Control& control) { return !control.rich || (control.kind == Kind::text && control.multiline); }
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
 bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
@@ -64,6 +67,7 @@ void EditSession::select(unsigned anchor, unsigned caret) {
     };
     selection = {clamp(anchor), clamp(caret)};
     caret_upstream = false;
+    ++selection_changes;
 }
 void EditSession::start_composition() {
     if (composing) return;
@@ -248,9 +252,9 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         if (control.kind == Kind::text) {
-            if (!valid_value(control, control.value) || !valid_visible_lines(control)) throw std::invalid_argument("Invalid initial text");
+            if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
             Field field;
-            field.session.text = control.value;
+            field.session.text = control.value; field.rich = control.rich;
             edits_.emplace(control.id, std::move(field));
         }
     }
@@ -302,10 +306,10 @@ Query<Semantics> ProgressHandle::describe() const {
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
     if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
-        !valid_value(control, control.value) || !valid_visible_lines(control))
+        !valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
-    field.session.text = control.value;
+    field.session.text = control.value; field.rich = control.rich;
     Id id = control.id;
     controls_.push_back(std::move(control));
     edits_.emplace(id, std::move(field));
@@ -1849,8 +1853,9 @@ Result detail::UiState::reset_to_source(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.has_source_value)
         return {Status::invalid_value, u"Text source is not connected"};
-    replace_text(id, it->second.source_value);
+    replace_rich(id, RichText{it->second.source_value, it->second.source_spans});
     it->second.origin = it->second.source_value;
+    it->second.origin_spans = it->second.source_spans;
     return set_error(id, u"");
 }
 Result ButtonHandle::invoke() const {
@@ -1912,7 +1917,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
         if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate || it->second.confirmed || !members.insert(field.id_).second)
+            it->second.confirmation_member || it->second.immediate || it->second.confirmed || it->second.rich || !members.insert(field.id_).second)
             return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -1995,7 +2000,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
+            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}}); else changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); changes.emplace_back(DropdownChange{h, f.value, f.origin}); f.submitting = true; }
@@ -2016,7 +2021,13 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         }
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
             using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<TextChange>(changes[i]).value; }
+            if constexpr (std::is_same_v<T, TextHandle>) {
+                auto& f = edits_.at(h.id_); f.submitting = false;
+                if (outcome.result) {
+                    if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
+                    else f.origin = std::get<TextChange>(changes[i]).value;
+                }
+            }
             else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
             else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<DropdownChange>(changes[i]).value; }
@@ -2042,12 +2053,36 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
 Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
     return ui_->connect_write(id_, std::move(write), true);
 }
 Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
     return ui_->connect_write(id_, std::move(write), false);
+}
+Result TextHandle::connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->connect_rich_write(id_, std::move(write), true);
+}
+Result TextHandle::connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->connect_rich_write(id_, std::move(write), false);
+}
+// The shared write path hands over plain TextChange; a rich write reads the field's spans at that moment.
+Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate) {
+    OperationScope operation(this);
+    if (auto result = configuration_access(id); !result) return result;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
+    if (!write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    return connect_write(id, [this, write = std::move(write)](const TextChange& change) {
+        auto& field = edits_.at(change.field.id_);
+        return write(RichTextChange{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
+    }, immediate);
 }
 Result detail::UiState::connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate) {
     OperationScope operation(this);
@@ -2078,9 +2113,19 @@ Result detail::UiState::confirm(const Id& id) {
 Result TextHandle::connect_source(TextSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
     return ui_->connect_source(id_, std::move(source));
 }
-Result detail::UiState::connect_source(const Id& id, TextSource source) {
+Result TextHandle::connect_rich_source(RichTextSource source) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    if (auto result = ui_->configuration_access(id_); !result) return result;
+    if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
+    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
+    auto read = source.read;
+    return ui_->connect_source(id_, TextSource{[read] { return read().text; }, std::move(source.subscribe)}, std::move(read));
+}
+Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
@@ -2088,6 +2133,7 @@ Result detail::UiState::connect_source(const Id& id, TextSource source) {
     if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
     if (it->second.disconnect) it->second.disconnect();
     it->second.source = std::move(source);
+    it->second.rich_read = std::move(rich_read);
     it->second.has_source_value = false;
     auto weak = std::weak_ptr<void>(lifetime_);
     it->second.disconnect = it->second.source.subscribe([weak, this, id] {
@@ -2101,14 +2147,23 @@ void detail::UiState::source_changed(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.source.read) return;
     auto& field = it->second;
-    auto latest = field.source.read();
-    if (!valid_value(*find(id), latest)) return;
-    const bool clean = !field.has_source_value || field.session.text == field.source_value;
-    field.source_value = latest;
+    RichText latest;
+    if (field.rich_read) {  // a rich source: only a value in normal form (or one that normalizes) is adopted
+        auto read = normalize_rich_text(field.rich_read(), find(id)->max_length);
+        if (!read) return;
+        latest = std::move(*read);
+    } else {
+        latest.text = field.source.read();
+        if (!valid_value(*find(id), latest.text)) return;
+    }
+    const bool clean = !field.has_source_value || source_matches(field);
+    field.source_value = latest.text;
+    field.source_spans = latest.spans;
     field.has_source_value = true;
     if (clean && !field.submitting && !field.session.composing) {
-        replace_text(id, latest);
-        field.origin = latest;
+        field.origin = latest.text;
+        field.origin_spans = latest.spans;
+        replace_rich(id, std::move(latest));
     }
     if (invalidate_) invalidate_();
 }
@@ -2129,12 +2184,14 @@ Result detail::UiState::use_latest(const Id& id) {
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
+    auto latest_spans = it->second.source_spans;
     const bool was_submitting = it->second.submitting;
     it->second.submitting = true;
-    auto result = set_value(id, latest);
+    auto result = it->second.rich ? set_rich_value(id, RichText{latest, latest_spans}) : set_value(id, latest);
     it->second.submitting = was_submitting;
     if (result) {
         it->second.origin = std::move(latest);
+        it->second.origin_spans = std::move(latest_spans);
         set_error(id, u"");
     }
     return result;
@@ -2143,6 +2200,51 @@ Result TextHandle::set_value(std::u16string value) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
     return ui_->set_value(id_, std::move(value));
+}
+Result TextHandle::set_rich_value(RichText value) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_rich_value(id_, std::move(value));
+}
+Query<RichText> TextHandle::rich_value() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->rich_value(id_);
+}
+Result TextHandle::set_style(unsigned begin, unsigned end, StyleChange change) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_style(id_, begin, end, change);
+}
+Result TextHandle::toggle_style(StyleAttribute attribute) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->toggle_style(id_, attribute);
+}
+Result TextHandle::apply_style(StyleChange change) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->apply_style(id_, change);
+}
+Query<TextStyle> TextHandle::typing_style() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->typing_style(id_);
+}
+Result TextHandle::set_typing_style(TextStyle style) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_typing_style(id_, std::move(style));
+}
+Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
+    return ui_->set_colors(id_, std::move(colors));
+}
+Query<std::vector<NamedColor>> TextHandle::colors() const {
+    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
+    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
+    return ui_->colors(id_);
 }
 Query<Semantics> TextHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -2357,7 +2459,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     }
     if (auto it = edits_.find(id); it != edits_.end()) {
         const auto& field = it->second;
-        s.source_conflict = field.has_source_value && field.origin != field.source_value && field.session.text != field.source_value;
+        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !source_matches(field);
+        s.rich = field.rich;
     }
     if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
@@ -2392,6 +2495,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         const auto& field = it->second;
         if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
+            if (field.rich) s.operations.push_back(Operation::style);
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
         }
@@ -2453,9 +2557,11 @@ Result detail::UiState::set_value(std::string_view id, std::u16string value) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    if (field->session.text == value) return {};
+    if (field->session.text == value && field->spans.empty()) return {};
     field->session.select(0, static_cast<unsigned>(field->session.text.size()));
-    return replace_selection(id, *field, value);
+    // On a rich field the new text is unstyled: the inserted spans are empty, not the typing style.
+    static const std::vector<StyleSpan> unstyled;
+    return replace_range(id, *field, 0, static_cast<unsigned>(field->session.text.size()), value, field->rich ? &unstyled : nullptr);
 }
 Result detail::UiState::writable(std::string_view id, Field*& field) {
     OperationScope operation(this);
@@ -2472,10 +2578,14 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
 // Every content change funnels through here so history, value mirror and notification agree.
 Result detail::UiState::replace_selection(std::string_view id, Field& field, std::u16string_view insertion) {
     OperationScope operation(this);
+    return replace_range(id, field, field.session.begin(), field.session.end(), insertion, nullptr);
+}
+Result detail::UiState::replace_range(std::string_view id, Field& field, unsigned first, unsigned last, std::u16string_view insertion,
+                                      const std::vector<StyleSpan>* inserted_spans) {
+    OperationScope operation(this);
     auto& session = field.session;
-    auto first = session.begin();
     auto next = session.text;
-    next.replace(first, session.end() - first, insertion);
+    next.replace(first, last - first, insertion);
     const auto& control = *find(id);
     const auto limit = control.max_length;
     if (!valid_value(control, next)) {
@@ -2483,15 +2593,157 @@ Result detail::UiState::replace_selection(std::string_view id, Field& field, std
         return {Status::invalid_value, std::u16string(control.multiline ? u"請輸入有效文字（最多 " : u"請輸入有效單行文字（最多 ") + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
     }
     auto caret = first + static_cast<unsigned>(insertion.size());
-    if (next == session.text) { session.select(caret, caret); return {}; }
-    if (field.has_source_value && !field.submitting && session.text == field.source_value)
+    // Typed or plain-pasted text takes the typing style; inserted spans (a rich paste, a rich value) bring their own.
+    std::vector<StyleSpan> next_spans;
+    if (field.rich) {
+        const auto length = static_cast<unsigned>(insertion.size());
+        next_spans = detail::splice_spans(field.spans, first, last - first, length,
+                                          inserted_spans ? *inserted_spans : detail::uniform_spans(length, insertion_style(field, first, last)));
+    }
+    if (next == session.text && next_spans == field.spans) { session.select(caret, caret); return {}; }
+    if (field.has_source_value && !field.submitting && source_matches(field)) {
         field.origin = field.source_value;
-    field.past.push_back({session.text, session.selection});
+        field.origin_spans = field.source_spans;
+    }
+    field.past.push_back({session.text, session.selection, field.spans});
     field.future.clear();
     session.text = std::move(next);
+    field.spans = std::move(next_spans);
+    field.typing.reset();
     ++session.revision;
     session.select(caret, caret);
     return finish_edit(id, field);
+}
+// The style of text inserted at [first, last): the temporary typing style while the caret has not moved, else the
+// character before (a paragraph's first character takes the one after it; an empty paragraph is plain).
+TextStyle detail::UiState::insertion_style(const Field& field, unsigned first, unsigned last) const {
+    if (field.typing && field.typing_moves == field.session.selection_changes) return *field.typing;
+    const auto& text = field.session.text;
+    if (first > 0 && text[first - 1] != u'\n') return detail::style_at(field.spans, first - 1);
+    if (last < text.size() && text[last] != u'\n') return detail::style_at(field.spans, last);
+    return {};
+}
+bool detail::UiState::is_rich(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.rich;
+}
+Result detail::UiState::rich_writable(std::string_view id, Field*& field) {
+    OperationScope operation(this);
+    if (auto result = available(id); !result) return result;
+    if (!is_rich(id)) return {Status::not_supported, u"Not a rich text field"};
+    return writable(id, field);
+}
+Result detail::UiState::commit_style(std::string_view id, Field& field, std::vector<StyleSpan> spans) {
+    OperationScope operation(this);
+    if (spans == field.spans) return {};
+    auto& session = field.session;
+    if (field.has_source_value && !field.submitting && source_matches(field)) {
+        field.origin = field.source_value;
+        field.origin_spans = field.source_spans;
+    }
+    field.past.push_back({session.text, session.selection, field.spans});
+    field.future.clear();
+    field.spans = std::move(spans);
+    ++session.revision;
+    return finish_edit(id, field);
+}
+Result detail::UiState::set_rich_value(std::string_view id, RichText value) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    auto normal = normalize_rich_text(std::move(value), find(id)->max_length);
+    if (!normal) return {normal.status, normal.message};
+    field->session.select(0, static_cast<unsigned>(field->session.text.size()));
+    return replace_range(id, *field, 0, static_cast<unsigned>(field->session.text.size()), normal->text, &normal->spans);
+}
+Query<RichText> detail::UiState::rich_value(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    return {Status::ok, {}, RichText{it->second.session.text, it->second.spans}};
+}
+Result detail::UiState::set_style(std::string_view id, unsigned begin, unsigned end, const StyleChange& change) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& text = field->session.text;
+    auto boundary = [&](unsigned pos) { return pos <= text.size() && !(pos > 0 && pos < text.size() && text[pos] >= 0xdc00 && text[pos] <= 0xdfff && text[pos - 1] >= 0xd800 && text[pos - 1] <= 0xdbff); };
+    if (begin > end || !boundary(begin) || !boundary(end)) return {Status::invalid_value, u"No such text range"};
+    return commit_style(id, *field, detail::apply_style_change(field->spans, begin, end, change));
+}
+Query<TextStyle> detail::UiState::typing_style(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    const auto& session = it->second.session;
+    return {Status::ok, {}, insertion_style(it->second, session.begin(), session.end())};
+}
+Result detail::UiState::set_typing_style(std::string_view id, TextStyle style) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    field->typing = std::move(style);
+    field->typing_moves = field->session.selection_changes;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::apply_style(std::string_view id, const StyleChange& change) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& session = field->session;
+    if (session.begin() != session.end()) return set_style(id, session.begin(), session.end(), change);
+    return set_typing_style(id, detail::changed(insertion_style(*field, session.begin(), session.end()), change));
+}
+Result detail::UiState::toggle_style(std::string_view id, StyleAttribute attribute) {
+    OperationScope operation(this);
+    Field* field = nullptr;
+    if (auto result = rich_writable(id, field); !result) return result;
+    const auto& session = field->session;
+    auto flip = [&](bool on) { StyleChange change; (attribute == StyleAttribute::bold ? change.bold : attribute == StyleAttribute::italic ? change.italic : change.underline) = on; return change; };
+    if (session.begin() != session.end())
+        return set_style(id, session.begin(), session.end(), flip(!detail::all_have(field->spans, session.text, session.begin(), session.end(), attribute)));
+    auto current = insertion_style(*field, session.begin(), session.end());
+    bool on = attribute == StyleAttribute::bold ? current.bold : attribute == StyleAttribute::italic ? current.italic : current.underline;
+    return set_typing_style(id, detail::changed(current, flip(!on)));
+}
+Result detail::UiState::set_colors(std::string_view id, std::vector<NamedColor> colors) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
+    std::set<std::string> names;
+    for (const auto& color : colors)
+        if (color.name.empty() || !names.insert(color.name).second) return {Status::invalid_value, u"Color names must be non-empty and distinct"};
+    it->second.colors = std::move(colors);
+    if (invalidate_) invalidate_();
+    return {};
+}
+Query<std::vector<NamedColor>> detail::UiState::colors(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field", std::nullopt};
+    return {Status::ok, {}, it->second.colors};
+}
+std::optional<Color> detail::UiState::named_color(std::string_view id, std::string_view name) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end() || name.empty()) return std::nullopt;
+    for (const auto& color : it->second.colors)
+        if (color.name == name) return presentation_.variant == ThemeVariant::dark() ? color.dark : color.light;
+    return std::nullopt;
+}
+const std::vector<StyleSpan>* detail::UiState::style_spans(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it != edits_.end() && it->second.rich ? &it->second.spans : nullptr;
+}
+std::vector<StyleSpan> detail::UiState::visible_style_spans(std::string_view id) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end() || !it->second.rich) return {};
+    const auto& field = it->second;
+    const auto& session = field.session;
+    if (!session.composing) return field.spans;
+    return detail::composition_spans(field.spans, session.begin(), session.end(), static_cast<unsigned>(session.preedit.size()),
+                                     insertion_style(field, session.begin(), session.end()));
 }
 Result detail::UiState::travel(std::string_view id, bool forward) {
     OperationScope operation(this);
@@ -2501,13 +2753,17 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     auto& to = forward ? field->past : field->future;
     if (from.empty()) return {Status::empty_history, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
     auto& session = field->session;
-    if (field->has_source_value && !field->submitting && session.text == field->source_value)
+    if (field->has_source_value && !field->submitting && source_matches(*field)) {
         field->origin = field->source_value;
-    to.push_back({session.text, session.selection});
+        field->origin_spans = field->source_spans;
+    }
+    to.push_back({session.text, session.selection, field->spans});
     auto snapshot = std::move(from.back());
     from.pop_back();
-    if (session.text != snapshot.text) ++session.revision;
+    if (session.text != snapshot.text || field->spans != snapshot.spans) ++session.revision;
     session.text = std::move(snapshot.text);
+    field->spans = std::move(snapshot.spans);
+    field->typing.reset();
     session.select(snapshot.selection.anchor, snapshot.selection.caret);
     return finish_edit(id, *field);
 }
@@ -2526,7 +2782,7 @@ Result detail::UiState::submit_field(std::string_view id, Field& field,
     }
     if (command) invoking_ = false;
     field.submitting = false;
-    if (result) { field.origin = change.value; set_error(id, u""); }
+    if (result) { field.origin = change.value; field.origin_spans = field.spans; set_error(id, u""); }
     else { set_error(id, result.message); if (command) focus(id); }
     auto notification = notify();
     return notification ? result : notification;
@@ -2592,9 +2848,31 @@ Result detail::UiState::copy(std::string_view id) {
         for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
         selected = std::move(crlf);
     }
-    if (!clipboard_ || !clipboard_->write(selected))
-        return {Status::failed, u"無法寫入剪貼簿"};
+    // A rich field also hands over the styles of the selection, beside the plain text.
+    const bool written = it->second.rich && clipboard_
+        ? clipboard_->write_rich(selected, detail::serialize_rich_payload(RichText{std::u16string(session.text, session.begin(), session.end() - session.begin()),
+                                                                                    detail::slice_spans(it->second.spans, session.begin(), session.end())}))
+        : clipboard_ && clipboard_->write(selected);
+    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
     return {};
+}
+// A paste from the clipboard: a rich field takes the styles of a payload that belongs to the plain text it
+// came with; anything else (another program's text, a payload left from another copy, a plain field) is plain text.
+Result detail::UiState::paste_clipboard(std::string_view id) {
+    OperationScope operation(this);
+    if (!clipboard_) return {Status::not_supported, u"剪貼簿不可用"};
+    auto content = clipboard_->read();
+    if (!content) return {content.status, content.message};
+    if (is_rich(id)) {
+        auto payload = clipboard_->read_rich();
+        auto rich = payload ? detail::parse_rich_payload(*payload) : std::nullopt;
+        if (rich && rich->text == paste_as_multi_line(*content)) {
+            Field* field = nullptr;
+            if (auto result = writable(id, field); !result) return result;
+            return replace_range(id, *field, field->session.begin(), field->session.end(), rich->text, &rich->spans);
+        }
+    }
+    return paste(id, *content);
 }
 Result detail::UiState::cut(std::string_view id) {
     OperationScope operation(this);
@@ -2634,7 +2912,8 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     auto text = session.visible();
     const auto count = static_cast<unsigned>(view.lines.size());
     const unsigned most = count > view.visible ? count - view.visible : 0;
-    const bool relaid = m.text != text || m.size != text_size || m.width != width;
+    auto styles = visible_style_spans(id);
+    const bool relaid = m.text != text || m.size != text_size || m.width != width || m.styles != styles;
     unsigned first = m.first;
     // A new wrap (resize, text size, edit) keeps the same text on top: the anchor is a text offset.
     if (m.placed && relaid) { view.upstream = false; first = view.line_of(std::min<unsigned>(m.anchor, static_cast<unsigned>(text.size()))); }
@@ -2653,7 +2932,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     view.first = first;
     m.view = view;
     m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
-    if (relaid) { m.text = std::move(text); m.size = text_size; m.width = width; }
+    if (relaid) { m.text = std::move(text); m.styles = std::move(styles); m.size = text_size; m.width = width; }
     m.scroll.offset = static_cast<int>(first) * view.row_height;
 }
 bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
@@ -2889,7 +3168,9 @@ Result detail::UiState::key_down(KeyPress key) {
         if (control->kind == Kind::text) {
             // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
             const bool multi = control->multiline;
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' ||
+            // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
+            const bool style_key = control->rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
+            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
                                   (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
                 (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
                  (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
@@ -2958,6 +3239,8 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (key.letter == u'A') { session.select(0, size); return {}; }
         if (key.letter == u'C') return copy(focus_);
         if (key.letter == u'X') return cut(focus_);
+        if (is_rich(focus_) && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U'))
+            return toggle_style(focus_, key.letter == u'B' ? StyleAttribute::bold : key.letter == u'I' ? StyleAttribute::italic : StyleAttribute::underline);
         if (key.letter == u'V') return paste_clipboard(focus_);
         return {};
     }
@@ -2995,7 +3278,7 @@ Result detail::UiState::edit_key(KeyPress key) {
 // arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
 FieldView detail::UiState::vertical_view(const Id& id) {
     auto& field = edits_.find(id)->second;
-    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible(); };
+    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible() && field.multi.styles == visible_style_spans(id); };
     if (!fresh() && relayout_) relayout_();
     FieldView view;
     if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
@@ -3146,15 +3429,20 @@ void detail::UiState::check(std::string_view id, bool checked) {
     if (auto* control = const_cast<Control*>(find(id))) control->checked = checked;
 }
 void detail::UiState::replace_text(std::string_view id, std::u16string value) {
+    replace_rich(id, RichText{std::move(value), {}});
+}
+void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     OperationScope operation(this);
     auto* control = const_cast<Control*>(find(id));
     auto it = edits_.find(id);
-    if (!control || it == edits_.end() || !valid_value(*control, value)) throw std::invalid_argument("Invalid owner refresh");
+    if (!control || it == edits_.end() || !valid_value(*control, rich.text)) throw std::invalid_argument("Invalid owner refresh");
     if (composing_ == control->id) composition_cancel();
     auto& field = it->second;
     field.session.cancel_composition();
-    if (field.session.text != value) ++field.session.revision;
-    field.session.text = std::move(value);
+    if (field.session.text != rich.text || field.spans != rich.spans) ++field.session.revision;
+    field.session.text = std::move(rich.text);
+    field.spans = field.rich ? std::move(rich.spans) : std::vector<StyleSpan>{};
+    field.typing.reset();
     field.session.select(field.session.selection.anchor, field.session.selection.caret);
     field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
     field.multi.first = field.multi.anchor = 0; field.multi.caret = ~0u; field.multi.pending_first.reset();  // show the caret afresh
@@ -3479,6 +3767,10 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
+    if (edit != u.edits_.end() && edit->second.rich) {
+        n.rich = true; n.styles = edit->second.spans;
+        n.typing_style = u.insertion_style(edit->second, edit->second.session.begin(), edit->second.session.end());
+    }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
     n.text_align = s.text_align; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     if (ref.item) {
@@ -3520,6 +3812,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
             for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
+            add(Verb::set_style, n.role == Role::text && admits(Operation::style));
+            add(Verb::set_typing_style, n.role == Role::text && admits(Operation::style));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3573,6 +3867,16 @@ Query<std::optional<NodeRef>> SemanticTree::hover() const {
     return {Status::ok, {}, std::optional<NodeRef>{NodeRef{(*target)->id, (*target)->item}}};
 }
 Result SemanticTree::clear_simulated_hover() { return state_->clear_simulated_hover(); }
+Query<Color> SemanticTree::text_color(const NodeRef& ref, std::string_view name) const {
+    auto& u = *state_;
+    if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
+    if (u.stopped_) return {Status::failed, {}, {}};
+    if (ref.item || !u.find(ref.id) || u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
+    if (!u.is_rich(ref.id)) return {Status::not_supported, u"Not a rich text field", {}};
+    if (auto named = u.named_color(ref.id, name)) return {Status::ok, {}, *named};
+    if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
+    return {Status::ok, {}, u.effective_palette(*u.bound_appearance()).text};
+}
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
@@ -3642,6 +3946,7 @@ void detail::UiState::semantic_diff() {
         property(node.numeric_value != old->numeric_value, "numeric_value");
         property(node.text_align != old->text_align, "text_align"); property(node.line_spacing != old->line_spacing, "line_spacing");
         property(node.paragraph_spacing != old->paragraph_spacing, "paragraph_spacing");
+        property(node.styles != old->styles, "styles"); property(node.typing_style != old->typing_style, "typing_style");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
@@ -3746,6 +4051,15 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     }
     if (node->role == Role::text && verb == Verb::set_value) {
         if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
+        if (auto value = std::get_if<RichText>(&argument)) return state_->set_rich_value(ref.id, *value);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_style) {
+        if (auto edit = std::get_if<StyleEdit>(&argument)) return state_->set_style(ref.id, edit->begin, edit->end, edit->change);
+        return invalid_argument();
+    }
+    if (node->role == Role::text && verb == Verb::set_typing_style) {
+        if (auto style = std::get_if<TextStyle>(&argument)) return state_->set_typing_style(ref.id, *style);
         return invalid_argument();
     }
     if (node->role == Role::text) {

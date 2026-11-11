@@ -146,6 +146,112 @@ void built_in_items_match_their_shortcuts() {
     }
 }
 
+// A rich (multi-line, styled) field over an application-owned model, written at once.
+struct RichField {
+    TextHandle handle;
+    std::shared_ptr<RichText> model;
+};
+RichField add_rich_field(Ui& ui, std::string id, std::u16string value, bool read_only = false) {
+    auto model = std::make_shared<RichText>(RichText{value, {}});
+    auto handle = ui.add_text({.id = id, .kind = Kind::text, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
+    check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect rich source");
+    check(bool(handle.connect_rich_immediate([model](const RichTextChange& change) { *model = change.value; return Result{}; })), "connect rich write");
+    return {handle, model};
+}
+const std::vector<std::string> rich_layout{"lcars.undo", "lcars.redo", "-", "lcars.cut", "lcars.copy", "lcars.paste", "lcars.delete", "-", "lcars.select_all",
+                                           "-", "lcars.bold", "lcars.italic", "lcars.underline"};
+
+void rich_field_menu_adds_bold_italic_underline() {
+    Ui ui; auto field = add_rich_field(ui, "note", u"hello world");
+    check(bool(ui.open_context_menu(field.handle)), "a rich field opens its built-in menu");
+    auto menu = ui.context_menu();
+    check(ids_of(*menu) == rich_layout, "the built-in items, a line, then bold, italic and underline");
+    check(find_item(*menu, "lcars.bold")->label == u"粗體(B)" && find_item(*menu, "lcars.italic")->label == u"斜體(I)" &&
+          find_item(*menu, "lcars.underline")->label == u"底線(U)", "labels follow the Windows rich-edit menu");
+    check(find_item(*menu, "lcars.bold")->access_key == u'B' && find_item(*menu, "lcars.italic")->access_key == u'I' &&
+          find_item(*menu, "lcars.underline")->access_key == u'U', "quick keys match the letters in the labels");
+    check(find_item(*menu, "lcars.bold")->shortcut_hint == u"Ctrl+B" && find_item(*menu, "lcars.italic")->shortcut_hint == u"Ctrl+I" &&
+          find_item(*menu, "lcars.underline")->shortcut_hint == u"Ctrl+U", "shortcut hints are shown");
+    check(enabled(ui, "lcars.bold") && enabled(ui, "lcars.italic") && enabled(ui, "lcars.underline"), "on in an editable rich field, with or without a selection");
+    ui.close_context_menu();
+    // Only rich fields have them; a plain field keeps the old layout, and a read-only rich field disables them.
+    auto plain = add_field(ui, "plain", u"hello");
+    ui.open_context_menu(plain.handle);
+    check(ids_of(*ui.context_menu()) == builtin_layout, "a plain field has no style items");
+    ui.close_context_menu();
+    auto locked = add_rich_field(ui, "locked", u"hello", true);
+    ui.open_context_menu(locked.handle);
+    check(ids_of(*ui.context_menu()) == rich_layout && !enabled(ui, "lcars.bold") && !enabled(ui, "lcars.italic") && !enabled(ui, "lcars.underline"),
+          "a read-only rich field shows them but refuses every one");
+    ui.close_context_menu();
+    // The application's own switches still reach it: replace drops the built-ins, style items included.
+    auto handle = ui.add_context_menu(field.handle, {MenuItem{.id = "mine", .label = u"我的(M)", .access_key = u'M'}}, MenuMode::replace).value.value();
+    ui.open_context_menu(field.handle);
+    check(ids_of(*ui.context_menu()) == std::vector<std::string>{"mine"}, "MenuMode::replace leaves no style items");
+    (void)handle;
+}
+
+// Bold, italic and underline run the very function Ctrl+B / Ctrl+I / Ctrl+U run, on a selection and at a caret.
+void style_items_match_their_shortcuts() {
+    struct Case { const char* item; char16_t letter; bool selection; };
+    const Case cases[] = {
+        {"lcars.bold", u'B', true}, {"lcars.italic", u'I', true}, {"lcars.underline", u'U', true},
+        {"lcars.bold", u'B', false}, {"lcars.italic", u'I', false}, {"lcars.underline", u'U', false},
+    };
+    for (const auto& c : cases) {
+        Ui by_menu, by_key;
+        auto a = add_rich_field(by_menu, "f", u"hello world"), b = add_rich_field(by_key, "f", u"hello world");
+        if (c.selection) { a.handle.select(0, 5); b.handle.select(0, 5); } else { a.handle.select(3, 3); b.handle.select(3, 3); }
+        b.handle.focus();
+        check(bool(by_menu.open_context_menu(a.handle)), "open for the menu twin");
+        check(bool(by_menu.invoke_menu_item(c.item)), "run the menu item");
+        check(bool(core(by_key).key_down({.ctrl = true, .letter = c.letter})), "run the shortcut");
+        check(*a.model == *b.model, "the menu item and its shortcut leave the same rich value");
+        check(a.handle.rich_value().value.value() == b.handle.rich_value().value.value(), "same spans");
+        check(a.handle.typing_style().value.value() == b.handle.typing_style().value.value(), "the same typing style at a caret");
+        if (c.selection) {
+            const auto spans = a.handle.rich_value().value.value().spans;
+            check(spans.size() == 1 && spans[0].start == 0 && spans[0].length == 5 &&
+                  (c.letter == u'B' ? spans[0].bold : c.letter == u'I' ? spans[0].italic : spans[0].underline), "the selection takes the style");
+        } else {
+            const auto typing = a.handle.typing_style().value.value();
+            check(c.letter == u'B' ? typing.bold : c.letter == u'I' ? typing.italic : typing.underline, "a caret starts the style for the next typed text");
+        }
+        check(a.handle.undo().status == b.handle.undo().status && *a.model == *b.model, "undo behaves the same afterwards");
+        // Asking again takes the style away again, through the menu as through the key.
+        by_menu.open_context_menu(a.handle);
+        by_menu.invoke_menu_item(c.item); core(by_key).key_down({.ctrl = true, .letter = c.letter});
+        check(a.handle.rich_value().value.value() == b.handle.rich_value().value.value(), "a second toggle agrees too");
+    }
+}
+
+// U is both 復原(U) and 底線(U): the quick key cycles between them without running either, and Enter runs the highlighted one.
+void underline_shares_its_quick_key_with_undo() {
+    Ui ui; auto field = add_rich_field(ui, "note", u"hello world");
+    field.handle.select(0, 5); field.handle.focus();
+    check(bool(type(ui, u'x')), "type over the selection, so that undo has something to undo");
+    field.handle.select(0, 1);
+    press(ui, Key::menu);
+    check(enabled(ui, "lcars.undo") && enabled(ui, "lcars.underline"), "both items that share U are on");
+    type(ui, u'U');
+    check(*ui.context_menu_open() && highlighted(ui) == "lcars.undo", "U jumps to the first match, 復原(U), without running it");
+    check(field.handle.rich_value().value.value().spans.empty(), "nothing was run by the quick key");
+    type(ui, u'u');
+    check(highlighted(ui) == "lcars.underline" && *ui.context_menu_open(), "pressed again it goes to 底線(U), still without running");
+    type(ui, u'U');
+    check(highlighted(ui) == "lcars.undo", "and wraps around");
+    type(ui, u'u');
+    check(bool(press(ui, Key::enter)) && !*ui.context_menu_open(), "Enter runs the highlighted 底線(U)");
+    const auto spans = field.handle.rich_value().value.value().spans;
+    check(spans.size() == 1 && spans[0].start == 0 && spans[0].length == 1 && spans[0].underline, "the selected character is underlined");
+    // B and I are unique letters: they run at once.
+    press(ui, Key::menu);
+    check(bool(type(ui, u'b')) && !*ui.context_menu_open(), "B runs 粗體(B) at once");
+    check(field.handle.rich_value().value.value().spans.size() == 1 && field.handle.rich_value().value.value().spans[0].bold, "the character is now bold too");
+    press(ui, Key::menu);
+    check(bool(type(ui, u'I')) && !*ui.context_menu_open() && field.handle.rich_value().value.value().spans[0].italic, "I runs 斜體(I) at once");
+}
+
 void keyboard_moves_skips_lines_and_wraps() {
     Ui ui; MemoryClipboard clipboard; core(ui).set_clipboard(&clipboard); clipboard.content = u"x";
     auto field = add_field(ui, "note", u"hello");
@@ -600,6 +706,9 @@ int main() {
         {"items are unavailable when they cannot act", items_are_unavailable_when_they_cannot_act},
         {"read-only field only copies and selects", read_only_field_only_copies_and_selects},
         {"built-in items match their shortcuts", built_in_items_match_their_shortcuts},
+        {"rich field menu adds bold italic underline", rich_field_menu_adds_bold_italic_underline},
+        {"style items match their shortcuts", style_items_match_their_shortcuts},
+        {"underline shares its quick key with undo", underline_shares_its_quick_key_with_undo},
         {"keyboard moves, skips lines and wraps", keyboard_moves_skips_lines_and_wraps},
         {"quick keys run unique and cycle shared letters", quick_keys_run_unique_and_cycle_shared_letters},
     };

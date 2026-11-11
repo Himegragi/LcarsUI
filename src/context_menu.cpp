@@ -52,6 +52,12 @@ std::vector<detail::UiState::MenuEntry> detail::UiState::menu_entries(const Id& 
         add(menu_delete, u"刪除(D)", u'D', u"Del", editable && selected);
         separator();
         add(menu_select_all, u"全選(A)", u'A', u"Ctrl+A", true);
+        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with 復原(U).
+            separator();
+            add(menu_bold, u"粗體(B)", u'B', u"Ctrl+B", editable);
+            add(menu_italic, u"斜體(I)", u'I', u"Ctrl+I", editable);
+            add(menu_underline, u"底線(U)", u'U', u"Ctrl+U", editable);
+        }
     }
     if (attachment != menu_attachments_.end()) {
         if (!raw.empty() && !attachment->second.items.empty()) separator();
@@ -238,6 +244,9 @@ Result detail::UiState::menu_run_builtin(const Id& target, std::string_view comm
     if (command == menu_copy) return copy(target);
     if (command == menu_paste) return paste_clipboard(target);
     if (command == menu_delete) return delete_selection(target);
+    if (command == menu_bold) return toggle_style(target, StyleAttribute::bold);
+    if (command == menu_italic) return toggle_style(target, StyleAttribute::italic);
+    if (command == menu_underline) return toggle_style(target, StyleAttribute::underline);
     if (command == menu_select_all) {
         auto it = edits_.find(target);
         if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
@@ -305,12 +314,6 @@ Result detail::UiState::menu_text(std::u16string_view text) {
         if (invalidate_) invalidate_();
     }
     return {};
-}
-Result detail::UiState::paste_clipboard(std::string_view id) {
-    OperationScope operation(this);
-    if (!clipboard_) return {Status::not_supported, u"剪貼簿不可用"};
-    auto content = clipboard_->read();
-    return content ? paste(id, *content) : Result{content.status, content.message};
 }
 Result detail::UiState::delete_selection(std::string_view id) {
     OperationScope operation(this);

@@ -7,6 +7,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <algorithm>
+#include <array>
 #include <map>
 #include <set>
 
@@ -57,7 +58,9 @@ bool usable(const detail::FontFile& file, bool& eligible) {
     if(face) FT_Done_Face(face); if(lib) FT_Done_FreeType(lib); if(data) UnmapViewOfFile(data); if(mapping) CloseHandle(mapping); CloseHandle(f);
     return ok;
 }
-struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; std::set<std::u16string> valid; bool available=false; HRESULT error=S_OK; };
+// styled[family][slot]: the family's real face for bold (slot bit 0) and italic (slot bit 1) text; a slot is empty
+// when the family has no such file, and then the text backend synthesizes the look from the regular face.
+struct Snapshot { std::vector<FontFamily> families; std::map<std::u16string,detail::FontFile> files; std::map<std::u16string,std::array<detail::FontFile,4>> styled; std::set<std::u16string> valid; bool available=false; HRESULT error=S_OK; };
 const Snapshot& snapshot() {
  static const Snapshot value=[] {
     Snapshot out; ComPtr<IDWriteFactory6> factory; ComPtr<IDWriteFontSet1> set;
@@ -71,6 +74,7 @@ const Snapshot& snapshot() {
     }
     out.available=true;
     std::map<std::u16string,int> scores;
+    std::map<std::u16string,std::array<int,4>> styled_scores;
     std::set<std::u16string> listed;
     for(UINT32 i=0;i<set->GetFontCount();++i) {
         ComPtr<IDWriteFontFaceReference> ref; ComPtr<IDWriteLocalizedStrings> names; BOOL exists=FALSE;
@@ -84,6 +88,18 @@ const Snapshot& snapshot() {
         out.files.try_emplace(key,file);
         ComPtr<IDWriteFontFace3> dwface;
         if(FAILED(ref->CreateFontFace(&dwface))) continue;
+        {  // the family's real Bold / Italic / Bold Italic faces: the nearest upright-normal-stretch weight to 700 or 400
+            const int weight=static_cast<int>(dwface->GetWeight());
+            const bool slanted=dwface->GetStyle()!=DWRITE_FONT_STYLE_NORMAL, normal_width=dwface->GetStretch()==DWRITE_FONT_STRETCH_NORMAL;
+            for(unsigned slot=1;slot<4;++slot) {
+                const bool want_bold=slot&1, want_italic=(slot&2)!=0;
+                if(!normal_width || want_bold!=(weight>=600) || want_italic!=slanted) continue;
+                const int slot_score=std::abs(weight-(want_bold?700:400));
+                auto [held_it,fresh]=styled_scores.try_emplace(key); if(fresh) held_it->second.fill(1<<30); auto& held=held_it->second;
+                if(slot_score>=held[slot]) continue;
+                out.styled[key][slot]=file; held[slot]=slot_score;
+            }
+        }
         int score=std::abs(static_cast<int>(dwface->GetWeight())-400) +
                   1000*std::abs(static_cast<int>(dwface->GetStretch())-static_cast<int>(DWRITE_FONT_STRETCH_NORMAL)) +
                   (dwface->GetStyle()==DWRITE_FONT_STYLE_NORMAL?0:10000);
@@ -120,6 +136,23 @@ FontResolution FontCatalog::resolve(const PresentationSettings& settings) const 
 }
 namespace detail {
 long system_font_catalog_error() { return snapshot().error; }
+FontFile system_styled_font_file(std::u16string_view family, bool bold, bool italic) {
+ const unsigned slot=(bold?1u:0u)|(italic?2u:0u);
+ if(slot==0) return system_font_file(family);
+ const auto& state=snapshot();
+ if(state.available) {
+    auto it=state.styled.find(std::u16string(family));
+    return it==state.styled.end()?FontFile{}:it->second[slot];
+ }
+ // Without the font catalog only the two families the framework names first have well-known file names.
+ static const std::map<std::u16string,std::array<std::wstring,4>> names={
+    {u"Segoe UI",{L"",L"segoeuib.ttf",L"segoeuii.ttf",L"segoeuiz.ttf"}},{u"Microsoft JhengHei",{L"",L"msjhbd.ttc",L"",L""}}};
+ auto found=names.find(std::u16string(family)); if(found==names.end() || found->second[slot].empty()) return {};
+ PWSTR folder=nullptr; if(FAILED(SHGetKnownFolderPath(FOLDERID_Fonts,0,nullptr,&folder))) return {};
+ std::filesystem::path path(folder); CoTaskMemFree(folder); path/=found->second[slot];
+ std::error_code error;
+ return std::filesystem::exists(path,error)?FontFile{path,0}:FontFile{};
+}
 FontFile system_font_file(std::u16string_view family) {
  const auto& state=snapshot(); auto it=state.files.find(std::u16string(family));
  if(it!=state.files.end()) return it->second;

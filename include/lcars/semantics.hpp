@@ -11,8 +11,11 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
 // hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
 // typed Ui::simulate_hover would be, and is never listed in SemanticNode::verbs (hover is not an operation of the node).
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover };
-using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode>;
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style };
+// Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
+struct StyleEdit { unsigned begin = 0, end = 0; StyleChange change; };
+// Rich fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
+using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
 inline std::string menu_node_id(std::string_view target) { return std::string(target) + "/menu"; }
@@ -59,6 +62,9 @@ struct SemanticNode {
     TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
+    bool rich = false;                 // text fields created with Control::rich
+    std::vector<StyleSpan> styles;     // rich fields: the styled runs of value, in normal form
+    std::optional<TextStyle> typing_style;  // rich fields: the style the next typed text takes
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
 // UI-thread-only live queries; the tree does not own its Ui.
@@ -76,6 +82,9 @@ public:
     // Same answer as Ui::hover. UIA never reports hover, so neither node properties nor events change with it.
     Query<std::optional<NodeRef>> hover() const;
     Result clear_simulated_hover();
+    // Rich fields: the color a color name is painted in right now: the field's color for the current theme
+    // variant, or the theme's normal text color for an empty or unknown name (which needs a bound appearance).
+    Query<Color> text_color(const NodeRef& ref, std::string_view name) const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
     // Callbacks run on the UI thread. The desktop host dispatches queued notifications;
     // core-only hosts call dispatch_events() at their own safe event-loop boundary.

@@ -274,7 +274,10 @@ public:
         if (!c.settle) return;  // a measurement probe only needs the fixed height
         const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
         const int wrap_width = std::max(1, view.text.w - slack);
-        view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
+        if (c.control.rich) {  // wrap and measure every run in its own face
+            const auto styles = c.ui.visible_style_spans(c.control.id);
+            view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width, &styles);
+        } else view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
         // Rows: one per line, a paragraph gap after each hard line. Alignment: centered in the text area,
         // right-aligned to the wrap edge (which keeps the caret's slack free at the right).
         const int paragraph = paragraph_gap(c.control, c.scale);
@@ -285,6 +288,7 @@ public:
             top += row + (item.soft ? 0 : paragraph);
             if (c.control.text_align == TextAlign::center) item.shift = std::max(0.f, (static_cast<float>(view.text.w) - item.run.width) / 2);
             else if (c.control.text_align == TextAlign::right) item.shift = std::max(0.f, static_cast<float>(wrap_width) - item.run.width);
+            for (auto& piece : item.pieces) piece.x += item.shift;  // rich runs are drawn where the aligned line is
         }
         c.ui.settle_lines(c.control.id, view, p.text_size, wrap_width);
         const int count = static_cast<int>(view.lines.size()), visible = static_cast<int>(view.visible);
@@ -325,7 +329,22 @@ public:
                     else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, row}, p.selection); });
                 }
             }
-            if (line.end > line.begin) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, enabled ? p.text : p.muted);
+            if (line.end > line.begin && line.pieces.empty())
+                c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, enabled ? p.text : p.muted);
+            // A rich line is drawn run by run: its face, its color (by name, for the theme of the moment) and its underline.
+            // piece.x already includes the line's alignment shift.
+            for (const auto& piece : line.pieces) {
+                const int left = view.text.x + static_cast<int>(std::lround(piece.x));
+                Color color = enabled ? p.text : p.muted;  // a disabled field is muted whatever the colors say
+                if (enabled)
+                    if (auto named = c.ui.named_color(item.id, piece.style.color)) color = *named;
+                c.styled_text(std::u16string_view(text).substr(line.begin + piece.begin, piece.end - piece.begin), item.text_size,
+                              FontStyle{piece.style.bold, piece.style.italic}, left, y + dy, color);
+                if (piece.style.underline) {
+                    const int width = static_cast<int>(std::lround(piece.x + piece.width)) - static_cast<int>(std::lround(piece.x));
+                    c.fill({left, y + dy + view.line_height * 5 / 6, width, std::max(1, item.text_size / 14)}, color);
+                }
+            }
         }
         if (focused && c.window_focused && enabled) {
             const unsigned caret_line = view.line_of(session->visible_caret());

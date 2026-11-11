@@ -115,6 +115,8 @@ public:
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
+    Result connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate);
+    bool is_rich(std::string_view id) const;
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
@@ -231,6 +233,7 @@ public:
     Result undo(std::string_view id);
     Result redo(std::string_view id);
     Result paste(std::string_view id, std::u16string_view text);
+    Result paste_clipboard(std::string_view id);  // Ctrl+V: styles come along when the clipboard holds a matching payload
     Result copy(std::string_view id);  // writes the selection to the clipboard
     Result cut(std::string_view id);
     void set_clipboard(Clipboard* clipboard) { clipboard_ = clipboard; }
@@ -273,6 +276,24 @@ public:
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } hover_clear(); refresh_tooltips(); }
+    void replace_rich(std::string_view id, RichText value);  // owner refresh of a rich field: text and spans
+    // Rich text (Control::rich fields; others answer not_supported). Shared by the typed handle, the semantic
+    // layer, Ctrl+B/I/U and any menu: they all run these same functions.
+    Result set_rich_value(std::string_view id, RichText value);
+    Query<RichText> rich_value(std::string_view id) const;
+    Result set_style(std::string_view id, unsigned begin, unsigned end, const StyleChange& change);
+    Result toggle_style(std::string_view id, StyleAttribute attribute);  // selection, or the typing style at a caret
+    Result apply_style(std::string_view id, const StyleChange& change);  // selection, or the typing style at a caret
+    Query<TextStyle> typing_style(std::string_view id) const;
+    Result set_typing_style(std::string_view id, TextStyle style);
+    Result set_colors(std::string_view id, std::vector<NamedColor> colors);
+    Query<std::vector<NamedColor>> colors(std::string_view id) const;
+    // The committed spans of a rich field (null for others) and the spans of the visible text, which an
+    // IME composition is part of (the preedit takes the typing style), for layout and painting.
+    const std::vector<StyleSpan>* style_spans(std::string_view id) const;
+    std::vector<StyleSpan> visible_style_spans(std::string_view id) const;
+    // The color of a name for the current theme variant, nullopt for an empty or unknown name.
+    std::optional<Color> named_color(std::string_view id, std::string_view name) const;
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
@@ -327,7 +348,7 @@ private:
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id, bool read_only = false) const;
-    Result connect_source(const Id& id, TextSource source);
+    Result connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read = {});
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
@@ -338,7 +359,7 @@ private:
     std::vector<Control> controls_;
     std::map<Id, std::uint64_t, std::less<>> semantic_instances_;
     std::uint64_t next_semantic_instance_ = 0;
-    struct Snapshot { std::u16string text; Selection selection; };
+    struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     struct Field {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
@@ -348,6 +369,7 @@ private:
         struct MultiView {
             FieldView view;               // lines as last arranged (geometry rectangles are unused here)
             std::u16string text;          // the visible text those lines were laid out from
+            std::vector<StyleSpan> styles; // and its styled runs (rich fields): a style change can re-wrap too
             int size = 0, width = 0;      // text size and wrap width they were laid out at
             unsigned first = 0;           // first visible line
             unsigned anchor = 0;          // visible-text offset where that line starts: survives a re-wrap
@@ -364,6 +386,12 @@ private:
         bool submitting = false;
         bool confirmation_member = false;
         std::function<Result(const TextChange&)> immediate, confirmed;
+        bool rich = false;                     // Control::rich
+        std::vector<StyleSpan> spans, source_spans, origin_spans;  // committed styles, last source value, last written value
+        std::function<RichText()> rich_read;   // the rich source (the TextSource subscribe half is shared)
+        std::optional<TextStyle> typing;       // the temporary typing style, valid while the selection has not moved
+        std::uint64_t typing_moves = 0;
+        std::vector<NamedColor> colors;
         std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
@@ -433,7 +461,6 @@ private:
     Result validate_menu_items(const std::vector<MenuItem>& items) const;
     void menu_items_changed(const Id& target);
     bool field_editable(const Control& control, const Field& field) const;
-    Result paste_clipboard(std::string_view id);
     Result delete_selection(std::string_view id);
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
@@ -531,7 +558,14 @@ private:
     std::vector<std::pair<Id, Id>> pending_focus_;  // focus notifications queued behind the current one
     bool notifying_focus_ = false;
     Result writable(std::string_view id, Field*& field);
+    Result rich_writable(std::string_view id, Field*& field);
     Result replace_selection(std::string_view id, Field& field, std::u16string_view insertion);
+    // Replaces [first, last) of the text; inserted_spans (relative to the insertion) override the typing style.
+    Result replace_range(std::string_view id, Field& field, unsigned first, unsigned last, std::u16string_view insertion,
+                         const std::vector<StyleSpan>* inserted_spans);
+    Result commit_style(std::string_view id, Field& field, std::vector<StyleSpan> spans);
+    TextStyle insertion_style(const Field& field, unsigned first, unsigned last) const;
+    bool source_matches(const Field& field) const { return field.session.text == field.source_value && field.spans == field.source_spans; }
     Result finish_edit(std::string_view id, Field& field);
     Result submit_field(std::string_view id, Field& field,
                         const std::function<Result(const TextChange&)>& write, bool command);

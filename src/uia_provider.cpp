@@ -3,6 +3,7 @@
 #include "uia_provider.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
+#include "rich_text.hpp"
 #include "lcars/layout.hpp"
 #include <objbase.h>
 #include <UIAutomation.h>
@@ -14,6 +15,8 @@
 #include <mutex>
 #include <algorithm>
 #include <functional>
+#include <optional>
+#include <tuple>
 #include <thread>
 
 namespace lcars::detail {
@@ -647,12 +650,73 @@ class TextRange final : public ITextRangeProvider {
             return S_OK;
         });
     }
-    HRESULT STDMETHODCALLTYPE FindAttribute(TEXTATTRIBUTEID, VARIANT, BOOL,
+    // Rich text attributes. The style of the text decides weight, slant, underline and the foreground color the
+    // field draws with right now (the color name resolved for the current theme).
+    static bool rich_attribute(TEXTATTRIBUTEID id) {
+        return id == UIA_FontWeightAttributeId || id == UIA_IsItalicAttributeId || id == UIA_UnderlineStyleAttributeId ||
+               id == UIA_ForegroundColorAttributeId;
+    }
+    std::optional<long> attribute_key(TEXTATTRIBUTEID id, const TextStyle &style) const {
+        switch (id) {
+        case UIA_FontWeightAttributeId: return style.bold ? 700 : 400;
+        case UIA_IsItalicAttributeId: return style.italic ? 1 : 0;
+        case UIA_UnderlineStyleAttributeId: return style.underline ? 1 : 0;  // TextDecorationLineStyle_Single
+        case UIA_ForegroundColorAttributeId: {
+            auto color = owner->ctx->ui->semantics().text_color(owner->ref, style.color);
+            if (!color) return std::nullopt;
+            return static_cast<long>(color->r | (color->g << 8) | (color->b << 16));  // COLORREF
+        }
+        default: return std::nullopt;
+        }
+    }
+    // The range cut wherever the style changes, each piece with the attribute's value. An empty range is one
+    // piece: the style of the character at the caret (the last one at the end of the text).
+    std::vector<std::tuple<unsigned, unsigned, long>> attribute_runs(const SemanticNode &n, TEXTATTRIBUTEID id) const {
+        std::vector<std::tuple<unsigned, unsigned, long>> runs;
+        std::vector<unsigned> cuts{first, last};
+        if (first == last) {
+            const unsigned at = first < version.size() || first == 0 ? first : first - 1;
+            if (auto key = attribute_key(id, style_at(n.styles, at))) runs.emplace_back(first, last, *key);
+            return runs;
+        }
+        for (const auto &span : n.styles)
+            for (unsigned edge : {span.start, span.start + span.length})
+                if (edge > first && edge < last) cuts.push_back(edge);
+        std::sort(cuts.begin(), cuts.end());
+        cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+        for (std::size_t i = 0; i + 1 < cuts.size(); ++i) {
+            auto key = attribute_key(id, style_at(n.styles, cuts[i]));
+            if (!key) return {};
+            if (!runs.empty() && std::get<2>(runs.back()) == *key) std::get<1>(runs.back()) = cuts[i + 1];
+            else runs.emplace_back(cuts[i], cuts[i + 1], *key);
+        }
+        return runs;
+    }
+    HRESULT STDMETHODCALLTYPE FindAttribute(TEXTATTRIBUTEID id, VARIANT value, BOOL backward,
                                             ITextRangeProvider **out) override {
         if (!out)
             return E_POINTER;
         *out = nullptr;
-        return call([](const auto &) { return static_cast<HRESULT>(UIA_E_NOTSUPPORTED); });
+        return call([&](const SemanticNode &n) {
+            if (!n.rich || !rich_attribute(id))
+                return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
+            long wanted = 0;
+            if (id == UIA_IsItalicAttributeId) {
+                if (value.vt != VT_BOOL) return static_cast<HRESULT>(E_INVALIDARG);
+                wanted = value.boolVal != VARIANT_FALSE ? 1 : 0;
+            } else {
+                if (value.vt != VT_I4) return static_cast<HRESULT>(E_INVALIDARG);
+                wanted = value.lVal;
+            }
+            auto runs = attribute_runs(n, id);
+            if (backward) std::reverse(runs.begin(), runs.end());
+            for (const auto &[a, b, key] : runs)
+                if (key == wanted) {
+                    *out = new TextRange(owner, a, b, version);
+                    break;
+                }
+            return S_OK;
+        });
     }
     HRESULT STDMETHODCALLTYPE FindText(BSTR text, BOOL backward, BOOL ignore,
                                        ITextRangeProvider **out) override {
@@ -702,6 +766,25 @@ class TextRange final : public ITextRangeProvider {
                 out->vt = VT_BSTR;
                 out->bstrVal = SysAllocString(std::wstring(text.begin(), text.end()).c_str());
                 return out->bstrVal ? S_OK : E_OUTOFMEMORY;
+            }
+            if (n.rich && rich_attribute(id)) {
+                auto runs = attribute_runs(n, id);
+                if (!runs.empty()) {
+                    const long key = std::get<2>(runs.front());
+                    const bool mixed = std::any_of(runs.begin(), runs.end(), [&](const auto &run) { return std::get<2>(run) != key; });
+                    if (mixed) {  // the range holds more than one value
+                        out->vt = VT_UNKNOWN;
+                        return UiaGetReservedMixedAttributeValue(&out->punkVal);
+                    }
+                    if (id == UIA_IsItalicAttributeId) {
+                        out->vt = VT_BOOL;
+                        out->boolVal = key ? VARIANT_TRUE : VARIANT_FALSE;
+                    } else {
+                        out->vt = VT_I4;
+                        out->lVal = key;
+                    }
+                    return S_OK;
+                }
             }
             out->vt = VT_UNKNOWN;
             return UiaGetReservedNotSupportedValue(&out->punkVal);

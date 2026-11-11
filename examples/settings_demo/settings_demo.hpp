@@ -2,7 +2,8 @@
 #include "lcars/layout.hpp"
 #include "lcars/fonts.hpp"
 namespace settings_demo {
-struct Item { lcars::OptionValue id; std::u16string name, note; bool operator==(const Item&) const = default; };
+// note and note_spans together are the item's rich text description (lcars::RichText): the text and its style spans.
+struct Item { lcars::OptionValue id; std::u16string name, note; std::vector<lcars::StyleSpan> note_spans; bool operator==(const Item&) const = default; };
 struct SettingsDocument {
     std::u16string name;
     bool notices;
@@ -48,7 +49,10 @@ private:
     std::u16string settings_path_;
     bool save_failed_ = false;
     std::vector<Item> items_;
-    std::u16string search_value_, item_name_source_, item_note_source_;
+    std::u16string search_value_, item_name_source_;
+    lcars::RichText item_note_source_;
+    std::string note_color_value_ = "default";  // the color last applied from the dropdown above the note
+    std::function<void()> note_color_changed_;
     std::function<void()> item_name_changed_, item_note_changed_;
     std::optional<lcars::OptionValue> selection_;
     std::function<void()> search_changed_, selection_changed_;
@@ -85,6 +89,8 @@ public:
     lcars::ContextMenuHandle items_menu;  // Edit / Delete on every row
     lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
+    lcars::ButtonHandle item_note_bold, item_note_italic, item_note_underline;  // style buttons above the note
+    lcars::DropdownHandle item_note_color;
     lcars::TextHandle item_name, item_note;
     lcars::DialogHandle item_dialog, delete_dialog, close_dialog;
     lcars::ButtonHandle close_save, close_discard, close_cancel;

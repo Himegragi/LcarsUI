@@ -1022,6 +1022,63 @@ void item_note_is_a_multiline_field() {
     test::check(demo.item_note.draft().value.value() == text, "editing loads the note with its breaks");
     test::check(demo.item_note.set_value(std::u16string(200, u'x') + u"\ny").status == Status::invalid_value, "the 200 character limit still counts a line break");
 }
+// #81: the item dialog's note is a rich text field with a style bar above it; the buttons and the color list act on
+// the note's selection, the selection stays and the note takes the focus back; the styles are saved with the item.
+void item_note_is_rich_with_a_style_bar() {
+    settings_demo::Demo demo; demo.nav.select({"items"});
+    test::check(bool(demo.items_add.invoke()), "open the add item dialog");
+    auto& tree = demo.ui.semantics();
+    test::check(tree.get({"items.dialog.note"})->rich && !tree.get({"items.dialog.name"})->rich, "the note is rich, the name is not");
+    for (const char* id : {"items.dialog.note.bold", "items.dialog.note.italic", "items.dialog.note.underline"}) test::check(tree.get({id})->role == Role::button, "a style button above the note");
+    test::check(tree.get({"items.dialog.note.color"})->role == Role::dropdown && demo.item_note_color.describe()->options.size() == 4, "a color list with default, red, green and blue");
+    test::check(bool(demo.item_note.set_value(u"重要通知內容")) && bool(demo.item_name.set_value(u"Styled")), "write the note");
+    auto& host = detail::access(demo.ui);
+    demo.item_note.focus(); demo.item_note.select(0, 2);
+    // A button press moves the focus to the button; invoking it applies the style and returns the focus.
+    host.focus("items.dialog.note.bold");
+    test::check(bool(demo.item_note_bold.invoke()), "press the bold button");
+    auto spans = [&] { return demo.item_note.rich_value()->spans; };
+    test::check(spans() == std::vector<StyleSpan>{{.start = 0, .length = 2, .bold = true}}, "the selection is bold");
+    test::check(host.focused() == "items.dialog.note" && host.edit("items.dialog.note")->selection.anchor == 0 && host.edit("items.dialog.note")->selection.caret == 2,
+                "the focus is back in the note and the selection is unchanged");
+    host.focus("items.dialog.note.italic"); demo.item_note_italic.invoke();
+    host.focus("items.dialog.note.underline"); demo.item_note_underline.invoke();
+    test::check(spans() == std::vector<StyleSpan>{{.start = 0, .length = 2, .bold = true, .italic = true, .underline = true}}, "italic and underline combine with bold");
+    host.focus("items.dialog.note.bold"); demo.item_note_bold.invoke();
+    test::check(!spans().empty() && !spans()[0].bold && spans()[0].italic, "a second press removes bold");
+    demo.item_note.select(2, 4);
+    host.focus("items.dialog.note.color");
+    test::check(bool(demo.item_note_color.select({"red"})), "choose red");
+    test::check(spans().size() == 2 && spans()[1].start == 2 && spans()[1].length == 2 && spans()[1].color == "red" && host.focused() == "items.dialog.note",
+                "the selection is red and the focus is back in the note");
+    test::check(bool(demo.item_note_color.select({"default"})) && spans().size() == 1, "default returns the selection to the normal color");
+    demo.item_note_color.select({"green"});
+    test::check(bool(demo.item_ok.invoke()) && !*demo.item_dialog.is_open(), "the item is saved");
+    auto document = demo.document();
+    test::check(document.items.back().note == u"重要通知內容" && document.items.back().note_spans.size() == 2 && document.items.back().note_spans[1].color == "green",
+                "the saved item has the note's text and styles");
+    test::check(bool(demo.items_list.select(document.items.back().id)), "select it again");
+    demo.items_list.focus();
+    test::check(bool(host.key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter on the list opens the edit dialog");
+    test::check(demo.item_note.rich_value()->spans == document.items.back().note_spans, "editing loads the styles back");
+    test::check(!demo.item_note_color.describe()->options.empty() && demo.item_note_color.draft()->has_value() && (*demo.item_note_color.draft())->id == "default", "the color list starts at default for each opening");
+}
+// The note's named colors stay readable (WCAG AA 4.5:1) on the field's surface in both appearances and both themes.
+void note_colors_are_readable_in_every_appearance_and_theme() {
+    settings_demo::Demo demo; demo.nav.select({"items"}); demo.items_add.invoke();
+    auto colors = demo.item_note.colors();
+    test::check(colors && colors->size() == 3, "red, green and blue");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()})
+        for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+            if (!appearance->supports(variant)) continue;
+            const auto palette = appearance->palette(variant);
+            for (const auto& color : *colors) {
+                const auto value = variant == ThemeVariant::dark() ? color.dark : color.light;
+                test::check(contrast_ratio(value, palette.surface) >= 4.5, "a named note color is readable on the surface");
+                test::check(contrast_ratio(value, palette.selection) >= 3.0, "...and still distinguishable inside a selection");
+            }
+        }
+}
 // #73: the pointer-to-value basis is frozen at press, so a layout that moves under the pointer
 // (text size widens the navigation list) cannot make the value wander while the mouse is still.
 void slider_drag_basis_is_frozen_when_layout_moves() {
@@ -1203,4 +1260,4 @@ void items_context_menu_acts_on_the_clicked_row() {
     test::check(bool(core.key_down({.key = Key::enter})) && *demo.delete_dialog.is_open(), "Down, Down, Enter runs Delete(D)");
 }
 
-int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"item note rich", item_note_is_rich_with_a_style_bar}, {"note colors readable", note_colors_are_readable_in_every_appearance_and_theme}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

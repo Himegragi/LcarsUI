@@ -18,10 +18,17 @@ struct TextRun {
     float x(unsigned offset) const;    // x of the last stop at or before offset
     unsigned hit(float x) const;       // nearest stop
 };
+// The weight and slant of a run of text; they change advances (a bold face is wider). Color and underline never do.
+struct FontStyle {
+    bool bold = false, italic = false;
+    bool operator==(const FontStyle&) const = default;
+};
 class TextMeasure {
 public:
     virtual ~TextMeasure() = default;
     virtual TextRun measure(std::u16string_view text, int pixels) = 0;
+    // The same for bold and/or italic text. A backend that cannot tell the styles apart keeps the default.
+    virtual TextRun measure(std::u16string_view text, int pixels, FontStyle style) { (void)style; return measure(text, pixels); }
     virtual int line_height(int pixels) = 0;
 };
 // Breaks at '\n' and before the first character that would overflow width (CJK-friendly).
@@ -39,6 +46,11 @@ struct FieldLine {
     TextRun run;                  // caret stops for this line alone; x is 0 at the text's own left edge
     float shift = 0;              // where the text starts, from the text area's left edge: its alignment (#80)
     int top = 0;                  // top of the line's row from the first line's, physical pixels (#80)
+    // Rich fields: the line cut into runs of one style, in order and covering [0, end - begin). Offsets are
+    // relative to begin; x is each run's left edge from the TEXT AREA's left edge, the line's alignment shift
+    // included (where the run is drawn); the run's stops continue across runs.
+    struct Piece { unsigned begin = 0, end = 0; TextStyle style; float x = 0, width = 0; };
+    std::vector<Piece> pieces;
 };
 // The settled multi-line geometry of one field. Core keeps a copy for the cursor keys, so drawing,
 // hit testing, navigation and the IME all read the same lines.
@@ -67,7 +79,10 @@ struct FieldView {
     unsigned line_at(int y, unsigned first_line) const;
 };
 // Wraps like wrap() and measures each resulting line, keeping UTF-16 offsets.
-std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width);
+// With spans (a rich field's styled runs, offsets into text) every run is measured in its own style, so
+// wrapping and caret stops follow the real widths of bold and italic text.
+std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width,
+                                  const std::vector<StyleSpan>* spans = nullptr);
 
 struct ScrollState {
     int offset = 0; // physical pixels, clamped by every arrange

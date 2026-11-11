@@ -19,7 +19,9 @@ struct GlyphTransform {
     bool identity() const { return !rotated && scale_x == 1.f && scale_y == 1.f; }
     unsigned key() const;  // 0 for the identity; distinguishes atlas entries otherwise
 };
-struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; std::uint64_t face_id = 0; GlyphTransform transform = {}; };
+// slot: which face of the font family was used (bit 0 bold, bit 1 italic; 0 is the regular face); synth: the looks the
+// face lacks and the rasterizer therefore draws itself (1 emboldened, 2 sheared). face_id, synth and the transform key the glyph cache.
+struct Glyph { unsigned font, id, cluster; float x, dx, dy, advance; std::uint64_t face_id = 0; GlyphTransform transform = {}; unsigned char slot = 0, synth = 0; };
 // Convert a FreeType bitmap row into single-channel coverage. Returns false for
 // unsupported pixel modes; the caller paints a missing-glyph box in that case.
 bool bitmap_coverage(unsigned mode, const unsigned char* row, unsigned width,
@@ -63,6 +65,11 @@ public:
     unsigned rasterizations() const;
     std::vector<const AtlasPage*> atlas_pages() const;
     TextLayout shape(std::u16string_view text,int pixels);
+    // Bold and/or italic text: the family's real Bold / Italic file when it has one, else the regular face with the
+    // look synthesized (heavier outlines, sheared outlines). Advances are those of the face actually used.
+    TextLayout shape(std::u16string_view text,int pixels,FontStyle style);
+    // The files that are looked up for bold / italic faces; without one every bold or italic look is synthesized.
+    void set_styled_lookup(std::function<FontFile(std::u16string_view,bool bold,bool italic)> lookup);
     void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
     // One piece of vertical text in its cell (see VerticalForm): the glyphs are positioned in canvas coordinates,
@@ -84,6 +91,7 @@ class ShapedMeasure final : public TextMeasure {
 public:
     explicit ShapedMeasure(Text& text) : text_(text) {}
     TextRun measure(std::u16string_view text, int pixels) override;
+    TextRun measure(std::u16string_view text, int pixels, FontStyle style) override;
     int line_height(int pixels) override { return (pixels * 3 + 1) / 2; }
     static int baseline(int pixels) { return pixels * 23 / 20; }  // from the top of a line box
 private:

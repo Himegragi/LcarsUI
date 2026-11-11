@@ -32,6 +32,33 @@ void multiline_notes_round_trip_and_reject_carriage_returns() {
     test::check(!settings_demo::parse_settings(replace("\"name\":\"A\",\"note\"", "\"name\":\"A\\nB\",\"note\"")), "a line break in an item name is rejected");
     test::check(!settings_demo::parse_settings(replace("\"note\":\"x\"", "\"note\":\"" + std::string(201, 'x') + "\"")), "the 200 character limit still applies");
 }
+// #81: a note is saved as {"text", "spans"}; files written before rich text (a plain string) load unstyled.
+void rich_notes_round_trip_and_old_string_notes_still_load() {
+    settings_demo::Demo demo; auto document = demo.document();
+    document.items[0].note = u"重要\n內容";
+    document.items[0].note_spans = {{.start = 0, .length = 2, .bold = true}, {.start = 3, .length = 2, .italic = true, .underline = true, .color = "red"}};
+    auto bytes = settings_demo::write_settings(document);
+    test::check(bytes.find("\"text\"") != std::string::npos && bytes.find("\"spans\"") != std::string::npos && bytes.find("\"bold\": true") != std::string::npos &&
+                bytes.find("\"color\": \"red\"") != std::string::npos, "a note is an object with its text and spans");
+    auto decoded = settings_demo::parse_settings(bytes);
+    test::check(decoded && *decoded == document && decoded->items[0].note_spans == document.items[0].note_spans, "a styled note loads back exactly");
+    test::check(decoded && settings_demo::write_settings(*decoded) == bytes, "writing what was loaded gives the same file");
+    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    auto with_note = [&](const std::string& note) { auto value = base; auto at = value.find("\"note\":\"x\""); test::check(at != std::string::npos, "fixture field"); value.replace(at, 10, "\"note\":" + note); return value; };
+    auto old = settings_demo::parse_settings(with_note("\"plain\""));
+    test::check(old && old->items[0].note == u"plain" && old->items[0].note_spans.empty(), "a note stored as a string loads with no styles");
+    auto object = settings_demo::parse_settings(with_note(R"({"text":"abcd","spans":[{"start":0,"length":2,"bold":true},{"start":2,"length":2,"bold":true}]})"));
+    test::check(object && object->items[0].note_spans.size() == 1 && object->items[0].note_spans[0].length == 4, "spans are loaded in their normal form (adjacent equal spans merge)");
+    test::check(settings_demo::parse_settings(with_note(R"({"text":"","spans":[]})")).has_value(), "an empty note object is valid");
+    for (const char* bad : {R"({"text":"abc","spans":[{"start":0,"length":2,"bold":true},{"start":1,"length":2,"italic":true}]})",  // overlap
+                            R"({"text":"abc","spans":[{"start":2,"length":2,"bold":true}]})",                                         // past the text
+                            R"({"text":"abc","spans":[{"start":0,"length":1,"bold":"yes"}]})",                                       // not a boolean
+                            R"({"text":"abc","spans":[{"start":0,"length":1,"blink":true}]})",                                       // unknown member
+                            R"({"text":"abc","spans":[{"length":1,"bold":true}]})",                                                   // no start
+                            R"({"text":"a\rb","spans":[]})", R"({"text":"abc"})", R"({"spans":[]})", "5"})
+        test::check(!settings_demo::parse_settings(with_note(bad)), "an invalid note object makes the file invalid");
+    test::check(!settings_demo::parse_settings(with_note("{\"text\":\"" + std::string(201, 'x') + "\",\"spans\":[]}")), "the 200 character limit applies to the text of a rich note");
+}
 void files() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-test";
     std::filesystem::remove_all(path);
@@ -120,7 +147,7 @@ void order();
 void native_files();
 void dialog_failures();
 void edge_documents();
-int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
+int main() { const test::Case cases[] = {{"close persistence",close_persistence}, {"appearance persistence",appearance_persistence}, {"accent persistence",accent_persistence}, {"settings round trip", round_trip},{"multiline notes",multiline_notes_round_trip_and_reject_carriage_returns},{"rich notes",rich_notes_round_trip_and_old_string_notes_still_load},{"files",files},{"save draft",save_from_draft},{"validation",validation},{"failures",failures},{"load failures",load_failures},{"save order",order},{"native files",native_files},{"dialog failures",dialog_failures},{"edge documents",edge_documents}}; return test::run("settings persistence", cases); }
 void failures() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-fail";
     std::filesystem::remove_all(path); settings_demo::Demo demo; settings_demo::SettingsStore initial(path);

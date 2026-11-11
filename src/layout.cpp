@@ -4,6 +4,7 @@
 #include "component_type.hpp"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 
@@ -23,13 +24,19 @@ unsigned TextRun::hit(float x) const {
         if (std::abs(position - x) < distance) { distance = std::abs(position - x); best = stop; }
     return best;
 }
-std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
-    std::vector<std::u16string> lines;
+namespace {
+// Measures text[begin, end) as one run (stops relative to begin).
+using RangeMeasure = std::function<TextRun(unsigned begin, unsigned end)>;
+// The paragraphs of text cut into display lines of at most width: [begin, end) pairs of offsets, LFs excluded.
+std::vector<std::pair<unsigned, unsigned>> wrap_ranges(std::u16string_view text, int width, const RangeMeasure& run_of) {
+    std::vector<std::pair<unsigned, unsigned>> lines;
     std::size_t start = 0;
     while (true) {
         auto end = text.find(u'\n', start);
-        auto paragraph = text.substr(start, end == std::u16string_view::npos ? std::u16string_view::npos : end - start);
-        auto run = measure.measure(paragraph, pixels);
+        const unsigned p0 = static_cast<unsigned>(start);
+        const unsigned p1 = static_cast<unsigned>(end == std::u16string_view::npos ? text.size() : end);
+        auto paragraph = text.substr(p0, p1 - p0);
+        auto run = run_of(p0, p1);
         // A break may follow a space or touch a non-ASCII (CJK) character; Latin words stay whole
         // unless a single word is wider than the line.
         auto breakable = [&](unsigned k) {
@@ -43,16 +50,49 @@ std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text,
                 unsigned cut = previous;  // hard cut unless a caret stop on this line may break
                 for (auto it = run.stops.rbegin(); it != run.stops.rend(); ++it)
                     if (it->first > line_start && it->first <= previous && breakable(it->first)) { cut = it->first; break; }
-                lines.emplace_back(paragraph.substr(line_start, cut - line_start));
+                lines.emplace_back(p0 + line_start, p0 + cut);
                 line_start = cut;
                 base = run.x(cut);
             }
             previous = stop;
         }
-        lines.emplace_back(paragraph.substr(line_start));
+        lines.emplace_back(p0 + line_start, p1);
         if (end == std::u16string_view::npos) break;
         start = end + 1;
     }
+    return lines;
+}
+// text[begin, end) in runs of one style, each measured with its own face; the stops continue across runs.
+TextRun styled_run(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<StyleSpan>& spans,
+                   unsigned begin, unsigned end, std::vector<FieldLine::Piece>* pieces) {
+    TextRun out;
+    out.stops.push_back({0, 0.f});
+    float x = 0;
+    auto emit = [&](unsigned from, unsigned to, const TextStyle& style) {
+        if (to <= from) return;
+        auto run = measure.measure(text.substr(from, to - from), pixels, FontStyle{style.bold, style.italic});
+        for (const auto& [offset, position] : run.stops)
+            if (offset > 0) out.stops.push_back({from - begin + offset, x + position});
+        if (pieces) pieces->push_back({from - begin, to - begin, style, x, run.width});
+        x += run.width;
+    };
+    unsigned cursor = begin;
+    for (const auto& span : spans) {
+        const unsigned from = std::max(span.start, begin), to = std::min(span.start + span.length, end);
+        if (from >= to || from < cursor) continue;
+        emit(cursor, from, {});
+        emit(from, to, span.style());
+        cursor = to;
+    }
+    emit(cursor, end, {});
+    out.width = x;
+    return out;
+}
+}
+std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    std::vector<std::u16string> lines;
+    for (auto [begin, end] : wrap_ranges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels); }))
+        lines.emplace_back(text.substr(begin, end - begin));
     return lines;
 }
 std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
@@ -69,16 +109,18 @@ std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view t
     }
     return out;
 }
-std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width, const std::vector<StyleSpan>* spans) {
+    RangeMeasure run_of = [&](unsigned a, unsigned b) {
+        return spans ? styled_run(measure, text, pixels, *spans, a, b, nullptr) : measure.measure(text.substr(a, b - a), pixels);
+    };
     std::vector<FieldLine> out;
-    std::size_t pos = 0;
-    for (auto& piece : wrap_marked(measure, text, pixels, width)) {
+    for (auto [begin, end] : wrap_ranges(text, width, run_of)) {
         FieldLine line;
-        line.begin = static_cast<unsigned>(pos);
-        pos += piece.text.size() + (piece.soft ? 0 : 1);
-        line.end = line.begin + static_cast<unsigned>(piece.text.size());
-        line.soft = piece.soft;
-        line.run = measure.measure(piece.text, pixels);
+        line.begin = begin;
+        line.end = end;
+        // The LF between paragraphs is not part of a line; a wrapped piece is followed by more of its own text.
+        if (end < text.size() && text[end] != u'\n') line.soft = true;
+        line.run = spans ? styled_run(measure, text, pixels, *spans, begin, end, &line.pieces) : measure.measure(text.substr(begin, end - begin), pixels);
         out.push_back(std::move(line));
     }
     return out;

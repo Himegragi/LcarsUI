@@ -73,9 +73,55 @@ struct Control {
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
     WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
     int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
+    // Multi-line text fields only (invalid_value on any other control); fixed when the field is created.
+    // A rich field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
+    bool rich = false;
+};
+// What one run of rich text looks like. An empty color means the field's normal text color; a color
+// name is looked up in the field's color list on every paint, so theme changes recolor it.
+struct TextStyle {
+    bool bold = false, italic = false, underline = false;
+    std::string color;
+    bool plain() const { return !bold && !italic && !underline && color.empty(); }
+    bool operator==(const TextStyle&) const = default;
+};
+// One styled run of a rich value: UTF-16 offsets into its plain text.
+struct StyleSpan {
+    unsigned start = 0, length = 0;
+    bool bold = false, italic = false, underline = false;
+    std::string color;
+    TextStyle style() const { return {bold, italic, underline, color}; }
+    bool operator==(const StyleSpan&) const = default;
+};
+// Plain text (the multi-line rule: LF only) plus the styled runs of it. Only styled text is listed.
+// The framework never parses a markup language. See normalize_rich_text for what a valid value is.
+struct RichText {
+    std::u16string text;
+    std::vector<StyleSpan> spans;
+    bool operator==(const RichText&) const = default;
+};
+// A rich value in its one canonical form: spans sorted by start, zero-length spans and spans of plain
+// style removed, adjacent spans of equal style merged, so equal content always reads back as an equal
+// value. Spans that overlap, run past the text or start/end inside a surrogate pair, and text that is not
+// valid multi-line text within max_length, give invalid_value.
+Query<RichText> normalize_rich_text(RichText value, std::size_t max_length = default_max_text_length);
+// An edit of a style: unset members are left as they are, a set member replaces it.
+// color == "" returns the text to the normal color.
+struct StyleChange {
+    std::optional<bool> bold, italic, underline;
+    std::optional<std::string> color;
+    bool operator==(const StyleChange&) const = default;
+};
+enum class StyleAttribute { bold, italic, underline };
+// A color a rich field can use by name, one value per theme: dark for ThemeVariant::dark(), light
+// for every other variant.
+struct NamedColor {
+    std::string name;
+    Color light, dark;
+    bool operator==(const NamedColor&) const = default;
 };
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
-enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll };
+enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
@@ -88,6 +134,7 @@ struct Semantics {
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame
     bool multiline = false;     // text fields: created multi-line
+    bool rich = false;          // text fields: created with Control::rich
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
     unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
@@ -124,6 +171,13 @@ public:
     virtual bool write(std::u16string_view text) = 0;
     // not_supported means no text; failed means the clipboard could not be read.
     virtual Query<std::u16string> read() = 0;
+    // Rich text. A copy from a rich field hands the plain text (CRLF) together with an opaque payload that
+    // carries the styles; the host stores the payload under one private format beside the plain text and
+    // returns it unchanged. A host that does not know the format keeps these defaults, so only plain text
+    // moves. A plain write replaces every format, as on Windows, so a stale payload never outlives its text.
+    virtual bool write_rich(std::u16string_view text, std::string_view payload) { (void)payload; return write(text); }
+    // not_supported means no payload is on the clipboard.
+    virtual Query<std::string> read_rich() { return {Status::not_supported, u"No rich text", std::nullopt}; }
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);
@@ -137,6 +191,7 @@ public:
     std::uint64_t revision = 0; // committed content changes, independent of layout and composition
     Selection selection;
     bool composing = false;
+    std::uint64_t selection_changes = 0;  // counts every select(); a temporary typing style ends when it moves
     std::u16string preedit;
     unsigned preedit_caret = 0;
     // Multi-line fields: the caret sits at the end of a wrapped line, not the start of the next one.
@@ -159,6 +214,11 @@ bool valid_multi_line(std::u16string_view text, std::size_t max_length = default
 // connection. Its subscription returns a disconnection function.
 struct TextSource {
     std::function<std::u16string()> read;
+    std::function<std::function<void()>(std::function<void()>)> subscribe;
+};
+// The rich counterpart of TextSource, for fields created with Control::rich.
+struct RichTextSource {
+    std::function<RichText()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 struct BoolSource {
@@ -187,6 +247,7 @@ class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
 struct TextChange;
+struct RichTextChange;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
 class TextHandle {
 public:
@@ -223,6 +284,36 @@ public:
     Result connect_source(TextSource source) const;
     Result connect_immediate(std::function<Result(const TextChange&)> write) const;
     Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
+    // Rich fields (Control::rich) connect with the rich value type; the plain connect_* calls above answer
+    // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
+    // groups take rich fields through Ui::connect_mixed_confirmation (a RichTextChange per rich field).
+    Result connect_rich_source(RichTextSource source) const;
+    Result connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const;
+    Result connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const;
+    // Rich fields only; any other field answers not_supported. The same admission as every edit (a
+    // read-only, disabled, composing or unconnected field refuses with its usual status). set_rich_value
+    // normalizes (normalize_rich_text) and is one undo entry; set_value on a rich field replaces the text
+    // and leaves it unstyled. draft() is the plain text.
+    Result set_rich_value(RichText value) const;
+    Query<RichText> rich_value() const;
+    // Range of the committed text, begin <= end <= size, else invalid_value. Set members of the change
+    // replace the style of every character of the range (bold=false removes bold, color="" the color);
+    // one call is one undo entry.
+    Result set_style(unsigned begin, unsigned end, StyleChange change) const;
+    // What Ctrl+B / Ctrl+I / Ctrl+U do: with a selection, apply the attribute to all of it unless all of
+    // it already has it, then remove it; with a caret only, flip it in the typing style.
+    Result toggle_style(StyleAttribute attribute) const;
+    // set_style on the selection; with a caret only it changes the typing style (the style of the next typed text).
+    Result apply_style(StyleChange change) const;
+    // The style the next typed or pasted-as-plain text takes: the temporary setting if there is one (it ends
+    // when the caret moves or text is inserted), else the previous character's (the next character's at the
+    // start of a paragraph).
+    Query<TextStyle> typing_style() const;
+    Result set_typing_style(TextStyle style) const;
+    // The named colors this field draws with; replaced as a whole and repainted at once. Names must be
+    // non-empty and distinct. Text whose color name is not in the list is drawn in the normal text color.
+    Result set_colors(std::vector<NamedColor> colors) const;
+    Query<std::vector<NamedColor>> colors() const;
     Result confirm() const;
     Query<bool> source_conflict() const;
     Result use_latest() const;
@@ -503,13 +594,17 @@ struct TextChange {
     TextHandle field;
     std::u16string value, origin;
 };
+struct RichTextChange {
+    TextHandle field;
+    RichText value, origin;
+};
 struct FieldError { TextHandle field; std::u16string message; };
 struct ConfirmationResult {
     Result result;
     std::vector<FieldError> errors;
 };
 using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
-using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange>;
+using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange, RichTextChange>;
 struct MixedFieldError { ConfirmField field; std::u16string message; };
 struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
 // ---- Context menu. A short list of commands opened beside a component.
@@ -540,7 +635,8 @@ struct MenuItemInfo {
     std::u16string shortcut_hint;
 };
 struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
-// Built-in text field items, by id. Rich text (#81) adds lcars.bold, lcars.italic, lcars.underline.
+// Built-in text field items, by id. A rich text field (Control::rich) adds bold, italic and underline, which run
+// the same function as Ctrl+B / Ctrl+I / Ctrl+U.
 inline constexpr const char* menu_undo = "lcars.undo";
 inline constexpr const char* menu_redo = "lcars.redo";
 inline constexpr const char* menu_cut = "lcars.cut";
@@ -548,6 +644,9 @@ inline constexpr const char* menu_copy = "lcars.copy";
 inline constexpr const char* menu_paste = "lcars.paste";
 inline constexpr const char* menu_delete = "lcars.delete";
 inline constexpr const char* menu_select_all = "lcars.select_all";
+inline constexpr const char* menu_bold = "lcars.bold";
+inline constexpr const char* menu_italic = "lcars.italic";
+inline constexpr const char* menu_underline = "lcars.underline";
 // The application's items attached to one component. Built-in items are not part of it.
 class ContextMenuHandle {
 public:

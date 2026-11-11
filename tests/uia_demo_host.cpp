@@ -45,6 +45,11 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         default: return 99;
         }
     }
+    if (message == WM_APP + 87) {  // #81: w=1 gives the item note a styled value, w=2 switches the theme (l=1 dark, l=0 light)
+        if (w == 1) return static_cast<LRESULT>(active->item_note.set_rich_value({u"abcdef", {{.start = 0, .length = 2, .bold = true}, {.start = 2, .length = 2, .italic = true, .underline = true}, {.start = 4, .length = 2, .color = "red"}}}).status);
+        if (w == 2) { auto settings = active->ui.presentation(); settings.variant = l ? lcars::ThemeVariant::dark() : lcars::ThemeVariant::light(); return static_cast<LRESULT>(active->ui.set_presentation(settings).status); }
+        return 1;
+    }
     if (message == WM_APP + 82) return static_cast<LRESULT>(active->items_search.select(0, 2).status);
     if (message == WM_APP + 81) return static_cast<LRESULT>(active->items_search.set_value(w ? u"sample" : u"").status);
     return CallWindowProcW(original_proc, window, message, w, l);
