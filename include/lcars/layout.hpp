@@ -65,6 +65,8 @@ Node modal(Node background, Node content, DialogHandle dialog);
 using DialogLayout = layout::DialogLayout;
 
 struct Line { Rect bounds; std::u16string text; };
+// One row of the open context menu, positioned after scrolling; rows outside Placement::menu_inner are clipped.
+struct MenuRow { std::string id; Rect bounds; std::u16string label, hint; bool separator = false, enabled = true, highlighted = false; };
 struct Placement {
     std::string id;
     Kind kind = Kind::label;
@@ -85,6 +87,13 @@ struct Placement {
     TextRun run;                  // text fields: visible text (composition included)
     float offset = 0;             // text fields: horizontal display offset in pixels
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
+    // The open context menu, an overlay painted and hit above every other; id is menu_node_id(target).
+    bool menu = false;
+    Rect menu_inner;              // rows' viewport inside the border
+    std::vector<MenuRow> menu_rows;
+    int menu_maximum = 0;         // scroll range in pixels; 0 when every row fits
+    Rect menu_track, menu_thumb;  // scrollbar, empty when nothing scrolls
+    int menu_pad = 0;             // horizontal text inset inside a row
 };
 struct ScrollRegion {
     ScrollState* state = nullptr;
@@ -112,7 +121,10 @@ struct Frame {
     const Placement* find(const NavigationListHandle& handle) const;
     const Placement* find(const ListHandle& handle) const;
     std::optional<std::size_t> option_at(const Placement& item, int x, int y) const;
-    const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point
+    const Placement* hit(int x, int y) const;        // topmost focusable-or-label item under the point; never the context menu
+    const Placement* menu_panel() const;             // the open context menu's overlay
+    bool menu_contains(int x, int y) const;          // inside the open menu's panel
+    std::optional<std::string> menu_item_at(int x, int y) const;  // id of the row under the point (separators included)
     // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
     bool scroll_to(Ui& ui, ScrollState& state, int offset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.

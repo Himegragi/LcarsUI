@@ -95,6 +95,8 @@ void detail::UiState::commit_removals() {
         if (focus_ == id) {
             try { move_focus({}); } catch (...) { stopped_ = true; focus_.clear(); }
         }
+        if (menu_ && menu_->target == id) close_menu();
+        menu_attachments_.erase(id);
         if (key_armed_ == id) key_armed_.clear();
         if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
         if (tooltip_hover_ == id) tooltip_hover_.clear();
@@ -1079,6 +1081,7 @@ void detail::UiState::refresh_tooltips() {
 void detail::UiState::renderer_failed(bool failed) {
     if (renderer_failed_ == failed) return;
     if (failed) {
+        close_menu();
         if (tooltip_clock_) tooltip_paused_at_ = tooltip_clock_();
         renderer_failed_ = true;
         return;
@@ -1100,6 +1103,7 @@ void detail::UiState::frame_visibility(std::map<Id, bool, std::less<>> visibilit
 void detail::UiState::scrolled() {
     OperationScope operation(this);
     close_popup();
+    close_menu();
     if (tooltip_clock_) tooltip_now_ = tooltip_clock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1141,7 +1145,7 @@ void detail::UiState::window_active(bool active) {
     OperationScope operation(this);
     if (window_active_ == active) return;
     window_active_ = active;
-    if (!active) tooltip_hover_.clear();
+    if (!active) { tooltip_hover_.clear(); close_menu(); }  // a menu does not outlive window activation
     refresh_tooltips();
 }
 Query<bool> TooltipHandle::visible() const {
@@ -1264,6 +1268,7 @@ Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     if (auto member = page_members_.find(focus_); member != page_members_.end() && member->second.first == id && member->second.second == t.active)
         if (auto r = move_focus(id); !r) return r;
     close_popup();
+    close_menu();
     auto old = t.pages[t.active].value;
     t.active = t.candidate = next;
     refresh_tooltips();
@@ -2108,6 +2113,7 @@ Result detail::UiState::notify() {
 }
 Result detail::UiState::text_input(std::u16string_view text) {
     OperationScope operation(this);
+    if (menu_) return menu_text(text);  // quick-key letters
     auto committed = without_controls(text);
     if (committed.empty()) return {};
     Field* field = nullptr;
@@ -2218,6 +2224,7 @@ Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
     if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
+    if (menu_ && next != menu_->target) close_menu();
     key_armed_.clear(); pointer_armed_.clear(); slider_drag_.reset();
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
@@ -2314,6 +2321,7 @@ Result detail::UiState::key_down(KeyPress key) {
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
+    if (menu_) return menu_key_down(key);  // an open context menu owns the keyboard
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
             if (tip.visible) {
@@ -2338,6 +2346,10 @@ Result detail::UiState::key_down(KeyPress key) {
         long index = it == order.end() ? (key.shift ? 0 : -1) : static_cast<long>(it - order.begin());
         index = (index + (key.shift ? -1 : 1) + n) % n;
         return move_focus(order[static_cast<std::size_t>(index)]);
+    }
+    if ((key.key == Key::menu || (key.key == Key::f10 && key.shift)) && !key.ctrl) {
+        if (key.repeat || focus_.empty()) return {};
+        return open_menu(focus_, std::nullopt, std::nullopt);
     }
     const auto* control = find(focus_);
     if (control) {
@@ -2424,11 +2436,7 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (key.letter == u'A') { session.select(0, size); return {}; }
         if (key.letter == u'C') return copy(focus_);
         if (key.letter == u'X') return cut(focus_);
-        if (key.letter == u'V') {
-            if (!clipboard_) return {Status::not_supported, u"\u526a\u8cbc\u7c3f\u4e0d\u53ef\u7528"};
-            auto content = clipboard_->read();
-            return content ? paste(focus_, *content) : Result{content.status, content.message};
-        }
+        if (key.letter == u'V') return paste_clipboard(focus_);
         return {};
     }
     switch (key.key) {
@@ -2446,8 +2454,7 @@ Result detail::UiState::edit_key(KeyPress key) {
         if (auto result = writable(focus_, field); !result) return result;
         if (session.begin() == session.end())
             session.select(session.selection.caret, step(session.text, session.selection.caret, key.key == Key::del ? 1 : -1));
-        if (session.begin() == session.end()) return {};
-        return replace_selection(focus_, *field, u"");
+        return delete_selection(focus_);  // the Delete menu item runs the same path
     }
     default: return {};
     }
@@ -2536,6 +2543,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Control*>(find(id));
     if (!control) return;
     control->enabled = enabled;
+    if (!enabled && menu_ && menu_->target == id) close_menu();
     if (!enabled && popup_source_ == id) close_popup();
     if (!enabled && focus_ == control->id) move_focus({});
     refresh_tooltips();
@@ -2738,8 +2746,9 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         if (p.tooltip) {
             auto id = tooltip_ids_.find(p.id);
             if (id != tooltip_ids_.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semantic_bounds_[id->second] = r; }
-        } else store(p);
+        } else if (!p.menu) store(p);
     }
+    menu_frame(frame);
     if (frame.modal && !active_dialog_.empty()) semantic_bounds_[active_dialog_] = frame.modal_panel;
 #ifndef NDEBUG
     for (const auto& id : semantic_order_) {
@@ -2772,6 +2781,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
+    if (auto menu = u.menu_node(ref)) return *menu;
     auto c = u.find(ref.id);
     if (!c) {
         auto overlay = u.overlay_ids_.find(ref.id);
@@ -2826,7 +2836,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         }
     }
     if (n.role == Role::label) n.name = s.value;
-    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
+    // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
+    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
@@ -2845,7 +2856,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         else if (c->kind == Kind::tabs) n.role = Role::tab_item;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
-        n.focused = n.role == Role::list_item && s.focused && s.candidate && *s.candidate == *ref.item;
+        n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
@@ -2856,7 +2867,9 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         if (ref.item) {
             add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
             add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
+            add(Verb::context_menu, n.role == Role::list_item && u.has_menu(*c) && !u.renderer_failed_);
         } else {
+            add(Verb::context_menu, u.has_menu(*c) && !u.renderer_failed_);
             add(Verb::focus, admits(Operation::focus));
             add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
             add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
@@ -2883,6 +2896,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
+    if (auto menu = u.menu_children(parent)) return {Status::ok, {}, *menu};
     std::vector<NodeRef> result;
     if (parent.id.empty() && !parent.item) {
         for (const auto& c : u.controls_) if (c.page != "dialog" && !u.removal_pending(c.id)) result.push_back({c.id});
@@ -2901,6 +2915,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
                 if (std::find(members.begin(), members.end(), c.id) != members.end() && !u.removal_pending(c.id)) result.push_back({c.id});
         } else if (!parent.item) {
             auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
+            if (u.menu_ && u.menu_->target == parent.id) result.push_back({menu_node_id(parent.id)});
         }
     }
     return {Status::ok, {}, result};
@@ -2933,8 +2948,15 @@ void detail::UiState::semantic_diff() {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
         return i == nodes.end() ? nullptr : &*i;
     };
-    for (const auto& old : semantic_before_) if (!find(after, old.ref))
-        emit(SemanticEventKind::structure_changed, old.ref.item ? NodeRef{old.ref.id} : NodeRef{});
+    // A menu's structure changes belong to the component that owns it.
+    auto owner_of = [](const NodeRef& ref) -> NodeRef {
+        if (auto target = menu_target_id(ref.id)) return NodeRef{*target};
+        return ref.item ? NodeRef{ref.id} : NodeRef{};
+    };
+    for (const auto& old : semantic_before_) if (!find(after, old.ref)) {
+        if (old.role == Role::menu) emit(SemanticEventKind::menu_closed, old.ref);
+        emit(SemanticEventKind::structure_changed, owner_of(old.ref));
+    }
     for (const auto& node : after) if (!node.ref.item) {
         std::vector<NodeRef> before_items, after_items;
         for (const auto& old : semantic_before_) if (old.ref.item && old.ref.id == node.ref.id) before_items.push_back(old.ref);
@@ -2943,7 +2965,12 @@ void detail::UiState::semantic_diff() {
     }
     for (const auto& node : after) {
         auto old = find(semantic_before_, node.ref);
-        if (!old) { emit(SemanticEventKind::structure_changed, node.ref.item ? NodeRef{node.ref.id} : NodeRef{}); continue; }
+        if (!old) {
+            if (node.role == Role::menu) emit(SemanticEventKind::menu_opened, node.ref);
+            emit(SemanticEventKind::structure_changed, node.role == Role::menu ? owner_of(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
+            if (node.role == Role::menu_item && node.focused) emit(SemanticEventKind::focus_changed, node.ref);
+            continue;
+        }
         if (node.hidden != old->hidden) {
             if (node.role == Role::dialog || node.role == Role::tooltip)
                 emit(SemanticEventKind::property_changed, node.ref, "hidden", node.hidden);
@@ -2996,6 +3023,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->renderer_failed_) return {Status::renderer_failed, {}};
+    if (node->role == Role::menu) return verb == Verb::cancel ? state_->close_menu() : Result{Status::not_supported, {}};
+    if (node->role == Role::menu_separator) return {Status::not_supported, {}};
+    if (node->role == Role::menu_item) {
+        if (verb == Verb::invoke) return state_->menu_execute(ref.item->id);
+        if (verb == Verb::focus) return state_->menu_highlight(ref.item->id);
+        return {Status::not_supported, {}};
+    }
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
@@ -3003,6 +3037,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
             return {Status::busy, {}};
         return {Status::invalid_value, {}};
     };
+    if (verb == Verb::context_menu) {
+        std::optional<MenuPosition> at; std::optional<OptionValue> item = ref.item;
+        if (auto position = std::get_if<MenuPosition>(&argument)) at = *position;
+        else if (auto value = std::get_if<OptionValue>(&argument)) item = *value;
+        else if (!std::holds_alternative<std::monostate>(argument)) return invalid_argument();
+        return state_->open_menu(ref.id, at, std::move(item));
+    }
     if (!ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) &&
         (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
         return invalid_argument();
