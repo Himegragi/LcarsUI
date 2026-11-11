@@ -1,3 +1,4 @@
+#include "core_internal.hpp"
 #include "vertical.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
@@ -156,6 +157,106 @@ void a_property_change_is_announced() {
     ui.semantics().dispatch_events();
     check(std::find(changed.begin(), changed.end(), "writing_mode") != changed.end(), "Changing the writing mode raises property_changed");
 }
+
+// ---- layout: height, columns right to left, horizontal scrolling ----
+const Appearance& look = web_appearance();
+std::u16string cjk(int count) { return std::u16string(static_cast<std::size_t>(count), u'字'); }
+struct Page {
+    Ui ui; test::FakeMeasure measure; ScrollState outer;
+    LabelHandle label;
+    explicit Page(std::u16string text, WritingMode mode = WritingMode::vertical) { label = vertical_label(ui, "label", std::move(text), mode); }
+    Frame arrange_in(int width, int height_dip, int window_height = 400) {
+        return arrange(layout::vertical_text(label, height_dip), ui, look, measure, width, window_height, 1.f, outer);
+    }
+};
+const Placement& placed(const Frame& frame, const LabelHandle& label) { return *frame.find(label); }
+
+void a_vertical_label_has_the_given_height_and_its_width_follows_its_columns() {
+    Page page(cjk(25));  // 16 px text: 12 cells of 16 px fit in 200 px, so 25 characters make 3 columns
+    auto frame = page.arrange_in(400, 200);
+    const auto& label = placed(frame, page.label);
+    check(label.vertical && label.bounds.h == 200, "The height is the one the application gave");
+    check(label.column_layout.columns.size() == 3 && label.column_layout.pitch == 24, "Three columns of 24 px (line height of 16 px text)");
+    check(label.bounds.w == 3 * 24, "The width is columns times the column width");
+    check(label.column_layout.columns[0].pieces.size() == 12 && label.column_layout.columns[2].pieces.size() == 1, "Characters fill a column, then the next");
+}
+void columns_run_from_right_to_left() {
+    Page page(cjk(25));
+    auto frame = page.arrange_in(400, 200);
+    const auto& columns = placed(frame, page.label).column_layout.columns;
+    const auto& label = placed(frame, page.label);
+    check(columns[0].bounds.x + columns[0].bounds.w == label.bounds.x + label.bounds.w, "The first column touches the right edge");
+    check(columns[1].bounds.x + 24 == columns[0].bounds.x && columns[2].bounds.x + 24 == columns[1].bounds.x, "Later columns follow to the left");
+    check(columns[0].begin == 0 && columns[1].begin == 12 && columns[2].begin == 24, "Reading order is text order");
+}
+void a_line_break_opens_a_new_column_in_the_layout() {
+    Page page(u"一二\n三");
+    auto frame = page.arrange_in(400, 200);
+    check(placed(frame, page.label).column_layout.columns.size() == 2, "The line break starts column two");
+}
+void a_horizontal_label_in_the_same_slot_lays_out_as_before() {
+    Page page(cjk(25), WritingMode::horizontal);
+    auto frame = page.arrange_in(400, 200);
+    const auto& label = placed(frame, page.label);
+    check(!label.vertical && label.lines.size() == 1 && label.bounds.w == 400, "A horizontal label ignores the vertical slot");
+    check(bool(page.label.set_writing_mode(WritingMode::vertical)), "Switch at run time");
+    frame = page.arrange_in(400, 200);
+    check(placed(frame, page.label).vertical && placed(frame, page.label).column_layout.columns.size() == 3, "The next arrangement is vertical");
+}
+void too_many_columns_make_the_label_scroll_sideways() {
+    Page page(cjk(25));  // 72 px of columns in a 48 px slot
+    auto frame = page.arrange_in(48, 200);
+    const auto& label = placed(frame, page.label);
+    check(label.bounds.w == 48 && label.column_layout.maximum == 24, "The label keeps the slot width; 24 px of columns are out of view");
+    check(frame.regions.size() == 1 && frame.regions[0].horizontal && frame.regions[0].maximum == 24 && frame.regions[0].offset == 0, "A horizontal scroll region starts at the beginning");
+    const auto& first = label.column_layout.columns[0];
+    check(first.bounds.x >= label.bounds.x && first.bounds.x + first.bounds.w == label.bounds.x + label.bounds.w, "The start of the text (the right edge) is shown first");
+    check(label.column_layout.columns[2].bounds.x < label.bounds.x, "The last column waits off to the left");
+    check(label.column_layout.thumb.w > 0 && label.column_layout.thumb.x + label.column_layout.thumb.w == label.column_layout.track.x + label.column_layout.track.w, "The thumb starts at the right end of the bar");
+    check(label.bounds.h == 200, "The bar does not change the label height");
+}
+void the_wheel_moves_a_sideways_label_toward_the_end_of_the_text() {
+    Page page(cjk(25));
+    auto frame = page.arrange_in(48, 200);
+    int x = placed(frame, page.label).bounds.x + 10, y = 50;
+    check(frame.wheel(page.ui, x, y, -10) && page.outer.offset == 0, "A wheel step down scrolls the label, not the page");
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 10, "The view moved 10 px toward the later columns");
+    check(frame.hwheel(page.ui, x, y, 4), "A horizontal wheel to the right moves back toward the start");
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 6, "The horizontal wheel moved the view 4 px back");
+    frame.wheel(page.ui, x, y, -1000);
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 24, "Scrolling stops at the last column");
+    check(!frame.wheel(page.ui, x, y, -10), "At the end the step is not consumed");
+}
+void the_scrollbar_thumb_maps_back_to_an_offset() {
+    Page page(cjk(25));
+    auto frame = page.arrange_in(48, 200);
+    const auto& region = frame.regions[0];
+    check(region.offset_for_thumb(region.thumb.x) == 0, "The thumb at the right end is the start");
+    check(region.offset_for_thumb(region.track.x) == region.maximum, "The thumb at the left end is the last column");
+}
+void keyboard_arrows_scroll_a_focused_sideways_label() {
+    Page page(cjk(25));
+    auto frame = page.arrange_in(48, 200);
+    check(page.label.describe()->focusable, "A label that scrolls can take focus");
+    check(bool(detail::access(page.ui).focus("label")), "Focus it");
+    check(bool(detail::access(page.ui).key_down({.key = Key::left})), "Left arrow");
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 24, "Left scrolls toward later columns by a column");
+    detail::access(page.ui).key_down({.key = Key::right});
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 0, "Right scrolls back toward the start");
+    detail::access(page.ui).key_down({.key = Key::end});
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 24, "End shows the last column");
+    detail::access(page.ui).key_down({.key = Key::home});
+    frame = page.arrange_in(48, 200);
+    check(frame.regions[0].offset == 0, "Home returns to the first column");
+    auto wide = page.arrange_in(400, 200);
+    check(!page.label.describe()->focusable && wide.regions.empty(), "When everything fits, the label neither scrolls nor takes focus");
+}
 }
 
 int main() {
@@ -174,6 +275,14 @@ int main() {
         {"the_typed_handle_reads_and_writes_both_properties", the_typed_handle_reads_and_writes_both_properties},
         {"the_semantic_layer_matches_the_typed_handle", the_semantic_layer_matches_the_typed_handle},
         {"a_property_change_is_announced", a_property_change_is_announced},
+        {"a_vertical_label_has_the_given_height_and_its_width_follows_its_columns", a_vertical_label_has_the_given_height_and_its_width_follows_its_columns},
+        {"columns_run_from_right_to_left", columns_run_from_right_to_left},
+        {"a_line_break_opens_a_new_column_in_the_layout", a_line_break_opens_a_new_column_in_the_layout},
+        {"a_horizontal_label_in_the_same_slot_lays_out_as_before", a_horizontal_label_in_the_same_slot_lays_out_as_before},
+        {"too_many_columns_make_the_label_scroll_sideways", too_many_columns_make_the_label_scroll_sideways},
+        {"the_wheel_moves_a_sideways_label_toward_the_end_of_the_text", the_wheel_moves_a_sideways_label_toward_the_end_of_the_text},
+        {"the_scrollbar_thumb_maps_back_to_an_offset", the_scrollbar_thumb_maps_back_to_an_offset},
+        {"keyboard_arrows_scroll_a_focused_sideways_label", keyboard_arrows_scroll_a_focused_sideways_label},
     };
     return test::run("vertical", cases);
 }

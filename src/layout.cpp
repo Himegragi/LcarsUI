@@ -73,6 +73,10 @@ Node scroll(Node child, ScrollState& state, int height) {
 Node scroll_text(LabelHandle label, ScrollState& state, int height) {
     Node n = scroll(control(label), state, height); n.scrollable_text = true; return n;
 }
+Node vertical_text(LabelHandle label, int height) {
+    if (height < 0) throw std::invalid_argument("Vertical text height must not be negative");
+    Node n = control(label); n.vertical_height = height; return n;
+}
 Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
 Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
 Node modal(Node background, std::vector<DialogLayout> dialogs) {
@@ -151,10 +155,16 @@ unsigned Frame::text_offset(const TextHandle& handle, int x) const {
 int Placement::caret_x(unsigned offset) const {
     return bounds.x + field.editor.x + static_cast<int>(std::lround(run.x(offset) - this->offset));
 }
-int ScrollRegion::offset_for_thumb(int thumb_top) const {
+int ScrollRegion::offset_for_thumb(int thumb_position) const {
+    if (horizontal) {
+        // The text starts at the right end: the thumb at the right is offset 0, at the left the last column.
+        int travel = track.w - thumb.w;
+        if (maximum <= 0 || travel <= 0) return 0;
+        return std::clamp(maximum - static_cast<int>(std::lround(double(thumb_position - track.x) * maximum / travel)), 0, maximum);
+    }
     int travel = track.h - thumb.h;
     if (maximum <= 0 || travel <= 0) return 0;
-    return std::clamp(static_cast<int>(std::lround(double(thumb_top - track.y) * maximum / travel)), 0, maximum);
+    return std::clamp(static_cast<int>(std::lround(double(thumb_position - track.y) * maximum / travel)), 0, maximum);
 }
 bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     auto& owner = detail::access(ui);
@@ -192,6 +202,16 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
     return false;
 }
 
+bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
+    auto& owner = detail::access(ui);
+    if (owner_ != &owner || modal || owner.modal()) return false;
+    for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
+        if (!it->horizontal || !it->clip.contains(x, y)) continue;
+        if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
+    }
+    return false;
+}
+
 int Frame::offset_for_thumb(int thumb_top) const {
     return ScrollRegion{nullptr, viewport, viewport, track, thumb, extent, maximum, offset}.offset_for_thumb(thumb_top);
 }
@@ -207,6 +227,8 @@ void translate(Placement& p, int dx, int dy) {
     for (auto& option : p.options) move(option);
     for (auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines})
         for (auto& line : *lines) move(line.bounds);
+    for (auto& column : p.column_layout.columns) move(column.bounds);
+    move(p.column_layout.track); move(p.column_layout.thumb);
 }
 struct Arranger {
     detail::UiState& ui;
@@ -237,6 +259,7 @@ struct Arranger {
         p.id = control->id; p.kind = control->kind;
         p.text_size = pixels(node.text_size);
         detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
+        context.vertical_height = d(node.vertical_height);
         detail::component_type(control->kind).arrange(context);
         return p;
     }
@@ -270,6 +293,17 @@ struct Arranger {
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
+            if (p.vertical) {
+                // A vertical label never draws outside its own box; too many columns scroll sideways inside it.
+                p.clip = p.bounds; p.clipped = true;
+                if (!measuring && p.column_layout.maximum > 0) {
+                    ScrollRegion region; region.state = &ui.vertical_scroll(p.id); region.horizontal = true;
+                    region.viewport = region.clip = p.bounds;
+                    region.extent = p.column_layout.extent; region.maximum = p.column_layout.maximum; region.offset = p.column_layout.offset;
+                    region.track = p.column_layout.track; region.thumb = p.column_layout.thumb;
+                    frame.regions.push_back(region);
+                }
+            }
             out.push_back(std::move(p));
             return out.back().bounds.h;
         }
@@ -465,8 +499,10 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     }
     a.frame.items = std::move(items);
     for (auto& region : a.frame.regions) region.clip = intersect(region.clip, window);
-    if (!a.frame.regions.empty()) {
-        const auto& outer = a.frame.regions.front();
+    // The frame-level scroll fields describe the page, never a sideways-scrolling label.
+    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal; });
+    if (page_region != a.frame.regions.end()) {
+        const auto& outer = *page_region;
         a.frame.viewport = outer.viewport; a.frame.track = outer.track; a.frame.thumb = outer.thumb;
         a.frame.extent = outer.extent; a.frame.maximum = outer.maximum; a.frame.offset = outer.offset;
     }

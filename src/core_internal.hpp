@@ -141,6 +141,11 @@ public:
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
+    // Sideways scrolling of a vertical-writing label. The state belongs to the label; the offset counts pixels
+    // from the start of the text (right edge). A label that does not scroll is not focusable.
+    ScrollState& vertical_scroll(const Id& id) { return vertical_scrolls_[id]; }
+    void set_vertical_scroll(const Id& id, int maximum, int column_width);
+    void clear_vertical_scroll(const Id& id);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
         if (semantic_schedule_ && !semantic_pending_.empty()) semantic_schedule_();
@@ -380,8 +385,9 @@ private:
     Result edit_key(KeyPress key);
     Result notify();
     std::function<void()> changed_, invalidate_;
-    struct TextScroll { ScrollState* state; int maximum, line_height; };
+    struct TextScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
     std::map<std::string, TextScroll, std::less<>> text_scrolls_;
+    std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
     std::map<Id, std::function<std::u16string()>, std::less<>> providers_;

@@ -47,6 +47,7 @@ struct Node {
     ScrollState* scroll_state = nullptr; // bounded nested viewport: caller keeps this state alive
     int scroll_height = 0; // viewport height in DIP; 0 fills the available space
     bool scrollable_text = false; // a single label may receive focus when it overflows
+    int vertical_height = 0;      // control: height in DIP of a vertical-writing label; 0 = columns never wrap
     std::vector<Node> children;
 };
 Node control(ComponentHandle component, int text_size = 0);
@@ -56,6 +57,11 @@ Node grid(std::vector<Node> children, int min_column, int gap = 16);
 Node scroll(Node child);  // fills available space, using arrange's scroll state
 Node scroll(Node child, ScrollState& state, int height); // bounded nested viewport in DIP
 Node scroll_text(LabelHandle label, ScrollState& state, int height);
+// A label whose height the application gives (DIP). While the label is in vertical writing mode its text
+// fills columns of that height from right to left, and its width follows from the number of columns; when
+// the columns are wider than the space offered, the label scrolls sideways by itself (initially showing
+// the right end, where the text starts). In horizontal writing mode it lays out as an ordinary label.
+Node vertical_text(LabelHandle label, int height);
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
 struct DialogLayout { DialogHandle dialog; Node content; };
@@ -71,7 +77,7 @@ enum class VerticalForm {
     upright,      // CJK, full-width and emoji: one em cell, glyph stays upright
     sideways,     // Latin words, long digit runs: rotated 90 degrees clockwise, advance is the text width
     combined,     // 2-3 half-width digits side by side in one cell, squeezed to the cell width
-    point,        // ，。、；：！？ centered in the cell, never the font's vertical alternate
+    point,        // full-width comma, period, enumeration comma, semicolon, colon, ! and ?: centered, never the font's vertical alternate
     bracket,      // quotes and brackets: the font's vertical alternate, else rotated 90 degrees
     line,         // dashes and ellipses: rotated, centered in the cell on both axes
     middle_dot,   // middle dots: upright, centered in the cell
@@ -80,6 +86,7 @@ struct VerticalPiece { unsigned begin = 0, end = 0; VerticalForm form = Vertical
 struct VerticalColumn {
     Rect bounds;                      // the whole column, width = pitch
     unsigned begin = 0, end = 0;      // UTF-16 range of the display text on this column
+    bool last_in_paragraph = false;   // the paragraph (text up to a line break) ends on this column
     std::vector<VerticalPiece> pieces;  // y is relative to bounds.y
 };
 struct VerticalLayout {
@@ -115,7 +122,11 @@ struct ScrollRegion {
     ScrollState* state = nullptr;
     Rect viewport, clip, track, thumb;
     int extent = 0, maximum = 0, offset = 0;
-    int offset_for_thumb(int thumb_top) const;
+    // A horizontal region is a vertical-writing label: its offset counts pixels scrolled from the start of
+    // the text (the right edge), the bar lies along the bottom, and the thumb starts at the right end.
+    bool horizontal = false;
+    // The offset for a dragged thumb: its top (vertical regions) or its left edge (horizontal regions).
+    int offset_for_thumb(int thumb_position) const;
 };
 struct Frame {
     std::vector<Placement> items;
@@ -142,6 +153,8 @@ struct Frame {
     bool scroll_to(Ui& ui, ScrollState& state, int offset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
     bool wheel(Ui& ui, int x, int y, int delta) const;
+    // Route a horizontal wheel step (delta in physical pixels, positive to the right) to a sideways-scrolling label.
+    bool hwheel(Ui& ui, int x, int y, int delta) const;
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
     const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here

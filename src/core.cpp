@@ -2250,6 +2250,12 @@ Result detail::UiState::focusable(const Control& control) const {
 void detail::UiState::set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height) {
     text_scrolls_.insert_or_assign(std::move(id), TextScroll{&state, maximum, std::max(1, line_height)});
 }
+void detail::UiState::set_vertical_scroll(const Id& id, int maximum, int column_width) {
+    text_scrolls_.insert_or_assign(id, TextScroll{&vertical_scrolls_[id], maximum, std::max(1, column_width), true});
+}
+void detail::UiState::clear_vertical_scroll(const Id& id) {
+    if (auto it = text_scrolls_.find(id); it != text_scrolls_.end() && it->second.horizontal) text_scrolls_.erase(it);
+}
 std::vector<Id> detail::UiState::focus_order() const {
     std::vector<Id> order;
     for (const auto& control : controls_)
@@ -2391,7 +2397,11 @@ Result detail::UiState::key_down(KeyPress key) {
             auto& scroll = it->second;
             int next = scroll.state->offset;
             bool handled = true;
-            if (key.key == Key::up) next -= scroll.line_height;
+            // Sideways text: the offset counts from the start (right edge), so Left reads on, Right reads back.
+            if (scroll.horizontal && key.key == Key::left) next += scroll.line_height;
+            else if (scroll.horizontal && key.key == Key::right) next -= scroll.line_height;
+            else if (scroll.horizontal && (key.key == Key::up || key.key == Key::down)) handled = false;
+            else if (key.key == Key::up) next -= scroll.line_height;
             else if (key.key == Key::down) next += scroll.line_height;
             else if (key.key == Key::home) next = 0;
             else if (key.key == Key::end) next = scroll.maximum;
@@ -2908,10 +2918,10 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.visible = n.bounds.has_value();
     }
     auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
-    // Owner configuration of a label: offered whenever the label exists, like the typed handle.
-    if (!ref.item && c->kind == Kind::label) { n.verbs.push_back(Verb::set_writing_mode); n.verbs.push_back(Verb::set_vertical_digits); }
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
         auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
+        add(Verb::set_writing_mode, !ref.item && c->kind == Kind::label);
+        add(Verb::set_vertical_digits, !ref.item && c->kind == Kind::label);
         if (ref.item) {
             add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
             add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
@@ -3058,6 +3068,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     if (state_->renderer_failed_) return {Status::renderer_failed, {}};
     if (verb == Verb::set_writing_mode || verb == Verb::set_vertical_digits) {
         if (ref.item || node->role != Role::label) return {Status::not_supported, {}};
+        if (auto result = state_->available(ref.id); !result) return result;  // hidden, or behind a modal dialog
         auto handle = state_->layout_handle(ref.id);
         const auto& label = std::get<LabelHandle>(handle);
         if (verb == Verb::set_writing_mode) {

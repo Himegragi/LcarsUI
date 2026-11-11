@@ -110,7 +110,8 @@ std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_v
         VerticalColumn column;
         column.begin = column.end = base;
         int y = 0;
-        auto finish = [&] {
+        auto finish = [&](bool paragraph_end = false) {
+            column.last_in_paragraph = paragraph_end;
             column.bounds = {0, 0, 0, y};
             columns.push_back(std::move(column));
             column = {};
@@ -165,7 +166,7 @@ std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_v
         }
         column.end = std::max(column.end, base + static_cast<unsigned>(part.size()));
         if (column.pieces.empty()) column.begin = column.end = base + static_cast<unsigned>(part.size());
-        finish();
+        finish(true);
         paragraph = end + 1;
         if (end == text.size()) break;
     }
