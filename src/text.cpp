@@ -195,21 +195,21 @@ void Canvas::blend(int x,int y,Color color,unsigned alpha){
     for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
     pixels[index+3]=255;
 }
-void Canvas::fill(Rect r,Color color){
+void Canvas::fill(Rect r,Color color,unsigned alpha){
     int left=std::max({0,r.x,clip.x}),right=std::min({width,r.x+r.w,clip.x+clip.w});
     int top=std::max({0,r.y,clip.y}),bottom=std::min({height,r.y+r.h,clip.y+clip.h});
-    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)blend(x,y,color,255);
+    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)blend(x,y,color,alpha);
 }
-void Canvas::rounded(Rect r,int radius,Color color){
+void Canvas::rounded(Rect r,int radius,Color color,unsigned alpha){
     radius=std::max(0,std::min({radius,r.w/2,r.h/2}));
-    fill({r.x+radius,r.y,r.w-radius*2,r.h},color);
-    fill({r.x,r.y+radius,r.w,r.h-radius*2},color);
+    fill({r.x+radius,r.y,r.w-radius*2,r.h},color,alpha);
+    fill({r.x,r.y+radius,r.w,r.h-radius*2},color,alpha);
     for(int y=0;y<radius;++y)for(int x=0;x<radius;++x){
         float dx=radius-x-0.5f,dy=radius-y-0.5f;
         float coverage=std::clamp(radius+0.5f-std::sqrt(dx*dx+dy*dy),0.f,1.f);
-        unsigned alpha=static_cast<unsigned>(coverage*255);
-        blend(r.x+x,r.y+y,color,alpha);blend(r.x+r.w-1-x,r.y+y,color,alpha);
-        blend(r.x+x,r.y+r.h-1-y,color,alpha);blend(r.x+r.w-1-x,r.y+r.h-1-y,color,alpha);
+        unsigned edge=static_cast<unsigned>(coverage*255)*alpha/255;
+        blend(r.x+x,r.y+y,color,edge);blend(r.x+r.w-1-x,r.y+y,color,edge);
+        blend(r.x+x,r.y+r.h-1-y,color,edge);blend(r.x+r.w-1-x,r.y+r.h-1-y,color,edge);
     }
 }
 bool bitmap_coverage(unsigned mode,const unsigned char* row,unsigned width,std::vector<unsigned char>& coverage) {

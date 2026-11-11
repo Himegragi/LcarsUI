@@ -474,6 +474,13 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             auto begin=cursor(); canvas.rounded(rect, radius, color);
             observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
+        void overlay(Rect rect, int radius, Color color, unsigned char alpha) override {
+            auto begin=cursor();
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.overlay(rect, radius, color, alpha);
+            else if (radius > 0) canvas.rounded(rect, radius, color, alpha);
+            else canvas.fill(rect, color, alpha);
+            observe(radius > 0 ? DrawObservation::Type::rounded : DrawObservation::Type::fill, {}, rect, color, begin);
+        }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
             auto layout = renderer.shape(value, pixels);

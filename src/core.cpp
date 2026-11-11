@@ -3081,6 +3081,13 @@ Query<Palette> SemanticTree::effective_palette() const {
     if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
     return {Status::ok, {}, u.effective_palette(*u.bound_appearance())};
 }
+Query<std::optional<NodeRef>> SemanticTree::hover() const {
+    auto target = state_->hover_query();
+    if (!target) return {target.status, target.message, std::nullopt};
+    if (!*target) return {Status::ok, {}, std::optional<NodeRef>{}};
+    return {Status::ok, {}, std::optional<NodeRef>{NodeRef{(*target)->id, (*target)->item}}};
+}
+Result SemanticTree::clear_simulated_hover() { return state_->clear_simulated_hover(); }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
@@ -3172,6 +3179,10 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->renderer_failed_) return {Status::renderer_failed, {}};
+    if (verb == Verb::hover) {
+        if (node->role == Role::dialog || node->role == Role::tooltip) return {Status::not_supported, {}};
+        return state_->simulate_hover(ref.id, ref.item);
+    }
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};

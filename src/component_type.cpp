@@ -7,6 +7,18 @@
 
 namespace lcars::detail {
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
+bool ComponentPaint::hovered() const { return ui.hover_drawn(placement.id, nullptr); }
+bool ComponentPaint::hovered(const OptionValue& item) const { return ui.hover_drawn(placement.id, &item); }
+void ComponentPaint::hover(Rect rect, int radius) {
+    auto p = palette();
+    if (!p.hover_alpha) return;
+    role(PaintRole::hover);
+    overlay(rect, radius, p.hover, p.hover_alpha);
+    role(PaintRole::content);
+}
+void ComponentPaint::overlay(Rect rect, int radius, Color color, unsigned char) {
+    if (radius > 0) rounded(rect, radius, color); else fill(rect, color);
+}
 namespace {
 bool supports(ComponentState state, std::initializer_list<ComponentState> states) {
     return std::find(states.begin(), states.end(), state) != states.end();
@@ -142,7 +154,11 @@ public:
         if (!f.underline) {
             Rect inner{surface.x + ring, surface.y + ring, surface.w - 2 * ring, surface.h - 2 * ring};
             c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
-        } else marked(c, (focused ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge); });
+            if (c.hovered()) c.hover(inner, std::max(0, d(c.appearance.radius()) - ring));
+        } else {
+            if (c.hovered()) c.hover(surface, d(c.appearance.radius()));
+            marked(c, (focused ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge); });
+        }
         paint_lines(c, item.label_lines, item.caption_size, semantics.invalid ? p.error : p.muted);
         paint_lines(c, item.description_lines, item.caption_size, p.muted);
         paint_errors(c, item.error_lines, item.caption_size, p.error);
@@ -193,6 +209,7 @@ public:
         marked(c, focused ? PaintRole::focus_indicator : PaintRole::content, [&] { c.rounded(item.bounds, d(c.appearance.radius()), focused ? p.accent : enabled ? p.border : p.background); });
         Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
         c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
+        if (c.hovered()) c.hover(inner, std::max(0, d(c.appearance.radius()) - ring));
         paint_lines(c, item.lines, item.text_size, enabled ? p.text : p.muted);
     }
     int natural_width(const ComponentLayout& c) const override { return command_width(c); }
@@ -274,6 +291,7 @@ public:
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
             int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
             int x = r.x + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small), y = r.y + (r.h - size) / 2;
+            if (c.hovered(option.value)) c.hover(r);
             auto color = option.enabled && c.semantics.enabled ? p.border : p.muted;
             c.rounded({x, y, size, size}, size / 2, color);
             c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
@@ -319,6 +337,7 @@ public:
             const auto visible = intersect(row, p.clip);
             if (visible.w <= 0 || visible.h <= 0) continue;
             if (item.selected) marked(c, PaintRole::selection, [&] { c.fill(row, palette.selection); });
+            if (c.hovered(item.value)) c.hover(row);
             if (c.semantics.focused && c.semantics.candidate == item.value)
                 marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), row.h}, palette.accent); });
             const auto& line = p.lines[i];
@@ -359,6 +378,7 @@ public:
                 const auto& o = c.semantics.options[c.placement.option_start + i];
                 const auto& r = c.placement.options[i];
                 if (c.semantics.candidate && *c.semantics.candidate == o.value) marked(c, PaintRole::selection, [&] { c.fill(r, palette.selection); });
+                if (c.hovered(o.value)) c.hover(r);
                 const auto& line = c.placement.lines[i];
                 c.text(o.enabled ? line.text : line.text + c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix, c.placement.text_size, line.bounds.x, line.bounds.y, o.enabled ? palette.text : palette.muted);
             }
@@ -366,7 +386,9 @@ public:
         }
         marked(c, (c.semantics.focused ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : palette.border); });
         int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
-        c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);
+        Rect face{bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)};
+        c.rounded(face, scaled(c.scale, c.appearance.radius()), palette.surface);
+        if (c.hovered()) c.hover(face, scaled(c.scale, c.appearance.radius()));
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
         if (c.placement.lines.size() > 1) {
             const auto& line = c.placement.lines[1].bounds;
@@ -414,8 +436,9 @@ public:
             // the value is still the snapped one. Releasing or interrupting the drag shows the tick again.
             if (const auto held = c.ui.slider_drag_x(item.id)) x = std::clamp(*held, track.x, track.x + track.w);
             int size = scaled(c.scale, c.semantics.focused ? c.appearance.component_presentation().body_spacing : c.appearance.component_presentation().row_padding);
-            c.rounded({x - size / 2, track.y + (track.h - size) / 2, size, size}, size / 2,
-                      c.semantics.enabled ? palette.accent : palette.muted);
+            Rect thumb{x - size / 2, track.y + (track.h - size) / 2, size, size};
+            c.rounded(thumb, size / 2, c.semantics.enabled ? palette.accent : palette.muted);
+            if (c.hovered()) c.hover(thumb, size / 2);  // anywhere on the slider marks the thumb
             if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.fill({track.x, track.y + track.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), track.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, palette.accent); });
         }
     }
@@ -480,6 +503,7 @@ public:
         for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             marked(c, option.selected ? PaintRole::selection : PaintRole::content, [&] { c.fill(rect, option.selected ? palette.selection : palette.surface); });
+            if (c.hovered(option.value)) c.hover(rect);
             if (option.selected) marked(c, PaintRole::selection, [&] { c.fill({rect.x, rect.y + rect.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus)}, palette.accent); });
             if (c.semantics.focused && c.semantics.candidate && *c.semantics.candidate == option.value)
                 marked(c, PaintRole::focus_indicator, [&] { c.fill({rect.x, rect.y, rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, palette.accent); });
@@ -532,6 +556,7 @@ public:
                     if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);
                 });
             }
+            if (c.hovered(option.value)) c.hover(rect, material ? rect.h / 2 : scaled(c.scale, 6));
             const auto& line = c.placement.lines[i];
             c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }

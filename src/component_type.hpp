@@ -16,7 +16,7 @@ struct ComponentLayout {
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
 };
-enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32 };
+enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32, hover = 64 };
 constexpr PaintRole operator|(PaintRole a, PaintRole b) {
     return static_cast<PaintRole>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
 }
@@ -35,7 +35,16 @@ public:
     // The only source of paint colors: the appearance's palette for the current theme variant,
     // with the Ui's palette overrides applied.
     Palette palette() const;
+    // Pointer hover: the overlay is drawn for the hovered component (hovered()) or for one of its items
+    // (hovered(item)); both are false when the presentation switch is off or the target is not admitted.
+    bool hovered() const;
+    bool hovered(const OptionValue& item) const;
+    // Lays the palette's hover color over rect under PaintRole::hover (nothing when its alpha is 0).
+    void hover(Rect rect, int radius = 0);
     virtual void role(PaintRole) {}
+    // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it; the
+    // default here only keeps test probes that do not care about alpha compiling.
+    virtual void overlay(Rect rect, int radius, Color color, unsigned char alpha);
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;
     virtual void clip(Rect rect) = 0;
