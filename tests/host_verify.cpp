@@ -538,6 +538,97 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
         ", space=" + std::to_string(space));
 }
 
+// #74: pointer hover through the real window procedure, with posted mouse messages (no real cursor).
+void hover_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& h = f.form.handles;
+    auto& ui = detail::access(f.form.ui);
+    h.tabs.activate({"v03"});
+    SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
+    f.settle();
+    auto hovered = [&](const std::string& id) { auto t = f.form.ui.hover(); return t && *t && (**t).id == id && !(**t).item; };
+    auto none = [&] { auto t = f.form.ui.hover(); return t && !*t; };
+    // Drain what the system already queued (a real WM_KILLFOCUS from another program taking the foreground),
+    // then activate, so contention on a shared desktop cannot undo the activation before the posted move.
+    // Mouse messages are sent, not posted: a real cursor resting over the window cannot slip its own
+    // WM_MOUSEMOVE between the message and the check.
+    auto send = [&](UINT msg, POINT p, WPARAM w = 0) { SendMessageW(f.host.window(), msg, w, MAKELPARAM(p.x, p.y)); };
+    auto activate = [&] { f.host.pump(); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0); };
+    const std::string half = h.progress_half.describe()->id, dialog_opener = h.dialog_open.describe()->id;
+    // Another program taking the foreground queues a real WM_KILLFOCUS ahead of a posted move; retry so
+    // contention on a shared desktop cannot fail what is being checked.
+    auto rest_on = [&](const std::string& id, POINT at) {
+        for (int attempt = 0; attempt < 5; ++attempt) { activate(); send(WM_MOUSEMOVE, at); if (hovered(id)) return true; }
+        return false;
+    };
+    bool moved = rest_on(half, f.center(half));
+    // The CPU reference and the GPU agree on the overlay; the role is part of the observed draw list.
+    auto compared = f.host.compare_gpu(960, 720, 1.f);
+    bool drawn = bool(compared) && (compared.roles & static_cast<unsigned>(detail::PaintRole::hover)) != 0;
+    // A touch-synthesized mouse message neither moves nor clears the hover (Windows marks it in the extra info).
+    // A posted message cannot carry the signature, so the host reads it through a seam here; the decoding
+    // of the extra info is checked on literals.
+    bool pretend_touch = false, touch_kept = false;
+    f.host.touch_source([&] { return pretend_touch; });
+    for (int attempt = 0; attempt < 5 && !touch_kept; ++attempt) {
+        pretend_touch = false;
+        if (!rest_on(half, f.center(half))) continue;
+        pretend_touch = true;
+        send(WM_MOUSEMOVE, f.center(dialog_opener));
+        send(WM_MOUSEMOVE, POINT{2, 2});
+        touch_kept = hovered(half);
+    }
+    pretend_touch = false; f.host.touch_source({});
+    bool touch_ignored = touch_kept && DesktopHost::touch_signature(0xFF515780) && DesktopHost::touch_signature(0xFF515700) &&
+        !DesktopHost::touch_signature(0) && !DesktopHost::touch_signature(0xFF515600) && !DesktopHost::touch_signature(0x00515700);
+    bool followed = rest_on(dialog_opener, f.center(dialog_opener));
+    activate();
+    SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
+    bool left = none();
+    bool back = rest_on(half, f.center(half));
+    SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0);
+    bool deactivated = none();
+    send(WM_MOUSEMOVE, f.center(half));
+    bool inactive_quiet = none();
+    activate();
+    h.dialog_open.invoke(); f.settle();
+    bool modal_clears = none();
+    h.dialog_cancel.invoke(); f.settle();
+    activate();
+    // The switch hides the overlay while the target stays queryable.
+    auto settings = ui.presentation(); settings.hover = Hover::off;
+    ui.set_presentation(settings);
+    send(WM_MOUSEMOVE, f.center(half));
+    auto switched = f.host.compare_gpu(960, 720, 1.f);
+    bool off_hidden = hovered(half) && bool(switched) && (switched.roles & static_cast<unsigned>(detail::PaintRole::hover)) == 0;
+    // Dragging (text selection, slider) keeps the hover on the dragged component; the release hands it to
+    // whatever lies under the pointer.
+    h.tabs.activate({"v01"}); f.host.client_size(900, 1400); f.settle(); activate();  // tall enough to show every control of the page
+    auto hovered_id = [&](const std::string& id) { return hovered(id); };
+    POINT name_at = f.center(f.ids.name), apply_at = f.center(f.ids.apply), volume_at = f.center(f.ids.volume);
+    auto drag = [&](POINT from, const std::string& id, bool& held, bool& released) {
+        for (int attempt = 0; attempt < 5 && !(held && released); ++attempt) {
+            activate();
+            send(WM_MOUSEMOVE, from); send(WM_LBUTTONDOWN, from, MK_LBUTTON);
+            send(WM_MOUSEMOVE, apply_at, MK_LBUTTON);
+            held = hovered_id(id);
+            send(WM_LBUTTONUP, apply_at);
+            released = hovered_id(f.ids.apply);
+        }
+    };
+    bool text_held = false, text_released = false, slider_held = false, slider_released = false;
+    drag(name_at, f.ids.name, text_held, text_released);
+    drag(volume_at, f.ids.volume, slider_held, slider_released);
+    bool drags = text_held && text_released && slider_held && slider_released;
+    report.check("DF-hover-drag-native", drags,
+        "text-held=" + std::to_string(text_held) + ", text-released=" + std::to_string(text_released) +
+        ", slider-held=" + std::to_string(slider_held) + ", slider-released=" + std::to_string(slider_released));
+    report.check("DF-hover-native", moved && drawn && touch_ignored && followed && left && back && deactivated && inactive_quiet && modal_clears && off_hidden,
+        "moved=" + std::to_string(moved) + ", gpu-overlay=" + std::to_string(drawn) + ", touch-ignored=" + std::to_string(touch_ignored) +
+        ", followed=" + std::to_string(followed) + ", leave=" + std::to_string(left) + ", back=" + std::to_string(back) +
+        ", deactivate=" + std::to_string(deactivated) + ", inactive=" + std::to_string(inactive_quiet) + ", modal=" + std::to_string(modal_clears) +
+        ", switch-off=" + std::to_string(off_hidden) + ", now=" + (f.form.ui.hover() && *f.form.ui.hover() ? (**f.form.ui.hover()).id : std::string("none")));
+}
 // Native twin of the core focus-visibility cases (#72): real window messages drive the display state.
 void focus_visibility_native(const Appearance& appearance, Report& report) {
     Fixture f(appearance, true);
@@ -3572,6 +3663,7 @@ int run(const std::filesystem::path& folder) {
         tabs_native(*appearance, report, folder);
         atlas_native(*appearance, report);
         progress_native(*appearance, report, folder);
+        hover_native(*appearance, report);
         dialog_native(*appearance, report, folder);
         tooltip_native(*appearance, report, folder);
         focus_visibility_native(*appearance, report);
@@ -3622,6 +3714,16 @@ int run(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
+int run_hover(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "hover.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        hover_native(*appearance, report);
+    }
+    std::cout << report.checks << " hover native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
 int run_x02(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x02.tsv");
@@ -4049,7 +4151,7 @@ int wmain(int argc, wchar_t** argv) {
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, context_menu_only = false, animation_only = false;
         bool multiline_only = false, vertical_only = false;
                 bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false, hover_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_appearance=L"web";
         for (int i = 1; i < argc; ++i) {
@@ -4079,6 +4181,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--dpi") dpi = true;
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--x02-only") x02_only = true;
+            else if (arg == L"--hover-only") hover_only = true;
             else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--x04-executing-only") x04_executing_only = true;
@@ -4161,9 +4264,9 @@ int wmain(int argc, wchar_t** argv) {
         if (perf==L"idle-after-animation") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) + int(hover_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : hover_only ? run_hover(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

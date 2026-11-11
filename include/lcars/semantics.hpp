@@ -9,7 +9,9 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 // set_writing_mode takes a WritingMode and set_vertical_digits an int (0-3); labels only.
 // context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits };
+// hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
+// typed Ui::simulate_hover would be, and is never listed in SemanticNode::verbs (hover is not an operation of the node).
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover };
 using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
@@ -70,6 +72,10 @@ public:
     // Read-only: the colors currently painted for the bound appearance and the current theme variant,
     // overrides applied. not_found until an appearance is bound (see Ui::bind_appearance).
     Query<Palette> effective_palette() const;
+    // The node (and item) the pointer hovers, from the real mouse or from Verb::hover; empty when none.
+    // Same answer as Ui::hover. UIA never reports hover, so neither node properties nor events change with it.
+    Query<std::optional<NodeRef>> hover() const;
+    Result clear_simulated_hover();
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});
     // Callbacks run on the UI thread. The desktop host dispatches queued notifications;
     // core-only hosts call dispatch_events() at their own safe event-loop boundary.

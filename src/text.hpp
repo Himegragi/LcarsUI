@@ -41,8 +41,8 @@ public:
     bool count_ink = false;
     std::uint64_t ink = 0; // nontransparent samples accepted by the current clip
     Canvas(int width,int height,Color background);
-    void fill(Rect rect,Color color);
-    void rounded(Rect rect,int radius,Color color);
+    void fill(Rect rect,Color color,unsigned alpha=255);
+    void rounded(Rect rect,int radius,Color color,unsigned alpha=255);
     void blend(int x,int y,Color color,unsigned alpha);
 };
 class Text {

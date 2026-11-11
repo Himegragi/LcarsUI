@@ -17,11 +17,15 @@ struct ThemeVariant {
 // operating system's animation preference (Windows "Show animations in Windows") and off never plays.
 enum class Motion { automatic, off };
 inline constexpr int min_text_size = 12, max_text_size = 28;
+// Whether the pointer hover overlay is drawn. Off hides it for every source (real mouse or
+// simulated); tooltips still follow the pointer.
+enum class Hover { on, off };
 struct PresentationSettings {
     std::u16string font_family;
     int text_size = 16;
     ThemeVariant variant = ThemeVariant::light();
     Density density = Density::standard;
+    Hover hover = Hover::on;
     FocusIndicatorMode focus_indicator = FocusIndicatorMode::automatic;
     Motion motion = Motion::automatic;
     bool operator==(const PresentationSettings&) const = default;

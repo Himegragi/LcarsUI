@@ -567,6 +567,8 @@ private:
     std::weak_ptr<void> lifetime_;
     std::string id_;
 };
+// What the pointer hovers: a component, plus the item when the pointer is over one item of it.
+struct HoverTarget { std::string id; std::optional<OptionValue> item; bool operator==(const HoverTarget&) const = default; };
 // Owns the component tree. Components are operated through the handles returned at creation.
 class Ui {
 public:
@@ -629,6 +631,16 @@ public:
     // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
     // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
     void bind_appearance(const Appearance* appearance);
+    // The component (and item, for lists, tabs, radio groups, navigation lists and dropdowns) the
+    // pointer hovers, from the real mouse or from simulate_hover. The value is empty when nothing is
+    // hovered, or the target was disabled or is blocked by a modal dialog. It answers the same with
+    // the presentation hover switch off: the switch only hides the overlay.
+    Query<std::optional<HoverTarget>> hover() const;
+    // Acts as if the real mouse rested on the target: same overlay, same tooltip delay, same exclusions
+    // (disabled, blocked by a modal dialog, an unknown item). The next real mouse move takes over.
+    // busy while a mouse drag holds the hover.
+    Result simulate_hover(const ComponentHandle& target, std::optional<OptionValue> item = {});
+    Result clear_simulated_hover();
 
     // Whether focus indicators are being drawn now: the latest real input was a key, the system asks for
     // keyboard cues, or the presentation forces them. Editable text fields are drawn focused regardless.

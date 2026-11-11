@@ -57,6 +57,22 @@ public:
     void tooltip_hover(std::string_view id);
     const std::u16string* tooltip_text(std::string_view id) const;
     void window_active(bool active);
+    // Pointer hover. The host (or a test) reports the real mouse in window coordinates; touch and pen
+    // messages (touch = true) are ignored. One call moves both the hover target and the tooltip dwell.
+    void pointer_over(const Frame& frame, int x, int y, bool touch = false);
+    void pointer_left();  // the pointer left the client area
+    // A drag that must keep the hover where it started (text selection, scrollbar thumb). An id first
+    // makes that component the target; an empty id freezes the current one. A slider drag holds it by itself.
+    void hover_capture(std::string_view id);
+    void hover_release();
+    // Re-evaluates the real pointer at its last position; arrange calls it after every layout.
+    void hover_refresh(const Frame& frame);
+    // The admitted target (see Ui::hover) and whether the overlay is drawn for it.
+    std::optional<HoverTarget> hover_target() const;
+    bool hover_drawn(std::string_view id, const OptionValue* item) const;
+    Result simulate_hover(std::string_view id, const std::optional<OptionValue>& item);
+    Result clear_simulated_hover();
+    Query<std::optional<HoverTarget>> hover_query() const;
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
     ScrollState& dropdown_scroll(const Id& id) { return dropdowns_.at(id).scroll; }
@@ -256,7 +272,7 @@ public:
     void set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
-    void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } refresh_tooltips(); }
+    void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } hover_clear(); refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
@@ -421,6 +437,15 @@ private:
     Result delete_selection(std::string_view id);
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
+    // Pointer hover. hover_ is the raw target; hover_target() filters it against the live state.
+    std::optional<HoverTarget> hover_;
+    bool hover_simulated_ = false, hover_capture_ = false;
+    std::optional<std::pair<int, int>> hover_position_;  // last real pointer position
+    bool hover_locked() const;
+    bool hover_admitted(const HoverTarget& target) const;
+    void hover_set(std::optional<HoverTarget> target);
+    void hover_from_frame(const Frame& frame, int x, int y);
+    void hover_clear();
     std::uint64_t tooltip_now_ = 0;
     std::optional<std::uint64_t> tooltip_paused_at_;
     std::function<std::uint64_t()> tooltip_clock_;

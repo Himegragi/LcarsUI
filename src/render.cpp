@@ -30,6 +30,12 @@ void RecordingCanvas::rounded(Rect rect, int radius, Color color) {
     list.commands.back().role = current_role;
 
 }
+void RecordingCanvas::overlay(Rect rect, int radius, Color color, unsigned char alpha) {
+    list.set_clip(clip);
+    if (radius > 0) list.rounded_rect(rect, radius, {color.r, color.g, color.b, alpha});
+    else list.fill_rect(rect, {color.r, color.g, color.b, alpha});
+    list.commands.back().role = current_role;
+}
 void RecordingCanvas::glyph(Rect rect, Color color, std::shared_ptr<const AtlasPage> page, Rect region) {
     list.set_clip(clip);
     DrawCommand command{DrawCommand::Type::glyph, rect, {color.r, color.g, color.b, 255}, 0,

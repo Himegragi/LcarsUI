@@ -22,14 +22,17 @@ struct FieldParts { Rect label, surface, editor; bool underline = false; };
 // checkbox, radio circle, slider track, scrollbar thumb, ...), >= 3:1 against surface, background and panel.
 struct Palette {
     Color background, panel, surface, text, muted, border, outline, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110;
+    // Pointer hover: this color at hover_alpha (0-255) is laid over the hovered component or item.
+    // Fields left out of a custom palette keep a faint black overlay (6%).
+    Color hover{0,0,0}; unsigned char hover_alpha = 15;
     bool operator==(const Palette&) const = default;
 };
 // Palette roles are addressed by name so an override list never needs a field list of its own:
-// every named color in Palette, plus "scrim_alpha" (0-255, an int value), is a role.
+// every named color in Palette, plus "scrim_alpha" and "hover_alpha" (0-255, int values), is a role.
 using PaletteValue = std::variant<Color, int>;
 std::vector<std::string_view> palette_roles();
 std::optional<PaletteValue> palette_value(const Palette& palette, std::string_view role);
-// False (palette untouched) for an unknown role, a value of the wrong kind or scrim_alpha outside 0-255.
+// False (palette untouched) for an unknown role, a value of the wrong kind or an alpha role outside 0-255.
 bool set_palette_value(Palette& palette, std::string_view role, const PaletteValue& value);
 // WCAG 2.x contrast ratio (1 to 21) between two sRGB colors.
 double contrast_ratio(Color a, Color b);
