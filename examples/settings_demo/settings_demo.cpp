@@ -73,6 +73,9 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     about_labels_[4].connect_source([this] { return u"繪製：" + about_.renderer; });
     about_labels_[5].connect_source([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
     about_labels_[6].connect_source([this] { return about_.settings_path; });
+    // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
+    about_vertical_ = ui.add_label({.id="about.vertical",.kind=Kind::label,.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
+    nav.add_member({"about"}, about_vertical_);
     std::vector<RadioOption> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
     licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
@@ -372,6 +375,7 @@ layout::Node Demo::page() const {
     if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
+        content.push_back(vertical_text(about_vertical_, 200));
         content.push_back(control(licenses));
         content.push_back(scroll_text(license_text_, license_scroll, 200));
     }

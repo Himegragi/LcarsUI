@@ -152,7 +152,9 @@ struct Frame {
     // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
     bool scroll_to(Ui& ui, ScrollState& state, int offset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
-    bool wheel(Ui& ui, int x, int y, int delta) const;
+    // With sideways_only (Shift held), only sideways-scrolling labels take the step; a vertical wheel step down
+    // on a vertical-writing label moves toward the end of the text.
+    bool wheel(Ui& ui, int x, int y, int delta, bool sideways_only = false) const;
     // Route a horizontal wheel step (delta in physical pixels, positive to the right) to a sideways-scrolling label.
     bool hwheel(Ui& ui, int x, int y, int delta) const;
     unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x

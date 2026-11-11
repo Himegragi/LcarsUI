@@ -30,6 +30,7 @@ class Demo {
     lcars::LabelHandle title_, status_, name_label_, name_help_, name_error_;
     std::vector<lcars::LabelHandle> about_labels_;
     lcars::LabelHandle license_text_;
+    lcars::LabelHandle about_vertical_;  // vertical writing sample (display only)
     AboutInfo about_;
     std::optional<lcars::OptionValue> license_selection_ = lcars::OptionValue{"lcars"};
     std::function<void()> license_selection_changed_;

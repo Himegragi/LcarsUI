@@ -9,6 +9,7 @@
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
 #include "component_type.hpp"
+#include "vertical.hpp"
 using namespace lcars;
 struct RoleProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
@@ -648,6 +649,25 @@ void about_page_content() {
     test::check(with_diagnostics.ui.semantics().get({"about.diagnostics"})->value == u"診斷：基本診斷（只存記憶體）", "diagnostics present when selected");
     test::check(tree.get({"about.framework"})->value.find(lcars::framework_version) != std::u16string::npos, "framework version is shown");
 }
+void about_vertical_label() {
+    settings_demo::AboutInfo info;
+    settings_demo::Demo demo(info);
+    test::check(bool(demo.nav.select({"about"})), "open About");
+    auto node = demo.ui.semantics().get({"about.vertical"});
+    test::check(node && node->role == Role::label && node->writing_mode == WritingMode::vertical, "the About page has a vertical label");
+    test::check(node->value == u"LcarsUI 設定管理示範（第 12 版），謹此致謝。", "the vertical label carries the sample sentence");
+    // It shows every kind of piece the rules cover: a sideways word, a bracket, combined digits, a comma and a period.
+    std::vector<VerticalForm> forms;
+    for (const auto& segment : detail::segment_vertical(node->value, 3)) forms.push_back(segment.form);
+    for (auto form : {VerticalForm::sideways, VerticalForm::bracket, VerticalForm::combined, VerticalForm::point, VerticalForm::upright})
+        test::check(std::find(forms.begin(), forms.end(), form) != forms.end(), "the sample covers every piece form");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        test::FakeMeasure measure;
+        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, demo.scroll);
+        auto item = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& p) { return p.id == "about.vertical"; });
+        test::check(item != frame.items.end() && item->vertical && item->column_layout.columns.size() >= 2 && item->bounds.h > 0, "the page lays the label out in columns");
+    }
+}
 void td01_failure_diagnostic() {
     auto reset = settings_demo::failure_diagnostic({lcars::RendererFailureKind::device_reset, 0x8253, u"Graphics reset"});
     test::check(reset.category == lcars::DiagnosticCategory::device_reset && reset.severity == lcars::DiagnosticSeverity::error &&
@@ -975,4 +995,4 @@ void slider_drag_is_one_write_per_value_and_one_undo() {
     test::check(*demo.volume.draft() == 45, "drag ended on 45");
     test::check(bool(state.key_down({.ctrl = true, .letter = u'Z'})) && *demo.volume.draft() == before, "one undo restores the value before the whole drag");
 }
-int main() { const test::Case cases[] = {{"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

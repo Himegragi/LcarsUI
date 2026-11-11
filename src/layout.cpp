@@ -180,11 +180,11 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     else owner.scrolled();
     return true;
 }
-bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
+bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
     // A popup owns its own wheel input; it must not scroll the background beneath it.
-    for (auto it = overlays.rbegin(); it != overlays.rend(); ++it) {
+    for (auto it = overlays.rbegin(); it != overlays.rend() && !sideways_only; ++it) {
         if (!it->dropdown_panel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
         if (it->kind == Kind::dropdown) {
             auto current = detail::access(ui).describe(it->id);
@@ -196,7 +196,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta) const {
     }
     if (modal || owner.modal()) return false;
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
-        if (!it->clip.contains(x, y)) continue;
+        if (!it->clip.contains(x, y) || (sideways_only && !it->horizontal)) continue;
         if (scroll_to(ui, *it->state, it->state->offset - delta)) return true;
     }
     return false;
