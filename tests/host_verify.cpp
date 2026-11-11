@@ -662,6 +662,11 @@ void focus_visibility_native(const Appearance& appearance, Report& report) {
     bool chord_keeps_hidden = !shown();
     f.tap(VK_RIGHT);
     bool plain_key_shows = shown();
+    // Code review 2026-11-12 item 1: the right button is a press in the client area too. Over the title label (no menu to open) it must hide.
+    f.mouse(WM_RBUTTONDOWN, f.center(f.ids.title), MK_RBUTTON); f.mouse(WM_RBUTTONUP, f.center(f.ids.title));
+    bool inert_right_press_hides = !shown();
+    f.tap(VK_RIGHT);
+    bool right_key_shows_again = shown();
     POINT blank{-1, -1};
     f.host.paint();
     for (int y = 690; y > 0 && blank.x < 0; y -= 7) for (int x = 3; x < 900; x += 11)
@@ -669,15 +674,20 @@ void focus_visibility_native(const Appearance& appearance, Report& report) {
     bool found_blank = blank.x >= 0;
     if (found_blank) { f.mouse(WM_LBUTTONDOWN, blank, MK_LBUTTON); f.mouse(WM_LBUTTONUP, blank); }
     bool blank_press_hides = found_blank && !shown();
+    f.tap(VK_RIGHT);
+    const bool before_blank_right = shown();
+    if (found_blank) { f.mouse(WM_RBUTTONDOWN, blank, MK_RBUTTON); f.mouse(WM_RBUTTONUP, blank); }
+    bool blank_right_press_hides = found_blank && before_blank_right && !shown();
     state.set_system_keyboard_cues(!system_on);
     SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETKEYBOARDCUES, 0);
     bool setting_change_rereads = shown() == bool(system_on);  // recorded state is hidden, so only the system value shows it
     report.check("F72-native-focus-visibility", started_hidden && key_shows && wheel_keeps && inert_press_hides && chord_keeps_hidden &&
-                 plain_key_shows && blank_press_hides && setting_change_rereads,
+                 plain_key_shows && blank_press_hides && setting_change_rereads && inert_right_press_hides && right_key_shows_again && blank_right_press_hides,
                  "hidden at start=" + std::to_string(started_hidden) + ", key shows=" + std::to_string(key_shows) + ", wheel keeps=" + std::to_string(wheel_keeps) +
                  ", inert press hides=" + std::to_string(inert_press_hides) + ", Ctrl chord keeps hidden=" + std::to_string(chord_keeps_hidden) +
                  ", plain key shows=" + std::to_string(plain_key_shows) + ", blank press hides=" + std::to_string(blank_press_hides) +
-                 ", WM_SETTINGCHANGE re-reads=" + std::to_string(setting_change_rereads));
+                 ", WM_SETTINGCHANGE re-reads=" + std::to_string(setting_change_rereads) + ", right press on a label hides=" + std::to_string(inert_right_press_hides) +
+                 ", key shows again=" + std::to_string(right_key_shows_again) + ", right press on blank hides=" + std::to_string(blank_right_press_hides));
 }
 
 void dialog_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -2930,7 +2940,8 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                 std::u16string ink; bool visible_owner_ink = false, accent = false, selected = false;
                 auto palette = appearance.palette();
                 for (const auto& draw : f.host.paint_observations()) {
-                    if (draw.owner != owner || !draw.visible) continue;
+                    const bool blank_piece = draw.type == detail::PaintObservation::Type::text && x04::blank_only(draw.text);  // no ink, but part of the text
+                    if (draw.owner != owner || !(draw.visible || blank_piece)) continue;
                     visible_owner_ink = true;
                     if (draw.type == detail::PaintObservation::Type::text && item &&
                         intersect(draw.bounds, intersect(draw.clip, item->bounds)).w == draw.bounds.w) ink += draw.text;
@@ -4008,6 +4019,16 @@ int run(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
+int run_focus(const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    Report report(folder / "focus.tsv");
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        report.appearance = appearance == &web_appearance() ? "web" : "material";
+        focus_visibility_native(*appearance, report);
+    }
+    std::cout << report.checks << " focus native checks, " << report.failures << " failures\n";
+    return report.failures ? 1 : 0;
+}
 int run_hover(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "hover.tsv");
@@ -4445,7 +4466,7 @@ int wmain(int argc, wchar_t** argv) {
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, context_menu_only = false, animation_only = false;
         bool multiline_only = false, vertical_only = false, richtext_only = false, word_select_only = false, justify_only = false;
                 bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
-        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false, hover_only = false;
+        bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false, hover_only = false, focus_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
         std::wstring perf, perf_appearance=L"web";
         for (int i = 1; i < argc; ++i) {
@@ -4479,6 +4500,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--clipboard-only") clipboard_only = true;
             else if (arg == L"--x02-only") x02_only = true;
             else if (arg == L"--hover-only") hover_only = true;
+            else if (arg == L"--focus-only") focus_only = true;
             else if (arg == L"--x04-only") x04_only = true;
             else if (arg == L"--x04-clipped-only") x04_clipped_only = true;
             else if (arg == L"--x04-executing-only") x04_executing_only = true;
@@ -4580,14 +4602,19 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (demo_perf) return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,demo_perf_font);
         // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
-        if (perf==L"slider-drag-text-size") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
+        // Report-only (code review 2026-11-12, item 14): a setup problem (no real mouse, window not in front, ...) is printed and
+        // leaves no report; it never fails the run, so it can never fail an idle verification. verify-idle shows the missing report.
+        if (perf==L"slider-drag-text-size") {
+            try { return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv"); }
+            catch (const std::exception& e) { std::cerr << "slider-drag-text-size is report-only and could not run: " << e.what() << '\n'; return 0; }
+        }
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
-        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) + int(hover_only) > 1)
+        if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) + int(hover_only) + int(focus_only) > 1)
             throw std::runtime_error("Invalid verification options");
-        return ime ? run_ime(evidence) : hover_only ? run_hover(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
+        return ime ? run_ime(evidence) : hover_only ? run_hover(evidence) : focus_only ? run_focus(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

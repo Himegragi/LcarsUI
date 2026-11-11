@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <iostream>
 #include <string>
 using namespace lcars;
 using namespace lcars::detail;
@@ -33,6 +34,15 @@ Ink ink_of(const Canvas& canvas) {
     return ink;
 }
 bool font_installed(const char* file) { return std::filesystem::exists(std::filesystem::path("C:/Windows/Fonts") / file); }
+// A weight whose font file is missing cannot be checked. That is a skip, never a pass: it is counted here and the
+// process ends with the CTest skip code (77) when nothing failed but something was not checked.
+int skipped_weights = 0;
+bool weight_available(const char* file) {
+    if (font_installed(file)) return true;
+    std::cout << "SKIP: " << file << " is not installed\n";
+    ++skipped_weights;
+    return false;
+}
 
 struct Weight { const char* name; const char* file; };
 const Weight weights[] = {{"Regular", "msjh.ttc"}, {"Bold", "msjhbd.ttc"}, {"Light", "msjhl.ttc"}};
@@ -50,7 +60,7 @@ Canvas draw_in(Text& text, std::u16string_view value, VerticalForm form, Rect wh
 
 void point_punctuation_sits_in_the_middle_of_the_cell_in_every_weight() {
     for (const auto& weight : weights) {
-        if (!font_installed(weight.file)) continue;
+        if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto mark : {u"，", u"。", u"、", u"；", u"：", u"！", u"？"}) {
             auto ink = ink_of(draw_in(*text, mark, VerticalForm::point));
@@ -62,7 +72,7 @@ void point_punctuation_sits_in_the_middle_of_the_cell_in_every_weight() {
 }
 void brackets_open_up_and_down() {
     for (const auto& weight : weights) {
-        if (!font_installed(weight.file)) continue;
+        if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto bracket : {u"（", u"）", u"《", u"》"}) {
             auto ink = ink_of(draw_in(*text, bracket, VerticalForm::bracket));
@@ -77,7 +87,7 @@ void brackets_open_up_and_down() {
 void dashes_and_ellipses_are_lines_through_the_middle_of_two_cells() {
     const Rect two{cell.x, cell.y, em, 2 * em};
     for (const auto& weight : weights) {
-        if (!font_installed(weight.file)) continue;
+        if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto [mark, form] : {std::pair{u"——", VerticalForm::line}}) {
             auto canvas = draw_in(*text, mark, form, two);
@@ -98,7 +108,7 @@ void dashes_and_ellipses_are_lines_through_the_middle_of_two_cells() {
 }
 void a_middle_dot_is_centered() {
     for (const auto& weight : weights) {
-        if (!font_installed(weight.file)) continue;
+        if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto dot : {u"·", u"‧", u"・"}) {
             auto ink = ink_of(draw_in(*text, dot, VerticalForm::middle_dot));
@@ -131,7 +141,7 @@ void sideways_text_is_the_horizontal_picture_turned_clockwise() {
 }
 void combined_digits_fit_one_cell() {
     for (const auto& weight : weights) {
-        if (!font_installed(weight.file)) continue;
+        if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto digits : {u"12", u"123"}) {
             auto ink = ink_of(draw_in(*text, digits, VerticalForm::combined));
@@ -182,5 +192,10 @@ int main() {
         {"emoji_and_han_stay_inside_the_cell", emoji_and_han_stay_inside_the_cell},
         {"the_recorded_draw_list_matches_the_direct_picture", the_recorded_draw_list_matches_the_direct_picture},
     };
-    return test::run("vertical_text", cases);
+    const int result = test::run("vertical_text", cases);
+    if (result == 0 && skipped_weights) {
+        std::cout << "vertical_text: " << skipped_weights << " weight check(s) skipped (font file missing)\n";
+        return 77;
+    }
+    return result;
 }

@@ -762,6 +762,11 @@ class TextRange final : public ITextRangeProvider {
                 out->vt = VT_I4;
                 // #84: justify and distribute are both Justified (UIA has no distributed value); while the user's
                 // "justified text as left" setting is on, what is drawn (and so reported) is Left.
+                // Reachability (code review 2026-11-12, item 12): only text fields expose a TextPattern and a text
+                // field refuses `distribute`, while labels (the only components that can be distributed) have no
+                // TextPattern. So `distribute` never reaches this line today; the branch stays so that a label
+                // TextPattern (should one ever be added) already reports it, and the "distribute reports Justified"
+                // line of the #84 spec contradicts #82 item 7 (labels are not text ranges) until then.
                 const bool stretched = n.text_align == TextAlign::justify || n.text_align == TextAlign::distribute;
                 const bool as_left = stretched && owner->ctx->ui->presentation().justify_as_left;
                 out->lVal = as_left ? HorizontalTextAlignment_Left

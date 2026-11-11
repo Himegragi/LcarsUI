@@ -267,6 +267,9 @@ if(LCARS_BUILD_DESKTOP)
     target_compile_definitions(lcars_vertical_text_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(lcars_vertical_text_tests PRIVATE lcars_desktop lcars_render freetype)
     add_test(NAME vertical_text COMMAND lcars_vertical_text_tests)
+    set_tests_properties(vertical_text PROPERTIES SKIP_RETURN_CODE 77)  # a missing JhengHei weight is a skip, not a pass
+    # The slider drag perf scenario is report-only: a setup failure (here an invalid duration, which needs no window) must not fail the run.
+    add_test(NAME perf_report_only_setup COMMAND lcars_host_verify --perf slider-drag-text-size --perf-duration-ms -1 --evidence "${CMAKE_BINARY_DIR}/evidence/perf-report-only")
     add_test(NAME host_native COMMAND lcars_host_verify --evidence "${CMAKE_BINARY_DIR}/evidence/host")
     set_tests_properties(host_native PROPERTIES TIMEOUT 900)
     add_test(NAME presentation_matrix_native COMMAND lcars_host_verify --presentation-matrix --evidence "${CMAKE_BINARY_DIR}/evidence/presentation-matrix")
