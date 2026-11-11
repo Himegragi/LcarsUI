@@ -257,6 +257,23 @@ void keyboard_arrows_scroll_a_focused_sideways_label() {
     auto wide = page.arrange_in(400, 200);
     check(!page.label.describe()->focusable && wide.regions.empty(), "When everything fits, the label neither scrolls nor takes focus");
 }
+void the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry() {
+    Page page(u"第123版", WritingMode::horizontal);
+    auto forms = [&] {
+        auto frame = page.arrange_in(400, 200);
+        std::vector<VerticalForm> result;
+        if (frame.find(page.label)->vertical) for (const auto& piece : frame.find(page.label)->column_layout.columns[0].pieces) result.push_back(piece.form);
+        return result;
+    };
+    check(forms().empty(), "Horizontal: no vertical pieces");
+    check(bool(page.ui.semantics().perform({"label"}, Verb::set_writing_mode, WritingMode::vertical)), "Switch through the semantic layer");
+    check(forms() == std::vector<VerticalForm>{VerticalForm::upright, VerticalForm::combined, VerticalForm::upright}, "Three digits are combined with the default limit");
+    check(bool(page.ui.semantics().perform({"label"}, Verb::set_vertical_digits, 2)), "Limit 2 through the semantic layer");
+    check(forms() == std::vector<VerticalForm>{VerticalForm::upright, VerticalForm::sideways, VerticalForm::upright}, "Three digits turn when the limit is 2");
+    check(bool(page.label.set_vertical_digits(0)) && bool(page.label.set_vertical_digits(3)), "Back through the typed handle");
+    check(forms().size() == 3 && forms()[1] == VerticalForm::combined, "Combined again at 3");
+    check(bool(page.label.set_writing_mode(WritingMode::horizontal)) && forms().empty(), "Back to horizontal at once");
+}
 void shift_wheel_reaches_only_the_sideways_label() {
     Page page(cjk(25));
     auto frame = page.arrange_in(48, 200);
@@ -342,6 +359,7 @@ int main() {
         {"the_wheel_moves_a_sideways_label_toward_the_end_of_the_text", the_wheel_moves_a_sideways_label_toward_the_end_of_the_text},
         {"the_scrollbar_thumb_maps_back_to_an_offset", the_scrollbar_thumb_maps_back_to_an_offset},
         {"keyboard_arrows_scroll_a_focused_sideways_label", keyboard_arrows_scroll_a_focused_sideways_label},
+        {"the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry", the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry},
         {"shift_wheel_reaches_only_the_sideways_label", shift_wheel_reaches_only_the_sideways_label},
         {"a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page", a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page},
         {"text_size_and_scale_change_the_columns", text_size_and_scale_change_the_columns},
