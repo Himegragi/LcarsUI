@@ -961,6 +961,92 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     detail::access(ui).composition_cancel();
 }
 
+// #83 twin of tests/word_select.cpp on a real window: posted WM_LBUTTONDOWN messages are counted by the host
+// against the system double-click time and box, WM_KEYDOWN with Ctrl goes by words. ASCII text and an explicit
+// per-character mode keep the expectations independent of the system dictionary. The real mouse and the user's own
+// double-click settings are not involved (the messages are posted), so the author-run trial still covers feel.
+void word_select_native(const Appearance& appearance, Report& report) {
+    Ui ui; ScrollState scroll;
+    auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
+    auto field_handle = ui.add_text({.id = "line", .kind = Kind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    field_handle.connect_confirmed([](const TextChange&) { return Result{}; });
+    auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
+    note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
+    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    field_handle.set_word_segmentation(WordSegmentation::per_character);
+    note.set_word_segmentation(WordSegmentation::per_character);
+    DesktopOptions options; options.title = u"LcarsUI word selection verification";
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(field_handle), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    host.force_scale(1.f);
+    host.client_size(600, 400);
+    host.pump(); host.paint();
+    auto hwnd = host.window();
+    auto post = [&](UINT message, WPARAM w, LPARAM l) { PostMessageW(hwnd, message, w, l); host.pump(); host.paint(); };
+    auto key = [&](WPARAM vk, bool ctrl = false, bool shift = false) {
+        BYTE state[256]{};
+        GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0; state[VK_SHIFT] = shift ? 0x80 : 0;
+        SetKeyboardState(state);
+        post(WM_KEYDOWN, vk, key_lparam(vk, false, false)); post(WM_KEYUP, vk, key_lparam(vk, false, true));
+        state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
+        SetKeyboardState(state);
+    };
+    auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
+    auto selection = [&](const char* id) { return detail::access(ui).edit(id)->selection; };
+    // The middle of the character starting at `offset` in the single-line field, and of a row's first characters in the note.
+    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, p.bounds.y + p.field.editor.y + p.field.editor.h / 2}; };
+    auto click = [&](POINT point) { post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y)); post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y)); };
+    auto range = [&](const char* id) { auto s = selection(id); return std::to_string(std::min(s.anchor, s.caret)) + ".." + std::to_string(std::max(s.anchor, s.caret)); };
+    field_handle.focus(); host.pump(); host.paint();
+
+    auto collapsed = [&](const char* id) { auto s = selection(id); return s.anchor == s.caret; };
+    click(at_char(7));
+    const auto single = range("line"); const bool single_caret = collapsed("line");
+    click(at_char(7));
+    const auto word = range("line");
+    click(at_char(7));
+    const auto paragraph = range("line");
+    click(at_char(7));
+    const auto again = range("line"); const bool again_caret = collapsed("line");
+    report.check("WS01-double-and-triple-click", single_caret && word == "6..10" && paragraph == "0..16" && again_caret,
+        "Presses in quick succession on 'e' of beta: caret " + single + ", word " + word + ", whole text " + paragraph + ", fourth press " + again);
+
+    Sleep(GetDoubleClickTime() + 150);
+    click(at_char(7)); Sleep(GetDoubleClickTime() + 150); click(at_char(7));
+    report.check("WS02-slow-presses-stay-single", collapsed("line"), "Two presses further apart than the system double-click time are two single clicks: " + range("line"));
+
+    Sleep(GetDoubleClickTime() + 150);
+    click(at_char(2)); post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(at_char(2).x, at_char(2).y));
+    const auto picked = range("line");
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(at_char(12).x, at_char(12).y));
+    const auto grown = range("line");
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(at_char(2).x, at_char(2).y));
+    const auto shrunk = range("line");
+    post(WM_LBUTTONUP, 0, MAKELPARAM(at_char(2).x, at_char(2).y));
+    report.check("WS03-drag-by-words", picked == "0..6" && grown == "0..16" && shrunk == "0..6",
+        "Holding the second press and dragging grows by words and keeps the first one: " + picked + " -> " + grown + " -> " + shrunk);
+
+    detail::access(ui).select("line", 0, 0); host.paint();
+    std::vector<unsigned> stops;
+    for (int i = 0; i < 4; ++i) { key(VK_RIGHT, true); stops.push_back(selection("line").caret); }
+    key(VK_LEFT, true, true);
+    const auto extended = range("line");
+    key(VK_BACK, true);
+    const auto after_delete = detail::access(ui).text("line");
+    report.check("WS04-ctrl-arrows-and-delete", stops == std::vector<unsigned>{6, 10, 11, 16} && extended == "11..16" && after_delete == u"alpha beta,",
+        "Ctrl+Right stops at 6 10 11 16; Ctrl+Shift+Left selects " + extended + "; Ctrl+Backspace then removes only the selection (text length " + std::to_string(after_delete.size()) + ")");
+
+    note.focus(); host.pump(); host.paint();
+    auto row = [&](int index) { auto p = placed("note"); return POINT{p.view.text.x + 10, p.view.text.y + index * p.view.line_height + p.view.line_height / 2}; };
+    Sleep(GetDoubleClickTime() + 150);
+    click(row(1)); click(row(1)); click(row(1));
+    report.check("WS05-triple-click-paragraph", range("note") == "8..18",
+        "Three quick presses in the middle row of the note select that paragraph without its line feed: " + range("note"));
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -3208,6 +3294,7 @@ int run(const std::filesystem::path& folder) {
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
         multiline_native(*appearance, report, folder);
+        word_select_native(*appearance, report);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3653,7 +3740,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool multiline_only = false;
+        bool multiline_only = false, word_select_only = false;
         bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
@@ -3678,6 +3765,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--word-select-only") word_select_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3706,6 +3794,14 @@ int wmain(int argc, wchar_t** argv) {
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 multiline_native(*appearance, report, evidence);
+            }
+            return report.failures ? 1 : 0;
+        }
+        if (word_select_only) {  // #83 native checks alone, for quick runs
+            std::filesystem::create_directories(evidence); Report report(evidence / "word-select.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                word_select_native(*appearance, report);
             }
             return report.failures ? 1 : 0;
         }

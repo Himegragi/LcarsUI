@@ -160,6 +160,23 @@ void read_only_fields_select_but_disabled_ones_do_nothing() {
     check(f.handle.triple_click(1).status == Status::disabled && f.handle.select_paragraph(1).status == Status::disabled, "Also a triple click");
 }
 
+void composing_refuses_word_selection_like_a_single_click_does() {
+    Field f(u"abc def");
+    auto& host = f.host();
+    host.focus("t");
+    host.select("t", 3, 3);
+    check(bool(host.composition_update(u"你", 1)), "Start composing");
+    check(f.handle.double_click(5).status == Status::busy && f.handle.triple_click(5).status == Status::busy && f.handle.select_word(5).status == Status::busy,
+          "Word and paragraph selection wait for the input method, as select() does");
+    check(host.select("t", 0, 1).status == Status::busy, "The single-click path reports the same status");
+    check(host.key_down(press(Key::right, false, true)).status == Status::busy && host.key_down(press(Key::backspace, false, true)).status == Status::busy,
+          "Ctrl+arrow and Ctrl+Backspace belong to the input method");
+    check(f.text() == u"abc def" && f.selection().caret == 3, "Nothing changed meanwhile");
+    check(bool(f.handle.word_at(5)) && *f.handle.word_at(5) == TextSpan{4, 7}, "Queries stay available");
+    host.composition_cancel();
+    check(bool(f.handle.double_click(5)) && f.selection().anchor == 4 && f.selection().caret == 7, "Afterwards it works again");
+}
+
 void keyboard_moves_by_the_same_word_stops() {
     // a0 b1 c2 ' '3 ' '4 d5 e6 f7 ,8 ' '9 設10 定11 管12 理13: stops 0 5 8 10 12 14
     Field f(u"abc  def, 設定管理");
@@ -477,6 +494,7 @@ int main(int argc, char** argv) {
         {"the_three_segmentations_split_mixed_text_differently_and_switch_at_once", the_three_segmentations_split_mixed_text_differently_and_switch_at_once},
         {"a_failing_dictionary_falls_back_to_per_character_without_interrupting", a_failing_dictionary_falls_back_to_per_character_without_interrupting},
         {"read_only_fields_select_but_disabled_ones_do_nothing", read_only_fields_select_but_disabled_ones_do_nothing},
+        {"composing_refuses_word_selection_like_a_single_click_does", composing_refuses_word_selection_like_a_single_click_does},
         {"keyboard_moves_by_the_same_word_stops", keyboard_moves_by_the_same_word_stops},
         {"a_line_feed_is_a_stop_in_a_multi_line_field", a_line_feed_is_a_stop_in_a_multi_line_field},
         {"ctrl_backspace_and_delete_remove_exactly_up_to_the_stop", ctrl_backspace_and_delete_remove_exactly_up_to_the_stop},

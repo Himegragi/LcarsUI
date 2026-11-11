@@ -62,7 +62,25 @@ ui.semantics().perform({"item.note"}, lcars::Verb::scroll, 4);  // the same oper
 - **Layout data for application and host code.** After `arrange`, `Placement::multiline` fields carry `Placement::view` (`FieldView`: every display line with its UTF-16 range and caret stops, the first visible line, the track and thumb). `Frame::text_offset(handle, x, y)`, `Placement::caret_x/caret_y/caret_rect` and `Frame::select_to` read it. A host that can lay out again on demand registers `UiState::on_relayout` (the desktop host does) so cursor keys never see stale lines.
 - **UI Automation.** The text pattern reads and moves by `TextUnit_Line` (display lines) and `TextUnit_Paragraph` (LF-separated lines); a vertical-only scroll pattern reads and sets the scroll position.
 
-Out of scope here: double and triple click selection, growing with content, horizontal scrolling or a no-wrap mode, Tab characters, alignment and line spacing, rich text and vertical text.
+Out of scope here: growing with content, horizontal scrolling or a no-wrap mode, Tab characters, alignment and line spacing, rich text and vertical text.
+
+## Word and paragraph selection
+
+Text fields (single- and multi-line) select by word and paragraph. Double click selects the word under the pointer and the spaces after it (a punctuation mark or a run of spaces on its own; at the end of a line, that line's last word). Triple click selects the whole text of a single-line field, or the LF-separated paragraph of a multi-line one. Holding the button after either and dragging grows the selection by words or paragraphs, and the first word or paragraph stays selected. Ctrl+Left/Right move to the previous/next word start (spaces skipped, each punctuation mark and each LF a stop), Ctrl+Shift+Left/Right extend, and Ctrl+Backspace/Delete delete up to the same stop (only the selection when there is one; one undo step each).
+
+```cpp
+note.set_word_segmentation(lcars::WordSegmentation::per_character);  // dictionary (default) | per_character | script_run
+auto word = note.word_at(12);                 // Query<TextSpan>: what a double click there selects
+auto stop = note.next_word_stop(12);          // where Ctrl+Right goes
+note.double_click(12);                        // select it, and arm a drag that grows by words
+ui.semantics().perform({"item.note"}, lcars::Verb::select_paragraph, 12);  // the same operations, same Status values
+```
+
+- **Where words are.** `dictionary` (the default) asks the Windows system ICU (`icu.dll`, loaded from System32 on first use, locale `zh_TW`), so Chinese is cut into words (設定|管理|示範). If the library is missing or cannot open a break iterator the field falls back to `per_character` without interrupting anything; `word_segmentation()` reports the mode set, `word_segmentation_in_use()` the mode in effect. `per_character`: every Chinese or Japanese character is a word, a run of Latin letters and digits is one word. `script_run`: a run of Chinese or Japanese characters is one word. In every mode each punctuation mark and each LF is a word of its own and a run of spaces stays together. The dictionary result follows the Windows version, so only rule-independent cases (script changes, punctuation) are asserted against it.
+- **Clicks.** The desktop host reads `GetDoubleClickTime()` and `SM_CXDOUBLECLK/SM_CYDOUBLECLK` on each press and lets core count: a press counts as the next click when it comes within the double-click time of the previous one and inside the box centered on the first press; the fourth press is a single click again. Core takes an injectable clock and settings (`UiState::set_click_clock/set_click_settings`) and the press entry `UiState::text_pointer_down`, so tests never depend on a real clock.
+- **Read-only and disabled.** A read-only field selects and moves by words, and Ctrl+Backspace/Delete answer `Status::read_only`. A disabled field does nothing (`Status::disabled`). Clicks during input-method composition behave like a single click does.
+- **Programmatic control.** `TextHandle::set_word_segmentation / word_segmentation / word_segmentation_in_use / word_at / paragraph_at / next_word_stop / previous_word_stop / select_word / select_paragraph / double_click / triple_click`, and the semantic `Verb::set_word_segmentation / select_word / select_paragraph / double_click / triple_click` with `SemanticTree::text_unit` and `word_stop`, share one set of functions.
+- **UI Automation.** `TextUnit_Word` uses the same boundaries (a word keeps the spaces after it; each punctuation mark, each LF and a run of spaces on its own are units) and `TextUnit_Paragraph` the LF-separated paragraphs, through `ExpandToEnclosingUnit`, `Move` and `MoveEndpointByUnit`. `TextUnit_Line`, `Page` and `Format` are unchanged.
 
 ## Desktop support
 
