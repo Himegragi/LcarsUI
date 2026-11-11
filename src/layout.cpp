@@ -79,11 +79,13 @@ unsigned FieldView::line_of(unsigned offset) const {
     return index;
 }
 std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
+    if (lines.empty()) return {0, false};
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     unsigned offset = item.begin + item.run.hit(x);
     return {offset, item.soft && offset == item.end};
 }
 float FieldView::x_in_line(unsigned line, unsigned offset) const {
+    if (lines.empty()) return 0;
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     return item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
 }

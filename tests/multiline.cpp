@@ -446,6 +446,12 @@ void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
     check(e.first() == 16, "Moving the caret above the view scrolls up just enough");
     e.key(Key::home, false, true);
     check(e.first() == 0, "Ctrl+Home returns to the top");
+    check(bool(e.field.set_value(numbered_lines(20))), "Code replaces the value");
+    e.layout();
+    check(e.caret() == 39 && e.first() == 17, "A value set from code scrolls to the caret it leaves at the end");
+    check(bool(e.host().select("note", 4, 4)), "Code moves the caret");
+    e.layout();
+    check(e.first() == 2, "A caret moved from code is revealed too: from above the view it lands on the first row");
 }
 
 void scrolling_alone_does_not_move_the_caret_or_snap_back() {
