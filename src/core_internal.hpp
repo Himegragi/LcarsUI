@@ -401,6 +401,7 @@ private:
             std::u16string text;          // the visible text those lines were laid out from
             std::vector<StyleSpan> styles; // and its styled runs (rich fields): a style change can re-wrap too
             int size = 0, width = 0;      // text size and wrap width they were laid out at
+            unsigned revision = 0;        // layout_revision_ they were laid out at: a property change makes them stale
             unsigned first = 0;           // first visible line
             unsigned anchor = 0;          // visible-text offset where that line starts: survives a re-wrap
             unsigned caret = 0;           // caret seen by the last arrange: a different one reveals itself
@@ -617,6 +618,9 @@ private:
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
     // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
     FieldView vertical_view(const Id& id);
+    // Bumped by every property that changes how text lines up (alignment, justification, spacing, the
+    // justify-as-left setting): the lines cursor keys use are stale until an arrange sees the new value.
+    unsigned layout_revision_ = 0;
     Result move_lines(const Id& id, int direction, unsigned count, bool shift);
     Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();

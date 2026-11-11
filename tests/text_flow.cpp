@@ -7,7 +7,9 @@
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
 #include <algorithm>
+#include <functional>
 #include <limits>
+#include <optional>
 using namespace lcars;
 using test::check;
 using test::FakeMeasure;
@@ -257,6 +259,46 @@ void vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines() {
     check(host.edit("t")->selection.caret == 8 && above.frame.find(handle)->caret_x(8) == 172, "And back");
 }
 
+// Code review 2026-11-12 item 9: the lines cursor keys use are the last arrange's. A property change without a
+// host relayout in between must make them stale, so the next key asks the host to arrange again.
+void vertical_keys_after_a_property_change_do_not_use_the_old_lines() {
+    Ui ui;
+    auto handle = field_of(ui, multi("t", u"abcdefgh\nab"));
+    auto& host = detail::access(ui);
+    std::optional<Laid> latest;
+    int relayouts = 0;
+    host.on_relayout([&] { ++relayouts; latest.emplace(ui, handle); });
+    Laid first(ui, handle);
+    check(bool(host.focus("t")), "Focus the field");
+    host.select("t", 8, 8);
+    Laid placed(ui, handle);
+    check(bool(handle.set_text_align(TextAlign::right)), "Right-align after the last arrange");
+    check(bool(host.key_down({.key = Key::down})), "Down");
+    check(relayouts == 1, "The changed alignment made the old lines stale: one relayout");
+    // Line 0 is 64 px wide and drawn from 108, so the caret at its end is at x = 172. Line 1 "ab" is drawn from 144
+    // (16 px wide, flush right): x = 172 is past its end, so the caret lands at the end of "ab". Up then returns under
+    // the same drawn x, at the end of the long line.
+    check(host.edit("t")->selection.caret == 11, "Down lands at the end of the shorter line");
+    check(bool(host.key_down({.key = Key::up})), "Up");
+    check(host.edit("t")->selection.caret == 8, "And back to the end of the long line");
+    // The same for every other property that moves lines: each makes the next key relayout exactly once.
+    struct Change { const char* name; std::function<Result()> apply; };
+    const Change changes[] = {
+        {"justify method", [&] { return handle.set_justify_method(JustifyMethod::per_character); }},
+        {"line spacing", [&] { return handle.set_line_spacing(1.5); }},
+        {"paragraph spacing", [&] { return handle.set_paragraph_spacing(8); }},
+        {"semantic text align", [&] { return ui.semantics().perform({"t"}, Verb::set_text_align, TextAlign::center); }},
+        {"justify as left", [&] { auto s = ui.presentation(); s.justify_as_left = true; return ui.set_presentation(s); }},
+    };
+    for (const auto& change : changes) {
+        latest.emplace(ui, handle);  // an arrange settles the view, so it is fresh again
+        const int before = relayouts;
+        check(bool(change.apply()), change.name);
+        host.key_down({.key = Key::down});
+        check(relayouts == before + 1, (std::string(change.name) + ": a key after the change relays out").c_str());
+    }
+}
+
 void multi_line_height_counts_the_spaced_rows_and_paragraph_gaps() {
     Ui ui;
     auto plain = field_of(ui, multi("plain", u"a\nb\nc\nd"));
@@ -494,7 +536,8 @@ int main() {
         {"text wider than the field scrolls whatever the alignment", text_wider_than_the_field_scrolls_whatever_the_alignment},
         {"line spacing makes a single-line field taller", line_spacing_makes_a_single_line_field_taller_and_centers_the_text},
         {"a multi-line field aligns every display line", a_multi_line_field_aligns_every_display_line},
-        {"pointer hits follow the drawn position", pointer_hits_follow_the_drawn_position_of_an_aligned_line},
+        {"vertical keys after a property change relay out", vertical_keys_after_a_property_change_do_not_use_the_old_lines},
+        {"pointer hits follow the drawn position",pointer_hits_follow_the_drawn_position_of_an_aligned_line},
         {"vertical keys keep the drawn x of aligned lines", vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines},
         {"multi-line height counts spaced rows and gaps", multi_line_height_counts_the_spaced_rows_and_paragraph_gaps},
         {"wrapped lines add no paragraph gap in a field", soft_wrapped_lines_add_no_paragraph_gap_in_a_field},

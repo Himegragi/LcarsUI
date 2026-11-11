@@ -189,6 +189,7 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     reflows.motion = settings.motion;
     const bool reflow = !(reflows == settings);
     presentation_ = settings;
+    if (reflow) ++layout_revision_;
     refresh_tooltips();
     if (!motion_enabled()) finish_animations();  // switching motion off lands every running transition at once
     if (reflow && presentation_changed_) presentation_changed_();
@@ -2382,6 +2383,7 @@ Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
     if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
     if (!admits_text_align(control->kind, align)) return {Status::invalid_value, u"Only a label can distribute its text"};
     control->text_align = align;
+    ++layout_revision_;
     if (invalidate_) invalidate_();
     return {};
 }
@@ -2392,6 +2394,7 @@ Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod me
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields justify their text"};
     if (!valid_justify_method(method)) return {Status::invalid_value, u"Unknown justification method"};
     control->justify_method = method;
+    ++layout_revision_;
     if (invalidate_) invalidate_();
     return {};
 }
@@ -2402,6 +2405,7 @@ Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have line spacing"};
     if (!valid_line_spacing(multiple)) return {Status::invalid_value, u"Line spacing is 1.0 to 3.0 times the line height"};
     control->line_spacing = multiple;
+    ++layout_revision_;
     if (invalidate_) invalidate_();
     return {};
 }
@@ -2412,6 +2416,7 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have paragraph spacing"};
     if (!valid_paragraph_spacing(dip)) return {Status::invalid_value, u"Paragraph spacing is 0 to 48 DIP"};
     control->paragraph_spacing = dip;
+    ++layout_revision_;
     if (invalidate_) invalidate_();
     return {};
 }
@@ -3006,7 +3011,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     const auto count = static_cast<unsigned>(view.lines.size());
     const unsigned most = count > view.visible ? count - view.visible : 0;
     auto styles = visible_style_spans(id);
-    const bool relaid = m.text != text || m.size != text_size || m.width != width || m.styles != styles;
+    const bool relaid = m.text != text || m.size != text_size || m.width != width || m.styles != styles || m.revision != layout_revision_;
     unsigned first = m.first;
     // A new wrap (resize, text size, edit) keeps the same text on top: the anchor is a text offset.
     if (m.placed && relaid) { view.upstream = false; first = view.line_of(std::min<unsigned>(m.anchor, static_cast<unsigned>(text.size()))); }
@@ -3025,7 +3030,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     view.first = first;
     m.view = view;
     m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
-    if (relaid) { m.text = std::move(text); m.styles = std::move(styles); m.size = text_size; m.width = width; }
+    if (relaid) { m.text = std::move(text); m.styles = std::move(styles); m.size = text_size; m.width = width; m.revision = layout_revision_; }
     m.scroll.offset = static_cast<int>(first) * view.row_height;
 }
 bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
@@ -3507,7 +3512,10 @@ Result detail::UiState::edit_key(KeyPress key) {
 // arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
 FieldView detail::UiState::vertical_view(const Id& id) {
     auto& field = edits_.find(id)->second;
-    auto fresh = [&] { return field.multi.placed && field.multi.text == field.session.visible() && field.multi.styles == visible_style_spans(id); };
+    auto fresh = [&] {
+        return field.multi.placed && field.multi.revision == layout_revision_ && field.multi.text == field.session.visible() &&
+               field.multi.styles == visible_style_spans(id);
+    };
     if (!fresh() && relayout_) relayout_();
     FieldView view;
     if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
