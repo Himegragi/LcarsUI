@@ -9,6 +9,23 @@ include(CMakePackageConfigHelpers)
 configure_file(cmake/version.hpp.in "${PROJECT_BINARY_DIR}/generated/include/lcars/version.hpp" @ONLY)
 option(LCARS_BUILD_DESKTOP "Build the Windows/OpenGL desktop host" ON)
 option(LCARS_BUILD_TESTS "Build behavior tests" ON)
+option(LCARS_SANITIZE_ADDRESS "Instrument every target with AddressSanitizer (clang-cl, Release)" OFF)
+if(LCARS_SANITIZE_ADDRESS)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(FATAL_ERROR "LCARS_SANITIZE_ADDRESS needs clang-cl and CMAKE_BUILD_TYPE=Release")
+  endif()
+  # /Z7 and /DEBUG let reports name source lines. /OPT:NOICF keeps lld-link from folding identical globals,
+  # which misplaces their redzones and reports false global-buffer-overflows.
+  add_compile_options(-fsanitize=address /Z7)
+  add_link_options(/DEBUG /OPT:NOICF)
+  # CMake links with lld-link directly, so the runtime is named here (/MD build). It is Visual Studio's copy:
+  # clang's own runtime fails to intercept the CRT on current Windows builds ("interception_win: unhandled instruction").
+  if(NOT DEFINED ENV{VCToolsInstallDir})
+    message(FATAL_ERROR "LCARS_SANITIZE_ADDRESS needs a Visual Studio developer environment (VCToolsInstallDir)")
+  endif()
+  file(TO_CMAKE_PATH "$ENV{VCToolsInstallDir}" lcars_vc_tools)
+  add_link_options("/LIBPATH:${lcars_vc_tools}/lib/x64" clang_rt.asan_dynamic-x86_64.lib /wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib)
+endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(cmake/ThirdPartyManifest.cmake)
 verify_third_party("${PROJECT_SOURCE_DIR}")

@@ -13,7 +13,7 @@ A C++20 desktop UI framework. The public API is still evolving.
 .\build.ps1 -Configuration Release -CoreOnly
 ```
 
-`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
+`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. `-Configuration All` runs Debug then Release, the pair the Core workflow runs; `-Configuration Release -CoreOnly -AddressSanitizer` runs the core tests under AddressSanitizer, as the Core workflow's `asan` job does. When the local MSVC toolset is older than the one CI uses (`cmake/ci-msvc-toolset.txt`), the script warns: code it accepts can still fail on CI. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
