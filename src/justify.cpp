@@ -104,7 +104,8 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
         widths.push_back(width_of(pieces[k], pieces[k + 1]));
         if (pieces[k + 1] <= content_end) content += widths.back();
     }
-    const float extra = (width - content) / static_cast<float>(gaps.size());
+    // Stop a hair short of the width: a piece drawn at a whole-pixel x (rounded down) with a rounded-up advance must still lie inside the box.
+    const float extra = (width - 0.02f - content) / static_cast<float>(gaps.size());
     if (!(extra > 0.01f)) return std::nullopt;
     Justified out;
     float x = 0;

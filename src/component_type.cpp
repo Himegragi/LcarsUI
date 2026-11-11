@@ -98,7 +98,7 @@ void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, 
         if (line.segments.empty()) { c.text(line.text, pixels, line.bounds.x, line.bounds.y, color); continue; }
         // A justified line: every piece at its own x, so nothing (a ligature, kerning) spans the added width.
         for (const auto& piece : line.segments)
-            c.text(std::u16string_view(line.text).substr(piece.begin, piece.end - piece.begin), pixels, line.bounds.x + static_cast<int>(std::lround(piece.x)), line.bounds.y, color);
+            c.text(std::u16string_view(line.text).substr(piece.begin, piece.end - piece.begin), pixels, line.bounds.x + static_cast<int>(std::floor(piece.x)), line.bounds.y, color);
     }
 }
 // The slider's focus dot sits left of the title. Its room is always reserved, so the title never moves

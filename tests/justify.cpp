@@ -46,7 +46,7 @@ void a_justified_label_spreads_chinese_evenly_between_the_characters() {
     const auto& first = p->lines[0];
     check(first.segments.size() == 6, "Every character is its own piece");
     for (std::size_t i = 0; i < first.segments.size(); ++i)
-        check(near(first.segments[i].x, 16.8f * static_cast<float>(i), 0.01f), "Pieces are 16.8 px apart: the character plus an equal share");
+        check(near(first.segments[i].x, 16.8f * static_cast<float>(i), 0.05f), "Pieces are 16.8 px apart: the character plus an equal share");
     const auto edges = edges_of(first);
     check(near(edges.left, 0) && near(edges.right, 100), "Both ends are flush with the label");
     check(near(edges_of(p->lines[1]).left, 0) && near(edges_of(p->lines[1]).right, 100), "So is the second line");
@@ -62,7 +62,7 @@ std::vector<Piece> pieces_of(const Line& line) {
 bool same_pieces(const std::vector<Piece>& got, const std::vector<Piece>& want) {
     if (got.size() != want.size()) return false;
     for (std::size_t i = 0; i < got.size(); ++i)
-        if (got[i].begin != want[i].begin || got[i].end != want[i].end || !near(got[i].x, want[i].x, 0.01f)) return false;
+        if (got[i].begin != want[i].begin || got[i].end != want[i].end || !near(got[i].x, want[i].x, 0.05f)) return false;
     return true;
 }
 
@@ -278,10 +278,10 @@ void a_justified_multi_line_field_stretches_each_wrapped_line_to_the_wrap_edge()
     check(p && p->multiline && p->view.lines.size() == 3, "9 + 9 + 2 characters");
     const float wrap = static_cast<float>(p->view.text.w - inset);
     // 6 px spare over eight gaps: 0.75 px per gap, so the caret stop before character k is 16.75 * k.
-    for (unsigned k : {0u, 1u, 3u, 8u}) check(near(p->view.x_in_line(0, k), 16.75f * static_cast<float>(k), 0.01f), "Stops follow the stretched characters");
-    check(near(p->view.x_in_line(0, 9), wrap, 0.01f) && near(p->view.x_in_line(1, 18), wrap, 0.01f), "The first two lines end at the wrap edge");
-    check(near(p->view.x_in_line(1, 12), 3 * 16.75f, 0.01f), "The second line is stretched the same way");
-    check(p->view.lines[2].segments.empty() && near(p->view.x_in_line(2, 20), 32, 0.01f), "The paragraph's last line is as wide as its text, at the left");
+    for (unsigned k : {0u, 1u, 3u, 8u}) check(near(p->view.x_in_line(0, k), 16.75f * static_cast<float>(k), 0.05f), "Stops follow the stretched characters");
+    check(near(p->view.x_in_line(0, 9), wrap, 0.05f) && near(p->view.x_in_line(1, 18), wrap, 0.05f), "The first two lines end at the wrap edge");
+    check(near(p->view.x_in_line(1, 12), 3 * 16.75f, 0.05f), "The second line is stretched the same way");
+    check(p->view.lines[2].segments.empty() && near(p->view.x_in_line(2, 20), 32, 0.05f), "The paragraph's last line is as wide as its text, at the left");
     // The caret is drawn where the stops put it, and a wrap point belongs to the next line.
     check(p->caret_x(3) == p->view.text.x + static_cast<int>(std::lround(50.25f)) && p->caret_x(9) == p->view.text.x, "caret_x follows the stretched stops");
 }
@@ -412,7 +412,7 @@ void the_user_setting_draws_stretched_text_left_but_keeps_the_properties() {
     {
         Laid laid(ui, field, 190);
         const auto* p = laid.frame.find(field);
-        check(p->view.lines[0].segments.empty() && near(p->view.x_in_line(0, 9), 144, 0.01f) && p->caret_x(3) == p->view.text.x + 48, "A field draws left-aligned: stops are the natural ones");
+        check(p->view.lines[0].segments.empty() && near(p->view.x_in_line(0, 9), 144, 0.05f) && p->caret_x(3) == p->view.text.x + 48, "A field draws left-aligned: stops are the natural ones");
         auto probe = painted(ui, laid.frame, field, "t");
         check(probe.texts.size() == 3 && probe.texts[0].text.size() == 9, "Each line is drawn in one piece");
     }
