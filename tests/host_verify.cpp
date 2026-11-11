@@ -982,22 +982,35 @@ void slider_native(const Appearance& appearance, Report& report) {
     f.tap(VK_END); bool end = *f.form.handles.volume.draft() == 100;
     f.host.paint();
     const auto* item = f.host.frame().find(f.form.handles.volume);
-    bool dragged = false;
+    bool dragged = false, held = false, released = false, canceled = false;
     if (item) {
-        auto r = item->slider_track;
+        auto r = item->slider_track; const std::string id = item->id;
         POINT start{r.x, r.y + r.h / 2}, middle{r.x + r.w / 2, r.y + r.h / 2};
         f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON);
         bool at_start = *f.form.handles.volume.draft() == 0;
         f.mouse(WM_MOUSEMOVE, middle, MK_LBUTTON);
         f.mouse(WM_LBUTTONUP, middle);
         dragged = at_start && *f.form.handles.volume.draft() == 50;
+        // #73: native messages hold the thumb under the pointer until release or interruption.
+        auto& state = detail::access(f.form.ui);
+        POINT off_tick{r.x + static_cast<LONG>(r.w * 0.47), r.y + r.h / 2};
+        f.mouse(WM_LBUTTONDOWN, off_tick, MK_LBUTTON);
+        held = state.slider_drag_x(id) == off_tick.x;
+        f.mouse(WM_LBUTTONUP, off_tick);
+        released = !state.slider_drag_x(id);
+        f.mouse(WM_LBUTTONDOWN, off_tick, MK_LBUTTON);
+        SendMessageW(f.host.window(), WM_CANCELMODE, 0, 0);
+        canceled = !state.slider_drag_x(id);
+        f.mouse(WM_LBUTTONUP, off_tick);
+        f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, middle, MK_LBUTTON); f.mouse(WM_LBUTTONUP, middle);  // back to 50 for the apply check
     }
+    dragged = dragged && held && released && canceled;
     bool applied = f.form.volume_applied() == 40 && bool(f.form.handles.apply.invoke()) && f.form.volume_applied() == 50;
     f.form.handles.disabled.invoke();
     bool disabled = f.form.handles.volume.set_value(75).status == Status::disabled && *f.form.handles.volume.draft() == 50;
     report.check("F09-slider", step && home && end && dragged && applied && disabled,
         "arrow=" + std::to_string(step) + ", Home=" + std::to_string(home) + ", End=" + std::to_string(end) +
-        ", native drag=" + std::to_string(dragged) + ", apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
+        ", native drag=" + std::to_string(dragged) + " (held=" + std::to_string(held) + ", released=" + std::to_string(released) + ", canceled=" + std::to_string(canceled) + "), apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
 }
 
 void dropdown_native(const Appearance& appearance, Report& report) {
@@ -3425,8 +3438,10 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
 }
 
 int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& appearance,
-             bool large, int delay, int duration_ms, bool alternate_font) {
-    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
+             bool large, int delay, int duration_ms, bool alternate_font, const char* report_file="demo-perf.tsv") {
+    // #73: slider-drag-text-size only reports per-frame and per-stage times; it never decides pass or fail.
+    const bool slider_drag=scenario==L"slider-drag-text-size";
+    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle" && !slider_drag)
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
@@ -3446,6 +3461,7 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
     }
     DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
+    if (slider_drag && offscreen) throw std::runtime_error("slider-drag-text-size needs real mouse input, so it cannot run offscreen");
     host.perf_enable(delay,offscreen);
     auto previous_proc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
     x04_original_procs.emplace(host.window(),previous_proc);
@@ -3460,6 +3476,8 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
             throw std::runtime_error("Perf list setup failed");
     } else if (scenario==L"typing" || scenario==L"idle") {
         if (!form.nav.select({"general"}) || !form.name.focus()) throw std::runtime_error("Perf typing setup failed");
+    } else if (slider_drag) {
+        if (!form.nav.select({"appearance"})) throw std::runtime_error("Perf slider setup failed");
     }
     host.pump();
     if(scenario!=L"startup") host.perf_reset();
@@ -3468,6 +3486,44 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
     if(scenario==L"list-hold-down") {
         int duration=duration_ms ? duration_ms : 5000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration);
         while(std::chrono::steady_clock::now()<end) { send(VK_DOWN,0); wait(33); } send(VK_DOWN,KEYEVENTF_KEYUP); host.pump();
+    } else if(slider_drag) {
+        const std::string slider_id="appearance.text_size";
+        auto thumb=[&]() -> POINT {
+            const auto* item=host.frame().find(form.text_size);
+            if (!item) { host.paint(); item=host.frame().find(form.text_size); }
+            if (!item || item->slider_track.w<=0) throw std::runtime_error("Perf slider track not arranged");
+            const auto& track=item->slider_track; int value=*form.text_size.draft();
+            return {track.x+static_cast<int>(std::lround(track.w*(value-12)/16.0)), track.y+track.h/2};
+        };
+        auto mouse=[&](POINT client, DWORD flags) {
+            if (GetForegroundWindow()!=host.window()) throw std::runtime_error("Perf window lost foreground focus");
+            POINT screen=client; ClientToScreen(host.window(),&screen);
+            const int vx=GetSystemMetrics(SM_XVIRTUALSCREEN), vy=GetSystemMetrics(SM_YVIRTUALSCREEN), vw=GetSystemMetrics(SM_CXVIRTUALSCREEN), vh=GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            INPUT input{}; input.type=INPUT_MOUSE;
+            input.mi.dx=static_cast<LONG>((static_cast<long long>(screen.x-vx)*65535+(vw-1)/2)/(vw-1));
+            input.mi.dy=static_cast<LONG>((static_cast<long long>(screen.y-vy)*65535+(vh-1)/2)/(vh-1));
+            input.mi.dwFlags=flags|MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_VIRTUALDESK;
+            if (SendInput(1,&input,sizeof(input))!=1) throw std::runtime_error("SendInput failed");
+        };
+        auto start_point=thumb();
+        mouse(start_point,MOUSEEVENTF_MOVE); wait(100);
+        POINT cursor{}; GetCursorPos(&cursor); POINT want=start_point; ClientToScreen(host.window(),&want);
+        if (std::abs(cursor.x-want.x)>3 || std::abs(cursor.y-want.y)>3) throw std::runtime_error("Perf cursor did not reach the slider thumb");
+        mouse(start_point,MOUSEEVENTF_LEFTDOWN); wait(50);
+        if (!detail::access(form.ui).slider_drag_x(slider_id)) throw std::runtime_error("Perf slider drag did not start");
+        host.perf_reset();
+        // About 16 ms per move, sweeping the whole track back and forth every 2 s.
+        int duration=duration_ms ? duration_ms : 5000; auto begin=std::chrono::steady_clock::now(), until=begin+std::chrono::milliseconds(duration);
+        while(std::chrono::steady_clock::now()<until) {
+            double t=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count()/2000.0;
+            double phase=t-std::floor(t), ratio=phase<.5 ? phase*2 : 2-phase*2;
+            const auto* item=host.frame().find(form.text_size);
+            if (item && item->slider_track.w>0) mouse({item->slider_track.x+static_cast<int>(std::lround(item->slider_track.w*ratio)), item->slider_track.y+item->slider_track.h/2},MOUSEEVENTF_MOVE);
+            wait(16);
+        }
+        POINT release_point=start_point;
+        if (const auto* item=host.frame().find(form.text_size)) release_point={item->slider_track.x, item->slider_track.y+item->slider_track.h/2};
+        mouse(release_point,MOUSEEVENTF_LEFTUP); wait(100);
     } else if(scenario==L"typing") {
         int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
         while(std::chrono::steady_clock::now()<end) {
@@ -3485,11 +3541,15 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         cpu_ms=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paint_messages()-before_paints; presents=host.frames()-before_frames;
     }
     auto warm=host.perf_samples().summary(true), steady=host.perf_samples().summary(false);
-    bool ok=scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
+    bool ok=slider_drag ? true : scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
-    std::filesystem::create_directories(evidence); std::ofstream out(evidence/"demo-perf.tsv");
-    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
+    if (slider_drag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
+    auto stages_warm=host.perf_breakdown().summary(true), stages_steady=host.perf_breakdown().summary(false);
+    std::filesystem::create_directories(evidence); std::ofstream out(evidence/report_file);
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus";
+    if (slider_drag) for (const char* stage : {"layout","list","gpu"}) for (const char* column : {"p50","p95","p99","max"}) out << '\t' << stage << '_' << column << "_ms";
+    out << '\n';
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
         out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (alternate_font?"non-default":"default") << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
 #ifdef NDEBUG
@@ -3497,7 +3557,12 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << '\n';
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.over_budget << '\t' << host.first_present_ms() << '\t' << host.input_present_ms() << '\t' << presents << '\t' << paints << '\t' << cpu_ms << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (duration_ms?"smoke":"measurement") << '\t' << (slider_drag?"REPORT":ok?"PASS":"FAIL");
+        if (slider_drag) {
+            const auto& stages=phase?stages_warm:stages_steady;
+            for (const auto* stage : {&stages.layout,&stages.list,&stages.gpu}) out << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+        }
+        out << '\n';
     }
     if(!out) throw std::runtime_error("Cannot write perf report");
     SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previous_proc)); x04_original_procs.erase(host.window());
@@ -3587,6 +3652,8 @@ int wmain(int argc, wchar_t** argv) {
             return 0;
         }
         if (demo_perf) return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,demo_perf_font);
+        // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
+        if (perf==L"slider-drag-text-size") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)

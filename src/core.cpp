@@ -96,7 +96,7 @@ void detail::UiState::commit_removals() {
             try { move_focus({}); } catch (...) { stopped_ = true; focus_.clear(); }
         }
         if (key_armed_ == id) key_armed_.clear();
-        if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
+        if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
         if (tooltip_hover_ == id) tooltip_hover_.clear();
         for (auto& [key, dialog] : dialogs_) if (dialog.opener == id) dialog.opener.clear();
         if (auto member = page_members_.find(id); member != page_members_.end()) {
@@ -935,13 +935,25 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::slider_pointer(const Id& id, int x, Rect track) {
+Result detail::UiState::slider_pointer_down(const Id& id, int x, Rect track) {
     OperationScope operation(this);
     if (pointer_armed_ != id || track.w <= 0) return {Status::invalid_value, u"No slider drag is active"};
+    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x};
+    return slider_pointer(id, x);
+}
+Result detail::UiState::slider_pointer(const Id& id, int x) {
+    OperationScope operation(this);
+    if (pointer_armed_ != id || !slider_drag_ || slider_drag_->id != id) return {Status::invalid_value, u"No slider drag is active"};
+    slider_drag_->x = x;
+    const auto basis = *slider_drag_;
     auto& f = numerics_.at(id);
-    double ratio = std::clamp((static_cast<double>(x) - track.x) / track.w, 0.0, 1.0);
+    double ratio = std::clamp((static_cast<double>(x) - basis.origin) / basis.width, 0.0, 1.0);
     double value = static_cast<double>(f.range.minimum) + ratio * (static_cast<double>(f.range.maximum) - f.range.minimum);
     return slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+}
+std::optional<int> detail::UiState::slider_drag_x(std::string_view id) const {
+    if (slider_drag_ && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
+    return std::nullopt;
 }
 Result detail::UiState::slider_key_down(KeyPress key) {
     OperationScope operation(this);
@@ -2225,7 +2237,7 @@ Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
     if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
-    key_armed_.clear(); pointer_armed_.clear();
+    key_armed_.clear(); pointer_armed_.clear(); slider_drag_.reset();
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
         auto preedit = edits_.at(composing_).session.preedit;
@@ -2474,6 +2486,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
     }
+    slider_drag_.reset();
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
     // Focus notifications can remove, disable, hide, or add controls. Revalidate and
@@ -2498,7 +2511,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
-    auto armed = std::exchange(pointer_armed_, {});
+    auto armed = std::exchange(pointer_armed_, {}); slider_drag_.reset();
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
@@ -2526,7 +2539,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     return invoke(armed);
 }
 void detail::UiState::cancel_input() {
-    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); }
+    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
