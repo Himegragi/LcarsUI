@@ -94,6 +94,23 @@ int wmain(int argc, wchar_t** argv) {
             note = close_modal(uia, root, L"items.dialog") && note;
             std::cout << "UA08 multi-line note: " << (note ? "PASS" : "FAIL") << '\n'; ok &= note;
         }
+        // #80: the text range reports the field's horizontal alignment (an int) and line spacing (a BSTR multiple).
+        {
+            auto search_field = find_id(uia, root, L"items.search"); IUIAutomationTextPattern* search_text = nullptr; IUIAutomationTextRange* range = nullptr;
+            auto attribute_case = [&](bool configured, int alignment, const wchar_t* spacing) {
+                VARIANT align{}, line{}; VariantInit(&align); VariantInit(&line);
+                bool good = SendMessageW(s.window, WM_APP + 85, configured ? 1 : 0, 0) == 0 && search_field &&
+                    SUCCEEDED(search_field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&search_text))) && search_text && SUCCEEDED(search_text->get_DocumentRange(&range)) && range &&
+                    SUCCEEDED(range->GetAttributeValue(UIA_HorizontalTextAlignmentAttributeId, &align)) && align.vt == VT_I4 && align.lVal == alignment &&
+                    SUCCEEDED(range->GetAttributeValue(UIA_LineSpacingAttributeId, &line)) && line.vt == VT_BSTR && line.bstrVal && std::wstring(line.bstrVal) == spacing;
+                VariantClear(&align); VariantClear(&line);
+                if (range) range->Release(); range = nullptr; if (search_text) search_text->Release(); search_text = nullptr;
+                return good;
+            };
+            bool attributes = attribute_case(false, HorizontalTextAlignment_Left, L"1") && attribute_case(true, HorizontalTextAlignment_Centered, L"1.5") && attribute_case(false, HorizontalTextAlignment_Left, L"1");
+            if (search_field) search_field->Release();
+            std::cout << "UA09 text alignment and line spacing attributes: " << (attributes ? "PASS" : "FAIL") << '\n'; ok &= attributes;
+        }
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;
         if (item_selection) item_selection->Release(); if (items_list) items_list->Release();

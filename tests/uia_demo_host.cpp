@@ -27,6 +27,11 @@ LRESULT CALLBACK test_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
         InvalidateRect(window, nullptr, FALSE); UpdateWindow(window);
         return 0;
     }
+    if (message == WM_APP + 85) {  // #80: the Items search box gets a centered, 1.5-spaced presentation (w = 1) or the defaults (w = 0)
+        auto& search = active->items_search;
+        return static_cast<LRESULT>(search.set_text_align(w ? lcars::TextAlign::center : lcars::TextAlign::left).status) |
+               static_cast<LRESULT>(search.set_line_spacing(w ? 1.5 : 1.0).status);
+    }
     if (message == WM_APP + 82) return static_cast<LRESULT>(active->items_search.select(0, 2).status);
     if (message == WM_APP + 81) return static_cast<LRESULT>(active->items_search.set_value(w ? u"sample" : u"").status);
     return CallWindowProcW(original_proc, window, message, w, l);

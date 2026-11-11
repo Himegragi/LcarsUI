@@ -3208,7 +3208,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
-            for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, n.role == Role::label || n.role == Role::text);
+            for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
