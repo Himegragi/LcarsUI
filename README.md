@@ -70,6 +70,26 @@ The settings demo includes navigation, persistence, history, diagnostics and acc
 
 The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
+## Motion (animations)
+
+The framework has one internal animation clock (`src/animation.hpp`). A component registers a display property
+going from A to B over a duration; the host schedules the next frame only while something is still running, so an
+idle UI never repaints. Today only the slider thumb uses it: arrow keys, Home/End, a track click and the release
+of a drag slide the thumb over 150 ms (cubic ease-out), turning from the position currently shown when the target
+changes mid-way. Values, semantics and UI Automation update at once; only the picture moves. Application code,
+`set_value` (semantic or UIA), Ctrl+Z / Ctrl+Y, data-source changes and dragging itself land at once.
+
+- `PresentationSettings::motion`: `Motion::automatic` (default) follows Windows "Show animations in Windows"
+  (`SPI_GETCLIENTAREAANIMATION`, re-read on `WM_SETTINGCHANGE`); `Motion::off` never plays. There is no
+  "always on". Switching it with `Ui::set_presentation` takes effect at once and lands running transitions.
+- `Ui::animating()` / `SemanticTree::animating()` answer whether any transition is still running (one query,
+  one admission rule). Wait for `false` before comparing screenshots.
+- A minimized, cloaked or fully covered window jumps running transitions to their end and draws nothing for them.
+  "Fully covered" is best effort: one visible opaque window above ours that spans the whole client area.
+- A core-only host that installs no time source (`detail::UiState::animation_time`) never animates. Tests use
+  that seam as a fake clock, and `set_system_animations` / `DesktopHost::system_animation_source` to simulate the
+  Windows setting. Tests: `animation` (core) and `lcars_host_verify --animation-only` (native host).
+
 ## Palette overrides
 
 An application can change individual colors of the built-in appearances without writing an appearance of its own. `Ui::set_palette_overrides` takes one list for the whole UI environment; each entry names an appearance (`Appearance::name()`), a theme variant, a palette role and a value. Colors that the list does not mention keep their built-in value, and a variant that is not listed is untouched (overriding light never changes dark).

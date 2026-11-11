@@ -53,6 +53,8 @@ public:
     Query<SemanticNode> get(const NodeRef& ref) const;
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
+    // Same answer and admission as Ui::animating: is any on-screen transition still running?
+    Query<bool> animating() const;
     // Read-only: the colors currently painted for the bound appearance and the current theme variant,
     // overrides applied. not_found until an appearance is bound (see Ui::bind_appearance).
     Query<Palette> effective_palette() const;

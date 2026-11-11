@@ -114,6 +114,7 @@ void detail::UiState::commit_removals() {
         }
         if (key_armed_ == id) key_armed_.clear();
         if (pointer_armed_ == id) { pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
+        slider_targets_.erase(id); animations_.cancel(slider_animation_key(id));
         if (tooltip_hover_ == id) tooltip_hover_.clear();
         for (auto& [key, dialog] : dialogs_) if (dialog.opener == id) dialog.opener.clear();
         if (auto member = page_members_.find(id); member != page_members_.end()) {
@@ -164,16 +165,19 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact) ||
-        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always))
+        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always) ||
+        (settings.motion != Motion::automatic && settings.motion != Motion::off))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
     if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};
     if (settings == presentation_) return {};
-    auto reflows = presentation_;  // the focus mode alone changes no layout or font
+    auto reflows = presentation_;  // the focus and motion modes alone change no layout or font
     reflows.focus_indicator = settings.focus_indicator;
+    reflows.motion = settings.motion;
     const bool reflow = !(reflows == settings);
     presentation_ = settings;
     refresh_tooltips();
+    if (!motion_enabled()) finish_animations();  // switching motion off lands every running transition at once
     if (reflow && presentation_changed_) presentation_changed_();
     if (invalidate_) invalidate_();
     return {};
@@ -1005,29 +1009,53 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
+namespace {
+double slider_share(const SliderRange& range, int value) {
+    return (static_cast<double>(value) - range.minimum) / (static_cast<double>(range.maximum) - range.minimum);
+}
+// Pointer movement under this many pixels from the press still counts as a click, not a drag.
+constexpr int slider_drag_threshold = 4;
+}
 Result detail::UiState::slider_pointer_down(const Id& id, int x, Rect track) {
     OperationScope operation(this);
     if (pointer_armed_ != id || track.w <= 0) return {Status::invalid_value, u"No slider drag is active"};
-    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x};
+    // With motion the thumb stays on its tick (sliding there after a value change) until the pointer
+    // moves like a drag; without motion it follows the pointer from the press, as in #73.
+    slider_drag_ = SliderDrag{id, static_cast<double>(track.x), static_cast<double>(track.w), x, x, !motion_enabled()};
     return slider_pointer(id, x);
 }
 Result detail::UiState::slider_pointer(const Id& id, int x) {
     OperationScope operation(this);
     if (pointer_armed_ != id || !slider_drag_ || slider_drag_->id != id) return {Status::invalid_value, u"No slider drag is active"};
     slider_drag_->x = x;
+    if (!slider_drag_->held && std::abs(x - slider_drag_->press_x) > slider_drag_threshold) {
+        // A real drag: the thumb follows the hand, so a running slide to a tick is dropped.
+        slider_drag_->held = true;
+        slider_targets_.erase(id); animations_.cancel(slider_animation_key(id));
+    }
+    const bool held = slider_drag_->held;
     const auto basis = *slider_drag_;
     auto& f = numerics_.at(id);
+    const double from = slider_display_ratio(id);
+    const int before = f.value;
     double ratio = std::clamp((static_cast<double>(x) - basis.origin) / basis.width, 0.0, 1.0);
     double value = static_cast<double>(f.range.minimum) + ratio * (static_cast<double>(f.range.maximum) - f.range.minimum);
-    return slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+    auto result = slider_set_value(id, static_cast<int>(std::floor(value + 0.5)));
+    if (!held) slider_started_moving(id, from, before);
+    return result;
 }
 std::optional<int> detail::UiState::slider_drag_x(std::string_view id) const {
     if (slider_drag_ && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
     return std::nullopt;
 }
+std::optional<int> detail::UiState::slider_held_x(std::string_view id) const {
+    if (slider_drag_ && slider_drag_->held && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
+    return std::nullopt;
+}
 Result detail::UiState::slider_key_down(KeyPress key) {
     OperationScope operation(this);
-    auto& f = numerics_.at(focus_);
+    const Id id = focus_;
+    auto& f = numerics_.at(id);
     const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
     long long target = value;
     switch (key.key) {
@@ -1041,7 +1069,76 @@ Result detail::UiState::slider_key_down(KeyPress key) {
         break;
     default: return {};
     }
-    return slider_set_value(focus_, static_cast<int>(target));
+    const double from = slider_display_ratio(id);
+    auto result = slider_set_value(id, static_cast<int>(target));
+    slider_started_moving(id, from, static_cast<int>(value));
+    return result;
+}
+// A thumb transition is live only while it is still heading to the slider's current value: any
+// other change (application code, undo, a semantic or UIA set, the data source) leaves it stale
+// and the thumb is drawn at the new value at once.
+bool detail::UiState::slider_transition_live(std::string_view id) const {
+    auto target = slider_targets_.find(id);
+    auto field = numerics_.find(id);
+    return target != slider_targets_.end() && field != numerics_.end() && field->second.value == target->second &&
+           animations_.active(slider_animation_key(id));
+}
+std::optional<double> detail::UiState::slider_animated_ratio(std::string_view id) const {
+    if (!slider_transition_live(id)) return std::nullopt;
+    return animations_.value(slider_animation_key(id));
+}
+// Where the thumb is shown now, as a share of the track.
+double detail::UiState::slider_display_ratio(std::string_view id) const {
+    if (auto animated = slider_animated_ratio(id)) return *animated;
+    const auto& f = numerics_.find(id)->second;
+    if (slider_drag_ && slider_drag_->held && slider_drag_->id == id)
+        return std::clamp((static_cast<double>(slider_drag_->x) - slider_drag_->origin) / slider_drag_->width, 0.0, 1.0);
+    return slider_share(f.range, f.value);
+}
+// The value changed through the user's own input on this slider: slide the thumb from where it was shown.
+void detail::UiState::slider_started_moving(const Id& id, double from, int value_before) {
+    auto it = numerics_.find(id);
+    if (it == numerics_.end() || it->second.value == value_before || !motion_enabled()) return;
+    animations_.start(slider_animation_key(id), from, slider_share(it->second.range, it->second.value));
+    slider_targets_.insert_or_assign(id, it->second.value);
+}
+// The pointer let go (or was interrupted) while holding the thumb off its tick: slide it there.
+void detail::UiState::end_slider_drag() {
+    if (!slider_drag_) return;
+    const auto drag = *slider_drag_;
+    slider_drag_.reset();
+    auto it = numerics_.find(drag.id);
+    if (!drag.held || it == numerics_.end() || !motion_enabled()) return;
+    const double from = std::clamp((static_cast<double>(drag.x) - drag.origin) / drag.width, 0.0, 1.0);
+    const double to = slider_share(it->second.range, it->second.value);
+    if (std::abs(from - to) < 1e-9) return;
+    animations_.start(slider_animation_key(drag.id), from, to);
+    slider_targets_.insert_or_assign(drag.id, it->second.value);
+}
+bool detail::UiState::motion_enabled() const {
+    return animations_.has_time_source() && presentation_.motion == Motion::automatic && system_animations_ && !window_hidden_;
+}
+void detail::UiState::finish_animations() {
+    const bool was_running = animation_running();
+    animations_.finish_all(); slider_targets_.clear();
+    if (was_running && invalidate_) invalidate_();  // draw the landed frame
+}
+void detail::UiState::set_system_animations(bool enabled) {
+    system_animations_ = enabled;
+    if (!motion_enabled()) finish_animations();
+}
+void detail::UiState::set_window_hidden(bool hidden) {
+    window_hidden_ = hidden;
+    if (!motion_enabled()) finish_animations();
+}
+bool detail::UiState::animation_running() const {
+    for (const auto& [id, target] : slider_targets_) if (slider_transition_live(id)) return true;
+    return false;
+}
+Query<bool> detail::UiState::animating() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread", std::nullopt};
+    if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
+    return {Status::ok, {}, animation_running()};
 }
 Query<Semantics> SliderHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -2480,7 +2577,7 @@ Result detail::UiState::move_focus(Id next) {
     if (next == focus_) return {};
     if (!composing_.empty() && before_focus_) before_focus_();
     if (!popup_source_.empty() && next != popup_source_) close_popup();
-    key_armed_.clear(); pointer_armed_.clear(); slider_drag_.reset();
+    key_armed_.clear(); pointer_armed_.clear(); end_slider_drag();
     if (!composing_.empty()) {
         // E01 default, matching the native IME on blur: leftover preedit is committed once.
         auto preedit = edits_.at(composing_).session.preedit;
@@ -2801,7 +2898,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
     }
-    slider_drag_.reset();
+    end_slider_drag();
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
     // Focus notifications can remove, disable, hide, or add controls. Revalidate and
@@ -2826,7 +2923,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
-    auto armed = std::exchange(pointer_armed_, {}); slider_drag_.reset();
+    auto armed = std::exchange(pointer_armed_, {}); end_slider_drag();
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
@@ -2854,7 +2951,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     return invoke(armed);
 }
 void detail::UiState::cancel_input() {
-    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); slider_drag_.reset(); }
+    OperationScope operation(this); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(); }
 Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
@@ -3038,6 +3135,7 @@ Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmFi
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
+Query<bool> Ui::animating() const { return state_->animating(); }
 const PresentationSettings& Ui::presentation() const { return state_->presentation(); }
 Result Ui::set_palette_overrides(std::vector<PaletteOverride> overrides) { return state_->set_palette_overrides(std::move(overrides)); }
 const std::vector<PaletteOverride>& Ui::palette_overrides() const { return state_->palette_overrides(); }
@@ -3265,6 +3363,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
     }
     return {Status::ok, {}, result};
 }
+Query<bool> SemanticTree::animating() const { return state_->animating(); }
 Query<Palette> SemanticTree::effective_palette() const {
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};

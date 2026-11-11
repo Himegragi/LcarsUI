@@ -1123,6 +1123,101 @@ void slider_native(const Appearance& appearance, Report& report) {
         ", native drag=" + std::to_string(dragged) + " (held=" + std::to_string(held) + ", released=" + std::to_string(released) + ", canceled=" + std::to_string(canceled) + "), apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
 }
 
+// #75: the host drives the shared animation clock. Frames are scheduled only while a transition runs,
+// the Windows animation preference (simulated here) and a hidden window end and prevent transitions.
+void slider_animation_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    bool system_on = true;
+    f.host.system_animation_source([&] { return system_on; });
+    f.host.hidden_source([&] { return IsIconic(f.host.window()) != FALSE; });
+    auto& ui = f.form.ui;
+    auto animating = [&] { return ui.animating().value.value_or(false); };
+    auto pump_for = [&](int milliseconds) {
+        auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(milliseconds);
+        while (std::chrono::steady_clock::now() < end) {
+            f.host.pump();
+            MsgWaitForMultipleObjectsEx(0, nullptr, 5, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        f.host.pump();
+    };
+    // Sent synchronously, so the answer is read before a slow frame could outlast the 150 ms transition.
+    auto tap_now = [&](WPARAM vk) {
+        SendMessageW(f.host.window(), WM_KEYDOWN, vk, key_lparam(vk, false, false));
+        SendMessageW(f.host.window(), WM_KEYUP, vk, key_lparam(vk, false, true));
+    };
+    f.form.handles.volume.focus(); f.settle();
+    // A key starts a transition; frames follow while it runs and stop once it has ended.
+    const int frames_before = f.host.frames();
+    tap_now(VK_RIGHT);
+    const bool started = animating() && *f.form.handles.volume.draft() == 45;
+    pump_for(100);
+    const int frames_during = f.host.frames() - frames_before;
+    pump_for(400);
+    const bool ended = !animating();
+    const int settled = f.host.frames(); pump_for(300);
+    const bool idle = f.host.frames() == settled;
+    report.check("A75-schedule", started && frames_during >= 2 && ended && idle,
+        "started=" + std::to_string(started) + ", frames during=" + std::to_string(frames_during) + ", ended=" + std::to_string(ended) + ", no frames after=" + std::to_string(idle));
+    // The system preference, changed while running, lands the transition at once and holds for later changes.
+    tap_now(VK_RIGHT); const bool running = animating();
+    system_on = false; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
+    const bool landed = !animating();
+    tap_now(VK_RIGHT); const bool instant = !animating() && *f.form.handles.volume.draft() == 55;
+    system_on = true; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
+    tap_now(VK_LEFT); const bool again = animating();
+    report.check("A75-system-setting", running && landed && instant && again,
+        "running=" + std::to_string(running) + ", landed on change=" + std::to_string(landed) + ", instant while off=" + std::to_string(instant) + ", plays after on=" + std::to_string(again));
+    pump_for(400);
+    // #72 x #75: both tickets follow WM_SETTINGCHANGE through ONE case. The "everything changed" broadcast (wParam 0)
+    // re-reads the keyboard-cue setting AND the animation preference; a single-setting message still re-reads the other.
+    {
+        auto& state = detail::access(ui);
+        BOOL cues_on = FALSE; SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &cues_on, 0);
+        state.pointer_pressed();  // hide what the earlier key presses showed, so only the system value can show the indicator
+        state.set_system_keyboard_cues(!cues_on);  // the recorded values are stale on purpose
+        system_on = false;
+        SendMessageW(f.host.window(), WM_SETTINGCHANGE, 0, 0); f.host.pump();
+        const bool cues_reread = ui.focus_indicator_visible() == (cues_on != FALSE);
+        tap_now(VK_RIGHT);
+        const bool animation_reread = !animating();  // off now: the arrow key lands at once
+        state.pointer_pressed();
+        system_on = true;
+        SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETKEYBOARDCUES, 0); f.host.pump();
+        tap_now(VK_LEFT);
+        const bool animation_back = animating();  // a keyboard-cues message also re-read the animation preference
+        report.check("A75-setting-change-shared", cues_reread && animation_reread && animation_back,
+            "cues re-read=" + std::to_string(cues_reread) + ", animation re-read on broadcast=" + std::to_string(animation_reread) +
+            ", animation re-read on SPI_SETKEYBOARDCUES=" + std::to_string(animation_back));
+        pump_for(400);
+    }
+    // Minimized: the transition ends at once and nothing is drawn while minimized.
+    tap_now(VK_RIGHT); const bool before_minimize = animating();
+    ShowWindow(f.host.window(), SW_MINIMIZE); f.host.pump();
+    const bool minimized_ended = IsIconic(f.host.window()) && !animating();
+    const int minimized_frames = f.host.frames(); pump_for(200);
+    const bool no_redraw = f.host.frames() == minimized_frames;
+    ShowWindow(f.host.window(), SW_SHOWNOACTIVATE); if (IsIconic(f.host.window())) ShowWindow(f.host.window(), SW_RESTORE);
+    f.host.pump(); f.settle();
+    tap_now(VK_LEFT); const bool after_restore = !IsIconic(f.host.window()) && animating();
+    report.check("A75-minimized", before_minimize && minimized_ended && no_redraw && after_restore,
+        "running=" + std::to_string(before_minimize) + ", ended on minimize=" + std::to_string(minimized_ended) + ", no frames while minimized=" + std::to_string(no_redraw) + ", plays after restore=" + std::to_string(after_restore));
+    pump_for(400);
+    // Fully covered by another opaque window (the real check, without the test reader).
+    f.host.hidden_source({});
+    RECT client{}; GetClientRect(f.host.window(), &client);
+    POINT corner{0, 0}; ClientToScreen(f.host.window(), &corner);
+    HWND cover = CreateWindowExW(WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, L"STATIC", L"", WS_POPUP | WS_VISIBLE,
+        corner.x - 20, corner.y - 20, client.right + 40, client.bottom + 40, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    f.host.pump();
+    tap_now(VK_RIGHT);
+    const bool covered_instant = cover && !animating() && f.host.window_hidden();
+    if (cover) DestroyWindow(cover);
+    f.host.hidden_source([&] { return false; });
+    tap_now(VK_LEFT); const bool uncovered_plays = animating();
+    report.check("A75-covered", covered_instant && uncovered_plays,
+        "covering window created=" + std::to_string(cover != nullptr) + ", instant while covered=" + std::to_string(covered_instant) + ", plays once uncovered=" + std::to_string(uncovered_plays));
+}
+
 void dropdown_native(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
     f.host.client_size(900, 1000); f.settle();
@@ -3242,6 +3337,7 @@ int run(const std::filesystem::path& folder) {
         registered_component_uses_native_host(*appearance, report, folder);
         checkbox_and_radio_native(*appearance, report);
         slider_native(*appearance, report);
+        slider_animation_native(*appearance, report);
         dropdown_native(*appearance, report);
         space_activation_does_not_leak(*appearance, report);
         enter_activates_once(*appearance, report);
@@ -3553,7 +3649,9 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
              bool large, int delay, int duration_ms, bool alternate_font, const char* report_file="demo-perf.tsv") {
     // #73: slider-drag-text-size only reports per-frame and per-stage times; it never decides pass or fail.
     const bool slider_drag=scenario==L"slider-drag-text-size";
-    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle" && !slider_drag)
+    // #75: the idle rule must still hold after one transition has played (arrow key on the volume slider).
+    const bool idle_after_animation=scenario==L"idle-after-animation";
+    if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle" && !slider_drag && !idle_after_animation)
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
@@ -3588,6 +3686,8 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
             throw std::runtime_error("Perf list setup failed");
     } else if (scenario==L"typing" || scenario==L"idle") {
         if (!form.nav.select({"general"}) || !form.name.focus()) throw std::runtime_error("Perf typing setup failed");
+    } else if (idle_after_animation) {
+        if (!form.nav.select({"general"}) || !form.volume.focus()) throw std::runtime_error("Perf animation setup failed");
     } else if (slider_drag) {
         if (!form.nav.select({"appearance"})) throw std::runtime_error("Perf slider setup failed");
     }
@@ -3645,15 +3745,21 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         }
     }
     int paints=0,presents=0; double cpu_ms=0;
-    if(scenario==L"idle") {
-        send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500);
+    if(scenario==L"idle" || idle_after_animation) {
+        if (idle_after_animation) {
+            // One real arrow key; the 150 ms slide must be over (and the host quiet) before measuring.
+            send(VK_RIGHT,0); send(VK_RIGHT,KEYEVENTF_KEYUP); wait(100);
+            if (!detail::access(form.ui).animation_running()) throw std::runtime_error("Perf animation did not start (animations are off in Windows, or the window is hidden)");
+            wait(1500);
+            if (detail::access(form.ui).animation_running()) throw std::runtime_error("Perf animation did not end");
+        } else { send(L'A',KEYEVENTF_UNICODE); send(L'A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); wait(1500); }
         int before_paints=host.paint_messages(), before_frames=host.frames(); FILETIME c{},e{},k1{},u1{},k2{},u2{};
         GetProcessTimes(GetCurrentProcess(),&c,&e,&k1,&u1); wait(duration_ms ? duration_ms : 10000); GetProcessTimes(GetCurrentProcess(),&c,&e,&k2,&u2);
         auto ticks=[](FILETIME t){ULARGE_INTEGER x{}; x.LowPart=t.dwLowDateTime; x.HighPart=t.dwHighDateTime; return x.QuadPart;};
         cpu_ms=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paint_messages()-before_paints; presents=host.frames()-before_frames;
     }
     auto warm=host.perf_samples().summary(true), steady=host.perf_samples().summary(false);
-    bool ok=slider_drag ? true : scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : scenario==L"idle" ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
+    bool ok=slider_drag ? true : scenario==L"startup" ? host.first_present_ms()>=0 && host.first_present_ms()<=1000 : (scenario==L"idle" || idle_after_animation) ? detail::idle_pass(presents,paints,cpu_ms) : steady.count>0 && (delay ? steady.over_budget>0 : steady.maximum<=16.7);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     if (slider_drag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
@@ -3694,7 +3800,7 @@ int wmain(int argc, wchar_t** argv) {
     try {
         std::filesystem::path evidence = "host-evidence";
         bool multiline_only = false;
-        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, animation_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
@@ -3718,6 +3824,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
             else if (arg == L"--multiline-only") multiline_only = true;
+            else if (arg == L"--animation-only") animation_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3733,6 +3840,14 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (demo_comparison) return demo_compare(evidence);
         if (uia_ime) return run_uia_ime(evidence, perf_appearance);
+        if (animation_only) {
+            std::filesystem::create_directories(evidence); Report report(evidence / "animation.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                slider_animation_native(*appearance, report);
+            }
+            return report.failures ? 1 : 0;
+        }
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
             for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
@@ -3776,6 +3891,8 @@ int wmain(int argc, wchar_t** argv) {
         if (demo_perf) return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,demo_perf_font);
         // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
         if (perf==L"slider-drag-text-size") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
+        // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
+        if (perf==L"idle-after-animation") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
         if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) > 1)
