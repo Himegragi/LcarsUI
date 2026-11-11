@@ -573,7 +573,7 @@ void the_visible_line_count_can_change_at_run_time() {
 // ---- Pointer and input method ---------------------------------------------------------------
 void dragging_selects_across_lines_and_scrolls_at_the_edges() {
     Editor e(numbered_lines(10), 3);
-    const auto& view = e.placed().view;
+    const auto view = e.placed().view; // a copy: layout() replaces the frame
     const int x = view.text.x, top = view.text.y, bottom = top + 3 * 24;
     check(bool(e.host().select("note", 0, 0)), "Press on the first character");
     check(e.frame.select_to(e.ui, e.field, x, top + 24 * 2 + 3) && e.anchor() == 0 && e.caret() == 4, "Dragging to the third line selects through it");
@@ -593,7 +593,7 @@ void dragging_selects_across_lines_and_scrolls_at_the_edges() {
 
 void a_click_past_a_wrapped_line_end_stays_on_that_line() {
     Editor e(std::u16string(30, u'a'), 3);
-    const auto& view = e.placed().view;
+    const auto view = e.placed().view; // a copy: layout() replaces the frame
     auto hit = detail::placement_text_hit(e.frame, "note", view.text.x + 500, view.text.y + 3);
     check(hit.offset == 20 && hit.upstream, "Past the end of a wrapped piece: its end, flagged upstream");
     check(bool(e.host().select_pointer("note", hit.offset, hit.offset, hit.upstream)), "Place the caret there");

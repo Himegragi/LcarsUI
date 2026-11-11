@@ -30,7 +30,7 @@ struct ColorProbe : detail::ComponentPaint {
     void rounded(Rect, int, Color c) override { colors.push_back(c); }
     void clip(Rect) override {}
     void text(std::u16string_view, int, int, int, Color c) override { colors.push_back(c); }
-    bool has(Color c) const { return std::find(colors.begin(), colors.end(), c) != colors.end(); }
+    bool has(Color c) const { return std::any_of(colors.begin(), colors.end(), [c](Color x) { return x == c; }); }
 };
 // Paints every placement of a checked checkbox page with the appearance and the Ui's current variant.
 std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const CheckboxHandle& box) {
@@ -46,7 +46,8 @@ std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const Chec
     }
     return all;
 }
-bool has(const std::vector<Color>& colors, Color c) { return std::find(colors.begin(), colors.end(), c) != colors.end(); }
+// Not std::find: Color is 3 bytes, and MSVC 14.51 sends std::find to a vectorized path that static_asserts on that size.
+bool has(const std::vector<Color>& colors, Color c) { return std::any_of(colors.begin(), colors.end(), [c](Color x) { return x == c; }); }
 
 void contrast_ratio_matches_wcag_reference_values() {
     check(std::fabs(contrast_ratio({0, 0, 0}, {255, 255, 255}) - 21.0) < 0.001, "black on white is 21:1");
