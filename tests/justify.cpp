@@ -638,16 +638,112 @@ void a_vertical_label_with_justify_or_distribute_reads_from_the_top() {
     }
 }
 
+// ---- Code review 2026-11-12 item 15: what is really drawn ---------------------------------------------------
+// A line of n Chinese characters of one em each, stretched to `room` px, has its characters at k * (em + (room - n * em) / (n - 1)):
+// worked out here from the glyph width alone. Labels draw each piece at floor(x) (and stop 0.02 px short of the width, so the last
+// piece's right edge stays inside the box); fields round it.
+void plain_justified_text_is_drawn_at_the_stretched_positions_at_every_scale() {
+    const std::u16string chinese = u"一二三四五六七八九十甲乙丙丁";
+    int label_pieces = 0, field_pieces = 0;
+    for (float scale : {1.f, 1.25f, 1.5f, 2.f}) {
+        {  // a label 130 px wide
+            Ui ui;
+            auto handle = *ui.add_label(label("l", chinese, TextAlign::justify));
+            Laid laid(ui, handle, 130, scale);
+            const auto* p = laid.frame.find(handle);
+            const int em = p->text_size;
+            auto probe = painted(ui, laid.frame, handle, "l");
+            std::size_t next = 0;
+            for (std::size_t i = 0; i < p->lines.size(); ++i) {
+                const auto& line = p->lines[i];
+                const int n = static_cast<int>(line.text.size());
+                if (line.segments.empty()) {  // the paragraph's last line: one piece at the left
+                    check(i + 1 == p->lines.size() && next < probe.texts.size() && probe.texts[next].text == line.text && probe.texts[next].x == line.bounds.x, "The last line is drawn in one piece at the left");
+                    ++next; continue;
+                }
+                const float extra = (130.f - static_cast<float>(n * em)) / static_cast<float>(n - 1);
+                for (int k = 0; k < n; ++k, ++next, ++label_pieces) {
+                    check(next < probe.texts.size() && probe.texts[next].text == line.text.substr(static_cast<std::size_t>(k), 1), "One draw call per character");
+                    if (next >= probe.texts.size()) break;
+                    const float ideal = static_cast<float>(k) * (static_cast<float>(em) + extra);
+                    check(static_cast<float>(probe.texts[next].x) <= ideal + 0.001f && static_cast<float>(probe.texts[next].x) > ideal - 1.05f, "A label draws a piece at floor of its stretched position");
+                }
+                const int right_edge = probe.texts[next - 1].x + em;
+                check(right_edge <= 130 && right_edge >= 128, "The last piece ends inside the box, within two pixels of its edge");
+            }
+            check(next == probe.texts.size(), "Nothing else is drawn");
+        }
+        {  // a multi-line field 190 px wide
+            Ui ui;
+            auto handle = field_of(ui, multi("t", twenty, TextAlign::justify, JustifyMethod::automatic, 12));  // tall enough to show every line at every scale
+            Laid laid(ui, handle, 190, scale);
+            const auto* p = laid.frame.find(handle);
+            const int em = p->text_size;
+            const int wrap = p->view.text.w - std::max(1, static_cast<int>(std::lround(static_cast<float>(inset) * scale)));
+            auto probe = painted(ui, laid.frame, handle, "t");
+            std::size_t next = 0;
+            for (const auto& line : p->view.lines) {
+                const int n = static_cast<int>(line.end - line.begin);
+                if (line.segments.empty()) {
+                    check(next < probe.texts.size() && probe.texts[next].x == p->view.text.x, "The last line is drawn in one piece at the left");
+                    ++next; continue;
+                }
+                const float extra = (static_cast<float>(wrap) - static_cast<float>(n * em)) / static_cast<float>(n - 1);
+                for (int k = 0; k < n; ++k, ++next, ++field_pieces) {
+                    check(next < probe.texts.size(), "One draw call per character");
+                    if (next >= probe.texts.size()) break;
+                    const float ideal = static_cast<float>(p->view.text.x) + static_cast<float>(k) * (static_cast<float>(em) + extra);
+                    check(std::abs(static_cast<float>(probe.texts[next].x) - ideal) <= 0.6f, "A field draws a piece at its rounded stretched position");
+                }
+            }
+            check(next == probe.texts.size(), "Nothing else is drawn");
+        }
+    }
+    check(label_pieces >= 4 * 8 && field_pieces >= 4 * 8, "The check really looked at stretched pieces at every scale");
+}
+
+// An input method composition inside a justified line: the preedit characters take part in the stretched line, so the candidate
+// window's anchor (the caret rectangle), the hit test and the stops all sit where the characters are drawn.
+void a_composition_on_a_justified_line_is_anchored_at_the_stretched_caret() {
+    for (bool rich : {false, true}) {
+        Ui ui;
+        auto handle = rich ? rich_field_of(ui, multi("t", twenty, TextAlign::justify), {}) : field_of(ui, multi("t", twenty, TextAlign::justify));
+        auto& host = detail::access(ui);
+        check(bool(handle.focus()) && bool(handle.select(3, 3)), "Focus the field with the caret after the third character");
+        check(bool(host.composition_update(u"測", 1)), "Start a composition of one character");
+        Laid laid(ui, handle, 190);
+        const auto* p = laid.frame.find(handle);
+        const auto* session = host.edit("t");
+        check(session && session->composing && session->visible_caret() == 4, "The caret is after the preedit character (visible offset 4)");
+        // 21 characters now: nine on the first line, 6 px spare over eight gaps, so the stop before character k is 16.75 * k.
+        const float wrap = static_cast<float>(p->view.text.w - inset);
+        check(near(p->view.x_in_line(0, 9), wrap, 0.05f), "The first line still ends at the wrap edge");
+        const Rect anchor = p->caret_rect(session->visible_caret());
+        check(anchor.x == p->view.text.x + static_cast<int>(std::lround(4 * 16.75f)), "The candidate anchor is the stretched caret, 67 px in");
+        check(p->caret_rect(session->begin()).x == p->view.text.x + static_cast<int>(std::lround(3 * 16.75f)), "The composition starts at the stretched stop before the preedit");
+        check(laid.frame.text_offset(handle, anchor.x, anchor.y + 2) == session->visible_caret(), "Hitting the anchor gives the caret back");
+        check(anchor.y == p->view.row_y(0) && anchor.h == p->view.row_height, "The anchor is on the first row");
+    }
+}
+
 // ---- One generic driver: every subject x alignment x method x appearance x density ----------------
 // Every kind reports the same rows: where the visible text of each display line starts and ends, measured
 // from the left edge of the area the alignment works in, and which rows end their paragraph.
-struct Row { bool last; float left, right; };
+struct Row { bool last; float left, right; std::vector<float> extras; bool stops_match = true; };  // extras: the space added after each piece but the last
 struct Rows { std::vector<Row> rows; float area = 0; };
 struct Subject {
     const char* name;
     bool field;
     Rows (*lay)(Ui&, TextAlign, JustifyMethod, const std::u16string&, const Appearance&);
 };
+// The space between one piece and the next, worked out from the fake backend's own glyph widths (not from TextSegment::width).
+std::vector<float> extras_of(const std::u16string& line, const std::vector<TextSegment>& segments) {
+    FakeMeasure measure;
+    std::vector<float> extras;
+    for (std::size_t j = 0; j + 1 < segments.size(); ++j)
+        extras.push_back(segments[j + 1].x - (segments[j].x + measure.measure(line.substr(segments[j].begin, segments[j].end - segments[j].begin), 16).width));
+    return extras;
+}
 float content_right(const std::u16string& line, const std::vector<TextSegment>& segments, float origin) {
     FakeMeasure measure;
     const auto content_end = static_cast<unsigned>(line.find_last_not_of(u' ') + 1);
@@ -669,7 +765,7 @@ Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, b
         const float left = line.segments.empty() ? origin : origin + line.segments.front().x;
         const float right = line.segments.empty() ? origin + measure.measure(std::u16string(line.text).substr(0, line.text.find_last_not_of(u' ') + 1), 16).width
                                                   : content_right(line.text, line.segments, origin);
-        out.rows.push_back({!pieces[i].soft, left, right});
+        out.rows.push_back({!pieces[i].soft, left, right, extras_of(line.text, line.segments)});
     }
     return out;
 }
@@ -686,10 +782,18 @@ Rows field_rows(Ui& ui, const TextHandle& handle, const std::u16string& text, co
     }
     out.area = static_cast<float>(p->view.text.w - look.component_presentation(ui.presentation().density).inset);
     for (unsigned i = 0; i < p->view.lines.size(); ++i) {
+        // Positions come from the pieces and the fake backend's glyph widths, not from the stops being compared with themselves.
         const auto& line = p->view.lines[i];
         const auto visible = text.substr(line.begin, line.end - line.begin);
-        const unsigned content_end = line.begin + static_cast<unsigned>(visible.find_last_not_of(u' ') + 1);
-        out.rows.push_back({!line.soft, p->view.x_in_line(i, line.begin), p->view.x_in_line(i, content_end)});
+        const unsigned content_end = static_cast<unsigned>(visible.find_last_not_of(u' ') + 1);
+        const float origin = line.shift;
+        const float left = line.segments.empty() ? origin : origin + line.segments.front().x;
+        const float right = line.segments.empty() ? origin + measure.measure(visible.substr(0, content_end), 16).width : content_right(visible, line.segments, origin);
+        Row row{!line.soft, left, right, extras_of(visible, line.segments)};
+        // The caret stops, the hit test and the pieces must tell the same story.
+        for (const auto& segment : line.segments)
+            row.stops_match &= near(p->view.x_in_line(i, line.begin + segment.begin), origin + segment.x, 0.05f);
+        out.rows.push_back(std::move(row));
     }
     return out;
 }
@@ -727,6 +831,12 @@ void every_subject_stretches_every_non_last_line_flush_in_every_combination() {
                 if (stretch) {
                     ++stretched_lines;
                     check(near(row.left, 0) && near(row.right, laid.area), subject.name);
+                    // Even distribution: every added gap is the same size (within a hair), and there is at least one.
+                    float smallest = 1e9f, largest = -1e9f; int gaps = 0;
+                    for (float extra : row.extras) if (extra > 0.01f) { smallest = std::min(smallest, extra); largest = std::max(largest, extra); ++gaps; }
+                    // (A line whose text already fills the width has no pieces and nothing to share.)
+                    check(row.extras.empty() || (gaps > 0 && largest - smallest <= 0.05f), (std::string(subject.name) + ": the extra space is shared equally").c_str());
+                    check(row.stops_match, (std::string(subject.name) + ": caret stops follow the drawn pieces").c_str());
                 } else {
                     check(near(row.left, 0) && row.right < laid.area - 1, subject.name);
                 }
@@ -759,6 +869,8 @@ int main() {
         {"a justified rich line keeps caret, selection, hits, glyphs and underline together", a_justified_rich_line_keeps_caret_selection_hits_glyphs_and_underline_together},
         {"a double click on a justified line selects the word under the pointer", a_double_click_on_a_justified_line_selects_the_word_under_the_pointer},
         {"a vertical label with justify or distribute reads from the top", a_vertical_label_with_justify_or_distribute_reads_from_the_top},
+        {"plain justified text is drawn at the stretched positions at every scale", plain_justified_text_is_drawn_at_the_stretched_positions_at_every_scale},
+        {"a composition on a justified line is anchored at the stretched caret", a_composition_on_a_justified_line_is_anchored_at_the_stretched_caret},
         {"every subject stretches every non-last line flush in every combination", every_subject_stretches_every_non_last_line_flush_in_every_combination},
     };
     return test::run("justify", cases);
