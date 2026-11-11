@@ -87,7 +87,7 @@ static void run(const Appearance& appearance, const std::filesystem::path& path)
         check(!d.document().notices && d.document().mode==OptionValue{"focus"} && d.document().region==OptionValue{"south"} && d.document().volume==65,"step 3: general values");
         w.tap('Z',true); check(d.document().volume==40,"step 4: undo"); w.tap('Y',true); check(d.document().volume==65,"step 4: redo");
         w.tap('S',true); GetWindowTextW(w.window,title,32); check(!d.is_dirty() && title[0]!=L'*' && w.store.load().document->volume==65,"step 5: save");
-        w.tabs(5,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.text(u"共用"); w.tap(VK_TAB); w.tap(VK_SPACE); w.tap(VK_RETURN); w.tap('A',true); w.text(u"共用範本 A"); w.tabs(3); w.tap(VK_SPACE);
+        w.tabs(5,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.text(u"共用"); w.tap(VK_TAB); w.tap(VK_SPACE); w.tap(VK_RETURN); w.tap('A',true); w.text(u"共用範本 A"); w.tabs(7); w.tap(VK_SPACE);
         check(!d.item_dialog.is_open().value.value_or(true) && w.focused("items.list") && d.document().items[4].id==OptionValue{"T005"} && d.document().items[4].name==u"共用範本 A","step 6: edit and focus");
         w.tap(VK_DELETE); w.tap(VK_ESCAPE); check(!d.delete_dialog.is_open().value.value_or(true) && d.document().items.size()==20,"step 7: cancel deletion"); w.tap(VK_DELETE); w.tap(VK_TAB); w.tap(VK_SPACE);
         check(d.document().items.size()==19,"step 7: delete"); w.tap('Z',true);
