@@ -138,18 +138,37 @@ void detail::UiState::commit_removals() {
     }
     if (!pending_removals_.empty() && operation_depth_ == 0) commit_removals();
 }
+void detail::UiState::focus_cues_changed() {
+    refresh_tooltips();
+    if (invalidate_) invalidate_();
+}
+void detail::UiState::pointer_pressed() {
+    if (!keyboard_cues_) return;
+    keyboard_cues_ = false;
+    focus_cues_changed();
+}
+void detail::UiState::set_system_keyboard_cues(bool enabled) {
+    if (system_cues_ == enabled) return;
+    system_cues_ = enabled;
+    focus_cues_changed();
+}
 Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact) ||
-        (settings.hover != Hover::on && settings.hover != Hover::off))
+        (settings.hover != Hover::on && settings.hover != Hover::off) ||
+        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
     if (settings.variant.name != "light" && settings.variant.name != "dark") return {Status::not_found, u"Unknown theme variant"};
     if (settings == presentation_) return {};
+    auto reflows = presentation_;  // the focus mode alone changes no layout or font
+    reflows.focus_indicator = settings.focus_indicator;
+    const bool reflow = !(reflows == settings);
     presentation_ = settings;
-    if (presentation_changed_) presentation_changed_();
+    refresh_tooltips();
+    if (reflow && presentation_changed_) presentation_changed_();
     if (invalidate_) invalidate_();
     return {};
 }
@@ -1125,7 +1144,7 @@ void detail::UiState::refresh_tooltips() {
     for (auto& [id, tip] : tooltips_) {
         auto visible = visibility_.find(id);
         bool on_screen = !has_frame_visibility_ || (visible != visibility_.end() && visible->second);
-        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && !pointer_focus_) || tooltip_hover_ == id) && bool(available(id));
+        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && focus_indicator_visible()) || tooltip_hover_ == id) && bool(available(id));
         if (eligible != tip.eligible) {
             tip.eligible = eligible;
             tip.visible = false;
@@ -2590,7 +2609,6 @@ Result detail::UiState::focus(std::string_view id) {
     const auto* control = find(id);
     if (auto result = available(id); !result) return result;
     if (auto result = focusable(*control); !result) return result;
-    pointer_focus_ = false;
     refresh_tooltips();
     return move_focus(control->id);
 }
@@ -2615,6 +2633,7 @@ Result detail::UiState::key_down(KeyPress key) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (renderer_failed_) return {Status::renderer_failed, u"Renderer failed"};
+    if (!key.ctrl && !keyboard_cues_) { keyboard_cues_ = true; focus_cues_changed(); }
     if (!composing_.empty()) return {Status::busy, u"Composition in progress"};
     if (key.key == Key::escape && !key.repeat) {
         for (auto& [id, tip] : tooltips_) {
@@ -2631,8 +2650,6 @@ Result detail::UiState::key_down(KeyPress key) {
         return settle_dialog(active_dialog_, false);
     }
     if (key.key == Key::tab) {
-        pointer_focus_ = false;
-        refresh_tooltips();
         auto order = focus_order();
         if (order.empty()) return {Status::not_found, u"沒有可聚焦的元件"};
         auto it = std::find(order.begin(), order.end(), focus_);
@@ -2834,6 +2851,7 @@ Result detail::UiState::key_up(Key key) {
 }
 Result detail::UiState::pointer_down(std::string_view id, std::optional<std::size_t> option) {
     OperationScope operation(this);
+    pointer_pressed();
     if (auto result = available(id); !result) return result;
     const auto* control = find(id);
     if (auto result = focusable(*control); !result) return result;
@@ -2842,7 +2860,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
         const auto& pages = tabs_.at(control->id).pages;
         if (*option >= pages.size() || !pages[*option].enabled) return {};
     }
-    pointer_focus_ = true; slider_drag_.reset();
+    slider_drag_.reset();
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
     // Focus notifications can remove, disable, hide, or add controls. Revalidate and
@@ -3083,6 +3101,8 @@ Query<Palette> Ui::effective_palette(const Appearance& appearance, const ThemeVa
     return {Status::ok, {}, state_->effective_palette(appearance, variant)};
 }
 void Ui::bind_appearance(const Appearance* appearance) { state_->bind_appearance(appearance); }
+
+bool Ui::focus_indicator_visible() const { return state_->focus_indicator_visible(); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
 const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 

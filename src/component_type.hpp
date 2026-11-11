@@ -23,8 +23,7 @@ constexpr PaintRole operator|(PaintRole a, PaintRole b) {
 class ComponentPaint {
 public:
     ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
-                   const Appearance& look, float render_scale, bool active_window)
-        : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window) {}
+                   const Appearance& look, float render_scale, bool active_window);
     virtual ~ComponentPaint() = default;
     UiState& ui;
     const Placement& placement;
@@ -41,6 +40,10 @@ public:
     bool hovered(const OptionValue& item) const;
     // Lays the palette's hover color over rect under PaintRole::hover (nothing when its alpha is 0).
     void hover(Rect rect, int radius = 0);
+
+    // Whether this component draws its focus indicator now. Built-in components draw the indicator
+    // from this value alone, never from semantics.focused.
+    bool focus_visible;
     virtual void role(PaintRole) {}
     // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it; the
     // default here only keeps test probes that do not care about alpha compiling.

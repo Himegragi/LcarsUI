@@ -521,6 +521,10 @@ public:
     // busy while a mouse drag holds the hover.
     Result simulate_hover(const ComponentHandle& target, std::optional<OptionValue> item = {});
     Result clear_simulated_hover();
+
+    // Whether focus indicators are being drawn now: the latest real input was a key, the system asks for
+    // keyboard cues, or the presentation forces them. Editable text fields are drawn focused regardless.
+    bool focus_indicator_visible() const;
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:
