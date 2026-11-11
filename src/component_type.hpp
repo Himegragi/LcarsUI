@@ -69,6 +69,11 @@ public:
     virtual void pointer_down(UiState&) const {}
 };
 const ComponentType& component_type(Kind kind);
+// Text flow (#80), in physical pixels. A row is what one display line occupies: the font's line height
+// times the line spacing (never less than the line height). The paragraph gap is the extra space after
+// a paragraph ended by an LF, scaled from DIP, never rounded up to a pixel when it is 0.
+int text_row(int line_height, double line_spacing);
+int paragraph_gap(const Control& control, float scale);
 
 // Temporary internal registration supports extension tests without changing any dispatch point.
 // Its lifetime must encompass every UI using the registered type, on the UI thread.

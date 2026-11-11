@@ -44,6 +44,13 @@ bool valid_value(const Control& control, std::u16string_view text) { return vali
 // A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
 constexpr unsigned max_visible_lines = 1000;
 bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
+// Text flow (#80) belongs to labels and text fields; every other kind must keep the defaults.
+bool supports_text_flow(Kind kind) { return kind == Kind::label || kind == Kind::text; }
+bool valid_text_align(TextAlign align) { return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right; }
+bool valid_text_flow(const Control& control) {
+    if (!valid_text_align(control.text_align) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
+    return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
+}
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
 bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
@@ -231,6 +238,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs || control.kind == Kind::progress) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
+        if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         if (control.kind == Kind::text) {
             if (!valid_value(control, control.value) || !valid_visible_lines(control)) throw std::invalid_argument("Invalid initial text");
@@ -1931,6 +1939,41 @@ Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
     if (invalidate_) invalidate_();
     return {};
 }
+// Text flow (#80): owner configuration shared by the typed handles and the semantic verbs.
+Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields align their text"};
+    if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
+    control->text_align = align;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have line spacing"};
+    if (!valid_line_spacing(multiple)) return {Status::invalid_value, u"Line spacing is 1.0 to 3.0 times the line height"};
+    control->line_spacing = multiple;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
+    OperationScope operation(this);
+    if (auto r = configuration_access(id); !r) return r;
+    auto* control = const_cast<Control*>(find(id));
+    if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have paragraph spacing"};
+    if (!valid_paragraph_spacing(dip)) return {Status::invalid_value, u"Paragraph spacing is 0 to 48 DIP"};
+    control->paragraph_spacing = dip;
+    if (invalidate_) invalidate_();
+    return {};
+}
+#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_text_align(id_, align); } Result Handle::set_line_spacing(double multiple) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_line_spacing(id_, multiple); } Result Handle::set_paragraph_spacing(int dip) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_paragraph_spacing(id_, dip); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; }
+LCARS_TEXT_FLOW_HANDLE(TextHandle)
+LCARS_TEXT_FLOW_HANDLE(LabelHandle)
+#undef LCARS_TEXT_FLOW_HANDLE
 Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
@@ -1979,6 +2022,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.focused = focus_ == control->id;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
+    s.text_align = control->text_align; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
     if (control->kind == Kind::text) {
         s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
         if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
@@ -2358,7 +2402,7 @@ void detail::UiState::settle_lines(std::string_view id, FieldView& view, int tex
     m.view = view;
     m.first = first; m.anchor = view.lines[first].begin; m.caret = caret; m.upstream = upstream; m.placed = true;
     if (relaid) { m.text = std::move(text); m.size = text_size; m.width = width; }
-    m.scroll.offset = static_cast<int>(first) * view.line_height;
+    m.scroll.offset = static_cast<int>(first) * view.row_height;
 }
 bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
     OperationScope operation(this);
@@ -2370,7 +2414,7 @@ bool detail::UiState::scroll_lines_to(std::string_view id, unsigned first) {
     if (first == m.first) return false;
     m.first = m.view.first = first;
     m.anchor = m.view.lines[first].begin;
-    m.scroll.offset = static_cast<int>(first) * m.view.line_height;
+    m.scroll.offset = static_cast<int>(first) * m.view.row_height;
     if (invalidate_) invalidate_();
     return true;
 }
@@ -2886,36 +2930,42 @@ const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnos
 Query<TextHandle> Ui::add_text(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ButtonHandle> Ui::add_button(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<LabelHandle> Ui::add_label(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<CheckboxHandle> Ui::add_checkbox(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
     try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
@@ -2923,30 +2973,35 @@ Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
 Query<ProgressHandle> Ui::add_progress(Control control) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<NavigationListHandle> Ui::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
@@ -3138,6 +3193,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
+    n.text_align = s.text_align; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -3172,6 +3228,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
+            for (auto flow : {Verb::set_text_align, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3270,6 +3327,8 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.text_align != old->text_align, "text_align"); property(node.line_spacing != old->line_spacing, "line_spacing");
+        property(node.paragraph_spacing != old->paragraph_spacing, "paragraph_spacing");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
@@ -3328,6 +3387,16 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
+    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
+        // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
+        if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
+        if (verb == Verb::set_text_align) {
+            if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
+        } else if (verb == Verb::set_line_spacing) {
+            if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
+        } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
+        return invalid_argument();
+    }
     if (node->role == Role::text && verb == Verb::scroll) {
         if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
         if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));

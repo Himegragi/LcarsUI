@@ -58,7 +58,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
     accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
-    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000"}).value.value();
+    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
     dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
@@ -83,7 +83,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     std::vector<RadioOption> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
     licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
-    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label}).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label,.line_spacing=1.4,.paragraph_spacing=8}).value.value();
     licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
     licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });

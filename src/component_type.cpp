@@ -7,7 +7,12 @@
 
 namespace lcars::detail {
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
-
+int text_row(int line_height, double line_spacing) {
+    return std::max(line_height, static_cast<int>(std::lround(line_height * line_spacing)));
+}
+int paragraph_gap(const Control& control, float scale) {
+    return control.paragraph_spacing > 0 ? static_cast<int>(std::lround(control.paragraph_spacing * scale)) : 0;
+}
 ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
                                const Appearance& look, float render_scale, bool active_window)
     : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window),
@@ -29,6 +34,31 @@ std::vector<Line> block(TextMeasure& measure, std::u16string_view text, int size
 }
 int height_of(const std::vector<Line>& lines) {
     return lines.empty() ? 0 : lines.back().bounds.y + lines.back().bounds.h - lines.front().bounds.y;
+}
+// A label's text laid out with its alignment, line spacing and paragraph spacing. Lines carry the box
+// the glyphs occupy: x is where the (aligned) text starts, y its top inside the row, h the font's line
+// height. A left-aligned line keeps the full width as before; the others are as wide as their text.
+struct Flowed { std::vector<Line> lines; int height = 0; };
+Flowed flowed_block(TextMeasure& measure, std::u16string_view text, int size, int width, const Control& control, float scale) {
+    Flowed out;
+    if (text.empty()) return out;
+    const int line = measure.line_height(size), row = text_row(line, control.line_spacing), gap = paragraph_gap(control, scale);
+    int y = 0;
+    const auto pieces = wrap_marked(measure, text, size, width);
+    for (std::size_t i = 0; i < pieces.size(); ++i) {
+        Line placed{{0, y + (row - line) / 2, width, line}, pieces[i].text};
+        if (control.text_align != TextAlign::left) {
+            const int w = static_cast<int>(std::ceil(measure.measure(pieces[i].text, size).width));
+            const int room = std::max(0, width - w);
+            placed.bounds.x = control.text_align == TextAlign::center ? room / 2 : room;
+            placed.bounds.w = w;
+        }
+        out.lines.push_back(std::move(placed));
+        y += row;
+        if (i + 1 < pieces.size() && !pieces[i].soft) y += gap;
+    }
+    out.height = y;
+    return out;
 }
 std::u16string command_title(const ComponentLayout& c) {
     auto title = c.control.label;
@@ -69,8 +99,9 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
-        p.lines = block(c.measure, c.ui.text(c.control.id), p.text_size, c.width);
-        p.bounds = {0, 0, c.width, height_of(p.lines)};
+        auto flowed = flowed_block(c.measure, c.ui.text(c.control.id), p.text_size, c.width, c.control, c.scale);
+        p.lines = std::move(flowed.lines);
+        p.bounds = {0, 0, c.width, flowed.height};
     }
     void paint(ComponentPaint& c) const override {
         if (c.focus_visible) {
@@ -113,15 +144,18 @@ public:
         }
         auto description = block(c.measure, description_text, caption, probe.description.w);
         auto error = block(c.measure, semantics.error, caption, probe.error.w);
-        const int editor_height = control.multiline ? line * static_cast<int>(control.visible_lines) : line;  // a fixed number of lines
+        const int row = text_row(line, control.line_spacing);
+        // A fixed number of lines: every row, plus room for a paragraph gap between each pair of them.
+        const int editor_height = control.multiline ? row * static_cast<int>(control.visible_lines) + paragraph_gap(control, c.scale) * static_cast<int>(control.visible_lines - 1) : row;
         p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), editor_height}, c.scale, c.ui.presentation().density);
         auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
         anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
         p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
         p.bounds = {0, 0, c.width, p.field.height};
         const auto* session = c.ui.edit(control.id);
-        if (control.multiline) { arrange_lines(c, line); return; }
+        if (control.multiline) { arrange_lines(c, line, row); return; }
         p.run = c.measure.measure(session->visible(), p.text_size);
+        p.text_top = (row - line) / 2;
         float offset = c.ui.text_offset(control.id) * c.scale;
         if (c.ui.focused() != control.id) {
             auto anchor = c.ui.text_anchor(control.id, p.text_size);
@@ -140,14 +174,17 @@ public:
             c.ui.set_text_anchor(control.id, p.text_size, stop == p.run.stops.end() ? 0 : stop->first);
         }
         p.offset = offset;
+        // Text that fits is placed by its alignment; text that does not fit scrolls from its start as before.
+        if (p.run.width <= room && control.text_align != TextAlign::left)
+            p.shift = control.text_align == TextAlign::center ? std::max(0.f, (static_cast<float>(p.field.editor.w) - p.run.width) / 2) : room - p.run.width;
     }
     // Multi-line: wrap at the edge, reserve the scrollbar's width whether or not it shows, and let
     // core decide the first visible line (scroll position, caret reveal, font-size anchor).
-    static void arrange_lines(ComponentLayout& c, int line) {
+    static void arrange_lines(ComponentLayout& c, int line, int row) {
         auto& p = c.placement;
         auto& view = p.view;
         p.multiline = true;
-        view.visible = c.control.visible_lines; view.line_height = line;
+        view.visible = c.control.visible_lines; view.line_height = line; view.row_height = row;
         const int bar = scaled(c.scale, 10), gap = scaled(c.scale, 4);
         const Rect editor = p.field.editor;
         view.text = {editor.x, editor.y, std::max(0, editor.w - bar - gap), editor.h};
@@ -156,12 +193,23 @@ public:
         const int slack = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);  // room for a caret at a line end
         const int wrap_width = std::max(1, view.text.w - slack);
         view.lines = wrap_lines(c.measure, c.ui.edit(c.control.id)->visible(), p.text_size, wrap_width);
+        // Rows: one per line, a paragraph gap after each hard line. Alignment: centered in the text area,
+        // right-aligned to the wrap edge (which keeps the caret's slack free at the right).
+        const int paragraph = paragraph_gap(c.control, c.scale);
+        int top = 0;
+        for (std::size_t i = 0; i < view.lines.size(); ++i) {
+            auto& item = view.lines[i];
+            item.top = top;
+            top += row + (item.soft ? 0 : paragraph);
+            if (c.control.text_align == TextAlign::center) item.shift = std::max(0.f, (static_cast<float>(view.text.w) - item.run.width) / 2);
+            else if (c.control.text_align == TextAlign::right) item.shift = std::max(0.f, static_cast<float>(wrap_width) - item.run.width);
+        }
         c.ui.settle_lines(c.control.id, view, p.text_size, wrap_width);
         const int count = static_cast<int>(view.lines.size()), visible = static_cast<int>(view.visible);
         if (count > visible) {
-            const int extent = count * line, maximum = (count - visible) * line;
+            const int extent = count * row, maximum = (count - visible) * row;
             const int thumb = std::min(view.track.h, std::max(scaled(c.scale, 24), view.track.h * view.track.h / std::max(1, extent)));
-            view.thumb = {view.track.x, view.track.y + (view.track.h - thumb) * static_cast<int>(view.first) * line / maximum, view.track.w, thumb};
+            view.thumb = {view.track.x, view.track.y + (view.track.h - thumb) * static_cast<int>(view.first) * row / maximum, view.track.w, thumb};
         }
     }
     static void paint_lines_of(ComponentPaint& c) {
@@ -183,7 +231,7 @@ public:
         const unsigned end_line = static_cast<unsigned>(std::min<std::size_t>(view.first + view.visible, view.lines.size()));
         for (unsigned i = view.first; i < end_line; ++i) {
             const auto& line = view.lines[i];
-            const int y = view.text.y + static_cast<int>(i - view.first) * view.line_height;
+            const int y = view.row_y(i), row = view.row_height, dy = (row - view.line_height) / 2;  // the row; the glyphs sit in its middle
             auto x_at = [&](unsigned offset) { return view.text.x + static_cast<int>(std::lround(view.x_in_line(i, offset))); };
             if (focused && last > first) {
                 const unsigned a = std::max(first, line.begin), b = std::min(last, line.end);
@@ -191,16 +239,16 @@ public:
                 const int extra = covers_break ? d(6) : 0;  // a selected line break shows as a short block
                 if (a < b || covers_break) {
                     const int from = x_at(std::min(a, line.end)), to = x_at(std::max(a, b)) + extra;
-                    if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({from, y + view.line_height - inset, to - from, inset}, p.accent); });
-                    else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, view.line_height}, p.selection); });
+                    if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({from, y + row - dy - inset, to - from, inset}, p.accent); });
+                    else marked(c, PaintRole::selection, [&] { c.fill({from, y, to - from, row}, p.selection); });
                 }
             }
-            if (line.end > line.begin) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, view.text.x, y, enabled ? p.text : p.muted);
+            if (line.end > line.begin) c.text(std::u16string_view(text).substr(line.begin, line.end - line.begin), item.text_size, x_at(line.begin), y + dy, enabled ? p.text : p.muted);
         }
         if (focused && c.window_focused && enabled) {
             const unsigned caret_line = view.line_of(session->visible_caret());
             if (caret_line >= view.first && caret_line < end_line)
-                marked(c, PaintRole::caret, [&] { c.fill({item.caret_x(session->visible_caret()), item.caret_y(session->visible_caret()), d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, view.line_height}, p.accent); });
+                marked(c, PaintRole::caret, [&] { c.fill({item.caret_x(session->visible_caret()), item.caret_y(session->visible_caret()), d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, view.row_height}, p.accent); });
         }
     }
     void paint(ComponentPaint& c) const override {
@@ -230,11 +278,11 @@ public:
             unsigned first = session->begin();
             unsigned last = session->composing ? first + static_cast<unsigned>(session->preedit.size()) : session->end();
             if (last > first) {
-                if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({at(first), editor.y + editor.h - d(c.appearance.component_presentation(c.ui.presentation().density).inset), at(last) - at(first), d(c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
+                if (session->composing) marked(c, PaintRole::composition, [&] { c.fill({at(first), editor.y + editor.h - item.text_top - d(c.appearance.component_presentation(c.ui.presentation().density).inset), at(last) - at(first), d(c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
                 else marked(c, PaintRole::selection, [&] { c.fill({at(first), editor.y, at(last) - at(first), editor.h}, p.selection); });
             }
         }
-        c.text(session->visible(), item.text_size, item.caret_x(0), editor.y, enabled ? p.text : p.muted);
+        c.text(session->visible(), item.text_size, item.caret_x(0), editor.y + item.text_top, enabled ? p.text : p.muted);
         if (focused && c.window_focused && enabled) marked(c, PaintRole::caret, [&] { c.fill({at(session->visible_caret()), editor.y, d(c.appearance.component_presentation(c.ui.presentation().density).thin) + 1, editor.h}, p.accent); });
     }
     bool selects_text() const override { return true; }
