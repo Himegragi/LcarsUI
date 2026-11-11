@@ -504,6 +504,15 @@ void multi_line_field_menu_hangs_from_the_caret_line() {
     check(bool(core(ui).menu_pointer_open("note", std::nullopt, 2, {30, 30})) && core(ui).edit("note")->selection.caret == 2, "right button moves the caret to the point");
     ui.invoke_menu_item("lcars.paste");
     check(*model == u"fix\nyrst\nsecond\nthird", "paste inserts the clipboard text with its line break at the caret");
+    // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard gets CRLF (#79).
+    core(ui).select("note", 0, 5);   // "fix", the line break and "y"
+    check(bool(core(ui).menu_pointer_open("note", std::nullopt, std::nullopt, {30, 30})) && enabled(ui, "lcars.copy") && enabled(ui, "lcars.cut"), "copy and cut are on with a multi-line selection");
+    check(bool(ui.invoke_menu_item("lcars.copy")) && clipboard.content == u"fix\r\ny" && *model == u"fix\nyrst\nsecond\nthird", "copy writes CRLF and leaves the text");
+    core(ui).select("note", 0, 5);
+    check(bool(core(ui).menu_pointer_open("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invoke_menu_item("lcars.cut")) && clipboard.content == u"fix\r\ny" && *model == u"rst\nsecond\nthird",
+          "cut writes CRLF and removes the text across the line break");
+    check(bool(core(ui).menu_pointer_open("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invoke_menu_item("lcars.paste")) && *model == u"fix\nyrst\nsecond\nthird",
+          "pasting the CRLF clipboard back gives LF line breaks again");
 }
 
 void semantic_tree_shows_menu_and_items_while_open() {
