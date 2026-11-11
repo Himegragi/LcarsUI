@@ -3347,9 +3347,8 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
-            add(Verb::set_word_segmentation, n.role == Role::text);
-            for (auto unit_verb : {Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
-                add(unit_verb, n.role == Role::text && admits(Operation::select));
+            for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+                add(word_verb, n.role == Role::text && admits(Operation::select));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
