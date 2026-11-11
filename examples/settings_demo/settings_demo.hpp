@@ -74,6 +74,7 @@ public:
     lcars::NavigationListHandle nav;
     lcars::TextHandle name, items_search;
     lcars::ListHandle items_list;
+    lcars::ContextMenuHandle items_menu;  // Edit / Delete on every row
     lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
     lcars::TextHandle item_name, item_note;

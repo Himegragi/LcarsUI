@@ -851,6 +851,152 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
                      "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
+// Context menu (#85) through the real window procedure: right button, menu key, Shift+F10, Alt, Space.
+// The core-seam twin is tests/context_menu.cpp; this proves the messages reach it and the menu is painted.
+void context_menu_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance);
+    auto& ui = f.form.ui;
+    auto& core = detail::access(ui);
+    const std::string field = f.ids.name;
+    core.set_value(field, u"Alpha 中文");
+    f.settle();
+    const Placement name = *detail::find_placement(f.host.frame(), field);
+    const int y = name.bounds.y + name.field.editor.y + name.field.editor.h / 2;
+    auto x_of = [&](unsigned offset) { return name.bounds.x + name.field.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
+    auto panel = [&]() -> const Placement* { return f.host.frame().menu_panel(); };
+    auto open = [&] { return core.menu_open(); };
+    auto selection = [&] { return core.edit(field)->selection; };
+    auto highlighted = [&]() -> std::string {
+        auto menu = ui.context_menu();
+        if (menu) for (const auto& item : menu->items) if (item.highlighted) return item.id;
+        return {};
+    };
+    auto row_center = [&](std::string_view id) -> POINT {
+        for (const auto& row : panel()->menu_rows) if (row.id == id) return {row.bounds.x + row.bounds.w / 2, row.bounds.y + row.bounds.h / 2};
+        return {-1, -1};
+    };
+    auto right_click = [&](POINT p) { f.mouse(WM_RBUTTONDOWN, p, MK_RBUTTON); f.mouse(WM_RBUTTONUP, p); f.settle(); };
+    auto left_click = [&](POINT p) { f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p); f.settle(); };
+
+    // 1. Release of the right button opens the menu beside the pointer, focusing the field.
+    core.select(field, 0, 0);
+    f.mouse(WM_RBUTTONDOWN, {x_of(5), y}, MK_RBUTTON);
+    f.settle();
+    const bool not_on_press = !open();
+    f.mouse(WM_RBUTTONUP, {x_of(5), y});
+    f.settle();
+    const bool beside = open() && panel() && panel()->bounds.x == x_of(5) && panel()->bounds.y == y;
+    report.check("CM-open-on-release", not_on_press && beside && core.focused() == field && selection().caret == 5,
+                 std::string("not on press=") + (not_on_press ? "yes" : "NO") + ", panel=" + (panel() ? str(panel()->bounds) : "none") + ", pointer=" + std::to_string(x_of(5)) + "," + std::to_string(y) + ", caret moved to " + std::to_string(selection().caret));
+    // 2. It is painted: items with their letters and hints reach the draw list as visible ink.
+    f.host.observe_paint(true);
+    f.host.paint();
+    auto painted = [&](std::u16string_view text) {
+        return std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
+            [&](const auto& event) { return event.type == detail::PaintObservation::Type::text && event.text == text && event.visible && event.popup && !event.tooltip; });
+    };
+    const bool inked = painted(u"復原(U)") && painted(u"剪下(T)") && painted(u"全選(A)") && painted(u"Ctrl+X");
+    f.host.observe_paint(false);
+    report.check("CM-painted", inked, std::string("labels and hints drawn as visible popup ink: ") + (inked ? "yes" : "NO"));
+    // 3. Hover highlights a row; a press and release on a disabled row leaves the menu open.
+    f.mouse(WM_MOUSEMOVE, row_center(menu_cut), 0);
+    f.settle();
+    const bool hovered = highlighted() == menu_cut;
+    left_click(row_center(menu_cut));
+    const bool stays = open() && !ui.context_menu()->items[3].enabled;
+    f.mouse(WM_LBUTTONDOWN, row_center("separator:2"), MK_LBUTTON); f.mouse(WM_LBUTTONUP, row_center("separator:2")); f.settle();
+    report.check("CM-hover-disabled-line", hovered && stays && open(), std::string("hover highlights cut=") + (hovered ? "yes" : "NO") + ", disabled click keeps it open=" + (stays ? "yes" : "NO") + ", a line does nothing=" + (open() ? "yes" : "NO"));
+    // 4. Release on an enabled item runs it and closes the menu; focus is on the field.
+    left_click(row_center(menu_select_all));
+    report.check("CM-click-runs-item", !open() && selection().anchor == 0 && selection().caret == 8 && core.focused() == field,
+                 "select all: selection " + std::to_string(selection().anchor) + ".." + std::to_string(selection().caret) + ", closed=" + (!open() ? "yes" : "NO"));
+    // 5. Right button inside the selection keeps it; outside it moves the caret.
+    core.select(field, 1, 4);
+    f.settle();
+    right_click({x_of(2), y});
+    const auto inside = selection();
+    core.close_menu(); f.settle();
+    right_click({x_of(7), y});
+    const auto outside = selection();
+    core.close_menu(); f.settle();
+    report.check("CM-selection-rules", inside.anchor == 1 && inside.caret == 4 && outside.anchor == 7 && outside.caret == 7,
+                 "inside kept " + std::to_string(inside.anchor) + ".." + std::to_string(inside.caret) + ", outside caret " + std::to_string(outside.caret));
+    // 6. Menu key opens at the caret; Down/Up walk; Escape closes and focus stays on the field.
+    core.select(field, 3, 3); f.settle();
+    f.tap(VK_APPS); f.settle();
+    const int caret_x = name.bounds.x + name.field.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
+    const int line_bottom = name.bounds.y + name.field.editor.y + name.field.editor.h;
+    const bool at_caret = open() && panel() && panel()->bounds.x == caret_x && panel()->bounds.y == line_bottom;
+    const std::string placed = panel() ? str(panel()->bounds) : "none";
+    f.key(VK_DOWN); f.key(VK_DOWN); f.key(VK_DOWN); f.settle();
+    const bool walked = highlighted() == menu_cut;
+    f.tap(VK_ESCAPE); f.settle();
+    report.check("CM-menu-key", at_caret && walked && !open() && core.focused() == field,
+                 std::string("menu key at caret=") + (at_caret ? "yes" : "NO") + " (panel " + placed + ", caret " + std::to_string(caret_x) + "," + std::to_string(line_bottom) + "), Down x3 lands on cut=" + (walked ? "yes" : "NO") + ", Escape closed=" + (!open() ? "yes" : "NO"));
+    // 7. Shift+F10 (a system key message) opens; F10 and Alt close; their releases are not left for the system menu.
+    auto with_shift = [&](auto&& act) {
+        BYTE state[256]{}; GetKeyboardState(state); state[VK_SHIFT] = 0x80; SetKeyboardState(state);
+        act();
+        state[VK_SHIFT] = 0; SetKeyboardState(state);
+    };
+    with_shift([&] { f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); });
+    f.post(WM_SYSKEYUP, VK_F10, key_lparam(VK_F10, false, true) | (1LL << 29)); f.host.pump(); f.settle();
+    const bool shift_f10 = open();
+    f.post(WM_SYSKEYDOWN, VK_MENU, key_lparam(VK_MENU, false, false) | (1LL << 29)); f.host.pump(); f.settle();
+    const bool alt_closed = !open();
+    const auto alt_up = SendMessageW(f.host.window(), WM_SYSKEYUP, VK_MENU, key_lparam(VK_MENU, false, true) | (1LL << 29));
+    with_shift([&] { f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); });
+    f.post(WM_SYSKEYDOWN, VK_F10, key_lparam(VK_F10, false, false)); f.host.pump(); f.settle();
+    const bool f10_closed = !open();
+    report.check("CM-shift-f10-alt-f10", shift_f10 && alt_closed && alt_up == 0 && f10_closed,
+                 std::string("Shift+F10 opens=") + (shift_f10 ? "yes" : "NO") + ", Alt closes=" + (alt_closed ? "yes" : "NO") + ", Alt release swallowed=" + (alt_up == 0 ? "yes" : "NO") + ", F10 closes=" + (f10_closed ? "yes" : "NO"));
+    // 8. Space runs the highlighted item and its character does not type into the field.
+    core.select(field, 0, 5); f.settle();
+    const auto before_text = core.text(field);
+    f.tap(VK_APPS); f.key(VK_END); f.settle();
+    f.key(VK_SPACE);  // TranslateMessage turns this key message into the WM_CHAR a real Space produces
+    f.key_up(VK_SPACE); f.settle();
+    report.check("CM-space-runs-no-typing", !open() && core.text(field) == before_text && selection().anchor == 0 && selection().caret == static_cast<unsigned>(before_text.size()),
+                 "select all ran, text unchanged: " + std::string(core.text(field) == before_text ? "yes" : "NO") + " open=" + (open() ? "yes" : "NO") + " text=" + narrow(core.text(field)) + " before=" + narrow(before_text) + " sel=" + std::to_string(selection().anchor) + ".." + std::to_string(selection().caret));
+    // 9. A click outside only closes the menu: a button under the pointer is not pressed (focus stays on the
+    //    field), nor is its release acted on; the next click works as usual.
+    core.open_menu(field, MenuPosition{5, 5}, std::nullopt); f.settle();
+    std::string button; POINT button_at{};
+    for (const auto& item : f.host.frame().items) {
+        auto visible = intersect(item.bounds, item.clip);
+        if (item.kind == Kind::button && visible.w > 0 && visible.h > 0 && panel() && !panel()->bounds.contains(visible.x + visible.w / 2, visible.y + visible.h / 2)) {
+            button = item.id; button_at = {visible.x + visible.w / 2, visible.y + visible.h / 2}; break;
+        }
+    }
+    const bool target_clear = open() && !button.empty() && f.host.frame().hit(button_at.x, button_at.y) && f.host.frame().hit(button_at.x, button_at.y)->id == button;
+    left_click(button_at);
+    const bool swallowed = !open() && core.focused() == field;
+    left_click(button_at);
+    const bool works_again = core.focused() == button;
+    report.check("CM-outside-click-swallowed", target_clear && swallowed && works_again,
+                 "button " + button + " at " + std::to_string(button_at.x) + "," + std::to_string(button_at.y) + " clear of the menu=" + (target_clear ? "yes" : "NO") +
+                 ", the click that closed the menu did not focus or press it=" + (swallowed ? "yes" : "NO") + ", the next click does=" + (works_again ? "yes" : "NO"));
+    // 10. The window losing focus closes the menu.
+    core.window_active(true);
+    core.open_menu(field, MenuPosition{5, 5}, std::nullopt); f.settle();
+    const bool opened = open();
+    SendMessageW(f.host.window(), WM_KILLFOCUS, 0, 0); f.settle();
+    report.check("CM-deactivation-closes", opened && !open(), std::string("closed by WM_KILLFOCUS=") + (!open() ? "yes" : "NO"));
+    // 11. At the bottom right corner it opens up and to the left; in a small window it scrolls.
+    RECT client{}; GetClientRect(f.host.window(), &client);
+    core.open_menu(field, MenuPosition{client.right - 3, client.bottom - 3}, std::nullopt); f.settle();
+    const bool flipped = panel() && panel()->bounds.x + panel()->bounds.w == client.right - 3 && panel()->bounds.y + panel()->bounds.h == client.bottom - 3;
+    core.close_menu();
+    f.host.client_size(300, 140); f.settle();
+    GetClientRect(f.host.window(), &client);
+    core.open_menu(field, MenuPosition{20, 20}, std::nullopt); f.settle();
+    const bool scrolls = panel() && panel()->menu_maximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
+        panel()->bounds.x + panel()->bounds.w <= client.right && panel()->bounds.y + panel()->bounds.h <= client.bottom;
+    f.mouse(WM_MOUSEWHEEL, {panel() ? panel()->bounds.x + 4 : 0, panel() ? panel()->bounds.y + 4 : 0}, MAKEWPARAM(0, -WHEEL_DELTA));
+    core.close_menu();
+    report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO"));
+}
+
 // Reproduce a clipboard manager briefly holding the OS clipboard during a real key chord.
 void clipboard_contention(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
@@ -3096,6 +3242,7 @@ int run(const std::filesystem::path& folder) {
         enter_activates_once(*appearance, report);
         pointer_activation_rules(*appearance, report);
         pointer_selection_and_clipboard(*appearance, report);
+        context_menu_native(*appearance, report);
         clipboard_contention(*appearance, report);
         tab_walk_and_visible_focus(*appearance, report, folder, tag);
         resize_first_frame_matches_next(*appearance, report, 1.f);
@@ -3541,7 +3688,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(report_crash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false;
+        bool dl01_only = false, trial = false, matrix = false, presentation = false, backend_check = false, r06_only = false, dd_only = false, context_menu_only = false;
         bool uia_ime = false, demo_comparison = false, demo_perf = false, demo_perf_font = false;
         bool ime = false, clipboard_only = false, dpi = false, x02_only = false, x04_only = false, x04_clipped_only = false, x04_executing_only = false, x04_disabled_only = false, x04_selection_only = false;
         int repeat = 1, perf_delay=0, perf_duration=0; bool perf_large=false;
@@ -3564,6 +3711,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--backend-check") backend_check = true;
             else if (arg == L"--r06-only") r06_only = true;
             else if (arg == L"--dd-only") dd_only = true;
+            else if (arg == L"--context-menu-only") context_menu_only = true;
             else if (arg == L"--ime") ime = true;
             else if (arg == L"--uia-ime") uia_ime = true;
             else if (arg == L"--dpi") dpi = true;
@@ -3585,6 +3733,15 @@ int wmain(int argc, wchar_t** argv) {
                 report.appearance = appearance == &web_appearance() ? "web" : "material";
                 long_dropdown_native(*appearance, report);
             }
+            return report.failures ? 1 : 0;
+        }
+        if (context_menu_only) {
+            std::filesystem::create_directories(evidence); Report report(evidence / "context-menu.tsv");
+            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+                report.appearance = appearance == &web_appearance() ? "web" : "material";
+                context_menu_native(*appearance, report);
+            }
+            std::cout << report.checks << " context menu checks, " << report.failures << " not passing\n";
             return report.failures ? 1 : 0;
         }
         if (presentation) return run_presentation_idle(evidence);

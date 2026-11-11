@@ -34,6 +34,9 @@ Key map_key(WPARAM vk) {
     case VK_END: return Key::end;
     case VK_BACK: return Key::backspace;
     case VK_DELETE: return Key::del;
+    case VK_APPS: return Key::menu;
+    case VK_F10: return Key::f10;
+    case VK_MENU: return Key::alt;
     default: return Key::other;
     }
 }
@@ -508,6 +511,63 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
+        if (item.menu) {
+            // The open context menu: a bordered panel, one row per item, a scrollbar when it overflows.
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id, true, false);
+            auto cursor = [&]() -> std::size_t {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
+                return 0;
+            };
+            auto observe_menu = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
+                    if (observe_paint_ && canvas.count_ink) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
+                        canvas.clip, color, true, false, begin, canvas.list.commands.size()});
+                }
+            };
+            const int radius = static_cast<int>(appearance_.radius() * s);
+            const int border = std::max(1, static_cast<int>(std::lround(appearance_.component_presentation(ui_.presentation().density).thin * s)));
+            auto begin = cursor();
+            canvas.rounded(item.bounds, radius, p.border);
+            observe_menu(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
+            Rect panel{item.bounds.x + border, item.bounds.y + border, std::max(0, item.bounds.w - 2 * border), std::max(0, item.bounds.h - 2 * border)};
+            begin = cursor();
+            canvas.rounded(panel, radius, p.surface);
+            observe_menu(DrawObservation::Type::rounded, {}, panel, p.surface, begin);
+            canvas.clip = intersect(canvas.clip, item.menu_inner);
+            const int line = measure_.line_height(item.text_size);
+            for (const auto& row : item.menu_rows) {
+                if (row.bounds.y + row.bounds.h <= item.menu_inner.y || row.bounds.y >= item.menu_inner.y + item.menu_inner.h) continue;
+                if (row.separator) {
+                    Rect rule{row.bounds.x + item.menu_pad, row.bounds.y + row.bounds.h / 2, std::max(0, row.bounds.w - 2 * item.menu_pad), std::max(1, static_cast<int>(std::lround(s)))};
+                    begin = cursor(); canvas.fill(rule, p.border); observe_menu(DrawObservation::Type::fill, {}, rule, p.border, begin);
+                    continue;
+                }
+                if (row.highlighted) {
+                    const Color fill = row.enabled ? p.selection : p.panel;
+                    begin = cursor(); canvas.fill(row.bounds, fill); observe_menu(DrawObservation::Type::fill, {}, row.bounds, fill, begin);
+                }
+                const Color color = row.enabled ? p.text : p.muted;
+                const int top = row.bounds.y + (row.bounds.h - line) / 2;
+                auto draw_text = [&](const std::u16string& value, int x, Color paint_color) {
+                    auto layout = text_.shape(value, item.text_size);
+                    begin = cursor();
+                    text_.draw(canvas, layout, x, top + ShapedMeasure::baseline(item.text_size), paint_color);
+                    observe_menu(DrawObservation::Type::text, value, {x, top, static_cast<int>(std::ceil(layout.width)), line}, paint_color, begin);
+                    return static_cast<int>(std::ceil(layout.width));
+                };
+                draw_text(row.label, row.bounds.x + item.menu_pad, color);
+                if (!row.hint.empty()) {
+                    const int width = static_cast<int>(std::ceil(text_.shape(row.hint, item.text_size).width));
+                    draw_text(row.hint, row.bounds.x + row.bounds.w - item.menu_pad - width, p.muted);
+                }
+            }
+            if (item.menu_thumb.h) {
+                canvas.rounded(item.menu_track, item.menu_track.w / 2, p.panel);
+                canvas.rounded(item.menu_thumb, item.menu_thumb.w / 2, p.border);
+            }
+            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
+            continue;
+        }
         if (item.tooltip) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,true,true);
             auto observe_tooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
@@ -611,6 +671,19 @@ void DesktopHost::sync_ime() {
         ImmSetCompositionWindow(imc, &form);
         ImmReleaseContext(window_, imc);
     }
+}
+// Right button released over a component: focus it, place the caret or select the row, open its menu.
+void DesktopHost::open_pointer_menu(int x, int y) {
+    auto before = detail::access(ui_).focused();
+    const auto* hit = frame_.hit(x, y);
+    if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
+    if (!hit || hit->dropdown_panel || hit->tooltip) return;
+    finish_composition();
+    std::optional<unsigned> offset;
+    if (detail::component_type(hit->kind).selects_text()) offset = detail::placement_text_offset(frame_, hit->id, x);
+    detail::access(ui_).menu_pointer_open(hit->id, frame_.option_at(*hit, x, y), offset, {x, y});
+    after_input(before);
+    if (hit->kind == Kind::list) reveal_.clear();  // the pressed row is already visible
 }
 void DesktopHost::after_input(const Id& focus_before) {
     if (detail::access(ui_).focused() != focus_before) reveal_ = detail::access(ui_).focused();
@@ -725,9 +798,57 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
+    case WM_RBUTTONDOWN: {
+        SetFocus(window_);
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (detail::access(ui_).menu_open() && !frame_.menu_contains(x, y)) {
+            // A press outside only dismisses the menu; the release is swallowed with it.
+            auto before = detail::access(ui_).focused();
+            detail::access(ui_).close_menu();
+            swallow_right_ = true;
+            after_input(before);
+        }
+        return 0;
+    }
+    case WM_RBUTTONUP: {
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (std::exchange(swallow_right_, false)) return 0;
+        auto before = detail::access(ui_).focused();
+        if (detail::access(ui_).menu_open()) {
+            if (auto row = frame_.menu_item_at(x, y)) { detail::access(ui_).menu_pointer_down(*row); detail::access(ui_).menu_pointer_up(*row); }
+            after_input(before);
+            return 0;
+        }
+        open_pointer_menu(x, y);
+        return 0;
+    }
+    case WM_CONTEXTMENU: {
+        auto before = detail::access(ui_).focused();
+        if (detail::access(ui_).menu_open()) return 0;
+        if (l == -1) {
+            finish_composition();
+            detail::access(ui_).key_down({Key::menu, false, false, false, 0});
+            after_input(before);
+        } else {
+            POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            ScreenToClient(window_, &point);
+            open_pointer_menu(point.x, point.y);
+        }
+        return 0;
+    }
     case WM_LBUTTONDOWN: {
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (detail::access(ui_).menu_open()) {
+            auto before = detail::access(ui_).focused();
+            if (!frame_.menu_contains(x, y)) {
+                // Outside the menu the press only closes it: it reaches nothing underneath.
+                detail::access(ui_).close_menu();
+                swallow_left_ = true;
+            } else if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_pointer_down(*row);
+            after_input(before);
+            return 0;
+        }
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
@@ -776,6 +897,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
         TrackMouseEvent(&track);
         update_hover(x, y);
+        if (detail::access(ui_).menu_open()) {
+            if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_highlight(*row);  // lines are ignored
+            InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
             const auto& id = detail::access(ui_).focused();
             if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
@@ -794,6 +920,14 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_LBUTTONUP: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         auto before = detail::access(ui_).focused();
+        if (std::exchange(swallow_left_, false)) return 0;
+        if (detail::access(ui_).menu_open()) {
+            // Releasing over the row that was pressed runs it; lines and disabled items do nothing.
+            auto row = frame_.menu_item_at(x, y);
+            detail::access(ui_).menu_pointer_up(row ? *row : std::string{});
+            after_input(before);
+            return 0;
+        }
         if (drag_ == Drag::slider) {
             const auto id = detail::access(ui_).focused();
             detail::access(ui_).slider_pointer(id, x);
@@ -810,6 +944,22 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     }
     case WM_SYSKEYDOWN:
         if (w == VK_F4 && (l & (1LL << 29))) { SendMessageW(window_, WM_CLOSE, 0, 0); return 0; }
+        if (w == VK_F10 || w == VK_MENU) {
+            // Alt and F10 close an open menu; Shift+F10 opens one. Their release must not reach the
+            // system menu, which would take focus away from the window.
+            const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            if (detail::access(ui_).menu_open() || (w == VK_F10 && shift)) {
+                auto before = detail::access(ui_).focused();
+                finish_composition();
+                detail::access(ui_).key_down({map_key(w), shift, false, (l & (1LL << 30)) != 0, 0});
+                after_input(before);
+                menu_sys_swallow_ = true;
+                return 0;
+            }
+        }
+        break;
+    case WM_SYSKEYUP:
+        if ((w == VK_F10 || w == VK_MENU) && std::exchange(menu_sys_swallow_, false)) return 0;
         break;
     case WM_KEYDOWN: {
         if (w == VK_PROCESSKEY || w == VK_PACKET) break;  // owned by the IME / injected text
@@ -819,6 +969,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (key.key == Key::other && !key.letter) break;
         auto before = detail::access(ui_).focused();
         if (key.key == Key::tab) finish_composition();
+        // Space runs a menu item; the character it also produces must not then type into the field.
+        if (key.key == Key::space && detail::access(ui_).menu_open()) drop_space_char_ = true;
         detail::access(ui_).key_down(key);
         if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->kind == Kind::list &&
             (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
@@ -828,12 +980,14 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     }
     case WM_KEYUP: {
         auto before = detail::access(ui_).focused();
+        drop_space_char_ = false;
         detail::access(ui_).key_up(map_key(w));
         after_input(before);
         return 0;
     }
     case WM_CHAR: {
         auto ch = static_cast<char16_t>(w);
+        if (ch == u' ' && std::exchange(drop_space_char_, false)) return 0;
         if (ch >= 0xd800 && ch <= 0xdbff) { pending_high_ = ch; return 0; }
         std::u16string text;
         if (ch >= 0xdc00 && ch <= 0xdfff) {

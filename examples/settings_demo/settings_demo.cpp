@@ -35,6 +35,12 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
     items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
     items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    // Right-clicking a row selects it, then offers the same Edit and Delete as the buttons and the
+    // Enter / Del shortcuts: each item runs the button's own action.
+    items_menu = ui.add_context_menu(items_list, {
+        {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .access_key=u'E', .shortcut_hint=u"Enter", .action=[this](const MenuContext&) { return items_edit.invoke(); }},
+        {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .access_key=u'D', .shortcut_hint=u"Del", .action=[this](const MenuContext&) { return items_delete.invoke(); }},
+    }).value.value();
     font = ui.add_dropdown({.id="appearance.font",.kind=Kind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
     font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
@@ -94,7 +100,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return Result{};
     });
     items_list.connect_source({[this] { return selection_; }, subscribe_to(selection_changed_)});
-    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
+    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
     status_ = ui.add_label({.id="app.status",.kind=Kind::label,.value=u"使用預設值，尚未建立設定檔"}).value.value();
