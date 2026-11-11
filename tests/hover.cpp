@@ -24,7 +24,7 @@ std::string label_of(const Appearance& a, const ThemeVariant& v) { return name_o
 struct Page {
     Ui ui; ScrollState scroll; test::FakeMeasure measure;
     ButtonHandle save, off, ok; CheckboxHandle box; RadioGroupHandle radio; DropdownHandle drop; ListHandle list;
-    TabsHandle tabs; NavigationListHandle nav; SliderHandle slider; TextHandle field; ProgressHandle progress;
+    TabsHandle tabs; NavigationListHandle nav; SliderHandle slider; TextHandle field, notes; ProgressHandle progress;
     LabelHandle label; DialogHandle dialog; TooltipHandle tip;
     int height = 2400;
     bool list_first = false;  // lets a scroll test reach the list rows inside a short window
@@ -51,6 +51,7 @@ struct Page {
         slider.connect_source({[] { return 50; }, [](auto) { return [] {}; }});
         slider.connect_immediate([](const NumericChange&) { return Result{}; });
         field = ui.add_text({.id = "field", .kind = Kind::text, .label = u"Name", .value = u"abc"}).value.value();
+        notes = ui.add_text({.id = "notes", .kind = Kind::text, .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
         progress = ui.add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}).value.value();
         label = ui.add_label({.id = "label", .kind = Kind::label, .value = u"Hello"}).value.value();
         dialog = ui.add_dialog("dlg", {ok}, ok, save, [](bool) {}).value.value();
@@ -61,7 +62,7 @@ struct Page {
     layout::Node root() const {
         auto page = layout::scroll(layout::column(list_first ? std::vector<layout::Node>{layout::control(list), layout::control(save), layout::control(box)} : std::vector<layout::Node>{
             layout::control(save), layout::control(off), layout::control(box), layout::control(radio), layout::control(drop),
-            layout::control(tabs), layout::control(nav), layout::control(slider), layout::control(field), layout::control(progress),
+            layout::control(tabs), layout::control(nav), layout::control(slider), layout::control(field), layout::control(notes), layout::control(progress),
             layout::control(label), layout::control(list)}));
         return layout::modal(std::move(page), layout::control(ok), dialog);
     }
