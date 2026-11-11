@@ -37,7 +37,7 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 15: return static_cast<LRESULT>(active_form->handles.notices.toggle().status);
         case 16: return root_requests;
         case 20: return static_cast<LRESULT>(active_form->handles.apply.focus().status);
-        case 21: lcars::detail::access(active_form->ui).window_active(true); return 0;
+        case 21: lcars::detail::access(active_form->ui).window_active(true); lcars::detail::access(active_form->ui).set_system_keyboard_cues(true); return 0;  // focus tooltips need the indicator state on; UIA SetFocus does not turn it on
         case 23: return static_cast<LRESULT>(active_form->handles.dialog_open.focus().status);
         case 24: return lcars::detail::access(active_form->ui).focused() == "form.title.pages.v03.half";
         case 26: active_hooks->gl_error_at_frame = active_host->frames() + 1; active_host->paint(); return active_host->renderer_failed() ? 0 : 1;

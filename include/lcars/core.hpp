@@ -509,6 +509,10 @@ public:
     // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
     // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
     void bind_appearance(const Appearance* appearance);
+
+    // Whether focus indicators are being drawn now: the latest real input was a key, the system asks for
+    // keyboard cues, or the presentation forces them. Editable text fields are drawn focused regardless.
+    bool focus_indicator_visible() const;
     const std::vector<std::string>& diagnostics() const;
     SemanticTree& semantics();
 private:
