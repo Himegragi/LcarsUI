@@ -150,7 +150,7 @@ std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_v
                         int used = 0;
                         for (const auto& [stop, x] : run.stops) {
                             if (stop <= from || stop > token_end) continue;
-                            int w = width_of(from, stop);
+                            int w = static_cast<int>(std::ceil(run.x(stop) - run.x(from)));  // caret stops: no reshaping per candidate
                             if (y + w > height && to > from) break;
                             to = stop; used = w;
                             if (y + w >= height) break;

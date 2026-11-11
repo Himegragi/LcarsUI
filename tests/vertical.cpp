@@ -274,6 +274,29 @@ void the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry(
     check(forms().size() == 3 && forms()[1] == VerticalForm::combined, "Combined again at 3");
     check(bool(page.label.set_writing_mode(WritingMode::horizontal)) && forms().empty(), "Back to horizontal at once");
 }
+void the_page_can_reveal_a_vertical_label_like_any_control() {
+    Ui ui; test::FakeMeasure measure; ScrollState outer;
+    auto tall = ui.add_label({.id = "tall", .kind = Kind::label, .value = std::u16string(300, u'x')}).value.value();
+    auto label = vertical_label(ui, "label", cjk(25));
+    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto frame = arrange(page, ui, look, measure, 300, 150, 1.f, outer);
+    const auto* item = frame.find(label);
+    check(item->bounds.y + item->bounds.h > 150, "The label starts below the fold");
+    frame = arrange(page, ui, look, measure, 300, 150, 1.f, outer, "label");
+    item = frame.find(label);
+    check(outer.offset > 0 && item->bounds.y == 0, "Revealing a control taller than the window aligns its top, as for any control");
+    auto short_label = vertical_label(ui, "short", cjk(8));
+    auto short_page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(short_label, 100)}));
+    ScrollState second;
+    frame = arrange(short_page, ui, look, measure, 300, 150, 1.f, second, "short");
+    item = frame.find(short_label);
+    check(item->bounds.y >= 0 && item->bounds.y + item->bounds.h <= 150, "A label that fits is brought fully into view");
+}
+void a_very_long_word_flows_without_reshaping_every_candidate() {
+    test::FakeMeasure measure;
+    auto columns = flow_vertical(measure, std::u16string(4000, u'a'), 16, 3, 64);
+    check(columns.size() == 4000 * 8 / 64 && columns[0].bounds.h == 64, "4000 letters of 8 px fill 500 columns of 64 px");
+}
 void shift_wheel_reaches_only_the_sideways_label() {
     Page page(cjk(25));
     auto frame = page.arrange_in(48, 200);
@@ -360,6 +383,8 @@ int main() {
         {"the_scrollbar_thumb_maps_back_to_an_offset", the_scrollbar_thumb_maps_back_to_an_offset},
         {"keyboard_arrows_scroll_a_focused_sideways_label", keyboard_arrows_scroll_a_focused_sideways_label},
         {"the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry", the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry},
+        {"the_page_can_reveal_a_vertical_label_like_any_control", the_page_can_reveal_a_vertical_label_like_any_control},
+        {"a_very_long_word_flows_without_reshaping_every_candidate", a_very_long_word_flows_without_reshaping_every_candidate},
         {"shift_wheel_reaches_only_the_sideways_label", shift_wheel_reaches_only_the_sideways_label},
         {"a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page", a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page},
         {"text_size_and_scale_change_the_columns", text_size_and_scale_change_the_columns},
