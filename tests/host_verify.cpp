@@ -1045,12 +1045,20 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     core.close_menu();
     f.host.client_size(300, 140); f.settle();
     GetClientRect(f.host.window(), &client);
+    // The window cannot shrink below WM_GETMINMAXINFO (400x300 window DIP) and how much of that is frame depends on the
+    // system theme (CI had a taller client than the author machine, where the 9 built-in items only just overflowed).
+    // So the application adds enough items that the menu is taller than any client this window can have.
+    std::vector<MenuItem> extra;
+    for (int i = 0; i < 8; ++i) extra.push_back({.id = "cm.extra" + std::to_string(i), .label = u"Extra item " + std::u16string(1, static_cast<char16_t>(u'A' + i)), .action = [](const MenuContext&) { return Result{}; }});
+    const bool extras_added = bool(ui.add_context_menu(f.form.handles.name, extra, MenuMode::append));
     core.open_menu(field, MenuPosition{20, 20}, std::nullopt); f.settle();
-    const bool scrolls = panel() && panel()->menu_maximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
+    const bool scrolls = extras_added && panel() && panel()->menu_maximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
         panel()->bounds.x + panel()->bounds.w <= client.right && panel()->bounds.y + panel()->bounds.h <= client.bottom;
+    const int panel_height = panel() ? panel()->bounds.h : -1, panel_maximum = panel() ? panel()->menu_maximum : -1;
     f.mouse(WM_MOUSEWHEEL, {panel() ? panel()->bounds.x + 4 : 0, panel() ? panel()->bounds.y + 4 : 0}, MAKEWPARAM(0, -WHEEL_DELTA));
     core.close_menu();
-    report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO"));
+    report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO") +
+                 " (client " + std::to_string(client.right) + "x" + std::to_string(client.bottom) + ", menu panel height " + std::to_string(panel_height) + ", scroll maximum " + std::to_string(panel_maximum) + ")");
 }
 
 // #79 twin of tests/multiline.cpp on a real window: posted messages drive a multi-line field. The input
