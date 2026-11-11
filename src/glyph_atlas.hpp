@@ -19,8 +19,8 @@ inline std::vector<unsigned char> bitmap_coverage(BitmapMode mode, unsigned widt
     return pixels;
 }
 struct GlyphKey {
-    std::uint64_t face; unsigned glyph; int size;
-    bool operator<(const GlyphKey& other) const { return std::tie(face,glyph,size) < std::tie(other.face,other.glyph,other.size); }
+    std::uint64_t face; unsigned glyph; int size; unsigned synth = 0;  // synth: the looks drawn by the rasterizer (see Glyph)
+    bool operator<(const GlyphKey& other) const { return std::tie(face,glyph,size,synth) < std::tie(other.face,other.glyph,other.size,other.synth); }
 };
 struct GlyphBitmap { int width, height, left, top; std::vector<unsigned char> pixels; };
 struct AtlasGlyph { AtlasRegion region; int left=0, top=0; };

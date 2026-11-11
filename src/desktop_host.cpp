@@ -125,6 +125,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
     hooks_ = hooks; debug_context_ = options.debug_context;
+    text_.set_styled_lookup(system_styled_font_file);
     configure_font(ui.presentation().font_family);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -337,7 +338,7 @@ void DesktopHost::paint() {
         paint_observations_.push_back({static_cast<PaintObservation::Type>(observation.type), observation.owner, observation.text,
             observation.bounds, observation.clip, observation.color,
             command_ink(recording.list, observation.begin, observation.end, observation.clip, r.right, r.bottom),
-            observation.popup, observation.tooltip});
+            observation.popup, observation.tooltip, observation.bold, observation.italic});
     }
     if(perf_enabled_ && perf_delay_) Sleep(static_cast<DWORD>(perf_delay_));
     auto before_gpu=std::chrono::steady_clock::now();
@@ -462,10 +463,10 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
                      float scale, bool window_focused, Target& target, Text& text, std::vector<PaintObservation>* events)
             : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
         void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.current_role=value; }
-        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin, bool bold = false, bool italic = false) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) {
                 if (observations) canvas.list.observations.push_back({type, placement.id, std::move(text), bounds,
-                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size()});
+                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size(), bold, italic});
             }
         }
         std::size_t cursor() const {
@@ -481,12 +482,13 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             observe(DrawObservation::Type::rounded, {}, rect, color, begin);
         }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
-        void text(std::u16string_view value, int pixels, int x, int y, Color color) override {
-            auto layout = renderer.shape(value, pixels);
+        void text(std::u16string_view value, int pixels, int x, int y, Color color) override { styled_text(value, pixels, {}, x, y, color); }
+        void styled_text(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) override {
+            auto layout = renderer.shape(value, pixels, style);
             auto begin=cursor();
             renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
             observe(DrawObservation::Type::text, std::u16string(value),
-                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin);
+                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin, style.bold, style.italic);
         }
     };
     for (const auto& item : frame.items) {

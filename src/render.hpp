@@ -29,6 +29,7 @@ struct DrawObservation {
     Rect bounds, clip; Color color;
     bool popup, tooltip;
     std::size_t begin, end;
+    bool bold = false, italic = false;  // text: the face it was drawn in
 };
 struct DrawList {
     std::vector<DrawCommand> commands;

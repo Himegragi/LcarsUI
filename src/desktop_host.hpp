@@ -21,6 +21,7 @@ struct PaintObservation {
     Rect bounds, clip;
     Color color;
     bool visible = false, popup = false, tooltip = false;
+    bool bold = false, italic = false;  // text: the face it was drawn in
 };
 class WindowsClipboard final : public Clipboard {
 public:

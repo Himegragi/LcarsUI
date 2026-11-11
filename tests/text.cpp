@@ -278,5 +278,94 @@ int main() {
     RecordingCanvas recorded_missing(64,64,{255,255,255});
     without_fonts.draw(recorded_missing,private_glyph,0,30,{0,0,0});
     if(recorded_missing.list.commands.size()<=1) return 35;
+    // #81: bold and italic faces. A family's real Bold / Italic file is used when there is one, else the
+    // regular face is synthesized; the glyph cache tells the four looks of one glyph apart.
+    {
+        auto style_flags = [](const FontFile& source) -> long {
+            FT_Library lib = nullptr; long flags = -1;
+            HANDLE file = CreateFileW(source.path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+            LARGE_INTEGER size{}; HANDLE mapping = nullptr; void* data = nullptr; FT_Face face = nullptr;
+            if (file != INVALID_HANDLE_VALUE && GetFileSizeEx(file, &size) && (mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr)) &&
+                (data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0)) && !FT_Init_FreeType(&lib) &&
+                !FT_New_Memory_Face(lib, static_cast<const FT_Byte*>(data), static_cast<FT_Long>(size.QuadPart), source.face_index, &face)) flags = face->style_flags;
+            if (face) FT_Done_Face(face);
+            if (lib) FT_Done_FreeType(lib);
+            if (data) UnmapViewOfFile(data);
+            if (mapping) CloseHandle(mapping);
+            if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+            return flags;
+        };
+        auto ink_of = [](Text& renderer, const TextLayout& layout) {
+            Canvas canvas(96, 48, {255, 255, 255}); canvas.count_ink = true;
+            renderer.draw(canvas, layout, 6, 34, {0, 0, 0});
+            return canvas;
+        };
+        auto rasterized = [](Text& renderer, std::initializer_list<const TextLayout*> layouts) {
+            RecordingCanvas record(96, 48, {255, 255, 255});
+            const auto before = renderer.rasterizations();
+            for (const auto* layout : layouts) renderer.draw(record, *layout, 4, 34, {0, 0, 0});
+            render_cpu(record.list, 96, 48);
+            return renderer.rasterizations() - before;
+        };
+        if (catalog.contains(u"Segoe UI")) {
+            auto regular = system_styled_font_file(u"Segoe UI", false, false), bold = system_styled_font_file(u"Segoe UI", true, false);
+            auto italic = system_styled_font_file(u"Segoe UI", false, true), both = system_styled_font_file(u"Segoe UI", true, true);
+            if (regular.path.empty() || bold.path.empty() || italic.path.empty() || both.path.empty()) return 52;
+            if (style_flags(bold) < 0 || !(style_flags(bold) & FT_STYLE_FLAG_BOLD) || (style_flags(bold) & FT_STYLE_FLAG_ITALIC)) return 53;
+            if (!(style_flags(italic) & FT_STYLE_FLAG_ITALIC) || (style_flags(italic) & FT_STYLE_FLAG_BOLD)) return 54;
+            if (!(style_flags(both) & FT_STYLE_FLAG_ITALIC) || !(style_flags(both) & FT_STYLE_FLAG_BOLD)) return 55;
+            if (regular.path != system_font_file(u"Segoe UI").path) return 56;
+            Text styled;
+            auto a_regular = styled.shape(u"A", 24), a_bold = styled.shape(u"A", 24, lcars::FontStyle{true, false});
+            auto a_italic = styled.shape(u"A", 24, lcars::FontStyle{false, true}), a_both = styled.shape(u"A", 24, lcars::FontStyle{true, true});
+            if (a_bold.glyphs[0].synth || a_italic.glyphs[0].synth || a_both.glyphs[0].synth || a_regular.glyphs[0].synth) return 57;  // real faces: nothing to synthesize
+            if (a_bold.glyphs[0].face_id == a_regular.glyphs[0].face_id || a_italic.glyphs[0].face_id == a_regular.glyphs[0].face_id ||
+                a_both.glyphs[0].face_id == a_bold.glyphs[0].face_id || a_both.glyphs[0].face_id == a_italic.glyphs[0].face_id) return 58;
+            if (a_bold.width <= a_regular.width) return 59;  // the real Bold face is wider
+            auto p_regular = ink_of(styled, a_regular).pixels, p_bold = ink_of(styled, a_bold).pixels;
+            auto p_italic = ink_of(styled, a_italic).pixels, p_both = ink_of(styled, a_both).pixels;
+            if (p_regular == p_bold || p_regular == p_italic || p_bold == p_both || p_italic == p_both || p_regular == p_both) return 60;
+            // The glyph cache keeps the four looks apart and reuses each one.
+            styled.clear_atlas();
+            if (rasterized(styled, {&a_regular, &a_bold, &a_italic, &a_both}) != 4) return 61;
+            if (rasterized(styled, {&a_regular, &a_bold, &a_italic, &a_both}) != 0) return 62;
+        }
+        if (catalog.contains(u"Microsoft JhengHei")) {
+            auto regular = system_styled_font_file(u"Microsoft JhengHei", false, false), bold = system_styled_font_file(u"Microsoft JhengHei", true, false);
+            if (bold.path.empty() || !(style_flags(bold) & FT_STYLE_FLAG_BOLD) || (bold.path == regular.path && bold.face_index == regular.face_index)) return 64;  // the real Bold file
+            Text jheng;
+            jheng.set_primary_family(u"Microsoft JhengHei");
+            auto ch_regular = jheng.shape(u"重", 24), ch_bold = jheng.shape(u"重", 24, lcars::FontStyle{true, false});
+            if (ch_bold.glyphs[0].synth || ch_bold.glyphs[0].face_id == ch_regular.glyphs[0].face_id) return 65;
+            if (ink_of(jheng, ch_bold).ink <= ink_of(jheng, ch_regular).ink) return 66;  // the Bold face covers more pixels
+            if (system_styled_font_file(u"Microsoft JhengHei", false, true).path.empty()) {  // no italic file: synthesize
+                auto ch_italic = jheng.shape(u"重", 24, lcars::FontStyle{false, true});
+                if (!(ch_italic.glyphs[0].synth & 2) || ch_italic.glyphs[0].face_id != ch_regular.glyphs[0].face_id) return 67;
+                if (ink_of(jheng, ch_italic).pixels == ink_of(jheng, ch_regular).pixels) return 68;  // sheared: visibly different
+                auto ch_both = jheng.shape(u"重", 24, lcars::FontStyle{true, true});
+                if (ch_both.glyphs[0].synth != 2 || ch_both.glyphs[0].face_id != ch_bold.glyphs[0].face_id) return 69;  // real bold face, synthetic slant
+            } else std::cout << "JhengHei italic synthesis: N/A (an Italic file is installed)\n";
+        }
+        // A family with only a regular file: bold is synthesized (wider and heavier), italic is sheared.
+        auto regular_only = system_font_file(u"Segoe UI");
+        if (!regular_only.path.empty()) {
+            Text synthetic([&](std::u16string_view name) { return name == u"Segoe UI" ? regular_only : FontFile{}; }, [](std::string_view) {});
+            auto plain = synthetic.shape(u"Hi", 24), heavy = synthetic.shape(u"Hi", 24, lcars::FontStyle{true, false}), slanted = synthetic.shape(u"Hi", 24, lcars::FontStyle{false, true});
+            if (!(heavy.glyphs[0].synth & 1) || !(slanted.glyphs[0].synth & 2) || heavy.glyphs[0].face_id != plain.glyphs[0].face_id) return 70;
+            if (heavy.width <= plain.width) return 71;
+            if (ink_of(synthetic, heavy).ink <= ink_of(synthetic, plain).ink) return 72;
+            if (ink_of(synthetic, slanted).pixels == ink_of(synthetic, plain).pixels) return 73;
+            auto bold_italic = synthetic.shape(u"Hi", 24, lcars::FontStyle{true, true});
+            if (bold_italic.glyphs[0].synth != 3) return 74;
+            if (rasterized(synthetic, {&plain, &heavy, &slanted, &bold_italic}) != 8) return 75;  // two glyphs in four looks: one face, eight cache entries
+        }
+        // The fallback fonts are styled the same way: a Latin and a CJK character in one bold run.
+        if (catalog.contains(u"Segoe UI") && catalog.contains(u"Microsoft JhengHei")) {
+            Text fallback_text;
+            auto mixed = fallback_text.shape(u"A重", 24, lcars::FontStyle{true, false});
+            if (mixed.missing || mixed.glyphs.size() != 2 || mixed.glyphs[0].font != 0 || mixed.glyphs[1].font != 1 || mixed.glyphs[0].synth || mixed.glyphs[1].synth) return 76;
+            if (mixed.glyphs[1].face_id == fallback_text.shape(u"重", 24).glyphs[0].face_id) return 77;
+        }
+    }
     return 0;
 }

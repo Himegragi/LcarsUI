@@ -6,6 +6,8 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_MULTIPLE_MASTERS_H
+#include FT_OUTLINE_H
+#include FT_SYNTHESIS_H
 #include <hb.h>
 #include <hb-ft.h>
 #include <algorithm>
@@ -34,6 +36,9 @@ void diagnostic(const wchar_t* message) {
     (void)message;
 #endif
 }
+// How much a synthetic bold look thickens an outline, in pixels: a bold face is wider, so a synthesized one grows
+// the advance by the same amount.
+float synthetic_bold_pixels(int pixels) { return std::max(1.f,pixels/16.f); }
 struct Font {
     HANDLE file=INVALID_HANDLE_VALUE, mapping=nullptr;
     void* data=nullptr;
@@ -72,9 +77,14 @@ struct Font {
     }
     ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);if(data)UnmapViewOfFile(data);if(mapping)CloseHandle(mapping);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);}
     bool size(int pixels){if(!face || FT_Set_Pixel_Sizes(face,0,pixels))return false;hb_ft_font_changed(hb);return true;}
-    FT_Error rasterize(unsigned glyph,int pixels) {
+    // synth: 1 draws a heavier outline, 2 a sheared one, for a look this face does not have itself.
+    FT_Error rasterize(unsigned glyph,int pixels,unsigned synth=0) {
         if(!size(pixels)) return FT_Err_Invalid_Pixel_Size;
         FT_Error result=FT_Load_Glyph(face,glyph,FT_LOAD_DEFAULT);
+        if(!result && synth && face->glyph->format==FT_GLYPH_FORMAT_OUTLINE) {
+            if(synth&1) FT_Outline_Embolden(&face->glyph->outline,static_cast<FT_Pos>(std::lround(synthetic_bold_pixels(pixels)*64)));
+            if(synth&2) FT_GlyphSlot_Oblique(face->glyph);
+        }
         return result?result:FT_Render_Glyph(face->glyph,FT_RENDER_MODE_NORMAL);
     }
 };
@@ -84,9 +94,10 @@ struct Text::Impl {
     FT_Library library=nullptr;
     GlyphAtlas atlas;
     unsigned rasterizations=0;
-    std::array<std::unique_ptr<Font>,11> fonts;
-    std::array<bool,11> attempted{};
-    std::array<std::uint64_t,11> face_ids{};
+    std::array<std::array<std::unique_ptr<Font>,11>,4> fonts;  // [slot][font]: slot bit 0 bold, bit 1 italic
+    std::array<std::array<bool,11>,4> attempted{};
+    std::array<std::array<std::uint64_t,11>,4> face_ids{};
+    std::function<FontFile(std::u16string_view,bool,bool)> styled_lookup;
     static std::uint64_t next_face_id() { static std::atomic<std::uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }
     std::u16string primary;
     std::set<unsigned> missing;
@@ -105,22 +116,40 @@ struct Text::Impl {
         if(lookup(u"Segoe UI").path.empty()) report("font.default_missing","Segoe UI");
         if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing","Microsoft JhengHei");
     }
-    ~Impl(){for(auto& font:fonts)font.reset();if(library)FT_Done_FreeType(library);}
-    Font* font(unsigned id) {
-        if(id>=fonts.size()) return nullptr;
-        if(!attempted[id]) { attempted[id]=true; auto file=lookup(id==10?std::u16string_view(primary):names[id]); if(!file.path.empty()) { fonts[id]=std::make_unique<Font>(library,file); if(!fonts[id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[id]->error); } }
-        if (fonts[id] && fonts[id]->face && !face_ids[id]) face_ids[id] = next_face_id();
-        return fonts[id] && fonts[id]->face ? fonts[id].get():nullptr;
+    ~Impl(){for(auto& slot:fonts)for(auto& font:slot)font.reset();if(library)FT_Done_FreeType(library);}
+    struct Look { Font* font=nullptr; unsigned slot=0, synth=0; };
+    // The face for a bold/italic request: the real file of that look, else the nearest real file plus the looks it
+    // still lacks as synth bits (1 heavier, 2 sheared), else the regular face with both.
+    Look resolve(unsigned id,bool bold,bool italic) {
+        const unsigned want=(bold?1u:0u)|(italic?2u:0u);
+        if(!want) return {font(id,0),0,0};
+        if(auto exact=font(id,want)) return {exact,want,0};
+        if(want==3) {
+            if(auto only_bold=font(id,1)) return {only_bold,1,2};
+            if(auto only_italic=font(id,2)) return {only_italic,2,1};
+        }
+        return {font(id,0),0,want};
+    }
+    Font* font(unsigned id,unsigned slot=0) {
+        if(id>=fonts[0].size() || slot>=fonts.size()) return nullptr;
+        if(!attempted[slot][id]) {
+            attempted[slot][id]=true;
+            const auto family=id==10?std::u16string_view(primary):names[id];
+            auto file=slot==0?lookup(family):styled_lookup?styled_lookup(family,slot&1,(slot&2)!=0):FontFile{};
+            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[slot][id]->error); }
+        }
+        if (fonts[slot][id] && fonts[slot][id]->face && !face_ids[slot][id]) face_ids[slot][id] = next_face_id();
+        return fonts[slot][id] && fonts[slot][id]->face ? fonts[slot][id].get():nullptr;
     }
 };
-Text::Text():Text(system_font_file,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){}
+Text::Text():Text(system_font_file,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){ impl_->styled_lookup=system_styled_font_file; }
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
     :Text(std::move(lookup),std::function<void(const RenderDiagnostic&)>([report=std::move(report)](const auto& event) { report(event.code); })){}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(const RenderDiagnostic&)> report)
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 void Text::test_bitmap_mode(int mode) { if (impl_->bitmap_mode!=mode) { impl_->bitmap_mode=mode; impl_->atlas.clear(); } }
-void Text::set_primary_family(std::u16string family, bool new_generation) { if (impl_->primary==family && !new_generation) return; impl_->atlas.clear(); impl_->face_ids.fill(0); impl_->primary=std::move(family); impl_->fonts[10].reset(); impl_->attempted[10]=false; }
+void Text::set_primary_family(std::u16string family, bool new_generation) { if (impl_->primary==family && !new_generation) return; impl_->atlas.clear(); for(auto& ids:impl_->face_ids) ids.fill(0); impl_->primary=std::move(family); for(unsigned slot=0;slot<4;++slot) { impl_->fonts[slot][10].reset(); impl_->attempted[slot][10]=false; } }
 std::optional<float> Text::test_axis_coordinate(unsigned id,std::uint32_t t) {
     auto font=impl_->font(id); if(!font) return {};
     FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};
@@ -140,7 +169,9 @@ unsigned TextLayout::hit(float x) const {
     for(auto [offset,position]:carets)if(std::abs(position-x)<distance){distance=std::abs(position-x);best=offset;}
     return best;
 }
-TextLayout Text::shape(std::u16string_view text,int size){
+TextLayout Text::shape(std::u16string_view text,int size){ return shape(text,size,FontStyle{}); }
+void Text::set_styled_lookup(std::function<FontFile(std::u16string_view,bool,bool)> lookup) { impl_->styled_lookup=std::move(lookup); }
+TextLayout Text::shape(std::u16string_view text,int size,FontStyle style){
     auto& e=*impl_;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
@@ -174,12 +205,14 @@ TextLayout Text::shape(std::u16string_view text,int size){
         hb_buffer_set_direction(buffer,HB_DIRECTION_LTR);hb_buffer_set_script(buffer,run.script);
         hb_buffer_set_language(buffer,hb_language_from_string("zh-TW",-1));
         hb_buffer_add_utf16(buffer,reinterpret_cast<const uint16_t*>(text.data()),static_cast<int>(text.size()),run.begin,run.end-run.begin);
-        auto f=e.font(run.font); f->size(size); hb_shape(f->hb,buffer,nullptr,0);
+        const auto look=e.resolve(run.font,style.bold,style.italic);
+        auto f=look.font; f->size(size); hb_shape(f->hb,buffer,nullptr,0);
+        const float heavier=(look.synth&1)?synthetic_bold_pixels(size):0.f;  // a synthesized bold advances like a bold face would
         unsigned count=0;auto info=hb_buffer_get_glyph_infos(buffer,&count);auto pos=hb_buffer_get_glyph_positions(buffer,&count);
         for(unsigned i=0;i<count;++i){
-            float advance=pos[i].x_advance/64.f;
+            float advance=pos[i].x_advance/64.f+heavier;
             result.carets.try_emplace(info[i].cluster,result.width);
-            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.face_ids[run.font]});
+            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.face_ids[look.slot][run.font],static_cast<unsigned char>(look.slot),static_cast<unsigned char>(look.synth)});
             result.width+=advance;result.missing+=info[i].codepoint==0;
         }
         hb_buffer_destroy(buffer);
@@ -237,9 +270,9 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
             canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
         };
         if (!glyph.id) {box();continue;}
-        auto font=impl_->font(glyph.font);
-        if (glyph.face_id && impl_->face_ids[glyph.font] != glyph.face_id) font = nullptr;
-        auto error=font?font->rasterize(glyph.id,layout.size):FT_Err_Invalid_Face_Handle;
+        auto font=impl_->font(glyph.font,glyph.slot);
+        if (glyph.face_id && impl_->face_ids[glyph.slot][glyph.font] != glyph.face_id) font = nullptr;
+        auto error=font?font->rasterize(glyph.id,layout.size,glyph.synth):FT_Err_Invalid_Face_Handle;
         if(error) {
             impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
         }
@@ -279,7 +312,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
         }
         canvas.glyph_deferred(color,[this,glyph,size,x,baseline] {
             const auto before=impl_->atlas.batches();
-            auto entry=impl_->atlas.get({glyph.face_id,glyph.id,size},[&] {
+            auto entry=impl_->atlas.get({glyph.face_id,glyph.id,size,glyph.synth},[&] {
                 ++impl_->rasterizations;
                 auto box=[&] {
                     int w=std::max(1,static_cast<int>(std::round(size*.6f)));
@@ -291,9 +324,9 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                         if(y<line || y>=h-line || x<line || x>=w-line) result.pixels[static_cast<std::size_t>(y)*w+x]=255;
                     return result;
                 };
-                auto font=impl_->font(glyph.font);
-                if (glyph.face_id && impl_->face_ids[glyph.font] != glyph.face_id) font = nullptr;
-                auto error=font?font->rasterize(glyph.id,size):FT_Err_Invalid_Face_Handle;
+                auto font=impl_->font(glyph.font,glyph.slot);
+                if (glyph.face_id && impl_->face_ids[glyph.slot][glyph.font] != glyph.face_id) font = nullptr;
+                auto error=font?font->rasterize(glyph.id,size,glyph.synth):FT_Err_Invalid_Face_Handle;
                 if(error) {
                     impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);
                     return box();
@@ -320,8 +353,9 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
         });
     }
 }
-TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) {
-    auto layout = text_.shape(text, pixels);
+TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) { return measure(text, pixels, FontStyle{}); }
+TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) {
+    auto layout = text_.shape(text, pixels, style);
     TextRun run;
     run.stops.assign(layout.carets.begin(), layout.carets.end());
     run.width = layout.width;
