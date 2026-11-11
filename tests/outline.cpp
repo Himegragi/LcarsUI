@@ -46,6 +46,9 @@ const std::vector<Subject> subjects{
     {"text", true, false, true}, {"dropdown", true, false, true}, {"box", true, true, true}, {"radio", true, false, true},
     {"slider", true, false, true}, {"progress_empty", true, false, false}, {"note", true, false, true, 1},
     {"button", false, true, true}, {"nav", false, false, false}, {"progress_value", false, true, false},
+    // #80 aligned fields: alignment, line and paragraph spacing move the text, never the control's edge color.
+    {"text_center", true, false, true}, {"text_right", true, false, true},
+    {"note_center", true, false, true, 1}, {"note_right", true, false, true, 1},
 };
 
 struct Page {
@@ -64,7 +67,13 @@ struct Page {
         auto nav = ui.add_navigation_list({.id = "nav", .kind = Kind::navigation_list}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
         // #79 multi-line field: 8 lines in a 2-line box, so it paints its own scrollbar thumb.
         auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
-        handles = {text, dropdown, box, radio, slider, empty, valued, button, nav, note};
+        // #80: aligned single-line fields (short text, so the alignment shift applies) and aligned multi-line ones
+        // (8 lines in a 2-line box, with line and paragraph spacing, so a thumb is drawn and rows are taller).
+        auto text_center = ui.add_text({.id = "text_center", .kind = Kind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
+        auto text_right = ui.add_text({.id = "text_right", .kind = Kind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
+        auto note_center = ui.add_text({.id = "note_center", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
+        auto note_right = ui.add_text({.id = "note_right", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
+        handles = {text, dropdown, box, radio, slider, empty, valued, button, nav, note, text_center, text_right, note_center, note_right};
     }
     Frame frame(const Appearance& appearance) {
         test::FakeMeasure measure; ScrollState scroll;
@@ -127,7 +136,7 @@ void disabled_controls_draw_the_light_border_instead_of_the_outline() {
 
 void focus_and_error_edges_keep_their_colors() {
     sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
-        if (s.id != "text" && s.id != "dropdown" && s.id != "note") return;
+        if (s.id != "text" && s.id != "dropdown" && s.id != "note" && s.id.rfind("text_", 0) != 0 && s.id.rfind("note_", 0) != 0) return;
         auto focused = sem; focused.enabled = true; focused.focused = true; focused.invalid = false;
         auto on_focus = paint(page, a, item, focused);
         check(on_focus.has(p.accent, detail::PaintRole::focus_indicator) && on_focus.count(p.outline) == s.thumbs, (label + ": focus edge is accent").c_str());
@@ -143,6 +152,35 @@ void focused_checkbox_radio_and_slider_keep_the_outline() {
         auto focused = sem; focused.enabled = true; focused.focused = true;
         check(paint(page, a, item, focused).has(p.outline), (label + ": focused keeps outline").c_str());
     });
+}
+
+// #72 + #80: the focus rule is the state's own (draws_focus_indicator), not the probe override used above.
+// An editable field always shows it; a read-only one only after real keyboard input.
+void aligned_fields_follow_the_focus_indicator_rule() {
+    for (const auto* a : builtins) {
+        Page page;
+        auto frame = page.frame(*a);
+        auto& state = detail::access(page.ui);
+        state.set_system_keyboard_cues(false);
+        auto p = a->palette(ThemeVariant::light());
+        for (const auto* id : {"text_center", "text_right", "note_center", "note_right"}) {
+            auto item = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& i) { return i.id == id; });
+            auto sem = state.describe(id);
+            check(item != frame.items.end() && sem, "aligned field arranged");
+            auto probe = [&](Semantics s) { RoleProbe r(state, *item, s, *a, 1.f, true); detail::component_type(s.kind).paint(r); return r; };
+            auto focused = *sem; focused.enabled = true; focused.read_only = false; focused.focused = true; focused.invalid = false;
+            auto editable = probe(focused);
+            check(editable.has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": editable focused field shows the focus edge without keyboard input").c_str());
+            auto read_only = focused; read_only.read_only = true;
+            auto quiet = probe(read_only);
+            check(!quiet.has(p.accent, detail::PaintRole::focus_indicator) && quiet.has(p.outline), (std::string(id) + ": read-only focused field hides it until keyboard input, edge stays outline").c_str());
+            state.set_system_keyboard_cues(true);
+            check(probe(read_only).has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": read-only focused field shows it with keyboard cues").c_str());
+            state.set_system_keyboard_cues(false);
+            auto unfocused = focused; unfocused.focused = false;
+            check(!probe(unfocused).has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": unfocused field has no focus edge").c_str());
+        }
+    }
 }
 
 void radio_with_every_option_disabled_draws_the_light_border() {
@@ -200,6 +238,7 @@ int main() {
         {"disabled_controls_draw_the_light_border_instead_of_the_outline", disabled_controls_draw_the_light_border_instead_of_the_outline},
         {"focus_and_error_edges_keep_their_colors", focus_and_error_edges_keep_their_colors},
         {"focused_checkbox_radio_and_slider_keep_the_outline", focused_checkbox_radio_and_slider_keep_the_outline},
+        {"aligned_fields_follow_the_focus_indicator_rule", aligned_fields_follow_the_focus_indicator_rule},
         {"radio_with_every_option_disabled_draws_the_light_border", radio_with_every_option_disabled_draws_the_light_border},
         {"progress_track_follows_whether_a_value_is_shown", progress_track_follows_whether_a_value_is_shown},
         {"an_override_of_outline_reaches_the_painted_edges", an_override_of_outline_reaches_the_painted_edges},
