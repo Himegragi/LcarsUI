@@ -527,22 +527,29 @@ class TextRange final : public ITextRangeProvider {
         }
         return committed(raw);
     }
-    // Lines and paragraphs are real units only in a multi-line field; elsewhere every unit but the
-    // character is the whole document, as before.
+    // Words and paragraphs come from the text itself, with the same boundaries a double or triple click uses
+    // (#83); lines are real units only in a multi-line field (they depend on wrapping); every other unit is the
+    // whole document, as before.
     bool granular(TextUnit unit) const {
-        if (unit == TextUnit_Character)
+        if (unit == TextUnit_Character || unit == TextUnit_Word || unit == TextUnit_Paragraph)
             return true;
         auto p = placement();
-        return p && p->multiline && (unit == TextUnit_Line || unit == TextUnit_Paragraph);
+        return p && p->multiline && unit == TextUnit_Line;
     }
     std::vector<unsigned> boundaries(TextUnit unit) const {
         if (unit == TextUnit_Character)
             return stops();
+        if (unit == TextUnit_Word || unit == TextUnit_Paragraph) {
+            auto out = unit == TextUnit_Word ? access(*owner->ctx->ui).word_unit_boundaries(owner->ref.id)
+                                             : access(*owner->ctx->ui).paragraph_boundaries(owner->ref.id);
+            if (out.empty() || out.back() != version.size())
+                out.push_back(static_cast<unsigned>(version.size()));
+            return out;
+        }
         std::vector<unsigned> raw;
-        if (auto p = placement(); p && p->multiline && (unit == TextUnit_Line || unit == TextUnit_Paragraph))
+        if (auto p = placement(); p && p->multiline && unit == TextUnit_Line)
             for (std::size_t i = 0; i < p->view.lines.size(); ++i)
-                if (unit == TextUnit_Line || i == 0 || !p->view.lines[i - 1].soft)
-                    raw.push_back(p->view.lines[i].begin);
+                raw.push_back(p->view.lines[i].begin);
         auto out = committed(raw);
         if (raw.empty())
             out = {0, static_cast<unsigned>(version.size())};

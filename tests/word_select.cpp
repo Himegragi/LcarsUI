@@ -8,6 +8,7 @@
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
+#include "text_unit_expectations.hpp"
 #include "word_break.hpp"
 #include <cstring>
 #include <iostream>
@@ -342,6 +343,102 @@ void clicks_count_by_time_distance_and_target() {
     check(f.selection().anchor == 1 && f.selection().caret == 7, "Shift+click extends the selection");
 }
 
+// The UIA word and paragraph units are the double-click words and the triple-click paragraphs: one predicate, shared with
+// the UIA seam (tests/uia_demo_client.cpp UA09) through tests/text_unit_expectations.hpp.
+bool bounds_start_and_end(const std::vector<unsigned>& bounds, std::size_t size) { return !bounds.empty() && bounds.front() == 0 && bounds.back() == size; }
+void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
+    for (auto mode : {WordSegmentation::dictionary, WordSegmentation::per_character, WordSegmentation::script_run}) {
+        Field f(test::units::text, true, mode);
+        const std::u16string text = test::units::text;
+        auto pieces = [&](const std::vector<unsigned>& bounds) {
+            std::vector<std::u16string> out;
+            for (std::size_t i = 0; i + 1 < bounds.size(); ++i) out.push_back(text.substr(bounds[i], bounds[i + 1] - bounds[i]));
+            return out;
+        };
+        check(bounds_start_and_end(f.host().word_unit_boundaries("t"), text.size()) && pieces(f.host().word_unit_boundaries("t")) == test::units::words(),
+              "The word units are the shared words");
+        check(bounds_start_and_end(f.host().paragraph_boundaries("t"), text.size()) && pieces(f.host().paragraph_boundaries("t")) == test::units::paragraphs(),
+              "The paragraph units are the shared paragraphs");
+        const auto bounds = f.host().word_unit_boundaries("t");
+        for (unsigned at = 0; at < text.size(); ++at) {
+            if (text[at] == u'\n') continue;  // a click on a line feed means the last word before it, not the line feed
+            const auto unit = static_cast<std::size_t>(std::upper_bound(bounds.begin(), bounds.end(), at) - bounds.begin() - 1);
+            TextSpan expected{bounds[unit], bounds[unit + 1]};
+            if (text[at] == u' ') {  // a click on spaces selects just the run of spaces, even where a unit lets the previous word keep them
+                expected = {at, at + 1};
+                while (expected.begin > 0 && text[expected.begin - 1] == u' ') --expected.begin;
+                while (expected.end < text.size() && text[expected.end] == u' ') ++expected.end;
+            }
+            check(*f.handle.word_at(at) == expected, "A double click selects its unit, or the run of spaces when it lands on spaces");
+        }
+        check(f.host().word_unit_boundaries("missing").empty(), "Nothing for an unknown field");
+    }
+}
+
+// ---- The semantic layer answers like the typed handle --------------------------------------------------
+bool has(const SemanticNode& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+
+void the_semantic_layer_reads_selects_and_queries_like_the_typed_handle() {
+    Field f(mixed, false, WordSegmentation::dictionary);
+    auto& tree = f.ui.semantics();
+    auto node = tree.get({"t"});
+    check(bool(node) && node->word_segmentation == WordSegmentation::dictionary && node->word_segmentation_in_use == WordSegmentation::dictionary,
+          "The node carries the mode as set and the mode in use");
+    for (auto verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+        check(has(*node, verb), "A text field offers every word verb");
+    check(bool(tree.perform({"t"}, Verb::select_word, 12)) && f.selection().anchor == 12 && f.selection().caret == 14, "select_word selects 示範 (fixed pairs)");
+    check(f.handle.select_word(12) && f.selection().anchor == 12 && f.selection().caret == 14, "The typed select_word does the same");
+    check(bool(tree.perform({"t"}, Verb::set_word_segmentation, WordSegmentation::script_run)) && *f.handle.word_segmentation() == WordSegmentation::script_run,
+          "set_word_segmentation changes the field the handle sees");
+    check(tree.get({"t"})->word_segmentation == WordSegmentation::script_run, "and the node");
+    check(bool(tree.perform({"t"}, Verb::select_word, 12)) && f.selection().anchor == 8 && f.selection().caret == 14, "Now the whole run");
+    check(*tree.text_unit("t", TextUnitKind::word, 12) == *f.handle.word_at(12) && *tree.text_unit("t", TextUnitKind::paragraph, 3) == *f.handle.paragraph_at(3) &&
+          *tree.text_unit("t", TextUnitKind::paragraph, 3) == TextSpan{0, 26}, "text_unit equals word_at and paragraph_at");
+    check(*tree.word_stop("t", 0, true) == *f.handle.next_word_stop(0) && *tree.word_stop("t", 14, false) == *f.handle.previous_word_stop(14), "word_stop equals the stop queries");
+    check(bool(tree.perform({"t"}, Verb::double_click, 17)) && f.selection().anchor == 17 && f.selection().caret == 20, "double_click selects the word (12 and its space)");
+    check(bool(tree.perform({"t"}, Verb::triple_click, 17)) && f.selection().anchor == 0 && f.selection().caret == 26, "triple_click selects the paragraph");
+    check(tree.perform({"t"}, Verb::select_word, 27).status == Status::invalid_value && f.handle.select_word(27).status == Status::invalid_value, "An offset past the end is invalid in both");
+    check(tree.perform({"t"}, Verb::select_word, -1).status == Status::invalid_value && tree.perform({"t"}, Verb::select_word, std::u16string(u"x")).status == Status::invalid_value,
+          "A wrong argument is invalid_value");
+    check(tree.perform({"t"}, Verb::set_word_segmentation, 3).status == Status::invalid_value, "So is a mode that is not a WordSegmentation");
+    check(tree.text_unit("t", TextUnitKind::word, 27).status == Status::invalid_value && tree.word_stop("t", 27, true).status == Status::invalid_value, "Queries agree on a bad offset");
+}
+
+void the_semantic_layer_reports_a_dictionary_fallback_and_the_same_admission() {
+    Field f(mixed, false, WordSegmentation::dictionary, std::make_shared<FailingBreaker>());
+    auto& tree = f.ui.semantics();
+    auto node = tree.get({"t"});
+    check(node->word_segmentation == WordSegmentation::dictionary && node->word_segmentation_in_use == WordSegmentation::per_character, "The node reports the fallback");
+    check(bool(tree.perform({"t"}, Verb::select_word, 9)) && f.selection().anchor == 9 && f.selection().caret == 10, "and operates per character");
+    f.handle.read_only(true);
+    check(bool(tree.perform({"t"}, Verb::select_word, 9)) && bool(tree.perform({"t"}, Verb::triple_click, 9)), "A read-only field still selects through the layer");
+    f.handle.enable(false);
+    node = tree.get({"t"});
+    check(!has(*node, Verb::select_word) && !has(*node, Verb::double_click), "A disabled field offers no select verbs");
+    check(tree.perform({"t"}, Verb::select_word, 9).status == Status::disabled && f.handle.select_word(9).status == Status::disabled, "Both refuse with the same status");
+    check(tree.perform({"t"}, Verb::triple_click, 9).status == Status::disabled && f.handle.triple_click(9).status == Status::disabled, "Also for triple click");
+    check(bool(tree.text_unit("t", TextUnitKind::word, 9)) && bool(f.handle.word_at(9)), "Queries still work on a disabled field, as for the handle");
+    auto button = *f.ui.add_button({.id = "b", .kind = Kind::button, .label = u"OK"});
+    (void)button;
+    check(!has(*tree.get({"b"}), Verb::select_word) && tree.text_unit("b", TextUnitKind::word, 0).status == Status::not_supported && tree.word_stop("b", 0, true).status == Status::not_supported,
+          "Other controls have no word verbs or queries");
+}
+
+void the_semantic_layer_announces_a_segmentation_change() {
+    Field f(u"aa bb");
+    auto& tree = f.ui.semantics();
+    std::vector<SemanticEvent> seen;
+    auto subscription = tree.subscribe([&](const SemanticEvent& e) { seen.push_back(e); });
+    f.handle.set_word_segmentation(WordSegmentation::script_run);
+    tree.dispatch_events();
+    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::property_changed && e.property == "word_segmentation"; }),
+          "A property_changed event names word_segmentation");
+    seen.clear();
+    f.handle.double_click(0);
+    tree.dispatch_events();
+    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::text_selection_changed; }), "A double click raises the usual selection event");
+}
+
 // ---- Real ICU (only with --icu): rules no dictionary update can change ------------------------------
 bool icu_present() { std::vector<unsigned> probe; return detail::system_icu_breaker().boundaries(u"a", probe); }
 
@@ -388,6 +485,10 @@ int main(int argc, char** argv) {
         {"dragging_after_a_triple_click_grows_by_paragraphs", dragging_after_a_triple_click_grows_by_paragraphs},
         {"a_selection_change_ends_the_unit_drag", a_selection_change_ends_the_unit_drag},
         {"clicks_count_by_time_distance_and_target", clicks_count_by_time_distance_and_target},
+        {"uia_units_are_the_double_click_words_and_paragraphs_in_every_mode", uia_units_are_the_double_click_words_and_paragraphs_in_every_mode},
+        {"the_semantic_layer_reads_selects_and_queries_like_the_typed_handle", the_semantic_layer_reads_selects_and_queries_like_the_typed_handle},
+        {"the_semantic_layer_reports_a_dictionary_fallback_and_the_same_admission", the_semantic_layer_reports_a_dictionary_fallback_and_the_same_admission},
+        {"the_semantic_layer_announces_a_segmentation_change", the_semantic_layer_announces_a_segmentation_change},
     };
     return test::run("word_select", cases);
 }

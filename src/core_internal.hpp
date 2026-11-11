@@ -220,6 +220,9 @@ public:
     Query<TextSpan> word_at(std::string_view id, unsigned offset) const;
     Query<TextSpan> paragraph_at(std::string_view id, unsigned offset) const;
     Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
+    // The UIA word and paragraph unit boundaries of a field's committed text (empty for anything that is not a text field).
+    std::vector<unsigned> word_unit_boundaries(std::string_view id) const;
+    std::vector<unsigned> paragraph_boundaries(std::string_view id) const;
     Result select_word(std::string_view id, unsigned offset);
     Result select_paragraph(std::string_view id, unsigned offset);
     Result double_click(std::string_view id, unsigned offset);

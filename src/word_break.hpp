@@ -14,6 +14,8 @@ class WordBreaker {
 public:
     virtual ~WordBreaker() = default;
     virtual bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const = 0;
+    // Whether this breaker works at all; a breaker that can only fail on some texts still reports true.
+    virtual bool usable() const { std::vector<unsigned> probe; return boundaries(u"a", probe); }
 };
 // Rule breakers, always available. Both isolate every punctuation mark, keep a run of spaces together,
 // keep a run of Latin letters and digits together and give each line feed its own word.
@@ -30,6 +32,8 @@ struct Words {
     std::vector<unsigned> bounds;
     WordSegmentation used = WordSegmentation::per_character;
 };
+// What segment_words reports as `used` for any text: the mode itself, or per_character when the dictionary is unusable.
+WordSegmentation segmentation_in_use(WordSegmentation mode, const WordBreaker& dictionary);
 Words segment_words(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 // Whitespace other than a line feed: Ctrl+arrow does not stop on it and a double click takes it along.
 bool is_space_word(std::u16string_view text, unsigned begin, unsigned end);
@@ -42,6 +46,13 @@ TextSpan word_span(std::u16string_view text, const Words& words, unsigned offset
 // Where Ctrl+Right (forward) or Ctrl+Left goes from `offset`: the nearest word stop after (before) it, or the end
 // (start) of the text when there is none.
 unsigned next_word_stop(std::u16string_view text, const Words& words, unsigned offset, bool forward);
+// The partition of the text into the words a double click selects, as ascending boundaries starting at 0 and ending at
+// text.size(): a word with the spaces after it, every punctuation mark, every line feed and every run of spaces that
+// follows no word. UIA's word unit uses exactly these, so the two can never disagree.
+std::vector<unsigned> word_unit_bounds(std::u16string_view text, const Words& words);
+// The same for paragraphs: a paragraph runs through its line feed, so the boundaries are 0, every offset after a
+// line feed, and text.size().
+std::vector<unsigned> paragraph_bounds(std::u16string_view text);
 // The paragraph (text between line feeds, the line feed excluded) holding the character at `offset`.
 TextSpan paragraph_span(std::u16string_view text, unsigned offset);
 }

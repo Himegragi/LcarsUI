@@ -82,6 +82,10 @@ struct Icu {
     }
 };
 struct SystemIcu final : WordBreaker {
+    bool usable() const override {
+        static const bool works = [this] { std::vector<unsigned> probe; return boundaries(u"a b", probe); }();
+        return works;
+    }
     bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override {
         static const Icu icu;
         if (!icu.open) return false;
@@ -111,6 +115,9 @@ const WordBreaker& per_character_breaker() { static const PerCharacter breaker; 
 const WordBreaker& script_run_breaker() { static const ScriptRun breaker; return breaker; }
 const WordBreaker& system_icu_breaker() { static const SystemIcu breaker; return breaker; }
 
+WordSegmentation segmentation_in_use(WordSegmentation mode, const WordBreaker& dictionary) {
+    return mode == WordSegmentation::dictionary && !dictionary.usable() ? WordSegmentation::per_character : mode;
+}
 Words segment_words(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
     Words words;
     std::vector<unsigned> raw;
@@ -166,6 +173,23 @@ unsigned next_word_stop(std::u16string_view text, const Words& words, unsigned o
     }
     auto it = std::lower_bound(stops.begin(), stops.end(), offset);
     return it == stops.begin() ? 0u : *(it - 1);
+}
+std::vector<unsigned> word_unit_bounds(std::u16string_view text, const Words& words) {
+    const auto& b = words.bounds;
+    std::vector<unsigned> out;
+    for (std::size_t i = 0; i + 1 < b.size();) {
+        out.push_back(b[i]);
+        i += is_letter_word(text, b[i], b[i + 1]) && i + 2 < b.size() && is_space_word(text, b[i + 1], b[i + 2]) ? 2 : 1;
+    }
+    out.push_back(static_cast<unsigned>(text.size()));
+    return out;
+}
+std::vector<unsigned> paragraph_bounds(std::u16string_view text) {
+    std::vector<unsigned> out{0};
+    for (unsigned at = 0; at < text.size(); ++at)
+        if (text[at] == u'\n' && at + 1 < text.size()) out.push_back(at + 1);
+    if (text.size() > 0) out.push_back(static_cast<unsigned>(text.size()));
+    return out;
 }
 TextSpan paragraph_span(std::u16string_view text, unsigned offset) {
     offset = std::min<unsigned>(offset, static_cast<unsigned>(text.size()));

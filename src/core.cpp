@@ -2455,7 +2455,7 @@ Query<WordSegmentation> detail::UiState::word_segmentation_in_use(std::string_vi
     if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::not_supported, u"Not a text field", std::nullopt};
-    return {Status::ok, {}, words_of(it->second).used};
+    return {Status::ok, {}, segmentation_in_use(it->second.segmentation, dictionary())};
 }
 Query<TextSpan> detail::UiState::word_at(std::string_view id, unsigned offset) const {
     if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
@@ -2480,6 +2480,15 @@ Query<unsigned> detail::UiState::word_stop(std::string_view id, unsigned offset,
     const auto& text = it->second.session.text;
     if (offset > text.size()) return {Status::invalid_value, u"Offset is past the end of the text", std::nullopt};
     return {Status::ok, {}, next_word_stop(text, words_of(it->second), offset, forward)};
+}
+std::vector<unsigned> detail::UiState::word_unit_boundaries(std::string_view id) const {
+    auto it = edits_.find(id);
+    if (it == edits_.end()) return {};
+    return word_unit_bounds(it->second.session.text, words_of(it->second));
+}
+std::vector<unsigned> detail::UiState::paragraph_boundaries(std::string_view id) const {
+    auto it = edits_.find(id);
+    return it == edits_.end() ? std::vector<unsigned>{} : paragraph_bounds(it->second.session.text);
 }
 Result detail::UiState::select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm) {
     OperationScope operation(this);
@@ -3300,6 +3309,10 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
     auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
     if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
+    if (edit != u.edits_.end() && !ref.item) {
+        n.word_segmentation = edit->second.segmentation;
+        n.word_segmentation_in_use = segmentation_in_use(edit->second.segmentation, u.dictionary());
+    }
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -3334,6 +3347,9 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
             add(Verb::cut, n.role == Role::text && admits(Operation::cut));
             add(Verb::paste, n.role == Role::text && admits(Operation::paste));
             add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
+            add(Verb::set_word_segmentation, n.role == Role::text);
+            for (auto unit_verb : {Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+                add(unit_verb, n.role == Role::text && admits(Operation::select));
             bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
                 (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
                 (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
@@ -3376,6 +3392,16 @@ Query<Palette> SemanticTree::effective_palette() const {
     if (u.stopped_) return {Status::failed, {}, {}};
     if (!u.bound_appearance()) return {Status::not_found, u"No appearance is bound to this Ui", {}};
     return {Status::ok, {}, u.effective_palette(*u.bound_appearance())};
+}
+Query<TextSpan> SemanticTree::text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const {
+    auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
+    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    return unit == TextUnitKind::word ? state_->word_at(id, offset) : state_->paragraph_at(id, offset);
+}
+Query<unsigned> SemanticTree::word_stop(std::string_view id, unsigned offset, bool forward) const {
+    auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
+    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    return state_->word_stop(id, offset, forward);
 }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
@@ -3432,6 +3458,7 @@ void detail::UiState::semantic_diff() {
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
         property(node.blocked_by_modal != old->blocked_by_modal, "blocked_by_modal");
         property(node.numeric_value != old->numeric_value, "numeric_value");
+        property(node.word_segmentation != old->word_segmentation, "word_segmentation");
         if (node.scroll && old->scroll) {
             property(node.scroll->first_line != old->scroll->first_line, "scroll_line");
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
@@ -3493,6 +3520,17 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     if (node->role == Role::text && verb == Verb::scroll) {
         if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
         if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
+        return invalid_argument();
+    }
+    if (node->role == Role::text && (verb == Verb::select_word || verb == Verb::select_paragraph || verb == Verb::double_click || verb == Verb::triple_click)) {
+        auto offset = std::get_if<int>(&argument);
+        if (!offset || *offset < 0) return invalid_argument();
+        const auto at = static_cast<unsigned>(*offset);
+        return verb == Verb::select_word ? state_->select_word(ref.id, at) : verb == Verb::select_paragraph ? state_->select_paragraph(ref.id, at)
+             : verb == Verb::double_click ? state_->double_click(ref.id, at) : state_->triple_click(ref.id, at);
+    }
+    if (node->role == Role::text && verb == Verb::set_word_segmentation) {
+        if (auto mode = std::get_if<WordSegmentation>(&argument)) return state_->set_word_segmentation(ref.id, *mode);
         return invalid_argument();
     }
     if (node->role == Role::text && verb == Verb::set_value) {
