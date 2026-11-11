@@ -140,6 +140,17 @@ public:
     // Host requests a new frame when a source notification changes the view.
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const { return presentation_; }
+    // Focus indicator display state. Only real input moves it: key_down and the host's pointer press.
+    // Programmatic focus, semantic operations and UIA never change it.
+    bool focus_indicator_visible() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
+    // The per-component answer the paint code uses: focused, and either shown or an editable text field.
+    bool draws_focus_indicator(const Semantics& semantics) const {
+        return semantics.focused && (focus_indicator_visible() || (semantics.kind == Kind::text && !semantics.read_only && semantics.enabled));
+    }
+    // A pointer press anywhere in the client area, including empty space and inert components.
+    void pointer_pressed();
+    // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
+    void set_system_keyboard_cues(bool enabled);
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
     Result set_palette_overrides(std::vector<PaletteOverride> overrides);
     const std::vector<PaletteOverride>& palette_overrides() const { return palette_overrides_; }
@@ -360,7 +371,8 @@ private:
     std::uint64_t tooltip_now_ = 0;
     std::optional<std::uint64_t> tooltip_paused_at_;
     std::function<std::uint64_t()> tooltip_clock_;
-    bool window_active_ = false, pointer_focus_ = false;
+    bool window_active_ = false, keyboard_cues_ = false, system_cues_ = false;
+    void focus_cues_changed();
     Id popup_source_;
     std::map<Id, bool, std::less<>> visibility_;
     bool has_frame_visibility_ = false;

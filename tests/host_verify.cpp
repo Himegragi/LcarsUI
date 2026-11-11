@@ -313,13 +313,14 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
             if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); setup=setup && h.region.describe()->candidate==OptionValue{"south"}; }
         } else if(scenario<8) {
             setup=bool(h.tabs.activate({"v02"})); auto& list=*f.form.list;
+            state.set_system_keyboard_cues(true);  // indicator shown, as after a key press; programmatic focus alone does not show it
             if(scenario==5) setup=setup && bool(list.handles.twenty.invoke()) && bool(list.handles.list.select({"T003"})) && bool(list.handles.list.focus());
             if(scenario==6) { setup=setup && bool(list.handles.hundred.invoke()) && bool(list.handles.list.focus()); f.tap(VK_END); setup=setup && list.selection()==OptionValue{"T100"} && list.handles.list.describe()->candidate==OptionValue{"T100"}; }
             if(scenario==7) setup=setup && bool(list.handles.zero.invoke());
         } else {
             setup=bool(h.tabs.activate({"v03"}));
-            if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
-            if(scenario==9) setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open();
+            if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.tap(VK_RIGHT); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
+            if(scenario==9) { state.set_system_keyboard_cues(true); setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open(); }
         }
         int width=960,height=720;
         if(scenario==6 && setup) {
@@ -386,6 +387,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         auto settings=demo.ui.presentation(); settings.variant=dark?ThemeVariant::dark():ThemeVariant::light();
         bool setup=bool(demo.ui.set_presentation(settings));
         auto tap=[&](WPARAM key){ PostMessageW(host.window(),WM_KEYDOWN,key,key_lparam(key,false,false)); PostMessageW(host.window(),WM_KEYUP,key,key_lparam(key,false,true)); host.pump(); };
+        if(scenario==2 || scenario==7) detail::access(demo.ui).set_system_keyboard_cues(true);  // indicator shown, as after a key press; programmatic focus alone does not show it
         if(scenario==0) setup &= bool(demo.name.focus());
         if(scenario==1) { setup &= bool(demo.name.focus()) && bool(demo.name.set_value(u"")); tap(VK_TAB); setup &= demo.name.describe()->invalid; }
         if(scenario==2 || scenario==3) {
@@ -486,7 +488,7 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
     auto& h = f.form.handles;
     h.tabs.activate({"v03"});
     SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
-    h.progress_half.focus(); f.settle();
+    h.progress_half.focus(); f.tap(VK_RIGHT); f.settle();  // the focus tooltip needs keyboard use first
     bool initially_hidden = h.progress_tip.visible() && !*h.progress_tip.visible();
     Sleep(550); f.host.pump(); f.host.paint();
     bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused &&
@@ -516,6 +518,42 @@ void tooltip_native(const Appearance& appearance, Report& report, const std::fil
         "initial=" + std::to_string(initially_hidden) + ", focus=" + std::to_string(shown) + ", escape=" + std::to_string(escaped) +
         ", refocus-delay=" + std::to_string(refocus_waits) + ", returned=" + std::to_string(returned) + ", geometry=" + std::to_string(geometry) +
         ", space=" + std::to_string(space));
+}
+
+// Native twin of the core focus-visibility cases (#72): real window messages drive the display state.
+void focus_visibility_native(const Appearance& appearance, Report& report) {
+    Fixture f(appearance, true);
+    auto& state = detail::access(f.form.ui);
+    BOOL system_on = FALSE; SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &system_on, 0);
+    auto shown = [&] { return f.form.ui.focus_indicator_visible(); };
+    state.set_system_keyboard_cues(false);  // deterministic start whatever the desktop setting is
+    bool started_hidden = !shown();
+    f.tap(VK_TAB);
+    bool key_shows = shown() && !state.focused().empty();
+    SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), MAKELPARAM(10, 10));
+    bool wheel_keeps = shown();
+    f.mouse(WM_LBUTTONDOWN, f.center(f.ids.title), MK_LBUTTON); f.mouse(WM_LBUTTONUP, f.center(f.ids.title));
+    bool inert_press_hides = !shown();  // the title label does not accept the pointer, yet the press still hides
+    f.chord('S');
+    bool chord_keeps_hidden = !shown();
+    f.tap(VK_RIGHT);
+    bool plain_key_shows = shown();
+    POINT blank{-1, -1};
+    f.host.paint();
+    for (int y = 690; y > 0 && blank.x < 0; y -= 7) for (int x = 3; x < 900; x += 11)
+        if (!f.host.frame().hit(x, y)) { blank = {x, y}; break; }
+    bool found_blank = blank.x >= 0;
+    if (found_blank) { f.mouse(WM_LBUTTONDOWN, blank, MK_LBUTTON); f.mouse(WM_LBUTTONUP, blank); }
+    bool blank_press_hides = found_blank && !shown();
+    state.set_system_keyboard_cues(!system_on);
+    SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETKEYBOARDCUES, 0);
+    bool setting_change_rereads = shown() == bool(system_on);  // recorded state is hidden, so only the system value shows it
+    report.check("F72-native-focus-visibility", started_hidden && key_shows && wheel_keeps && inert_press_hides && chord_keeps_hidden &&
+                 plain_key_shows && blank_press_hides && setting_change_rereads,
+                 "hidden at start=" + std::to_string(started_hidden) + ", key shows=" + std::to_string(key_shows) + ", wheel keeps=" + std::to_string(wheel_keeps) +
+                 ", inert press hides=" + std::to_string(inert_press_hides) + ", Ctrl chord keeps hidden=" + std::to_string(chord_keeps_hidden) +
+                 ", plain key shows=" + std::to_string(plain_key_shows) + ", blank press hides=" + std::to_string(blank_press_hides) +
+                 ", WM_SETTINGCHANGE re-reads=" + std::to_string(setting_change_rereads));
 }
 
 void dialog_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
@@ -1638,7 +1676,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
             state.tooltip_clock([&] { return now; });
             SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
             f.post(WM_MOUSELEAVE, 0, 0); f.host.pump();
-            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.settle();
+            h.progress_half.focus(); f.tap(VK_RIGHT); f.settle(); now += 600; state.tooltip_time(now); f.settle();
             bool shown = *h.progress_tip.visible() && h.progress_half.describe()->focused;
             auto tip_scroll = f.host.frame().regions.front();
             bool tip_wheel = tip_scroll.maximum == 0;
@@ -1671,6 +1709,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 }
                 f.host.paint();
                 bool hid = f.form.scroll.offset != old && !*h.progress_tip.visible() && h.progress_half.describe()->focused;
+                f.tap(VK_RIGHT);  // the scrollbar press hid the indicator; a key shows it and starts the fresh dwell
                 now += 499; state.tooltip_time(now); bool waiting = !*h.progress_tip.visible();
                 ++now; state.tooltip_time(now); bool resumed = *h.progress_tip.visible();
                 f.host.paint();
@@ -1774,7 +1813,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                     ", reopened after fresh dwell=" + std::to_string(second_wait && reopened));
                 SendMessageW(f.host.window(), WM_MOUSELEAVE, 0, 0);
             }
-            h.progress_half.focus(); f.settle(); now += 600; state.tooltip_time(now); f.host.paint();
+            h.progress_half.focus(); f.tap(VK_RIGHT); f.settle(); now += 600; state.tooltip_time(now); f.host.paint();
             bool transparent = false;
             auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& item) { return item.tooltip; });
             if (tip != f.host.frame().overlays.end()) {
@@ -2218,7 +2257,7 @@ void x04_tooltip_matrix(const Appearance& appearance, Report& report) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui); std::uint64_t now = 100;
             f.x04_size(size.first, size.second, scale); f.host.observe_paint(true);
             state.tooltip_clock([&] { return now; }); SendMessageW(f.host.window(), WM_SETFOCUS, 0, 0);
-            bool driven = x04::prepare_tip(f.form); auto semantic = f.form.handles.progress_half.describe();
+            bool driven = x04::prepare_tip(f.form); f.tap(VK_RIGHT); auto semantic = f.form.handles.progress_half.describe();
             f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
             f.host.paint(); now += 600; state.tooltip_time(now); f.host.paint();
             auto tip = std::find_if(f.host.frame().overlays.begin(), f.host.frame().overlays.end(), [](const auto& p) { return p.tooltip; });
@@ -3007,7 +3046,7 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         bool pointer_left = !*live.form.handles.progress_tip.visible();
         report.check("P05-real-pointer", pointer_shown && pointer_left,
                      "Physical pointer dwell displays the tooltip without taking focus; leaving closes it");
-        live.form.handles.progress_half.focus();
+        live.form.handles.progress_half.focus(); live.tap(VK_RIGHT);  // the focus tooltip needs keyboard use first
         live.wait(650);
         bool visible_before = *live.form.handles.progress_tip.visible();
         live.foreground(live.helper);
@@ -3284,6 +3323,7 @@ int run(const std::filesystem::path& folder) {
         progress_native(*appearance, report, folder);
         dialog_native(*appearance, report, folder);
         tooltip_native(*appearance, report, folder);
+        focus_visibility_native(*appearance, report);
         long_dropdown_native(*appearance, report);
         list_native(*appearance, report);
         nested_list_native(*appearance, report);

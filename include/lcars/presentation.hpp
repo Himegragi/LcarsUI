@@ -3,6 +3,9 @@
 
 namespace lcars {
 enum class Density { standard, compact };
+// automatic: the indicator follows the user's latest real input (keys show it, a pointer press hides it).
+// always: shown for every focused component regardless of input. There is deliberately no "never".
+enum class FocusIndicatorMode { automatic, always };
 struct ThemeVariant {
     std::string name;
     static ThemeVariant light() { return {"light"}; }
@@ -16,6 +19,7 @@ struct PresentationSettings {
     int text_size = 16;
     ThemeVariant variant = ThemeVariant::light();
     Density density = Density::standard;
+    FocusIndicatorMode focus_indicator = FocusIndicatorMode::automatic;
     bool operator==(const PresentationSettings&) const = default;
 };
 }

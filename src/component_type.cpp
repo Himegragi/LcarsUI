@@ -7,6 +7,11 @@
 
 namespace lcars::detail {
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
+
+ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
+                               const Appearance& look, float render_scale, bool active_window)
+    : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window),
+      focus_visible(state.draws_focus_indicator(semantic)) {}
 namespace {
 bool supports(ComponentState state, std::initializer_list<ComponentState> states) {
     return std::find(states.begin(), states.end(), state) != states.end();
@@ -52,6 +57,12 @@ void paint_errors(ComponentPaint& c, const std::vector<Line>& lines, int pixels,
 void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
     for (const auto& line : lines) c.text(line.text, pixels, line.bounds.x, line.bounds.y, color);
 }
+// The slider's focus dot sits left of the title. Its room is always reserved, so the title never moves
+// when the indicator appears. Diameter is ~40% of the text size.
+struct SliderDot { int diameter, gap; int room() const { return diameter + gap; } };
+SliderDot slider_dot(const Appearance& appearance, float scale, int text_size, Density density) {
+    return {std::max(2, static_cast<int>(std::lround(text_size * 0.4))), scaled(scale, appearance.component_presentation(density).gap_small)};
+}
 class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
@@ -62,7 +73,7 @@ public:
         p.bounds = {0, 0, c.width, height_of(p.lines)};
     }
     void paint(ComponentPaint& c) const override {
-        if (c.semantics.focused) {
+        if (c.focus_visible) {
             auto r = c.placement.clip;
             auto color = c.palette().accent;
             int edge = std::max(1, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus));
@@ -216,14 +227,14 @@ public:
         auto p = c.palette();
         auto d = [&](int value) { return scaled(c.scale, value); };
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
-        bool focused = semantics.focused, enabled = semantics.enabled;
-        int ring = focused ? d(c.appearance.component_presentation(c.ui.presentation().density).inset) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
-        Color edge = semantics.invalid ? p.error : focused ? p.accent : p.border;
-        marked(c, (focused ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(surface, d(c.appearance.radius()), f.underline ? (enabled ? p.surface : p.background) : edge); });
+        bool focused = semantics.focused, enabled = semantics.enabled, cue = c.focus_visible;
+        int ring = cue ? d(c.appearance.component_presentation(c.ui.presentation().density).inset) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
+        Color edge = semantics.invalid ? p.error : cue ? p.accent : p.border;
+        marked(c, (cue ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(surface, d(c.appearance.radius()), f.underline ? (enabled ? p.surface : p.background) : edge); });
         if (!f.underline) {
             Rect inner{surface.x + ring, surface.y + ring, surface.w - 2 * ring, surface.h - 2 * ring};
             c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
-        } else marked(c, (focused ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge); });
+        } else marked(c, (cue ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge); });
         paint_lines(c, item.label_lines, item.caption_size, semantics.invalid ? p.error : p.muted);
         paint_lines(c, item.description_lines, item.caption_size, p.muted);
         paint_errors(c, item.error_lines, item.caption_size, p.error);
@@ -270,7 +281,7 @@ public:
         const auto& item = c.placement;
         auto p = c.palette();
         auto d = [&](int value) { return scaled(c.scale, value); };
-        bool focused = c.semantics.focused, enabled = c.semantics.enabled;
+        bool focused = c.focus_visible, enabled = c.semantics.enabled;
         int ring = focused ? d(c.appearance.component_presentation(c.ui.presentation().density).focus) : d(c.appearance.component_presentation(c.ui.presentation().density).thin);
         marked(c, focused ? PaintRole::focus_indicator : PaintRole::content, [&] { c.rounded(item.bounds, d(c.appearance.radius()), focused ? p.accent : enabled ? p.border : p.background); });
         Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
@@ -351,7 +362,7 @@ public:
         auto p = c.palette();
         const auto& item = c.placement;
         if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
-        if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), item.bounds.h}, p.accent); });
+        if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), item.bounds.h}, p.accent); });
         for (std::size_t i = 0; i < item.options.size(); ++i) {
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
             int size = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).indicator), inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus);
@@ -361,7 +372,7 @@ public:
             c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
             const auto& label = item.lines[i + 1];
             c.text(label.text, item.text_size, label.bounds.x, label.bounds.y, option.enabled && c.semantics.enabled ? p.text : p.muted);
-            if (c.semantics.focused && option.selected) marked(c, PaintRole::focus_indicator, [&] { c.fill({r.x, r.y + r.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), r.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
+            if (c.focus_visible && option.selected) marked(c, PaintRole::focus_indicator, [&] { c.fill({r.x, r.y + r.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), r.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, p.accent); });
         }
         paint_lines(c, item.description_lines, item.text_size, p.muted);
         paint_errors(c, item.error_lines, item.text_size, p.error);
@@ -401,7 +412,7 @@ public:
             const auto visible = intersect(row, p.clip);
             if (visible.w <= 0 || visible.h <= 0) continue;
             if (item.selected) marked(c, PaintRole::selection, [&] { c.fill(row, palette.selection); });
-            if (c.semantics.focused && c.semantics.candidate == item.value)
+            if (c.focus_visible && c.semantics.candidate == item.value)
                 marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), row.h}, palette.accent); });
             const auto& line = p.lines[i];
             c.text(line.text, p.text_size, line.bounds.x, line.bounds.y, item.enabled && c.semantics.enabled ? palette.text : palette.muted);
@@ -446,7 +457,7 @@ public:
             }
             return;
         }
-        marked(c, (c.semantics.focused ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.semantics.focused ? palette.accent : palette.border); });
+        marked(c, (c.focus_visible ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.focus_visible ? palette.accent : palette.border); });
         int inset = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset);
         c.rounded({bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)}, scaled(c.scale, c.appearance.radius()), palette.surface);
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
@@ -470,7 +481,9 @@ public:
         int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).slider_pad), track_height = scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).slider_height);
         auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : c.appearance.component_presentation(c.ui.presentation().density).disabled_suffix);
         if (semantics.source_conflict) title += c.appearance.component_presentation(c.ui.presentation().density).conflict_suffix;
-        p.lines = block(c.measure, title, p.text_size, c.width);
+        auto dot = slider_dot(c.appearance, c.scale, p.text_size, c.ui.presentation().density);
+        p.lines = block(c.measure, title, p.text_size, std::max(1, c.width - dot.room()));
+        for (auto& l : p.lines) l.bounds.x += dot.room();
         int y = height_of(p.lines) + scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).gap_small);
         p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};
         y += track_height;
@@ -495,10 +508,14 @@ public:
             // While the pointer holds the thumb it sits under the pointer (kept on the current track);
             // the value is still the snapped one. Releasing or interrupting the drag shows the tick again.
             if (const auto held = c.ui.slider_drag_x(item.id)) x = std::clamp(*held, track.x, track.x + track.w);
-            int size = scaled(c.scale, c.semantics.focused ? c.appearance.component_presentation().body_spacing : c.appearance.component_presentation().row_padding);
+            int size = scaled(c.scale, c.focus_visible ? c.appearance.component_presentation().body_spacing : c.appearance.component_presentation().row_padding);
             c.rounded({x - size / 2, track.y + (track.h - size) / 2, size, size}, size / 2,
                       c.semantics.enabled ? palette.accent : palette.muted);
-            if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.fill({track.x, track.y + track.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset), track.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, palette.accent); });
+        }
+        if (c.focus_visible && !item.lines.empty()) {
+            auto dot = slider_dot(c.appearance, c.scale, item.text_size, c.ui.presentation().density);
+            const auto& first = item.lines.front().bounds;
+            marked(c, PaintRole::focus_indicator, [&] { c.rounded({first.x - dot.room(), first.y + (first.h - dot.diameter) / 2, dot.diameter, dot.diameter}, dot.diameter / 2, palette.accent); });
         }
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
@@ -563,7 +580,7 @@ public:
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             marked(c, option.selected ? PaintRole::selection : PaintRole::content, [&] { c.fill(rect, option.selected ? palette.selection : palette.surface); });
             if (option.selected) marked(c, PaintRole::selection, [&] { c.fill({rect.x, rect.y + rect.h - scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus), rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).focus)}, palette.accent); });
-            if (c.semantics.focused && c.semantics.candidate && *c.semantics.candidate == option.value)
+            if (c.focus_visible && c.semantics.candidate && *c.semantics.candidate == option.value)
                 marked(c, PaintRole::focus_indicator, [&] { c.fill({rect.x, rect.y, rect.w, scaled(c.scale, c.appearance.component_presentation(c.ui.presentation().density).inset)}, palette.accent); });
             const auto& line = c.placement.lines[i];
             marked(c, option.invalid ? PaintRole::error_text : PaintRole::content, [&] { c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted); });
@@ -607,8 +624,8 @@ public:
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
             if (option.selected) {
                 int radius = material ? rect.h / 2 : scaled(c.scale, 6);
-                if (c.semantics.focused) marked(c, PaintRole::focus_indicator, [&] { c.rounded(rect, radius, palette.accent); });
-                auto inset = c.semantics.focused ? scaled(c.scale, 2) : 0;
+                if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.rounded(rect, radius, palette.accent); });
+                auto inset = c.focus_visible ? scaled(c.scale, 2) : 0;
                 marked(c, PaintRole::selection, [&] {
                     c.rounded({rect.x+inset, rect.y+inset, rect.w-2*inset, rect.h-2*inset}, std::max(0, radius-inset), palette.selection);
                     if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);

@@ -113,6 +113,22 @@ auto result = ui.set_palette_overrides({
 - Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` on `surface`: 3:1). Any failure, an unknown appearance, variant or role, a value of the wrong kind, `scrim_alpha` outside 0-255 or a repeated entry returns `Status::invalid_value` with a message naming the pair and its ratio, and the previous list stays active. `lcars::check_palette_contrast(palette)` runs the same rules so an application can pre-check a palette.
 - `Ui::palette_overrides()` reads the list; `Ui::effective_palette(appearance, variant)` and `SemanticTree::effective_palette()` (read-only; the Desktop host binds its appearance, a core-only host calls `Ui::bind_appearance`) report the colors that actually paint.
 
+## Focus indicator
+
+Focus indicators (the accent ring, bar or dot that marks the focused component) are drawn only while the
+user is working with the keyboard, like `:focus-visible` in browsers. Any key without Ctrl or Alt turns them on;
+a pointer press anywhere in the window turns them off. Moving focus from code (`focus()`, semantic
+operations, UI Automation `SetFocus`) never changes this state, and semantics and UIA always report the real
+focus. Editable text fields always draw the indicator while focused. The slider marks focus with a dot left of
+its title; the room for the dot is always reserved so the title never shifts.
+
+* `PresentationSettings::focus_indicator` is `FocusIndicatorMode::automatic` (default) or `always`; switch it
+  with `Ui::set_presentation`. There is no "never" mode.
+* Windows "Always underline access keys and show keyboard focus" (`SPI_GETKEYBOARDCUES`) forces the indicator
+  on, and a change takes effect without restarting.
+* `Ui::focus_indicator_visible()` reports whether indicators are being drawn right now. Tooltips (C11) use the
+  same state: a pointer-focused source shows its tooltip only after the next key press.
+
 ## Presentation verification
 
 The presentation matrix runs in `edit_form` with fake measurement and in
