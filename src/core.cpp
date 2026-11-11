@@ -1371,7 +1371,8 @@ void detail::UiState::hover_from_frame(const Frame& frame, int x, int y) {
     tooltip_hover(hit && !hit->popup ? std::string_view(hit->id) : std::string_view{});
     if (!window_active_ || hover_locked()) return;
     std::optional<HoverTarget> target;
-    if (hit && !menu_open()) {
+    // Labels and progress bars ignore the pointer, so they are never hovered (the tooltip above still sees them).
+    if (hit && !menu_open() && component_type(hit->kind).accepts_pointer()) {
         target = HoverTarget{hit->id, std::nullopt};
         if (auto index = frame.option_at(*hit, x, y)) {
             auto semantics = describe(hit->id);

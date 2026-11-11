@@ -148,6 +148,19 @@ void disabled_components_and_items_are_never_the_target() {
     check(!target_of(page), "disabling the hovered component ends its hover at once");
 }
 
+// Code review 2026-11-12 item 3: Frame::hit also returns labels and progress bars, which ignore the pointer.
+void components_that_ignore_the_pointer_are_never_the_hover_target() {
+    Page page; auto frame = page.arrange();
+    for (const char* id : {"label", "vertical", "progress"}) {
+        move(page, frame, middle_of(frame, id));
+        check(!target_of(page), (std::string("hovering ") + id + " targets nothing").c_str());
+    }
+    move(page, frame, middle_of(frame, "save"));
+    check(target_of(page) == on("save"), "a button is hovered");
+    move(page, frame, middle_of(frame, "label"));
+    check(!target_of(page), "moving from a button onto a label ends the hover");
+}
+
 void touch_messages_neither_make_nor_change_the_hover() {
     Page page; auto frame = page.arrange();
     move(page, frame, middle_of(frame, "box"), true);
@@ -723,6 +736,7 @@ int main() {
         {"hover_keeps_text_and_accent_readable_on_every_hovered_surface", hover_keeps_text_and_accent_readable_on_every_hovered_surface},
         {"the_pointer_hovers_components_and_single_items", the_pointer_hovers_components_and_single_items},
         {"disabled_components_and_items_are_never_the_target", disabled_components_and_items_are_never_the_target},
+        {"components_that_ignore_the_pointer_are_never_the_hover_target", components_that_ignore_the_pointer_are_never_the_hover_target},
         {"touch_messages_neither_make_nor_change_the_hover", touch_messages_neither_make_nor_change_the_hover},
         {"leaving_the_window_or_losing_activation_clears_the_hover", leaving_the_window_or_losing_activation_clears_the_hover},
         {"opening_a_dialog_clears_the_hover_and_blocks_the_background", opening_a_dialog_clears_the_hover_and_blocks_the_background},
