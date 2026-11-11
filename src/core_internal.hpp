@@ -249,12 +249,46 @@ public:
     void check(std::string_view id, bool checked);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
-    void modal(bool active) { modal_ = active; if (active) close_popup(); refresh_tooltips(); }
+    void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } refresh_tooltips(); }
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
     void renderer_failed(bool failed);
+    // ---- Context menu (src/context_menu.cpp). One menu is open per window; it never changes focus_.
+    struct MenuEntry { std::string id; std::u16string label, hint; bool enabled = true, separator = false; char16_t access_key = 0; };
+    struct MenuView {
+        Id target;
+        std::optional<OptionValue> item;      // list row the menu was opened for
+        std::optional<OptionValue> anchor_item;  // row a keyboard-opened menu hangs from
+        std::optional<MenuPosition> at;       // none: the keyboard position of the target
+        std::vector<MenuEntry> entries;
+        std::string highlighted;
+    };
+    bool has_menu(const Control& control) const;
+    bool menu_open() const { return menu_.has_value(); }
+    Query<bool> menu_open_query() const;
+    Query<MenuInfo> menu_info() const;
+    Query<ContextMenuHandle> attach_menu(const Id& target, std::vector<MenuItem> items, MenuMode mode);
+    std::optional<MenuView> menu_view() const;
+    ScrollState* menu_scroll() { return menu_ ? &menu_->scroll : nullptr; }
+    bool menu_reveal() { return menu_ && std::exchange(menu_->reveal, false); }
+    // at: where to open (window pixels); none for the keyboard position. text_offset: the pointer's caret offset.
+    Result open_menu(std::string_view id, std::optional<MenuPosition> at, std::optional<OptionValue> item,
+                     std::optional<unsigned> text_offset = std::nullopt);
+    // Right-button release over a component: option is the pointer's row (lists).
+    Result menu_pointer_open(std::string_view id, std::optional<std::size_t> option, std::optional<unsigned> text_offset, MenuPosition at);
+    Result close_menu();
+    Result menu_execute(std::string_view item_id);
+    Result menu_highlight(std::string_view item_id);
+    Result menu_pointer_down(std::string_view item_id);
+    Result menu_pointer_up(std::string_view item_id);
+    Result menu_key_down(KeyPress key);
+    Result menu_text(std::u16string_view text);
+    void menu_frame(const Frame& frame);
+    std::optional<Query<SemanticNode>> menu_node(const NodeRef& ref);
+    std::optional<std::vector<NodeRef>> menu_children(const NodeRef& parent) const;
 private:
+    friend class ::lcars::ContextMenuHandle;
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
     friend class ::lcars::TextHandle;
@@ -359,6 +393,25 @@ private:
         std::uint64_t deadline = 0;
         bool eligible = false, visible = false, dismissed = false;
     };
+    struct MenuAttachment { MenuMode mode = MenuMode::append; std::vector<MenuItem> items; };
+    std::map<Id, MenuAttachment, std::less<>> menu_attachments_;
+    struct OpenMenu {
+        Id target;
+        std::optional<OptionValue> item;
+        std::optional<MenuPosition> at;
+        std::string highlighted, pressed;
+        ScrollState scroll;
+        bool reveal = false, clipboard_text = false;
+    };
+    std::optional<OpenMenu> menu_;
+    std::map<std::string, Rect, std::less<>> semantic_menu_rows_;
+    std::vector<MenuEntry> menu_entries(const Id& target) const;
+    Result menu_run_builtin(const Id& target, std::string_view command);
+    Result validate_menu_items(const std::vector<MenuItem>& items) const;
+    void menu_items_changed(const Id& target);
+    bool field_editable(const Control& control, const Field& field) const;
+    Result paste_clipboard(std::string_view id);
+    Result delete_selection(std::string_view id);
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     std::uint64_t tooltip_now_ = 0;

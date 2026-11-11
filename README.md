@@ -75,6 +75,18 @@ Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::d
 - **User setting (WCAG 1.4.8).** `PresentationSettings::justify_as_left` (default off, applied by `Ui::set_presentation`) draws every justified and distributed text left-aligned. The property values do not change; UI Automation then reports `HorizontalTextAlignment_Left`, otherwise both values report `HorizontalTextAlignment_Justified`. The settings demo's Appearance page has the checkbox and saves the setting.
 - **Not included:** punctuation compression or squeeze-before-stretch (Mainland style), hyphenation, a separate last-line alignment property, soft line breaks, vertical text and per-run alignment in rich text.
 
+## Context menus
+
+A context menu is a short list of commands opened beside a component by the right mouse button (on release), the menu key or Shift+F10. One menu is open per window; it is drawn inside the window like a dropdown's list (flipped left and up near the window's edges, scrollable when the window is too small) and never changes which component has focus.
+
+- **Built-in items.** Every text field has Undo(U), Redo(R), Cut(T), Copy(C), Paste(P), Delete(D) and Select All(A), which run exactly the operations of Ctrl+Z / Ctrl+Y / Ctrl+X / Ctrl+C / Ctrl+V / Delete / Ctrl+A. They disable themselves when they cannot act (nothing selected, empty clipboard, nothing to undo, read-only field).
+- **Attaching a menu.** `ui.add_context_menu(component, items, mode)` works on any component. `MenuItem` has an id (not starting with `lcars.`), a label, enabled, an optional quick-key letter, a shortcut hint (display only: it registers no shortcut) and the code to run, which receives the component and, for a list, the clicked row. `MenuItem::divider()` is a separator. `MenuMode::append` (default) puts the items after the built-in ones, `replace` shows only yours, `off` disables the field's menu. The returned `ContextMenuHandle` adds, removes, updates and enables items at any time, also while the menu is open.
+- **From code.** `ui.open_context_menu(component, position, row)`, `close_context_menu()`, `context_menu()` (items with their availability), `invoke_menu_item(id)`. A disabled component returns `disabled`; a background component behind a modal dialog returns `blocked_by_modal`.
+- **Keyboard.** Up/Down (skipping separators, wrapping), Home/End, Enter and Space run the highlighted item; a quick-key letter runs its item, or when several share it moves to the next one. Esc, Alt, F10, a click outside or the window losing activation close the menu; the click that closes it reaches nothing underneath. Disabled items can be highlighted but not run.
+- **Semantic layer and UIA.** While open, the component has a `Role::menu` child (`menu_node_id(id)`, `"<id>/menu"`) with `menu_item` and `menu_separator` children; `Verb::context_menu` opens it, `invoke` on an item runs it, `cancel` on the menu closes it. UIA sees Menu / MenuItem / Separator, `AccessKey`, `AcceleratorKey`, `IsEnabled`, the Invoke pattern, and `MenuOpened` / `MenuClosed` events.
+
+Out of scope here: submenus, check marks and icons, menus outside the application window, an application menu bar and touch long-press.
+
 ## Desktop support
 
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).

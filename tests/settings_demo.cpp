@@ -1141,4 +1141,57 @@ void slider_undo_redo_land_at_once() {
     test::check(bool(state.key_down({.ctrl = true, .letter = u'Y'})) && *demo.volume.draft() == 45, "redo restores 45");
     test::check(near_px(thumb(), tick(45)) && !demo.ui.animating().value.value(), "redo: the thumb is on 45 at once");
 }
-int main() { const test::Case cases[] = {{"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"justify-left checkbox", the_justify_left_checkbox_switches_the_presentation_setting}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+
+// Right-clicking a row of the Items page: the row is selected, and the menu's Edit and Delete are the
+// buttons' own actions, so they match the Enter / Del shortcuts exactly.
+void items_context_menu_acts_on_the_clicked_row() {
+    settings_demo::Demo demo;
+    auto& core = detail::access(demo.ui);
+    test::check(bool(demo.nav.select({"items"})), "open items page");
+    auto row_of = [&](const char* id) {
+        auto options = demo.items_list.describe()->options;
+        auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value.id == id; });
+        return static_cast<std::size_t>(it - options.begin());
+    };
+    auto has_menu_verb = [&](const char* id) {
+        auto verbs = demo.ui.semantics().get({id})->verbs;
+        return std::find(verbs.begin(), verbs.end(), Verb::context_menu) != verbs.end();
+    };
+    test::check(has_menu_verb("items.search") && has_menu_verb("items.list") && !has_menu_verb("items.add"),
+                "the search field has the built-in menu, the list has the demo's, buttons have none");
+    test::check(bool(core.menu_pointer_open("items.list", std::nullopt, std::nullopt, {10, 10})), "right button on empty space opens the list menu");
+    auto menu = demo.ui.context_menu();
+    test::check(menu && menu->items.size() == 2 && menu->items[0].id == "items.edit" && menu->items[0].label == u"編輯(E)" && menu->items[0].shortcut_hint == u"Enter" &&
+                menu->items[1].id == "items.delete" && menu->items[1].label == u"刪除(D)" && menu->items[1].shortcut_hint == u"Del" &&
+                menu->items[0].access_key == u'E' && menu->items[1].access_key == u'D', "Edit(E) and Delete(D), with their shortcut hints");
+    test::check(!menu->items[0].enabled && !menu->items[1].enabled, "both are off while nothing is selected, like the buttons");
+    demo.ui.close_context_menu();
+    // Delete the clicked row, not the previous selection.
+    test::check(bool(demo.items_list.select({"T001"})), "a different row is selected first");
+    test::check(bool(core.menu_pointer_open("items.list", row_of("T003"), std::nullopt, {10, 10})), "right button on row T003");
+    test::check(demo.items_list.describe()->options[row_of("T003")].selected && !demo.items_list.describe()->options[row_of("T001")].selected, "the clicked row is selected");
+    menu = demo.ui.context_menu();
+    test::check(menu->items[0].enabled && menu->items[1].enabled, "Edit and Delete are on");
+    test::check(bool(demo.ui.invoke_menu_item("items.delete")) && *demo.delete_dialog.is_open(), "Delete opens the confirmation");
+    const auto by_menu = demo.ui.semantics().get({"items.delete_dialog.message"})->value;
+    test::check(by_menu.find(u"範本 03") != std::u16string::npos, "it names the clicked row");
+    core.key_down({.key = Key::escape});
+    test::check(!*demo.delete_dialog.is_open() && core.focused() == "items.list", "cancelling returns focus to the list");
+    test::check(bool(core.key_down({.key = Key::del})) && *demo.delete_dialog.is_open() && demo.ui.semantics().get({"items.delete_dialog.message"})->value == by_menu,
+                "the Del key opens the very same confirmation");
+    core.key_down({.key = Key::tab}); core.key_down({.key = Key::space}); core.key_up(Key::space);
+    test::check(!*demo.delete_dialog.is_open() && row_of("T003") == demo.items_list.describe()->options.size() && demo.items_list.describe()->options.size() == 19,
+                "confirming deletes row T003");
+    // Edit through the menu with the keyboard: the menu key, then the quick key.
+    test::check(bool(core.menu_pointer_open("items.list", row_of("T005"), std::nullopt, {10, 10})), "right button on row T005");
+    core.text_input(u"e");
+    test::check(*demo.item_dialog.is_open() && demo.item_name.draft().value.value() == u"共用範本", "the quick key E opens Edit on that row");
+    demo.item_dialog.settle(false);
+    // The menu key on the focused list hangs the menu from the current row.
+    demo.items_list.focus();
+    test::check(bool(core.key_down({.key = Key::menu})) && *demo.ui.context_menu_open(), "the menu key opens the list menu");
+    core.key_down({.key = Key::down}); core.key_down({.key = Key::down});
+    test::check(bool(core.key_down({.key = Key::enter})) && *demo.delete_dialog.is_open(), "Down, Down, Enter runs Delete(D)");
+}
+
+int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"justify-left checkbox", the_justify_left_checkbox_switches_the_presentation_setting}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
