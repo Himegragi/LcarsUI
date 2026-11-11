@@ -692,6 +692,42 @@ void v04_compact_checkbox_applies_density() {
     check(form.ui.presentation().density == Density::standard, "Checkbox restores standard density");
 }
 
+// #84: the presentation page compares alignments: one mixed-script paragraph, two dropdowns that drive it,
+// and "姓　名" distributed next to the same label left-aligned.
+void v04_justify_comparison_follows_its_dropdowns() {
+    edit_form::Form form(ids, true);
+    auto& h = form.handles; h.tabs.activate({"v04"});
+    test::FakeMeasure measure;
+    auto lay = [&] { return arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    auto stretched = [&](const Frame& frame) {
+        const auto* sample = frame.find(h.justify_sample);
+        std::size_t count = 0;
+        for (const auto& line : sample->lines) count += line.segments.empty() ? 0 : 1;
+        return count;
+    };
+    {
+        auto frame = lay();
+        const auto* sample = frame.find(h.justify_sample);
+        check(sample && sample->lines.size() > 1 && frame.find(h.justify_align) && frame.find(h.justify_method) && frame.find(h.distribute_name) && frame.find(h.distribute_plain), "The comparison section is on the page");
+        check(*h.justify_sample.text_align() == TextAlign::justify && stretched(frame) == sample->lines.size() - 1, "The paragraph starts justified: every line but the last is stretched");
+        check(h.justify_align.draft().value.value() == OptionValue{"justify"} && h.justify_method.draft().value.value() == OptionValue{"automatic"}, "The dropdowns show the paragraph's settings");
+        const auto* name = frame.find(h.distribute_name); const auto* plain = frame.find(h.distribute_plain);
+        check(name->lines.size() == 1 && !name->lines[0].segments.empty() && plain->lines.size() == 1 && plain->lines[0].segments.empty(), "姓　名 is distributed, the plain one is not");
+    }
+    check(bool(h.justify_align.select({"left"})) && *h.justify_sample.text_align() == TextAlign::left && stretched(lay()) == 0, "Left-aligned: nothing stretches");
+    check(bool(h.justify_align.select({"distribute"})) && *h.justify_sample.text_align() == TextAlign::distribute, "Distributed");
+    {
+        auto frame = lay();
+        check(stretched(frame) == frame.find(h.justify_sample)->lines.size(), "Even the last line is stretched");
+    }
+    check(bool(h.justify_align.select({"justify"})) && bool(h.justify_method.select({"spaces"})) && *h.justify_sample.justify_method() == JustifyMethod::spaces, "Pick the spaces-only method");
+    check(bool(h.justify_method.select({"per_character"})) && *h.justify_sample.justify_method() == JustifyMethod::per_character && stretched(lay()) > 0, "And the per-character one");
+    check(h.justify_method.select({"nonsense"}).status != Status::ok && *h.justify_sample.justify_method() == JustifyMethod::per_character, "An unknown method is refused");
+    check(bool(h.reset_v04.invoke()) && form.ui.presentation() == PresentationSettings{}, "Resetting the presentation does not touch the comparison");
+    auto settings = form.ui.presentation(); settings.justify_as_left = true;
+    check(bool(form.ui.set_presentation(settings)) && stretched(lay()) == 0 && *h.justify_sample.justify_method() == JustifyMethod::per_character, "The user setting turns the paragraph left-aligned without changing its properties");
+}
+
 void v04_slider_updates_global_text_size() {
     edit_form::Form form(ids, true);
     check(bool(form.handles.tabs.activate({"v04"})), "V04 available");
@@ -2920,6 +2956,7 @@ int main() {
         {"DN01 compact field reflows", compact_density_reflows_fields},
         {"V04 compact checkbox", v04_compact_checkbox_applies_density},
 
+        {"V04 justify comparison", v04_justify_comparison_follows_its_dropdowns},
         {"V04 size slider", v04_slider_updates_global_text_size},
         {"V04 font selection", v04_font_choice_applies_and_reports_fallback},
         {"N01 long field label and error", long_field_label_and_error_keep_their_association},

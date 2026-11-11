@@ -684,7 +684,13 @@ class TextRange final : public ITextRangeProvider {
             }
             if (id == UIA_HorizontalTextAlignmentAttributeId) {  // #80: the field's own alignment, one value for the whole range
                 out->vt = VT_I4;
-                out->lVal = n.text_align == TextAlign::center ? HorizontalTextAlignment_Centered
+                // #84: justify and distribute are both Justified (UIA has no distributed value); while the user's
+                // "justified text as left" setting is on, what is drawn (and so reported) is Left.
+                const bool stretched = n.text_align == TextAlign::justify || n.text_align == TextAlign::distribute;
+                const bool as_left = stretched && owner->ctx->ui->presentation().justify_as_left;
+                out->lVal = as_left ? HorizontalTextAlignment_Left
+                          : stretched ? HorizontalTextAlignment_Justified
+                          : n.text_align == TextAlign::center ? HorizontalTextAlignment_Centered
                           : n.text_align == TextAlign::right ? HorizontalTextAlignment_Right : HorizontalTextAlignment_Left;
                 return S_OK;
             }

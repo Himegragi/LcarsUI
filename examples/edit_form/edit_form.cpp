@@ -14,6 +14,11 @@ const std::u16string long_intro = short_intro +
     u"\n名稱欄按 Enter 不會套用；中文組字確認也不會套用。Ctrl+Z、Ctrl+Y 與 Ctrl+Shift+Z 只作用於名稱欄本身的編輯歷史。"
     u"\n「名稱唯讀」仍可選取與複製；「資料區停用」時名稱與套用都不能操作，但測試入口與重設仍可使用。";
 
+// #84: Chinese, English words, digits and punctuation in one paragraph, long enough to wrap in a normal window.
+const std::u16string justify_sample_text =
+    u"LcarsUI 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
+    u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字，都可以在不同視窗寬度下，觀察每一行的兩端是否切齊。";
+
 bool blank(std::u16string_view text) {
     return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t' || c == u'　'; });
 }
@@ -257,6 +262,37 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
+        // #84: one mixed-script paragraph (Chinese, English and digits) whose alignment and justification method
+        // the two dropdowns switch live, and short labels to compare distribute with left alignment.
+        handles.justify_sample = ui.add_label({.id = prefix + "v04.justify.sample", .kind = Kind::label, .value = justify_sample_text, .text_align = TextAlign::justify}).value.value();
+        handles.distribute_name = ui.add_label({.id = prefix + "v04.justify.name", .kind = Kind::label, .value = u"姓　名", .text_align = TextAlign::distribute}).value.value();
+        handles.distribute_plain = ui.add_label({.id = prefix + "v04.justify.plain", .kind = Kind::label, .value = u"姓　名"}).value.value();
+        handles.justify_align = ui.add_dropdown({.id = prefix + "v04.justify.align", .kind = Kind::dropdown, .label = u"對齊"},
+            {{{"left"}, u"靠左"}, {{"center"}, u"置中"}, {{"right"}, u"靠右"}, {{"justify"}, u"左右對齊"}, {{"distribute"}, u"分散對齊"}}).value.value();
+        handles.justify_method = ui.add_dropdown({.id = prefix + "v04.justify.method", .kind = Kind::dropdown, .label = u"對齊方法"},
+            {{{"automatic"}, u"自動"}, {{"spaces"}, u"只拉空格"}, {{"per_character"}, u"每字元"}}).value.value();
+        handles.justify_align.connect_source({[this] {
+            const auto align = handles.justify_sample.text_align().value.value_or(TextAlign::left);
+            return std::optional<OptionValue>{{align == TextAlign::center ? "center" : align == TextAlign::right ? "right" : align == TextAlign::justify ? "justify" : align == TextAlign::distribute ? "distribute" : "left"}};
+        }, [this](std::function<void()> changed) { justify_align_changed_ = std::move(changed); return [this] { justify_align_changed_ = {}; }; }});
+        handles.justify_align.connect_immediate([this](const DropdownChange& change) {
+            if (!change.value) return Result{Status::invalid_value, u"Alignment choice required"};
+            const auto& id = change.value->id;
+            auto result = handles.justify_sample.set_text_align(id == "center" ? TextAlign::center : id == "right" ? TextAlign::right : id == "justify" ? TextAlign::justify : id == "distribute" ? TextAlign::distribute : TextAlign::left);
+            if (result && justify_align_changed_) justify_align_changed_();
+            return result;
+        });
+        handles.justify_method.connect_source({[this] {
+            const auto method = handles.justify_sample.justify_method().value.value_or(JustifyMethod::automatic);
+            return std::optional<OptionValue>{{method == JustifyMethod::spaces ? "spaces" : method == JustifyMethod::per_character ? "per_character" : "automatic"}};
+        }, [this](std::function<void()> changed) { justify_method_changed_ = std::move(changed); return [this] { justify_method_changed_ = {}; }; }});
+        handles.justify_method.connect_immediate([this](const DropdownChange& change) {
+            if (!change.value) return Result{Status::invalid_value, u"Method choice required"};
+            const auto& id = change.value->id;
+            auto result = handles.justify_sample.set_justify_method(id == "spaces" ? JustifyMethod::spaces : id == "per_character" ? JustifyMethod::per_character : JustifyMethod::automatic);
+            if (result && justify_method_changed_) justify_method_changed_();
+            return result;
+        });
         handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](std::function<void()> changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
         handles.text_size.connect_immediate([this](const NumericChange& change) {
             auto settings = ui.presentation(); settings.text_size = change.value;
@@ -273,7 +309,8 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.dark, handles.compact, handles.preview, handles.font_status, handles.reset_v04}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.dark, handles.compact, handles.preview, handles.font_status, handles.reset_v04,
+                handles.justify_sample, handles.justify_align, handles.justify_method, handles.distribute_name, handles.distribute_plain}}
         }).value.value();
         handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
@@ -446,6 +483,10 @@ layout::Node Form::page() const {
         items.push_back(control(handles.preview));
         items.push_back(control(handles.font_status));
         items.push_back(control(handles.reset_v04));
+        // The alignment comparison: the paragraph with its two dropdowns, then "姓　名" distributed next to the same label left-aligned.
+        items.push_back(control(handles.justify_sample));
+        items.push_back(grid({control(handles.justify_align), control(handles.justify_method)}, 200, 16));
+        items.push_back(grid({control(handles.distribute_name), control(handles.distribute_plain)}, 120, 16));
         if (clipping_fixture) items.push_back(column({}, 0, 700));
         content = layout::scroll(column(std::move(items), 16, 24));
     }

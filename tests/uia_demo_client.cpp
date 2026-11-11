@@ -97,9 +97,9 @@ int wmain(int argc, wchar_t** argv) {
         // #80: the text range reports the field's horizontal alignment (an int) and line spacing (a BSTR multiple).
         {
             auto search_field = find_id(uia, root, L"items.search"); IUIAutomationTextPattern* search_text = nullptr; IUIAutomationTextRange* range = nullptr;
-            auto attribute_case = [&](bool configured, int alignment, const wchar_t* spacing) {
+            auto attribute_case = [&](int mode, int alignment, const wchar_t* spacing) {  // mode: 0 defaults, 1 centered 1.5, 2 justified, 3 justified with "justified text as left" on (#84)
                 VARIANT align{}, line{}; VariantInit(&align); VariantInit(&line);
-                bool good = SendMessageW(s.window, WM_APP + 85, configured ? 1 : 0, 0) == 0 && search_field &&
+                bool good = SendMessageW(s.window, WM_APP + 85, static_cast<WPARAM>(mode), 0) == 0 && search_field &&
                     SUCCEEDED(search_field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&search_text))) && search_text && SUCCEEDED(search_text->get_DocumentRange(&range)) && range &&
                     SUCCEEDED(range->GetAttributeValue(UIA_HorizontalTextAlignmentAttributeId, &align)) && align.vt == VT_I4 && align.lVal == alignment &&
                     SUCCEEDED(range->GetAttributeValue(UIA_LineSpacingAttributeId, &line)) && line.vt == VT_BSTR && line.bstrVal && std::wstring(line.bstrVal) == spacing;
@@ -107,7 +107,7 @@ int wmain(int argc, wchar_t** argv) {
                 if (range) range->Release(); range = nullptr; if (search_text) search_text->Release(); search_text = nullptr;
                 return good;
             };
-            bool attributes = attribute_case(false, HorizontalTextAlignment_Left, L"1") && attribute_case(true, HorizontalTextAlignment_Centered, L"1.5") && attribute_case(false, HorizontalTextAlignment_Left, L"1");
+            bool attributes = attribute_case(0, HorizontalTextAlignment_Left, L"1") && attribute_case(1, HorizontalTextAlignment_Centered, L"1.5") && attribute_case(2, HorizontalTextAlignment_Justified, L"1") && attribute_case(3, HorizontalTextAlignment_Left, L"1") && attribute_case(0, HorizontalTextAlignment_Left, L"1");
             if (search_field) search_field->Release();
             std::cout << "UA09 text alignment and line spacing attributes: " << (attributes ? "PASS" : "FAIL") << '\n'; ok &= attributes;
         }
