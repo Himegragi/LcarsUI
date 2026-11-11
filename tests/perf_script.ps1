@@ -7,8 +7,16 @@ try {
     $resolution = if ($size -eq '4k') { '3840x2160' } else { '1920x1080' }
     "scenario`tappearance`tresolution`tphase`tstatus`n$actualCase`t$appearance`t$resolution`twarmup`tPASS`n$actualCase`t$appearance`t$resolution`tsteady`tPASS" | Set-Content (Join-Path $dir 'perf.tsv')
   } } }
+  # #73: the slider drag scenario is report-only (status REPORT) and must never gate PM01-PM05.
+  foreach ($appearance in 'web','material') {
+    $dir = Join-Path $root "perf/$appearance/1080/slider-drag-text-size"; New-Item -ItemType Directory -Force $dir | Out-Null
+    "scenario`tappearance`tresolution`tphase`tstatus`nslider-drag-text-size`t$appearance`t1920x1080`twarmup`tREPORT`nslider-drag-text-size`t$appearance`t1920x1080`tsteady`tREPORT" | Set-Content (Join-Path $dir 'perf.tsv')
+  }
   & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/../verify-idle.ps1" -Only perf -DryRun -EvidenceDir $root
   if ($LASTEXITCODE -ne 0) { throw 'valid matrix rejected' }
+  Remove-Item (Join-Path $root 'perf/web/1080/slider-drag-text-size/perf.tsv')
+  & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/../verify-idle.ps1" -Only perf -DryRun -EvidenceDir $root
+  if ($LASTEXITCODE -ne 0) { throw 'a missing slider drag report failed the perf verdict' }
   Remove-Item (Join-Path $root 'perf/web/4k/typing/perf.tsv')
   & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/../verify-idle.ps1" -Only perf -DryRun -EvidenceDir $root
   if ($LASTEXITCODE -eq 0) { throw 'missing report accepted' }

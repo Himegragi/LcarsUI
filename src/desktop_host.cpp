@@ -318,11 +318,13 @@ void DesktopHost::paint() {
     float s = scale();
     if(perf_enabled_ && perf_offscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
     frame_ = arrange(r.right, r.bottom, s);
+    auto after_layout=std::chrono::steady_clock::now();
     reveal_.clear();
     RecordingCanvas recording(r.right, r.bottom, appearance_.palette(ui_.presentation().variant).background);
     paint_observations_.clear();
     recording.count_ink = observe_paint_;
     draw(recording, frame_, s, GetFocus() == window_);
+    auto after_list=std::chrono::steady_clock::now();
     for (const auto& observation : recording.list.observations) {
         paint_observations_.push_back({static_cast<PaintObservation::Type>(observation.type), observation.owner, observation.text,
             observation.bounds, observation.clip, observation.color,
@@ -351,7 +353,10 @@ void DesktopHost::paint() {
         double age=double(n.QuadPart-c.QuadPart)/10000. - std::chrono::duration<double,std::milli>(end-presented).count();
         if(first_present_ms_<0) first_present_ms_=age;
         double cpu=std::chrono::duration<double,std::milli>(before_gpu-start).count();
-        perf_samples_.add(age-std::chrono::duration<double,std::milli>(presented-start).count(),cpu+submission+gpu);
+        double sample_age=age-std::chrono::duration<double,std::milli>(presented-start).count();
+        perf_samples_.add(sample_age,cpu+submission+gpu);
+        perf_breakdown_.add(sample_age,std::chrono::duration<double,std::milli>(after_layout-start).count(),
+            std::chrono::duration<double,std::milli>(after_list-after_layout).count(),submission+gpu);
         if(input_time_.time_since_epoch().count()) { input_present_ms_=std::chrono::duration<double,std::milli>(presented-input_time_).count(); input_time_={}; }
     }
     ++frames_;
