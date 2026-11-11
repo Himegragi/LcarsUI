@@ -285,9 +285,11 @@ void DesktopHost::schedule_tooltip() {
         SetTimer(window_, tooltip_timer, static_cast<UINT>(std::min<std::uint64_t>(wait, USER_TIMER_MAXIMUM)), nullptr);
     }
 }
-void DesktopHost::update_hover(int x, int y) {
-    const auto* hit = frame_.hit(x, y);
-    detail::access(ui_).tooltip_hover(hit && !hit->popup ? hit->id : std::string_view{});
+// Windows tags mouse messages that touch or pen input synthesizes in the message extra info.
+bool DesktopHost::touch_signature(std::uintptr_t extra_info) { return (extra_info & 0xFFFFFF00) == 0xFF515700; }
+bool DesktopHost::synthesized_by_touch() const { return touch_source_ ? touch_source_() : touch_signature(static_cast<std::uintptr_t>(GetMessageExtraInfo())); }
+void DesktopHost::update_hover(int x, int y, bool touch) {
+    detail::access(ui_).pointer_over(frame_, x, y, touch);
 }
 void DesktopHost::follow_focus() {
     if (detail::access(ui_).focused() == synced_focus_) return;
@@ -715,16 +717,18 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             detail::access(ui_).cancel_input();
             // An interrupted slider drag returns its thumb to the value's tick.
             if (drag_ == Drag::slider) { drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
+            detail::access(ui_).hover_release();
         }
         break;
     case WM_CANCELMODE:
         detail::access(ui_).cancel_input();
         drag_ = Drag::none;
+        detail::access(ui_).hover_release();
         if (GetCapture() == window_) ReleaseCapture();
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
+        if (reinterpret_cast<HWND>(l) != window_) { detail::access(ui_).cancel_input(); detail::access(ui_).hover_release(); drag_ = Drag::none; InvalidateRect(window_, nullptr, FALSE); }
         return 0;
     case WM_MOUSEWHEEL: {
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
@@ -737,6 +741,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_LBUTTONDOWN: {
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        const bool touch = synthesized_by_touch();
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
@@ -750,6 +755,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 drag_scroll_ = it->state;
                 frame_.scroll_to(ui_, *drag_scroll_, it->offset_for_thumb(drag_offset_));
                 drag_ = Drag::thumb; drag_origin_ = y;
+                if (!touch) detail::access(ui_).hover_capture({});  // the thumb is not a component: keep what is hovered
                 SetCapture(window_);
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
@@ -764,6 +770,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 auto anchor = (w & MK_SHIFT) ? detail::access(ui_).edit(id)->selection.anchor : offset;
                 detail::access(ui_).select(id, anchor, offset);
                 drag_ = Drag::text;
+                if (!touch) detail::access(ui_).hover_capture(id);
             }
             if (hit->kind == Kind::slider) {
                 drag_ = Drag::slider;
@@ -778,13 +785,16 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_MOUSELEAVE:
-        detail::access(ui_).tooltip_hover({});
+        detail::access(ui_).pointer_left();
         return 0;
     case WM_MOUSEMOVE: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
-        TrackMouseEvent(&track);
-        update_hover(x, y);
+        const bool touch = synthesized_by_touch();
+        if (!touch) {
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
+            TrackMouseEvent(&track);
+        }
+        update_hover(x, y, touch);
         if (drag_ == Drag::text && (w & MK_LBUTTON)) {
             const auto& id = detail::access(ui_).focused();
             if (auto* session = detail::access(ui_).edit(id)) detail::access(ui_).select(id, session->selection.anchor, detail::placement_text_offset(frame_, id, x));
@@ -814,6 +824,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
         drag_ = Drag::none; drag_scroll_ = nullptr;
         if (GetCapture() == window_) ReleaseCapture();
+        detail::access(ui_).hover_release();
+        update_hover(x, y, synthesized_by_touch());  // the pointer may have left the dragged component
         after_input(before);
         return 0;
     }

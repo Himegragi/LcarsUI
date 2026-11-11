@@ -62,6 +62,10 @@ public:
     void client_size(int width_dip, int height_dip);
     float scale() const;
     void force_scale(float scale) { forced_scale_ = scale; }  // 0 follows the window DPI
+    // Mouse messages that touch or pen input synthesizes carry this signature in the message extra info.
+    static bool touch_signature(std::uintptr_t extra_info);
+    // Test seam: replaces the extra-info read, which a posted message cannot carry.
+    void touch_source(std::function<bool()> source) { touch_source_ = std::move(source); }
     void paint();                           // arrange, draw and present one frame
     // Arrange and raster offscreen at an arbitrary physical size; saves a 32-bit BMP.
     Frame render(int width, int height, float scale, const std::filesystem::path& bmp, Image* pixels = nullptr);
@@ -158,7 +162,9 @@ private:
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
     void schedule_tooltip();
-    void update_hover(int x, int y);
+    void update_hover(int x, int y, bool touch = false);  // pointer position in client pixels; touch/pen messages are ignored
+    bool synthesized_by_touch() const;  // the message being handled came from touch or pen
+    std::function<bool()> touch_source_;
     void follow_focus();               // notice focus moved by application or semantic calls
     std::string synced_focus_;
     void after_input(const std::string& focus_before);
