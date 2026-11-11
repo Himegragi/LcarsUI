@@ -542,6 +542,10 @@ public:
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
+    // True while any on-screen transition (for example a slider thumb sliding to its new value) is
+    // still running. Values and semantics never wait for it, so this only says the picture has not
+    // settled; wait until it is false before comparing screenshots.
+    Query<bool> animating() const;
     // Overrides individual palette colors of the built-in appearances for the whole Ui. The list
     // replaces the previous one and applies on the next frame; an empty list restores built-in
     // values. Unknown appearance, unsupported variant, unknown role, a value of the wrong kind,

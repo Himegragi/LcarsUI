@@ -4,6 +4,7 @@
 #include "desktop_host.hpp"
 #include "uia_provider.hpp"
 #include <windowsx.h>
+#include <dwmapi.h>
 #include <imm.h>
 #include <objbase.h>
 #include <UIAutomation.h>
@@ -24,6 +25,43 @@ bool system_keyboard_cues() {
 const wchar_t* window_class = L"LcarsUI.DesktopHost";
 constexpr UINT_PTR tooltip_timer = 1;
 constexpr UINT_PTR drag_scroll_timer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
+constexpr UINT_PTR animation_timer = 3;    // distinct from the other timer ids: they run side by side
+constexpr UINT animation_frame_ms = 16;
+std::uint64_t animation_now_ms() {
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+// Windows "Show animations in Windows" (SPI_GETCLIENTAREAANIMATION). When it cannot be read, the
+// Windows default (on) applies.
+bool system_client_animations() {
+    BOOL enabled = TRUE;
+    return !SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0) || enabled != FALSE;
+}
+bool cloaked(HWND window) {
+    BOOL value = FALSE;
+    return SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &value, sizeof(value))) && value;
+}
+// Best effort: one visible, opaque, unshaped window above ours covers all of our client area.
+// A window covered by several smaller ones, or by a see-through one, still counts as visible.
+bool covered_by_another_window(HWND window) {
+    RECT client{};
+    if (!GetClientRect(window, &client)) return false;
+    POINT top_left{client.left, client.top}, bottom_right{client.right, client.bottom};
+    ClientToScreen(window, &top_left); ClientToScreen(window, &bottom_right);
+    if (bottom_right.x <= top_left.x || bottom_right.y <= top_left.y) return false;
+    for (HWND above = GetWindow(window, GW_HWNDPREV); above; above = GetWindow(above, GW_HWNDPREV)) {
+        if (!IsWindowVisible(above) || IsIconic(above)) continue;
+        if (GetWindowLongPtrW(above, GWL_EXSTYLE) & (WS_EX_TRANSPARENT | WS_EX_LAYERED)) continue;
+        if (cloaked(above)) continue;
+        HRGN shape = CreateRectRgn(0, 0, 0, 0);
+        const bool shaped = shape && GetWindowRgn(above, shape) != ERROR;
+        if (shape) DeleteObject(shape);
+        if (shaped) continue;
+        RECT bounds{};
+        if (FAILED(DwmGetWindowAttribute(above, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds))) && !GetWindowRect(above, &bounds)) continue;
+        if (bounds.left <= top_left.x && bounds.top <= top_left.y && bounds.right >= bottom_right.x && bounds.bottom >= bottom_right.y) return true;
+    }
+    return false;
+}
 
 Key map_key(WPARAM vk) {
     switch (vk) {
@@ -160,6 +198,9 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).bind_appearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
+        detail::access(ui_).animation_time(animation_now_ms);
+        refresh_system_animations();
+        refresh_visibility();
         detail::access(ui_).on_invalidate([this] { if (window_) { schedule_tooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
         detail::access(ui_).on_relayout([this] { relayout(); });
@@ -220,7 +261,8 @@ Result DesktopHost::rebuild_renderer() {
 }
 void DesktopHost::fail_renderer(RendererFailure failure) {
     renderer_failure_=std::move(failure);
-    if (window_) KillTimer(window_, tooltip_timer);
+    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, animation_timer); }
+    detail::access(ui_).finish_animations();
     detail::access(ui_).renderer_failed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
@@ -258,7 +300,8 @@ void DesktopHost::release() {
     detail::access(ui_).on_semantic_pending({});
     detail::access(ui_).on_reveal({});
     detail::access(ui_).tooltip_clock({});
-    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, drag_scroll_timer); }
+    detail::access(ui_).animation_time({});
+    if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, drag_scroll_timer); KillTimer(window_, animation_timer); }
     detail::access(ui_).before_focus({});
     detail::access(ui_).set_clipboard(nullptr);
     if (!window_) return;
@@ -295,6 +338,20 @@ void DesktopHost::schedule_tooltip() {
         auto wait = *deadline > now ? *deadline - now : 1;
         SetTimer(window_, tooltip_timer, static_cast<UINT>(std::min<std::uint64_t>(wait, USER_TIMER_MAXIMUM)), nullptr);
     }
+}
+void DesktopHost::refresh_system_animations() {
+    detail::access(ui_).set_system_animations(animation_reader_ ? animation_reader_() : system_client_animations());
+}
+void DesktopHost::refresh_visibility() {
+    const bool hidden = hidden_reader_ ? hidden_reader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || covered_by_another_window(window_);
+    if (hidden == hidden_) return;
+    hidden_ = hidden;
+    detail::access(ui_).set_window_hidden(hidden);  // hiding lands every running transition at once
+}
+void DesktopHost::schedule_animation() {
+    if (!window_) return;
+    if (!renderer_failure_ && !hidden_ && detail::access(ui_).animation_running()) SetTimer(window_, animation_timer, animation_frame_ms, nullptr);
+    else KillTimer(window_, animation_timer);
 }
 void DesktopHost::update_hover(int x, int y) {
     const auto* hit = frame_.hit(x, y);
@@ -374,6 +431,7 @@ void DesktopHost::paint() {
     }
     ++frames_;
     sync_ime();
+    schedule_animation();
     PostMessageW(window_,WM_APP+43,0,0);
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
@@ -664,6 +722,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     if (renderer_failure_ && !close_key && ((msg >= WM_KEYFIRST && msg <= WM_KEYLAST) ||
         (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || (msg >= WM_IME_STARTCOMPOSITION && msg <= WM_IME_COMPOSITION) ||
         msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_TIMER || msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE)) return 0;
+    // Whether motion may play is decided before the input that could start it (a window that was
+    // covered and is visible again sends us nothing).
+    if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN) refresh_visibility();
     if(perf_enabled_ && (msg==WM_KEYDOWN || msg==WM_CHAR)) input_time_=std::chrono::steady_clock::now()-std::chrono::milliseconds(static_cast<DWORD>(GetTickCount()-GetMessageTime()));
     if (tracing_) {
         const wchar_t* name = msg == WM_KEYDOWN ? L"WM_KEYDOWN" : msg == WM_KEYUP ? L"WM_KEYUP" : msg == WM_CHAR ? L"WM_CHAR"
@@ -700,7 +761,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_SIZE: InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SIZE: refresh_visibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SHOWWINDOW: case WM_WINDOWPOSCHANGED: refresh_visibility(); break;
     case WM_DPICHANGED: {
         auto r = reinterpret_cast<RECT*>(l);
         SetWindowPos(window_, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -728,6 +790,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         sync_ime(); InvalidateRect(window_, nullptr, FALSE); return 0;
     }
     case WM_TIMER:
+        if (w == animation_timer) {
+            KillTimer(window_, animation_timer);
+            refresh_visibility();  // covered windows are only noticed by looking
+            if (!hidden_ && detail::access(ui_).animation_running()) InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
         if (w == tooltip_timer) {
             KillTimer(window_, tooltip_timer);
             detail::access(ui_).tooltip_time(GetTickCount64());
@@ -773,7 +841,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     }
-    case WM_SETTINGCHANGE:
+    case WM_SETTINGCHANGE:  // one case for every system setting we follow (a second label would not compile)
+        refresh_system_animations();  // "Show animations in Windows"
         // "Always underline access keys and show keyboard focus": takes effect without a restart.
         if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
         break;

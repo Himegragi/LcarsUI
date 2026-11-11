@@ -69,7 +69,8 @@ if ('perf' -in $selected) {
     foreach ($appearance in @('web', 'material')) {
         foreach ($size in @('1080', '4k')) {
             # slider-drag-text-size (#73) is report-only: it feeds PM01-PM05 nothing and decides nothing.
-            $scenarios = if ($size -eq '4k') { @('list-hold-down', 'typing', 'delay') } else { @('startup', 'list-hold-down', 'typing', 'idle', 'delay', 'slider-drag-text-size') }
+            # idle-after-animation (#75) gates like idle: the idle rule must hold after one slider transition has played.
+            $scenarios = if ($size -eq '4k') { @('list-hold-down', 'typing', 'delay') } else { @('startup', 'list-hold-down', 'typing', 'idle', 'delay', 'slider-drag-text-size', 'idle-after-animation') }
             foreach ($scenario in $scenarios) {
                 $folder = Join-Path $OutDir "perf/$appearance/$size/$scenario"
                 $tsv = Join-Path $folder 'perf.tsv'

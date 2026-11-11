@@ -7,6 +7,11 @@ try {
     $resolution = if ($size -eq '4k') { '3840x2160' } else { '1920x1080' }
     "scenario`tappearance`tresolution`tphase`tstatus`n$actualCase`t$appearance`t$resolution`twarmup`tPASS`n$actualCase`t$appearance`t$resolution`tsteady`tPASS" | Set-Content (Join-Path $dir 'perf.tsv')
   } } }
+  # #75: idle after one animation gates like idle (PASS rows required).
+  foreach ($appearance in 'web','material') {
+    $dir = Join-Path $root "perf/$appearance/1080/idle-after-animation"; New-Item -ItemType Directory -Force $dir | Out-Null
+    "scenario`tappearance`tresolution`tphase`tstatus`nidle-after-animation`t$appearance`t1920x1080`twarmup`tPASS`nidle-after-animation`t$appearance`t1920x1080`tsteady`tPASS" | Set-Content (Join-Path $dir 'perf.tsv')
+  }
   # #73: the slider drag scenario is report-only (status REPORT) and must never gate PM01-PM05.
   foreach ($appearance in 'web','material') {
     $dir = Join-Path $root "perf/$appearance/1080/slider-drag-text-size"; New-Item -ItemType Directory -Force $dir | Out-Null
