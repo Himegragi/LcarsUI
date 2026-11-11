@@ -160,6 +160,9 @@ private:
     template<class Target> void draw(Target& canvas, const Frame& frame, float scale, bool window_focused);
     void finish_composition();         // ask the IME to commit before focus moves
     void sync_ime();
+    void drag_text(int x, int y);       // pointer drag over the focused text field
+    void follow_composition();          // re-anchor the input method after a scroll
+    void relayout();                    // arrange again now, outside a paint
     void schedule_tooltip();
     void update_hover(int x, int y);
     void follow_focus();               // notice focus moved by application or semantic calls

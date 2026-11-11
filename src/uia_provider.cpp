@@ -132,7 +132,7 @@ int control_type(Role r) {
 }
 BSTR bstr(std::u16string_view s) { return SysAllocStringLen(reinterpret_cast<const wchar_t*>(s.data()), static_cast<UINT>(s.size())); }
 BSTR bstr_id(const std::string& s) { return bstr(utf16_from_utf8(s)); }
-class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider {
+class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider, public IScrollProvider {
     std::atomic<ULONG> refs_{1};
 public:
     std::shared_ptr<UiaBridge::Impl> ctx; NodeRef ref; int serial; std::uint64_t instance; std::atomic<bool> valid = true, disconnecting = false;
@@ -151,6 +151,7 @@ public:
         else if (iid == __uuidof(IWindowProvider)) *out = static_cast<IWindowProvider*>(this);
         else if (iid == __uuidof(IValueProvider)) *out = static_cast<IValueProvider*>(this);
         else if (iid == __uuidof(ITextProvider)) *out = static_cast<ITextProvider*>(this);
+        else if (iid == __uuidof(IScrollProvider)) *out = static_cast<IScrollProvider*>(this);
         if (!*out) return E_NOINTERFACE; AddRef(); return S_OK;
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
@@ -180,6 +181,7 @@ public:
             if (id == UIA_SelectionItemPatternId && (n->role == Role::radio_option || n->role == Role::dropdown_option || n->role == Role::list_item || n->role == Role::tab_item)) *result = static_cast<ISelectionItemProvider*>(this);
             if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
             if (id == UIA_TextPatternId && n->role == Role::text) *result = static_cast<ITextProvider*>(this);
+            if (id == UIA_ScrollPatternId && n->role == Role::text && n->scroll) *result = static_cast<IScrollProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -389,6 +391,63 @@ public:
             auto n = ctx->ui->semantics().get(ref); *result = n->value; return S_OK; }); Release();
         if (SUCCEEDED(hr)) { *out = bstr(*result); if (!*out) return E_OUTOFMEMORY; } return hr;
     }
+    // A multi-line text field scrolls vertically, by display lines: small steps are one line, large ones a page.
+    HRESULT scroll_call(std::function<HRESULT(const TextScroll&)> action) {
+        AddRef();
+        auto hr = ctx->call([this, action = std::move(action)] {
+            auto h = check(); if (FAILED(h)) return h;
+            auto n = ctx->ui->semantics().get(ref);
+            if (!n || !n->scroll) return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
+            return action(*n->scroll);
+        });
+        Release(); return hr;
+    }
+    static unsigned most_first(const TextScroll& s) { return s.line_count > s.visible_lines ? s.line_count - s.visible_lines : 0; }
+    HRESULT STDMETHODCALLTYPE Scroll(ScrollAmount horizontal, ScrollAmount vertical) override {
+        if (horizontal != ScrollAmount_NoAmount) return UIA_E_INVALIDOPERATION;
+        return scroll_call([&](const TextScroll& s) {
+            long long step = vertical == ScrollAmount_SmallIncrement ? 1 : vertical == ScrollAmount_SmallDecrement ? -1
+                : vertical == ScrollAmount_LargeIncrement ? static_cast<long long>(s.visible_lines) : vertical == ScrollAmount_LargeDecrement ? -static_cast<long long>(s.visible_lines) : 0;
+            auto target = std::clamp(static_cast<long long>(s.first_line) + step, 0LL, static_cast<long long>(most_first(s)));
+            if (target == s.first_line) return S_OK;
+            return status_hr(ctx->ui->semantics().perform(ref, Verb::scroll, static_cast<int>(target)).status);
+        });
+    }
+    HRESULT STDMETHODCALLTYPE SetScrollPercent(double horizontal, double vertical) override {
+        if (horizontal != -1.0) return UIA_E_INVALIDOPERATION;
+        if (vertical == -1.0) return S_OK;
+        if (!(vertical >= 0 && vertical <= 100)) return E_INVALIDARG;
+        return scroll_call([&](const TextScroll& s) {
+            auto target = static_cast<int>(std::lround(vertical / 100.0 * most_first(s)));
+            return status_hr(ctx->ui->semantics().perform(ref, Verb::scroll, target).status);
+        });
+    }
+    HRESULT scroll_value(std::function<double(const TextScroll&)> value, double* out) {
+        if (!out) return E_POINTER;
+        *out = 0;
+        auto result = std::make_shared<double>(0);
+        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        if (SUCCEEDED(hr)) *out = *result;
+        return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* out) override { return scroll_value([](const TextScroll&) { return static_cast<double>(-1.0); }, out); }
+    HRESULT STDMETHODCALLTYPE get_VerticalScrollPercent(double* out) override {
+        return scroll_value([](const TextScroll& s) { return most_first(s) ? 100.0 * s.first_line / most_first(s) : 0.0; }, out);
+    }
+    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* out) override { return scroll_value([](const TextScroll&) { return 100.0; }, out); }
+    HRESULT STDMETHODCALLTYPE get_VerticalViewSize(double* out) override {
+        return scroll_value([](const TextScroll& s) { return s.line_count > s.visible_lines ? 100.0 * s.visible_lines / s.line_count : 100.0; }, out);
+    }
+    HRESULT scroll_flag(std::function<bool(const TextScroll&)> value, BOOL* out) {
+        if (!out) return E_POINTER;
+        *out = FALSE;
+        auto result = std::make_shared<bool>(false);
+        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        if (SUCCEEDED(hr)) *out = *result ? TRUE : FALSE;
+        return hr;
+    }
+    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll&) { return false; }, out); }
+    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll& s) { return s.line_count > s.visible_lines; }, out); }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
     HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
@@ -439,25 +498,59 @@ class TextRange final : public ITextRangeProvider {
     const Placement *placement() const {
         return find_placement(owner->ctx->frame(), owner->ref.id);
     }
-    std::vector<unsigned> stops() const {
+    // Boundaries in committed-text offsets from offsets of the visible text (composition included).
+    std::vector<unsigned> committed(const std::vector<unsigned> &visible) const {
         std::vector<unsigned> out;
         auto session = access(*owner->ctx->ui).edit(owner->ref.id);
-        if (auto p = placement())
-            for (auto [offset, x] : p->run.stops) {
-                if (session && session->composing && offset > session->begin()) {
-                    auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
-                    if (offset < end)
-                        continue;
-                    offset = offset - static_cast<unsigned>(session->preedit.size()) + session->end() -
-                             session->begin();
-                }
-                if (offset <= version.size())
-                    out.push_back(offset);
+        for (auto offset : visible) {
+            if (session && session->composing && offset > session->begin()) {
+                auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
+                if (offset < end)
+                    continue;
+                offset = offset - static_cast<unsigned>(session->preedit.size()) + session->end() -
+                         session->begin();
             }
+            if (offset <= version.size() && (out.empty() || out.back() != offset))
+                out.push_back(offset);
+        }
         if (out.empty() || out.front() != 0)
             out.insert(out.begin(), 0);
         if (out.back() != version.size())
             out.push_back(static_cast<unsigned>(version.size()));
+        return out;
+    }
+    std::vector<unsigned> stops() const {
+        std::vector<unsigned> raw;
+        if (auto p = placement()) {
+            if (p->multiline) {
+                for (const auto &line : p->view.lines)
+                    for (const auto &stop : line.run.stops)
+                        raw.push_back(line.begin + stop.first);
+            } else
+                for (const auto &stop : p->run.stops)
+                    raw.push_back(stop.first);
+        }
+        return committed(raw);
+    }
+    // Lines and paragraphs are real units only in a multi-line field; elsewhere every unit but the
+    // character is the whole document, as before.
+    bool granular(TextUnit unit) const {
+        if (unit == TextUnit_Character)
+            return true;
+        auto p = placement();
+        return p && p->multiline && (unit == TextUnit_Line || unit == TextUnit_Paragraph);
+    }
+    std::vector<unsigned> boundaries(TextUnit unit) const {
+        if (unit == TextUnit_Character)
+            return stops();
+        std::vector<unsigned> raw;
+        if (auto p = placement(); p && p->multiline && (unit == TextUnit_Line || unit == TextUnit_Paragraph))
+            for (std::size_t i = 0; i < p->view.lines.size(); ++i)
+                if (unit == TextUnit_Line || i == 0 || !p->view.lines[i - 1].soft)
+                    raw.push_back(p->view.lines[i].begin);
+        auto out = committed(raw);
+        if (raw.empty())
+            out = {0, static_cast<unsigned>(version.size())};
         return out;
     }
     static bool endpoint(TextPatternRangeEndpoint e) {
@@ -536,11 +629,11 @@ class TextRange final : public ITextRangeProvider {
         if (unit < TextUnit_Character || unit > TextUnit_Document)
             return E_INVALIDARG;
         return call([&](const auto &) {
-            if (unit != TextUnit_Character) {
+            if (!granular(unit)) {
                 first = 0;
                 last = static_cast<unsigned>(version.size());
             } else {
-                auto v = stops();
+                auto v = boundaries(unit);
                 auto it = std::upper_bound(v.begin(), v.end(), first);
                 if (it == v.end()) {
                     last = v.back();
@@ -608,6 +701,21 @@ class TextRange final : public ITextRangeProvider {
                 editor.x += p->bounds.x; editor.y += p->bounds.y;
                 auto clip = intersect(editor, p->clip);
                 auto add = [&](unsigned a, unsigned b) {
+                    if (p->multiline) {  // one rectangle per visible line the range touches
+                        const auto &v = p->view;
+                        const auto end_line = static_cast<unsigned>(std::min<std::size_t>(v.first + v.visible, v.lines.size()));
+                        for (unsigned i = v.first; i < end_line; ++i) {
+                            const auto &line = v.lines[i];
+                            auto from = std::max(a, line.begin), to = std::min(b, line.end);
+                            if (from > to || (from == to && !(a == b))) continue;
+                            if (from == to && line.end > line.begin) continue;
+                            int y = v.text.y + static_cast<int>(i - v.first) * v.line_height;
+                            int left = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, from))), right = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, to)));
+                            auto r = intersect({left, y, std::max(0, right - left), v.line_height}, clip);
+                            if (r.w > 0 && r.h > 0) rectangles.push_back(r);
+                        }
+                        return;
+                    }
                     int left = p->caret_x(a), right = p->caret_x(b);
                     auto r = intersect({left, editor.y, std::max(0, right-left), editor.h}, clip);
                     if (r.w > 0 && r.h > 0) rectangles.push_back(r);
@@ -665,8 +773,8 @@ class TextRange final : public ITextRangeProvider {
         if (!endpoint(e) || unit < TextUnit_Character || unit > TextUnit_Document)
             return E_INVALIDARG;
         return call([&](const auto &) {
-            auto v = unit == TextUnit_Character
-                         ? stops()
+            auto v = granular(unit)
+                         ? boundaries(unit)
                          : std::vector<unsigned>{0, static_cast<unsigned>(version.size())};
             unsigned pos = e == TextPatternRangeEndpoint_Start ? first : last;
             auto i = static_cast<long long>(std::lower_bound(v.begin(), v.end(), pos) - v.begin());
@@ -693,12 +801,12 @@ class TextRange final : public ITextRangeProvider {
         return call([&](const auto &) {
             if (!count)
                 return S_OK;
-            if (unit != TextUnit_Character) {
+            if (!granular(unit)) {
                 first = 0;
                 last = static_cast<unsigned>(version.size());
                 return S_OK;
             }
-            auto v = stops();
+            auto v = boundaries(unit);
             bool empty = first == last;
             auto it = std::upper_bound(v.begin(), v.end(), first);
             long long i = it == v.begin() ? 0 : it - v.begin() - 1;
@@ -749,8 +857,25 @@ class TextRange final : public ITextRangeProvider {
     HRESULT STDMETHODCALLTYPE RemoveFromSelection() override {
         return call([](const auto &) { return static_cast<HRESULT>(UIA_E_INVALIDOPERATION); });
     }
-    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL) override {
-        return call([](const auto &) { return static_cast<HRESULT>(UIA_E_NOTSUPPORTED); });
+    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL align_to_top) override {
+        return call([&](const auto &n) {
+            auto p = placement();
+            if (!p || !p->multiline || !n.scroll)
+                return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
+            // Offsets here are committed text; the lines are laid out over the visible text.
+            auto session = access(*owner->ctx->ui).edit(owner->ref.id);
+            unsigned at = first;
+            if (session && session->composing && at > session->begin())
+                at += static_cast<unsigned>(session->preedit.size()) - (session->end() - session->begin());
+            auto view = p->view;
+            view.upstream = false;
+            long long line = view.line_of(at), visible = n.scroll->visible_lines;
+            long long target = align_to_top ? line : line - visible + 1;
+            long long most = n.scroll->line_count > n.scroll->visible_lines ? n.scroll->line_count - n.scroll->visible_lines : 0;
+            if (line >= n.scroll->first_line && line < n.scroll->first_line + visible)
+                return S_OK;
+            return status_hr(owner->ctx->ui->semantics().perform(owner->ref, Verb::scroll, static_cast<int>(std::clamp(target, 0LL, most))).status);
+        });
     }
     HRESULT STDMETHODCALLTYPE GetChildren(SAFEARRAY **out) override {
         if (!out)
@@ -828,6 +953,11 @@ HRESULT Provider::GetVisibleRanges(SAFEARRAY **out) {
         if (clip.w <= 0 || clip.h <= 0) return ranges(nullptr, out);
         auto first = placement_text_offset(frame, ref.id, clip.x);
         auto last = placement_text_offset(frame, ref.id, clip.x + clip.w);
+        if (p->multiline) {  // the lines in view, from the start of the first to the end of the last
+            const auto& v = p->view;
+            const auto end_line = std::min<std::size_t>(v.first + v.visible, v.lines.size());
+            first = v.lines[v.first].begin; last = v.lines[end_line - 1].end;
+        }
         auto session = access(*ctx->ui).edit(ref.id);
         auto committed = [&](unsigned pos) {
             if (session && session->composing && pos > session->begin()) {
@@ -861,7 +991,7 @@ HRESULT Provider::RangeFromPoint(UiaPoint point, ITextRangeProvider **out) {
         auto n = ctx->ui->semantics().get(ref);
         POINT p{static_cast<LONG>(point.x), static_cast<LONG>(point.y)};
         ScreenToClient(ctx->hwnd, &p);
-        unsigned offset = placement_text_offset(ctx->frame(), ref.id, p.x);
+        unsigned offset = placement_text_hit(ctx->frame(), ref.id, p.x, p.y).offset;
         auto session = access(*ctx->ui).edit(ref.id);
         if (session && session->composing && offset > session->begin()) {
             auto end = session->begin() + static_cast<unsigned>(session->preedit.size());

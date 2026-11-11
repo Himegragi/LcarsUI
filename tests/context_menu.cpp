@@ -483,6 +483,29 @@ void keyboard_position_follows_the_caret_and_the_current_row() {
           "the menu hangs from the list's current row");
 }
 
+// A multi-line field (#79) has the same built-in menu, and a keyboard-opened one hangs from the caret's own line.
+void multi_line_field_menu_hangs_from_the_caret_line() {
+    Ui ui; MemoryClipboard clipboard; core(ui).set_clipboard(&clipboard); clipboard.content = u"x\ny";
+    auto model = std::make_shared<std::u16string>(u"first\nsecond\nthird");
+    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
+    check(bool(note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) &&
+          bool(note.connect_immediate([model](const TextChange& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
+    ScrollState scroll;
+    note.select(8, 8); note.focus();
+    auto frame = layout_of(ui, 600, 400, scroll);
+    check(bool(press(ui, Key::menu)), "the menu key opens the menu in a multi-line field");
+    check(ids_of(*ui.context_menu()) == builtin_layout && enabled(ui, "lcars.paste"), "with the same built-in items");
+    frame = layout_of(ui, 600, 400, scroll);
+    const auto* field = frame.find(note);
+    const auto caret = field->caret_rect(8);
+    const auto* panel = frame.menu_panel();
+    check(panel && caret.y > field->view.text.y && panel->bounds.x == caret.x && panel->bounds.y == caret.y + caret.h, "it hangs from the second line's caret, under that line");
+    ui.close_context_menu();
+    check(bool(core(ui).menu_pointer_open("note", std::nullopt, 2, {30, 30})) && core(ui).edit("note")->selection.caret == 2, "right button moves the caret to the point");
+    ui.invoke_menu_item("lcars.paste");
+    check(*model == u"fix\nyrst\nsecond\nthird", "paste inserts the clipboard text with its line break at the caret");
+}
+
 void semantic_tree_shows_menu_and_items_while_open() {
     Ui ui; MemoryClipboard clipboard; core(ui).set_clipboard(&clipboard);
     auto field = add_field(ui, "note", u"hello");
@@ -561,6 +584,7 @@ int main() {
         {"items can change while the menu is open", items_can_change_while_the_menu_is_open},
         {"menu panel sits beside the pointer, flips and scrolls", menu_panel_sits_beside_the_pointer_flips_and_scrolls},
         {"keyboard position follows the caret and the current row", keyboard_position_follows_the_caret_and_the_current_row},
+        {"multi-line field menu hangs from the caret line", multi_line_field_menu_hangs_from_the_caret_line},
         {"semantic tree shows menu and items while open", semantic_tree_shows_menu_and_items_while_open},
         {"semantic events announce opening, focus and closing", semantic_events_announce_opening_focus_and_closing},
         {"text field menu has the Windows edit items", text_field_menu_has_the_windows_edit_items},

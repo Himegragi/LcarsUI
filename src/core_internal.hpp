@@ -148,6 +148,7 @@ public:
     void bind_appearance(const Appearance* appearance) { bound_appearance_ = appearance; }
     const Appearance* bound_appearance() const { return bound_appearance_; }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
+    void on_relayout(std::function<void()> callback) { relayout_ = std::move(callback); }
     void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
     void on_semantic_pending(std::function<void()> callback) {
         semantic_schedule_ = std::move(callback);
@@ -197,6 +198,18 @@ public:
     void set_text_offset(std::string_view id, float offset);
     unsigned text_anchor(std::string_view id, int text_size) const;
     void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
+    // Multi-line view state. arrange hands over the lines it measured and gets the settled first
+    // visible line back (view.first): layout is the only place that knows where lines break.
+    void settle_lines(std::string_view id, FieldView& view, int text_size, int width);
+    const FieldView* field_view(std::string_view id) const;  // lines as last arranged; null for other kinds
+    ScrollState& line_scroll(const Id& id) { return edits_.at(id).multi.scroll; }
+    bool scroll_lines_to(std::string_view id, unsigned first);  // clamps; true when the position changed
+    // A pointer click or drag: like select, but may place the caret at the end of a wrapped line.
+    Result select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream);
+    // Multi-line configuration and view position, shared by the typed handle and the semantic verb.
+    Result set_visible_lines(std::string_view id, unsigned lines);
+    Result set_scroll_line(std::string_view id, unsigned first);
+    Query<unsigned> scroll_line(std::string_view id) const;
     // Owner (application) configuration. These are not user operations and skip admission checks.
     Result set_error(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
@@ -277,6 +290,19 @@ private:
         float offset = 0;
         int offset_text_size = 0;
         unsigned offset_anchor = 0;
+        struct MultiView {
+            FieldView view;               // lines as last arranged (geometry rectangles are unused here)
+            std::u16string text;          // the visible text those lines were laid out from
+            int size = 0, width = 0;      // text size and wrap width they were laid out at
+            unsigned first = 0;           // first visible line
+            unsigned anchor = 0;          // visible-text offset where that line starts: survives a re-wrap
+            unsigned caret = 0;           // caret seen by the last arrange: a different one reveals itself
+            bool upstream = false, placed = false;
+            std::optional<unsigned> pending_first;  // set before the first arrange
+            float want_x = 0;             // the column an Up/Down run keeps, in pixels from the line start
+            unsigned want_from = ~0u;     // the caret that run last left it at: any other caret starts a new run
+            ScrollState scroll;           // pixel offset = first * line height, for the field's scrollbar region
+        } multi;
         TextSource source;
         std::u16string source_value, origin;
         bool has_source_value = false;
@@ -438,8 +464,13 @@ private:
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);
+    // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
+    // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
+    FieldView vertical_view(const Id& id);
+    Result move_lines(const Id& id, int direction, unsigned count, bool shift);
+    Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
-    std::function<void()> changed_, invalidate_;
+    std::function<void()> changed_, invalidate_, relayout_;
     struct TextScroll { ScrollState* state; int maximum, line_height; };
     std::map<std::string, TextScroll, std::less<>> text_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
@@ -449,6 +480,9 @@ private:
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);
 unsigned placement_text_offset(const Frame& frame, std::string_view id, int x);
+struct TextHit { unsigned offset = 0; bool upstream = false; };
+// The caret position a pointer at (x, y) means; y only matters for multi-line fields.
+TextHit placement_text_hit(const Frame& frame, std::string_view id, int x, int y);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
 }

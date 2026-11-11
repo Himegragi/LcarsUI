@@ -86,6 +86,35 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "UA02: " << (ua02 ? "PASS" : "FAIL") << '\n'; ok &= ua02;
         bool item_modal = invoke(uia, root, L"items.add") && close_modal(uia, root, L"items.dialog");
         std::cout << "UA04 item dialog: " << (item_modal ? "PASS" : "FAIL") << '\n'; ok &= item_modal;
+        // #79: the dialog's note is a three-line multi-line field: TextPattern reads it by line, ScrollPattern scrolls it.
+        {
+            bool note = invoke(uia, root, L"items.add");
+            auto field = note ? find_id(uia, root, L"items.dialog.note") : nullptr;
+            IUIAutomationValuePattern* note_value = nullptr; IUIAutomationTextPattern* note_text = nullptr; IUIAutomationScrollPattern* note_scroll = nullptr;
+            note = note && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&note_value))) && note_value && SUCCEEDED(note_value->SetValue(L"l1\nl2\nl3\nl4\nl5\nl6"));
+            RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+            BSTR whole = nullptr;
+            note = note && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&note_text))) && note_text;
+            IUIAutomationTextRange* range = nullptr; BSTR first_line = nullptr, second_line = nullptr, last_line = nullptr; int moved = 0;
+            note = note && SUCCEEDED(note_text->get_DocumentRange(&range)) && range && SUCCEEDED(range->GetText(-1, &whole)) && whole && std::wstring(whole) == L"l1\nl2\nl3\nl4\nl5\nl6" &&
+                SUCCEEDED(range->MoveEndpointByRange(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_Start)) && SUCCEEDED(range->ExpandToEnclosingUnit(TextUnit_Line)) &&
+                SUCCEEDED(range->GetText(-1, &first_line)) && first_line && std::wstring(first_line) == L"l1\n" &&
+                SUCCEEDED(range->Move(TextUnit_Line, 1, &moved)) && moved == 1 && SUCCEEDED(range->GetText(-1, &second_line)) && second_line && std::wstring(second_line) == L"l2\n" &&
+                SUCCEEDED(range->Move(TextUnit_Line, 10, &moved)) && moved == 4 && SUCCEEDED(range->GetText(-1, &last_line)) && last_line && std::wstring(last_line) == L"l6";
+            BOOL vertical = FALSE, horizontal = TRUE; double percent = -1, view = -1;
+            note = note && SUCCEEDED(field->GetCurrentPatternAs(UIA_ScrollPatternId, IID_PPV_ARGS(&note_scroll))) && note_scroll &&
+                SUCCEEDED(note_scroll->get_CurrentVerticallyScrollable(&vertical)) && vertical && SUCCEEDED(note_scroll->get_CurrentHorizontallyScrollable(&horizontal)) && !horizontal &&
+                SUCCEEDED(note_scroll->get_CurrentVerticalViewSize(&view)) && view > 49.9 && view < 50.1 &&
+                SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent > 99.9 &&
+                SUCCEEDED(note_scroll->SetScrollPercent(UIA_ScrollPatternNoScroll, 0)) && SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent == 0 &&
+                SUCCEEDED(note_scroll->SetScrollPercent(UIA_ScrollPatternNoScroll, 100)) && SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent > 99.9 &&
+                SUCCEEDED(note_scroll->Scroll(ScrollAmount_NoAmount, ScrollAmount_SmallDecrement)) && SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent > 66 && percent < 67 &&
+                note_scroll->Scroll(ScrollAmount_SmallIncrement, ScrollAmount_NoAmount) == UIA_E_INVALIDOPERATION;
+            SysFreeString(whole); SysFreeString(first_line); SysFreeString(second_line); SysFreeString(last_line);
+            if (range) range->Release(); if (note_scroll) note_scroll->Release(); if (note_text) note_text->Release(); if (note_value) note_value->Release(); if (field) field->Release();
+            note = close_modal(uia, root, L"items.dialog") && note;
+            std::cout << "UA08 multi-line note: " << (note ? "PASS" : "FAIL") << '\n'; ok &= note;
+        }
         auto items_list = find_id(uia, root, L"items.list"); IUIAutomationSelectionPattern* item_selection = nullptr; BOOL list_required = TRUE;
         bool optional_list = items_list && SUCCEEDED(items_list->GetCurrentPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(&item_selection))) && item_selection && SUCCEEDED(item_selection->get_CurrentIsSelectionRequired(&list_required)) && !list_required;
         if (item_selection) item_selection->Release(); if (items_list) items_list->Release();
