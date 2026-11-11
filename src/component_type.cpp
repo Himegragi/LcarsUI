@@ -24,8 +24,10 @@ void ComponentPaint::hover(Rect rect, int radius) {
     overlay(rect, radius, p.hover, p.hover_alpha);
     role(PaintRole::content);
 }
-void ComponentPaint::overlay(Rect rect, int radius, Color color, unsigned char) {
+void ComponentPaint::overlay(Rect rect, int radius, Color color, unsigned char alpha) {
+    overlay_alpha_ = alpha;
     if (radius > 0) rounded(rect, radius, color); else fill(rect, color);
+    overlay_alpha_ = 255;
 }
 
 TextAlign drawn_text_align(const Control& control, const PresentationSettings& settings) {

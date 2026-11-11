@@ -497,6 +497,36 @@ void hover_overlay_blends_over_the_surface_with_the_palette_alpha() {
     check(canvas.list.commands.back().role == PaintRole::hover && canvas.list.commands.back().color.a == 15, "the command carries the hover role and the alpha");
 }
 
+// Code review 2026-11-12 item 4: a canvas that only knows fill/rounded (the default overlay path) still learns the
+// real alpha of a translucent fill, instead of seeing the hover color painted as if it were opaque.
+struct AlphaProbe : detail::ComponentPaint {
+    using ComponentPaint::ComponentPaint;
+    struct Seen { PaintRole role; unsigned alpha; };
+    std::vector<Seen> seen;
+    PaintRole current = PaintRole::content;
+    void role(PaintRole r) override { current = r; }
+    void fill(Rect, Color) override { seen.push_back({current, overlay_alpha()}); }
+    void rounded(Rect, int, Color) override { seen.push_back({current, overlay_alpha()}); }
+    void clip(Rect) override {}
+    void text(std::u16string_view, int, int, int, Color) override {}
+};
+void the_default_overlay_path_keeps_the_alpha_visible() {
+    Page page; auto frame = page.arrange();
+    move(page, frame, middle_of(frame, "save"));
+    const auto& item = placed(frame, "save");
+    auto semantics = page.state().describe("save");
+    check(semantics.has_value(), "the button describes");
+    AlphaProbe probe(page.state(), item, *semantics, web_appearance(), 1.f, true);
+    detail::component_type(item.kind).paint(probe);
+    auto palette = page.state().effective_palette(web_appearance());
+    int translucent = 0, opaque = 0;
+    for (const auto& s : probe.seen) {
+        if (s.role == PaintRole::hover) { ++translucent; check(s.alpha == palette.hover_alpha, "the hover fill carries the palette alpha"); }
+        else { ++opaque; check(s.alpha == 255, "every other fill is opaque"); }
+    }
+    check(translucent == 1 && opaque > 0, "one translucent fill among the opaque ones");
+}
+
 void hover_never_paints_for_a_zero_alpha_palette() {
     Page page;
     check(bool(page.ui.set_palette_overrides({{name_of(web_appearance()), ThemeVariant::light(), "hover_alpha", 0}})), "alpha 0 accepted");
@@ -751,6 +781,7 @@ int main() {
         {"a_hovered_selected_item_keeps_its_selection_and_gains_the_overlay", a_hovered_selected_item_keeps_its_selection_and_gains_the_overlay},
         {"the_hover_switch_hides_the_overlay_but_not_the_target_or_the_tooltip", the_hover_switch_hides_the_overlay_but_not_the_target_or_the_tooltip},
         {"hover_overlay_blends_over_the_surface_with_the_palette_alpha", hover_overlay_blends_over_the_surface_with_the_palette_alpha},
+        {"the_default_overlay_path_keeps_the_alpha_visible", the_default_overlay_path_keeps_the_alpha_visible},
         {"hover_never_paints_for_a_zero_alpha_palette", hover_never_paints_for_a_zero_alpha_palette},
         {"scrolling_under_a_resting_pointer_moves_the_hover_at_once", scrolling_under_a_resting_pointer_moves_the_hover_at_once},
         {"reflow_under_a_resting_pointer_moves_the_hover_at_once", reflow_under_a_resting_pointer_moves_the_hover_at_once},

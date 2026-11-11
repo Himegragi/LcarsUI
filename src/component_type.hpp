@@ -46,9 +46,12 @@ public:
     // from this value alone, never from semantics.focused.
     bool focus_visible;
     virtual void role(PaintRole) {}
-    // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it; the
-    // default here only keeps test probes that do not care about alpha compiling.
+    // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it. The default
+    // draws the shape through fill()/rounded() (a Color has no alpha) and, for exactly that call, reports the
+    // alpha through overlay_alpha(), so a canvas that overrides only those two still sees a translucent fill.
     virtual void overlay(Rect rect, int radius, Color color, unsigned char alpha);
+    // 255 except inside the default overlay(): the alpha of the translucent fill being drawn.
+    unsigned char overlay_alpha() const { return overlay_alpha_; }
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;
     virtual void clip(Rect rect) = 0;
@@ -59,6 +62,8 @@ public:
     virtual void vertical_text(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }
     // The same in a bold and/or italic face. A painter that has no such faces draws the text plain.
     virtual void styled_text(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) { (void)style; text(value, pixels, x, y, color); }
+private:
+    unsigned char overlay_alpha_ = 255;
 };
 // Type-level applicability, independent of any instance's current semantic state.
 // Modal and tooltip content are declared by page membership, not by component kind.
