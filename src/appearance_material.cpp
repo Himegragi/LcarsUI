@@ -44,4 +44,5 @@ class Material final : public Appearance {
 };
 }
 const Appearance& material_appearance() { static Material skin; return skin; }
+namespace { const bool registered = detail::register_builtin_appearance(material_appearance()); }
 }

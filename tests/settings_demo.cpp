@@ -185,6 +185,81 @@ void semantic_items_and_dialogs() {
                 "semantic visibility follows the active Items dialog");
 }
 
+// #78: accent choice on the appearance page, backed by Ui palette overrides.
+bool accent_has(const settings_demo::Demo& demo, const Appearance& appearance, const ThemeVariant& variant, Color expected_accent) {
+    auto palette = demo.ui.effective_palette(appearance, variant);
+    return palette && palette->accent == expected_accent;
+}
+void accent_choices_pass_contrast_everywhere() {
+    const char* ids[] = {"default", "green", "orange"};
+    for (const char* id : ids) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics();
+        auto options = tree.children({"appearance.accent"});
+        test::check(options && options->size() == 3, "accent dropdown has default, green and orange");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{id}}, Verb::select)), "select accent");
+        test::check(demo.accent_id() == id && tree.get({"appearance.accent", OptionValue{id}})->selected, "selection is reflected");
+        for (const auto* appearance : {&web_appearance(), &material_appearance()})
+            for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+                auto palette = demo.ui.effective_palette(*appearance, variant);
+                test::check(palette && check_palette_contrast(*palette).empty(), (std::string("accent ") + id + " passes contrast for " + std::string(appearance->name()) + " " + variant.name).c_str());
+                bool unchanged = palette && *palette == appearance->palette(variant);
+                test::check(unchanged == (std::string(id) == "default"), "default leaves built-in colors, other choices change them");
+            }
+    }
+}
+void accent_choice_repaints_the_page_in_the_chosen_color() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics();
+        test::check(bool(tree.perform({"appearance.dark"}, Verb::toggle)), "dark on so the checked box paints the accent");
+        auto painted = [&] {
+            test::FakeMeasure measure; ScrollState scroll; auto& state = detail::access(demo.ui);
+            auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+            std::vector<std::pair<detail::PaintRole, Color>> colors;
+            for (const auto& item : frame.items) {
+                auto semantic = state.describe(item.id); if (!semantic || !semantic->visible) continue;
+                DarkProbe paint(state, item, *semantic, *appearance, 1.f, true);
+                detail::component_type(semantic->kind).paint(paint);
+                colors.insert(colors.end(), paint.colors.begin(), paint.colors.end());
+            }
+            return colors;
+        };
+        auto has = [](const auto& colors, Color c) { return std::any_of(colors.begin(), colors.end(), [&](const auto& e) { return e.second == c; }); };
+        auto builtin = appearance->palette(ThemeVariant::dark());
+        test::check(has(painted(), builtin.accent), "built-in accent paints before any choice");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{"green"}}, Verb::select)), "choose green");
+        auto chosen = demo.ui.effective_palette(*appearance, ThemeVariant::dark());
+        auto colors = painted();
+        test::check(chosen && chosen->accent != builtin.accent && has(colors, chosen->accent) && !has(colors, builtin.accent), "next frame paints the green accent instead of the built-in one");
+        test::check(bool(tree.perform({"appearance.accent", OptionValue{"default"}}, Verb::select)) && has(painted(), builtin.accent), "default restores the built-in accent");
+    }
+}
+void accent_is_history_saved_state_and_reset() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    test::check(!demo.is_dirty(), "clean before the choice");
+    test::check(bool(tree.perform({"appearance.accent", OptionValue{"orange"}}, Verb::select)) && demo.is_dirty() && demo.document().accent == "orange", "choice dirties the document");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.accent_id() == "default" && demo.ui.palette_overrides().empty(), "undo restores the default accent and clears the overrides");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Y'})) && demo.accent_id() == "orange" && !demo.ui.palette_overrides().empty(), "redo reapplies the accent");
+    test::check(bool(tree.perform({"appearance.reset"}, Verb::invoke)) && demo.accent_id() == "default" && demo.ui.palette_overrides().empty(), "reset appearance also resets the accent");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.accent_id() == "orange", "reset is one history step");
+}
+void loading_a_document_applies_its_accent() {
+    settings_demo::Demo demo; auto document = demo.document();
+    test::check(document.accent == "default", "a new document uses the default accent");
+    document.accent = "green"; demo.load_document(document);
+    test::check(demo.accent_id() == "green" && accent_has(demo, web_appearance(), ThemeVariant::light(), Color{20, 110, 50}), "loaded accent overrides the palette");
+    document.accent = "default"; demo.load_document(document);
+    test::check(demo.ui.palette_overrides().empty(), "loading the default clears the overrides");
+}
+
+void accent_follows_the_existing_appearance_controls_in_tab_order() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto order = detail::access(demo.ui).focus_order();
+    auto at = [&](const char* id) { return std::find(order.begin(), order.end(), std::string(id)) - order.begin(); };
+    test::check(at("appearance.text_size") < at("appearance.dark") && at("appearance.dark") < at("appearance.compact") && at("appearance.compact") < at("appearance.accent") && at("appearance.accent") < at("appearance.reset"), "accent dropdown comes after the existing controls so their keyboard order is unchanged");
+}
 void exercise() {
     settings_demo::Demo demo;
     test::check(demo.nav.selected()->id == "general", "general selected initially");
@@ -975,4 +1050,4 @@ void slider_drag_is_one_write_per_value_and_one_undo() {
     test::check(*demo.volume.draft() == 45, "drag ended on 45");
     test::check(bool(state.key_down({.ctrl = true, .letter = u'Z'})) && *demo.volume.draft() == before, "one undo restores the value before the whole drag");
 }
-int main() { const test::Case cases[] = {{"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"About page content", about_page_content}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

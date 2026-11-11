@@ -11,6 +11,7 @@ struct SettingsDocument {
     std::vector<Item> items;
     int next_item_id;
     lcars::PresentationSettings presentation;
+    std::string accent = "default";  // "default", "green" or "orange": the palette override set chosen on the appearance page
     bool operator==(const SettingsDocument&) const = default;
 };
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
@@ -65,6 +66,9 @@ class Demo {
     std::function<void()> font_changed_;
     void refresh_fonts();
     lcars::ButtonHandle reset_appearance_;
+    std::string accent_value_ = "default";
+    std::function<void()> accent_changed_;
+    lcars::Result apply_accent(const std::string& id);
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
 public:
@@ -86,7 +90,7 @@ public:
     std::u16string save_failed_renderer();
     lcars::CheckboxHandle notices, dark, compact;
     lcars::RadioGroupHandle mode;
-    lcars::DropdownHandle region, font;
+    lcars::DropdownHandle region, font, accent;
     lcars::SliderHandle volume, text_size;
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
@@ -95,6 +99,12 @@ public:
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
     lcars::Result set_presentation(const lcars::PresentationSettings& settings, bool coalesce = false);
+    // Accent choices: "default" clears the palette overrides; "green" and "orange" override accent,
+    // on_accent and selection for every linked built-in appearance in light and dark.
+    lcars::Result set_accent(const std::string& id);
+    const std::string& accent_id() const { return accent_value_; }
+    // The palette overrides one accent choice stands for (appearances that are not linked are skipped).
+    static std::vector<lcars::PaletteOverride> accent_overrides(const std::string& id);
     explicit Demo(AboutInfo about = {});
     void set_renderer(std::u16string value);
     lcars::layout::Node page() const;
