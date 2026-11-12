@@ -1220,7 +1220,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
     auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
     auto start = region();
     report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
-                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w,
+                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w - (label().column_layout.track.x - label().bounds.x),  // a ring's thickness in from the edge (#90): the bar starts at x = ring
         "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
     const auto bounds = label().bounds;
     POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};

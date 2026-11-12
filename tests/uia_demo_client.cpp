@@ -417,6 +417,25 @@ int wmain(int argc, wchar_t** argv) {
         title = title && notices && SUCCEEDED(notices->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle))) && toggle && SUCCEEDED(toggle->Toggle()) && SUCCEEDED(root->get_CurrentName(&after_title)) && before_title && after_title && std::wstring(after_title) == L"*" + std::wstring(before_title);
         SysFreeString(before_title); SysFreeString(after_title); if (toggle) toggle->Release(); if (notices) notices->Release();
         std::cout << "UA06: " << (title ? "PASS" : "FAIL") << '\n'; ok &= title;
+        {   // UA15 (#90): the focus ring controls on the appearance page work through UIA: a slider (RangeValue), a checkbox (Toggle)
+            // and dropdown options (SelectionItem); the indicator off disables the thickness slider but keeps its value.
+            const bool on_page = select(uia, nav, L"appearance") && patterns(uia, root);
+            auto mode = find_id(uia, root, L"appearance.focus_mode"); auto width = find_id(uia, root, L"appearance.focus_width"); auto same = find_id(uia, root, L"appearance.focus_radius_same");
+            auto never = mode ? find_id(uia, mode, L"never") : nullptr; auto automatic = mode ? find_id(uia, mode, L"automatic") : nullptr;
+            IUIAutomationRangeValuePattern* range = nullptr; IUIAutomationTogglePattern* toggle = nullptr; IUIAutomationSelectionItemPattern* pick_never = nullptr; IUIAutomationSelectionItemPattern* pick_auto = nullptr;
+            bool ring = on_page && mode && width && same && never && automatic &&
+                SUCCEEDED(width->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&range))) && range && SUCCEEDED(range->SetValue(5)) &&
+                SUCCEEDED(same->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle))) && toggle && SUCCEEDED(toggle->Toggle()) &&
+                SUCCEEDED(never->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&pick_never))) && pick_never && SUCCEEDED(automatic->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&pick_auto))) && pick_auto;
+            double value = 0; BOOL enabled_now = FALSE; ToggleState state = ToggleState_On;
+            ring = ring && SUCCEEDED(range->get_CurrentValue(&value)) && value == 5 && SUCCEEDED(toggle->get_CurrentToggleState(&state)) && state == ToggleState_Off &&
+                SUCCEEDED(width->get_CurrentIsEnabled(&enabled_now)) && enabled_now;
+            ring = ring && SUCCEEDED(pick_never->Select()) && SUCCEEDED(width->get_CurrentIsEnabled(&enabled_now)) && !enabled_now && SUCCEEDED(range->get_CurrentValue(&value)) && value == 5;
+            ring = ring && SUCCEEDED(pick_auto->Select()) && SUCCEEDED(width->get_CurrentIsEnabled(&enabled_now)) && enabled_now;
+            if (pick_never) pick_never->Release(); if (pick_auto) pick_auto->Release(); if (toggle) toggle->Release(); if (range) range->Release();
+            if (never) never->Release(); if (automatic) automatic->Release(); if (mode) mode->Release(); if (width) width->Release(); if (same) same->Release();
+            std::cout << "UA15 focus ring controls: " << (ring ? "PASS" : "FAIL") << '\n'; ok &= ring;
+        }
         IUIAutomationWindowPattern* window = nullptr;
         bool close_ready = SUCCEEDED(root->GetCurrentPatternAs(UIA_WindowPatternId, IID_PPV_ARGS(&window))) && window;
         bool close_dialog = close_ready && SUCCEEDED(window->Close()) && close_modal(uia, root, L"app.close_dialog");
