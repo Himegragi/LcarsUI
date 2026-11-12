@@ -283,8 +283,9 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #84 justified text | `-Only ime` (a composition on a justified line: the core test moves the caret rectangle, only a real input method shows the candidate window), `-Only dpi` (pieces are placed at whole pixels at 125 / 150 / 200 %) |
 | #85 context menu | `-Only demo-uia`; the Apps key, Shift+F10 and Alt/F10 with real input (the CTest drivers post messages), right-button release over a row |
 | #86 outline | none beyond `demo_render_compare` (CTest); compare the saved images |
-| #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 | #90 focus ring | `-Only dpi` (the ring at 100 / 150 / 200 %), `-Only uia`; Tab through both appearances with the real keyboard (every component, light and dark, standard and compact), then try the four controls on the appearance page |
+| #92 error-line layout | none beyond CTest: the error-line layout of every component type at three widths is pinned by `error_lines`, and `demo_render_compare` stays byte-identical to before (compare the saved images) |
+| #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
