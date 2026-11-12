@@ -45,21 +45,27 @@ bool valid_value(const Control& control, std::u16string_view text) { return vali
 // A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
 constexpr unsigned max_visible_lines = 1000;
 bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
-// Text flow (#80) belongs to labels and text fields; every other kind must keep the defaults.
-bool supports_text_flow(Kind kind) { return kind == Kind::label || kind == Kind::text; }
+// What a type says about itself; a Kind no type is registered for says nothing.
+bool supports_text_flow(Kind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
 bool valid_text_align(TextAlign align) {
     return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
 }
 bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
 // Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
-bool admits_text_align(Kind kind, TextAlign align) { return align != TextAlign::distribute || kind == Kind::label; }
+bool admits_text_align(Kind kind, TextAlign align) {
+    const auto* type = detail::find_component_type(kind);
+    return align != TextAlign::distribute || (type && type->admits_distribute());
+}
 bool valid_text_flow(const Control& control) {
     if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
     if (!admits_text_align(control.kind, control.text_align)) return false;
     return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
 // A rich field is a multi-line text field; the option exists for no other control.
-bool valid_rich_option(const Control& control) { return !control.rich || (control.kind == Kind::text && control.multiline); }
+bool valid_rich_option(const Control& control) {
+    const auto* type = detail::find_component_type(control.kind);
+    return !control.rich || (type && type->supports_rich_text() && control.multiline);
+}
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
 bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
@@ -257,21 +263,26 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs || control.kind == Kind::progress) throw std::invalid_argument("Component requires typed creation");
+        if (detail::component_type(control.kind).requires_typed_creation()) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
-        if (control.kind == Kind::text) {
-            if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
-            Field field;
-            field.session.text = control.value; field.rich = control.rich;
-            edits_.emplace(control.id, std::move(field));
-        }
+        detail::component_type(control.kind).adopt(*this, control);
     }
     for (const auto& control : controls_)
         if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
+}
+void detail::UiState::adopt_text(const Control& control) {
+    if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
+    Field field;
+    field.session.text = control.value; field.rich = control.rich;
+    edits_.emplace(control.id, std::move(field));
+}
+bool detail::UiState::draws_focus_indicator(const Semantics& semantics) const {
+    if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
+    return semantics.focused && (focus_indicator_visible() || component_type(semantics.kind).focus_always_visible(semantics));
 }
 detail::UiState::~UiState() {
     lifetime_.reset();
@@ -293,8 +304,6 @@ ProgressHandle detail::UiState::add_progress(Control control) {
     progresses_.emplace(id, ProgressField{});
     return ProgressHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::progress_layout_handle(const Control& c) {
-    OperationScope operation(this); return ProgressHandle(this, lifetime_, c.id); }
 Result ProgressHandle::connect_source(NumericSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -354,8 +363,6 @@ CheckboxHandle detail::UiState::add_checkbox(Control control) {
     bind(id, [this, id] { return toggle_checkbox(id); });
     return CheckboxHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::checkbox_layout_handle(const Control& c) {
-    OperationScope operation(this); return CheckboxHandle(this, lifetime_, c.id); }
 Result CheckboxHandle::toggle() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -473,8 +480,6 @@ RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<R
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::radio_layout_handle(const Control& c) {
-    OperationScope operation(this); return RadioGroupHandle(this, lifetime_, c.id); }
 ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> items) {
     OperationScope operation(this);
     if (control.kind != Kind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
@@ -484,8 +489,6 @@ ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> i
     ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
     return ListHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::list_layout_handle(const Control& c) {
-    OperationScope operation(this); return ListHandle(this, lifetime_, c.id); }
 Result ListHandle::connect_source(OptionSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -534,19 +537,6 @@ Result ListHandle::focus(OptionValue value) const {
     list.cursor = std::move(value);
     if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
     if (ui_->invalidate_) ui_->invalidate_();
-    return {};
-}
-Result detail::UiState::list_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& f = lists_.at(focus_);
-    if (key.key == Key::space) return f.cursor ? ListHandle(this, lifetime_, focus_).select(*f.cursor) : Result{};
-    if (key.key != Key::up && key.key != Key::down && key.key != Key::left && key.key != Key::right && key.key != Key::home && key.key != Key::end) return {};
-    int n = static_cast<int>(f.items.size());
-    int current = -1;
-    for (int i = 0; i < n; ++i) if (f.cursor && f.items[i].value == *f.cursor) { current = i; break; }
-    int step = key.key == Key::up || key.key == Key::left || key.key == Key::end ? -1 : 1;
-    int start = key.key == Key::home ? 0 : key.key == Key::end ? n - 1 : current < 0 ? (step > 0 ? 0 : n - 1) : current + step;
-    for (int i = start; i >= 0 && i < n; i += step) if (f.items[i].enabled) return ListHandle(this, lifetime_, focus_).select(f.items[i].value);
     return {};
 }
 Result ListHandle::set_items(std::vector<RadioOption> items) const {
@@ -694,18 +684,6 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     if (result) { field.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::radio_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (key.repeat) return {};
-    int direction = key.key == Key::right || key.key == Key::down ? 1 : key.key == Key::left || key.key == Key::up ? -1 : 0;
-    if (!direction) return {};
-    auto& field = radios_.at(focus_);
-    int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
-    for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
-    for (int i = index + direction; i >= 0 && i < n; i += direction)
-        if (field.options[i].enabled) return select_option(focus_, field.options[i].value);
-    return {};
-}
 Query<Semantics> RadioGroupHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
@@ -727,8 +705,6 @@ DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioO
     DropdownField field; field.options = std::move(options); dropdowns_.emplace(id, std::move(field));
     return DropdownHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::dropdown_layout_handle(const Control& c) {
-    OperationScope operation(this); return DropdownHandle(this, lifetime_, c.id); }
 void detail::UiState::close_popup() {
     OperationScope operation(this);
     if (popup_source_.empty()) return;
@@ -869,26 +845,6 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::dropdown_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& f = dropdowns_.at(focus_);
-    if (key.key == Key::escape) { close_popup(); return {}; }
-    if (key.key == Key::enter || key.key == Key::space) {
-        if (key.repeat) return {};
-        if (popup_source_ != focus_) return DropdownHandle(this, lifetime_, focus_).open();
-        auto candidate = f.candidate; close_popup(); return candidate ? select_dropdown(focus_, *candidate) : Result{};
-    }
-    if (popup_source_ != focus_) return {};
-    int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
-    if (key.key == Key::home) direction = 1;
-    if (key.key == Key::end) direction = -1;
-    if (!direction) return {};
-    int n = static_cast<int>(f.options.size()), index = direction > 0 ? -1 : n;
-    if (key.key != Key::home && key.key != Key::end) for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
-    f.reveal = true;
-    for (int i = index + direction; i >= 0 && i < n; i += direction) if (f.options[i].enabled) { f.candidate = f.options[i].value; break; }
-    if (invalidate_) invalidate_(); return {};
-}
 Query<Semantics> DropdownHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
@@ -919,8 +875,6 @@ SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
     numerics_.emplace(id, std::move(field));
     return SliderHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::slider_layout_handle(const Control& c) {
-    OperationScope operation(this); return SliderHandle(this, lifetime_, c.id); }
 Result SliderHandle::set_value(int value) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -1075,28 +1029,6 @@ std::optional<int> detail::UiState::slider_held_x(std::string_view id) const {
     if (slider_drag_ && slider_drag_->held && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
     return std::nullopt;
 }
-Result detail::UiState::slider_key_down(KeyPress key) {
-    OperationScope operation(this);
-    const Id id = focus_;
-    auto& f = numerics_.at(id);
-    const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
-    long long target = value;
-    switch (key.key) {
-    case Key::home: target = lo; break;
-    case Key::end: target = hi; break;
-    case Key::right: case Key::up:
-        if (value < hi) target = std::min(hi, lo + ((value - lo) / step + 1) * step);
-        break;
-    case Key::left: case Key::down:
-        if (value > lo) target = lo + ((value - lo - 1) / step) * step;
-        break;
-    default: return {};
-    }
-    const double from = slider_display_ratio(id);
-    auto result = slider_set_value(id, static_cast<int>(target));
-    slider_started_moving(id, from, static_cast<int>(value));
-    return result;
-}
 // A thumb transition is live only while it is still heading to the slider's current value: any
 // other change (application code, undo, a semantic or UIA set, the data source) leaves it stale
 // and the thumb is drawn at the new value at once.
@@ -1195,12 +1127,6 @@ ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     if (!control) return {};
     return component_type(control->kind).handle(*this, *control);
 }
-ComponentHandle detail::UiState::text_layout_handle(const Control& control) {
-    OperationScope operation(this); return TextHandle(this, lifetime_, control.id); }
-ComponentHandle detail::UiState::label_layout_handle(const Control& control) {
-    OperationScope operation(this); return LabelHandle(this, lifetime_, control.id); }
-ComponentHandle detail::UiState::button_layout_handle(const Control& control) {
-    OperationScope operation(this); return ButtonHandle(this, button_lifetimes_.at(control.id), control.id); }
 
 std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) const {
     return std::visit([this](const auto& item) -> std::optional<Id> {
@@ -1260,11 +1186,6 @@ NavigationListHandle detail::UiState::add_navigation_list(Control control, std::
     tabs_.emplace(id, TabsState{std::move(pages), index, index, false, {}});
     return NavigationListHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::navigation_layout_handle(const Control& c) {
-    OperationScope operation(this); return NavigationListHandle(this, lifetime_, c.id);
-}
-ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) {
-    OperationScope operation(this); return TabsHandle(this, lifetime_, c.id); }
 TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
     OperationScope operation(this);
     auto id = layout_id(source);
@@ -1461,7 +1382,7 @@ Result detail::UiState::simulate_hover(std::string_view id, const std::optional<
     hover_simulated_ = true;
     hover_set(HoverTarget{control->id, item});
     // An item of an open dropdown lives in its popup, which never starts a tooltip.
-    tooltip_hover(item && control->kind == Kind::dropdown ? std::string_view{} : std::string_view(control->id));
+    tooltip_hover(item && component_type(control->kind).opens_popup() ? std::string_view{} : std::string_view(control->id));
     return {};
 }
 Result detail::UiState::clear_simulated_hover() {
@@ -1722,34 +1643,6 @@ Query<OptionValue> NavigationListHandle::selected() const {
     auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
     return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
 }
-Result detail::UiState::tabs_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& t = tabs_.at(focus_);
-    if (key.key == Key::left || key.key == Key::right) {
-        int dir = key.key == Key::left ? -1 : 1;
-        int i = static_cast<int>(t.candidate);
-        for (std::size_t n = 0; n < t.pages.size(); ++n) {
-            i = (i + dir + static_cast<int>(t.pages.size())) % static_cast<int>(t.pages.size());
-            if (t.pages[static_cast<std::size_t>(i)].enabled) { t.candidate = static_cast<std::size_t>(i); break; }
-        }
-        if (invalidate_) invalidate_();
-        return {};
-    }
-    return command_key_down(key);
-}
-Result detail::UiState::navigation_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (auto r = available(focus_); !r) return r;
-    auto& t = tabs_.at(focus_);
-    int index = static_cast<int>(t.active), last = static_cast<int>(t.pages.size()) - 1;
-    if (key.key == Key::home) index = -1;
-    else if (key.key == Key::end) index = last + 1;
-    else if (key.key != Key::up && key.key != Key::down) return {};
-    int direction = key.key == Key::up || key.key == Key::end ? -1 : 1;
-    for (index += direction; index >= 0 && index <= last; index += direction)
-        if (t.pages[static_cast<std::size_t>(index)].enabled) return activate_tab(focus_, t.pages[static_cast<std::size_t>(index)].value);
-    return {};
-}
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -1761,7 +1654,7 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
 Result detail::UiState::writing_support(const Control& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
         return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
-    if (control.kind != Kind::label && control.writing_mode == WritingMode::vertical)
+    if (!detail::component_type(control.kind).supports_vertical_writing() && control.writing_mode == WritingMode::vertical)
         return {Status::invalid_value, u"Only labels support vertical writing"};
     return {};
 }
@@ -2477,76 +2370,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
     s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
-    if (control->kind == Kind::text) {
-        s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
-        if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
-            const auto& m = it->second.multi;
-            s.scroll_line = m.pending_first.value_or(m.first);
-            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
-        }
-    }
     s.writing_mode = control->writing_mode; s.vertical_digits = control->vertical_digits;
-    if (auto it = bools_.find(id); it != bools_.end()) {
-        s.checked = it->second.value;
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-    }
-    if (auto it = numerics_.find(id); it != numerics_.end()) {
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-        s.slider_range = it->second.range; s.numeric_value = it->second.value;
-    }
-    if (auto it = progresses_.find(id); it != progresses_.end()) {
-        s.read_only = true;
-        if (it->second.source.read) {
-            int displayed = std::clamp(it->second.source.read(), 0, 100);
-            s.numeric_value = displayed;
-            auto number = std::to_string(displayed);
-            s.value = std::u16string(number.begin(), number.end()) + u"%";
-        }
-    }
-    if (auto it = radios_.find(id); it != radios_.end()) {
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-        for (const auto& option : it->second.options) {
-            bool selected = it->second.value && *it->second.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
-            if (selected) s.value = option.label;
-        }
-    }
-    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
-        const auto& f = it->second;
-        s.source_conflict = f.connected && f.origin != f.source_value && f.value != f.source_value;
-        s.expanded = popup_source_ == id; s.candidate = f.candidate;
-        for (const auto& option : f.options) {
-            bool selected = f.value && *f.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
-            if (selected) s.value = option.label;
-        }
-    }
-    if (auto it = tabs_.find(id); it != tabs_.end()) {
-        const auto& t = it->second;
-        s.candidate = t.pages[t.candidate].value;
-        for (std::size_t i = 0; i < t.pages.size(); ++i) {
-            const auto& page = t.pages[i];
-            bool invalid = false;
-            for (const auto& member : page.members) {
-                auto member_id = layout_id(member);
-                if (member_id) {
-                    auto error = errors_.find(*member_id);
-                    if (error != errors_.end() && !error->second.empty()) { invalid = true; break; }
-                }
-            }
-            s.options.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
-            if (i == t.active) s.value = page.label;
-        }
-    }
-    if (auto it = lists_.find(id); it != lists_.end()) {
-        const auto& f = it->second; auto value = f.source.read ? f.source.read() : std::optional<OptionValue>{};
-        s.candidate = f.cursor;
-        for (const auto& item : f.items) {
-            bool selected = value && *value == item.value;
-            s.options.push_back({item.value, item.label, item.enabled, selected});
-            if (selected) s.value = item.label;
-        }
-    }
+    component_type(control->kind).describe(*this, *control, s);
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -2559,68 +2384,21 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         if (!s.description.empty()) s.description += u"\n";
         s.description += tip->second.text;
     }
-    if (auto it = edits_.find(id); it != edits_.end()) {
-        const auto& field = it->second;
-        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !source_matches(field);
-        s.rich = field.rich;
-    }
     if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
-    bool admits_activation = component_type(control->kind).has_activate_operation() && !s.executing;
-    if (auto it = bools_.find(id); it != bools_.end()) {
-        const auto& f = it->second;
-        admits_activation = admits_activation && f.connected && (f.confirmation_member || f.immediate || f.confirmed);
-    }
-    if (admits_activation) s.operations.push_back(Operation::activate);
-    if (auto it = radios_.find(id); it != radios_.end()) {
-        const auto& f = it->second;
-        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed) &&
-            std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
-            s.operations.push_back(Operation::select);
-    }
-    if (auto it = numerics_.find(id); it != numerics_.end()) {
-        const auto& f = it->second;
-        if (!control->read_only && f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::edit);
-    }
-    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
-        const auto& f = it->second;
-        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::select);
-    }
-    if (auto it = lists_.find(id); it != lists_.end()) {
-        const auto& f = it->second;
-        if (!control->read_only && f.source.read && f.immediate &&
-            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
-    }
-    if (auto it = edits_.find(id); it != edits_.end()) {
-        if (control->multiline) s.operations.push_back(Operation::scroll);
-        s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
-        const auto& field = it->second;
-        if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
-            s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
-            if (field.rich) s.operations.push_back(Operation::style);
-            if (!field.past.empty()) s.operations.push_back(Operation::undo);
-            if (!field.future.empty()) s.operations.push_back(Operation::redo);
-        }
-    }
+    component_type(control->kind).describe_operations(*this, *control, s);
     return s;
 }
 std::u16string detail::UiState::text(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return {};
-    if (control->kind == Kind::label && control->role == TextRole::error) {
-        auto it = errors_.find(control->target);
-        return it == errors_.end() ? std::u16string{} : it->second;
-    }
-    if (auto it = edits_.find(id); it != edits_.end()) return it->second.session.text;
-    if (auto it = bools_.find(id); it != bools_.end()) return it->second.value ? u"true" : u"false";
-    if (auto it = numerics_.find(id); it != numerics_.end()) { auto value = std::to_string(it->second.value); return {value.begin(), value.end()}; }
-    if (auto it = providers_.find(id); it != providers_.end()) return it->second();
+    if (auto shown = component_type(control->kind).display_text(*this, *control)) return *shown;
     return control->value;
 }
 void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider) {
     OperationScope operation(this);
     const auto* control = find(id);
-    if (!control || control->kind != Kind::label || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
+    if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
     providers_.insert_or_assign(control->id, std::move(provider));
 }
 const Control* detail::UiState::find(std::string_view id) const {
@@ -3392,29 +3170,8 @@ Result detail::UiState::key_down(KeyPress key) {
                 return {};
             }
         }
-        bool handled = false;
-        if (control->kind == Kind::text) {
-            // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
-            const bool multi = control->multiline;
-            // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
-            const bool style_key = control->rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
-                                  (!key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) ||
-                                  (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
-                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
-                 (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
-        } else if (!key.ctrl || !key.letter) {
-            switch (control->kind) {
-            case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
-            case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
-            case Kind::radio_group: case Kind::slider: handled = key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
-            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::escape)); break;
-            case Kind::button: case Kind::checkbox: case Kind::tabs: handled = key.key == Key::enter || key.key == Key::space || (control->kind == Kind::tabs && (key.key == Key::left || key.key == Key::right)); break;
-            case Kind::label: case Kind::progress: break;
-            default: handled = true; break;
-            }
-        }
-        if (handled) return component_type(control->kind).key_down(*this, key);
+        const auto& type = component_type(control->kind);
+        if (type.handles_key(*this, *control, key)) return type.key_down(*this, key);
     }
     for (int scoped = 1; scoped >= 0; --scoped) for (const auto& entry : shortcuts_) {
         if ((scoped ? entry.scope == focus_ && !entry.scope.empty() : entry.scope.empty()) && entry.chord.key == key.key && entry.chord.letter == key.letter && entry.chord.ctrl == key.ctrl && entry.chord.shift == key.shift) {
@@ -3428,18 +3185,6 @@ Result detail::UiState::key_down(KeyPress key) {
     }
     return {};
 }
-Result detail::UiState::text_key_down(KeyPress key) {
-    OperationScope operation(this); return edit_key(key); }
-Result detail::UiState::command_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (key.repeat) return {};
-    if (key.key == Key::enter) return invoke(focus_);
-    if (key.key == Key::space) key_armed_ = focus_;
-    return {};
-}
-void detail::UiState::command_pointer_down() {
-    OperationScope operation(this); pointer_armed_ = focus_; }
-
 namespace {
 // Code-point stepping is the S1 support boundary: no grapheme clusters, no RTL.
 unsigned step(std::u16string_view text, unsigned pos, int direction) {
@@ -3587,10 +3332,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     const auto* control = find(id);
     if (auto result = focusable(*control); !result) return result;
     if (!popup_source_.empty() && popup_source_ != id) close_popup();
-    if (control->kind == Kind::navigation_list && option) {
-        const auto& pages = tabs_.at(control->id).pages;
-        if (*option >= pages.size() || !pages[*option].enabled) return {};
-    }
+    if (component_type(control->kind).ignores_press(*this, *control, option)) return {};
     end_slider_drag(false);
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
@@ -3599,18 +3341,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     refresh_tooltips();
     if (auto result = available(target); !result) return result;
     control = find(target);
-    if (control->kind == Kind::dropdown) {
-        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
-        auto& f = dropdowns_.at(control->id);
-        if (popup_source_ == target && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
-    }
-    else if (control->kind == Kind::list) {
-        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
-        const auto& items = lists_.at(control->id).items;
-        if (option && *option < items.size()) pointer_option_value_ = items[*option].value;
-    }
-    else if (control->kind == Kind::radio_group || control->kind == Kind::slider || control->kind == Kind::tabs || control->kind == Kind::navigation_list) { pointer_armed_ = control->id; pointer_option_ = option; }
-    else component_type(control->kind).pointer_down(*this);
+    component_type(control->kind).pointer_down(*this, *control, option);
     return {};
 }
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
@@ -3620,28 +3351,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
-    if (auto it = dropdowns_.find(armed); it != dropdowns_.end()) {
-        if (pressed_value) {
-            if (popup_source_ != armed || !option || *option >= it->second.options.size() || it->second.options[*option].value != *pressed_value) return {};
-            close_popup(); return select_dropdown(armed, *pressed_value);
-        }
-        if (pressed_option || option) return {};
-        return DropdownHandle(this, lifetime_, armed).open();
-    }
-    if (auto it = tabs_.find(armed); it != tabs_.end()) {
-        if (!pressed_option || pressed_option != option || *option >= it->second.pages.size()) return {};
-        return activate_tab(armed, it->second.pages[*option].value);
-    }
-    if (numerics_.contains(armed)) return {};
-    if (auto it = lists_.find(armed); it != lists_.end()) {
-        if (!pressed_value || !option || *option >= it->second.items.size() || it->second.items[*option].value != *pressed_value) return {};
-        return ListHandle(this, lifetime_, armed).select(*pressed_value);
-    }
-    if (auto it = radios_.find(armed); it != radios_.end()) {
-        if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
-        return select_option(armed, it->second.options[*option].value);
-    }
-    return invoke(armed);
+    return component_type(find(armed)->kind).pointer_up(*this, {armed, pressed_option, option, pressed_value});
 }
 void detail::UiState::cancel_input() {
     OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(false); }
@@ -3649,7 +3359,7 @@ Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
-    if (control->kind == Kind::label) return {Status::not_supported, u"標籤不能帶有錯誤"};
+    if (!component_type(control->kind).accepts_error()) return {Status::not_supported, u"標籤不能帶有錯誤"};
     if (message.empty()) { if (auto it = errors_.find(id); it != errors_.end()) errors_.erase(it); }
     else errors_.insert_or_assign(control->id, std::move(message));
     return {};
@@ -3696,20 +3406,21 @@ SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
     for (auto& control : controls) {
-        if (control.kind == Kind::text) add_text(std::move(control));
-        else if (control.kind == Kind::button) add_button(std::move(control));
-        else if (control.kind == Kind::label) add_label(std::move(control));
-        else { (void)detail::component_type(control.kind); button_lifetimes_.emplace(control.id, std::make_shared<int>(0)); controls_.push_back(std::move(control)); }
+        const auto& type = detail::component_type(control.kind);
+        type.seed(*this, std::move(control));
     }
+}
+void detail::UiState::seed_plain(Control control) {
+    button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
+    controls_.push_back(std::move(control));
 }
 bool detail::UiState::registerable(std::string_view id) {
     const auto* existing = find(id);
     auto overlay = overlay_ids_.find(id);
     if (!id.empty() && !existing && overlay == overlay_ids_.end()) return true;
 #ifndef NDEBUG
-    const char* names[] = {"text", "button", "label", "checkbox", "radio_group", "slider", "dropdown", "list", "tabs", "progress", "navigation_list"};
-    auto kind = existing ? static_cast<unsigned>(existing->kind) : 0;
-    std::string type = existing ? (kind < std::size(names) ? names[kind] : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
+    const auto* registered = existing ? find_component_type(existing->kind) : nullptr;
+    std::string type = existing ? std::string(registered ? registered->name() : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
     std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
     diagnostics_.push_back(message);
     output_diagnostic(message);
@@ -3914,7 +3625,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
 #ifndef NDEBUG
     for (const auto& id : semantic_order_) {
         auto c = find(id); auto s = describe(id);
-        if (c && s && c->kind != Kind::label && c->kind != Kind::progress && s->name.empty() && diagnosed_names_.insert(id).second)
+        if (c && s && component_type(c->kind).needs_name() && s->name.empty() && diagnosed_names_.insert(id).second)
         {
             auto message = id + " is focusable but has no name";
             diagnostics_.push_back(message);
@@ -3929,14 +3640,6 @@ std::string detail::UiState::semantic_page(std::string_view id) const {
     auto it = page_members_.find(id);
     if (it == page_members_.end()) return "shared";
     return tabs_.at(it->second.first).pages[it->second.second].value.id;
-}
-static Role semantic_role(Kind kind) {
-    switch (kind) {
-    case Kind::text: return Role::text; case Kind::button: return Role::button; case Kind::label: return Role::label;
-    case Kind::checkbox: return Role::checkbox; case Kind::radio_group: return Role::radio_group; case Kind::slider: return Role::slider;
-    case Kind::dropdown: return Role::dropdown; case Kind::list: case Kind::navigation_list: return Role::list; case Kind::tabs: return Role::tabs; case Kind::progress: return Role::progress;
-    }
-    return Role::label;
 }
 Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
@@ -3966,111 +3669,38 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
-    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = semantic_role(c->kind);
+    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
     n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
-    if (!ref.item && c->kind == Kind::button) {
-        for (const auto& binding : u.shortcuts_) {
-            if (binding.target != ref.id) continue;
-            const auto& chord = binding.chord;
-            if (chord.ctrl) n.accelerator_key += u"Ctrl+";
-            if (chord.shift) n.accelerator_key += u"Shift+";
-            if (chord.letter) n.accelerator_key += chord.letter;
-            else {
-                switch (chord.key) {
-                case Key::enter: n.accelerator_key += u"Enter"; break;
-                case Key::space: n.accelerator_key += u"Space"; break;
-                case Key::left: n.accelerator_key += u"Left"; break;
-                case Key::right: n.accelerator_key += u"Right"; break;
-                case Key::up: n.accelerator_key += u"Up"; break;
-                case Key::down: n.accelerator_key += u"Down"; break;
-                case Key::home: n.accelerator_key += u"Home"; break;
-                case Key::end: n.accelerator_key += u"End"; break;
-                case Key::page_up: n.accelerator_key += u"PageUp"; break;
-                case Key::page_down: n.accelerator_key += u"PageDown"; break;
-                case Key::backspace: n.accelerator_key += u"Backspace"; break;
-                case Key::del: n.accelerator_key += u"Delete"; break;
-                default: break;
-                }
-            }
-            break;
-        }
-    }
     if (n.role == Role::label) n.name = s.value;
     // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
-    n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
-    if (c->kind == Kind::label) { n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; }
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
-    auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
-    if (edit != u.edits_.end() && edit->second.rich) {
-        n.rich = true; n.styles = edit->second.spans;
-        n.typing_style = u.insertion_style(edit->second, edit->second.session.begin(), edit->second.session.end());
-    }
-    if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
-    if (edit != u.edits_.end() && !ref.item) {
-        n.word_segmentation = edit->second.segmentation;
-        n.word_segmentation_in_use = segmentation_in_use(edit->second.segmentation, u.dictionary());
-    }
+    detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
-        if (c->kind == Kind::radio_group) n.role = Role::radio_option;
-        else if (c->kind == Kind::dropdown) n.role = Role::dropdown_option;
-        else if (c->kind == Kind::list || c->kind == Kind::navigation_list) n.role = Role::list_item;
-        else if (c->kind == Kind::tabs) n.role = Role::tab_item;
+        if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
-        if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
-    auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
-        auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
-        add(Verb::set_writing_mode, !ref.item && c->kind == Kind::label);
-        add(Verb::set_vertical_digits, !ref.item && c->kind == Kind::label);
-        if (ref.item) {
-            add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
-            add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
-            add(Verb::context_menu, n.role == Role::list_item && u.has_menu(*c) && !u.renderer_failed_);
-        } else {
-            add(Verb::context_menu, u.has_menu(*c) && !u.renderer_failed_);
-            add(Verb::focus, admits(Operation::focus));
-            add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
-            add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
-            add(Verb::set_value, (n.role == Role::text || n.role == Role::slider) && admits(Operation::edit));
-            add(Verb::select, n.role == Role::text && admits(Operation::select));
-            add(Verb::open, n.role == Role::dropdown && admits(Operation::select));
-            add(Verb::cancel, n.role == Role::dropdown && admits(Operation::select));
-            add(Verb::undo, n.role == Role::text && admits(Operation::undo));
-            add(Verb::redo, n.role == Role::text && admits(Operation::redo));
-            add(Verb::copy, n.role == Role::text && admits(Operation::copy));
-            add(Verb::cut, n.role == Role::text && admits(Operation::cut));
-            add(Verb::paste, n.role == Role::text && admits(Operation::paste));
-            add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
-            for (auto flow : {Verb::set_text_align, Verb::set_justify_method, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
-            add(Verb::set_style, n.role == Role::text && admits(Operation::style));
-            add(Verb::set_typing_style, n.role == Role::text && admits(Operation::style));
-            for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
-                add(word_verb, n.role == Role::text && admits(Operation::select));
-            bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
-                (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
-                (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
-                (u.dropdowns_.contains(ref.id) && bool(u.dropdowns_.at(ref.id).confirmed)) ||
-                (u.numerics_.contains(ref.id) && bool(u.numerics_.at(ref.id).confirmed));
-            add(Verb::confirm, confirmed && !n.read_only);
-        }
+        const auto& type = detail::component_type(c->kind);
+        type.verbs({u, *c, s, n, ref.item.has_value()}, n.verbs);
+        if (!ref.item && type.confirm_pending(u, *c) && !n.read_only) n.verbs.push_back(Verb::confirm);
     }
     return {Status::ok, {}, n};
 }
@@ -4257,16 +3887,6 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         if (verb == Verb::focus || verb == Verb::hover) return state_->menu_highlight(ref.item->id);  // a menu row's hover is its highlight
         return {Status::not_supported, {}};
     }
-    if (verb == Verb::set_writing_mode || verb == Verb::set_vertical_digits) {
-        if (ref.item || node->role != Role::label) return {Status::not_supported, {}};
-        if (auto result = state_->available(ref.id); !result) return result;  // hidden, or behind a modal dialog
-        auto handle = state_->layout_handle(ref.id);
-        const auto& label = std::get<LabelHandle>(handle);
-        if (verb == Verb::set_writing_mode) {
-            if (const auto* mode = std::get_if<WritingMode>(&argument)) return label.set_writing_mode(*mode);
-        } else if (const auto* digits = std::get_if<int>(&argument)) return label.set_vertical_digits(*digits);
-        return {Status::invalid_value, {}};
-    }
     if (verb == Verb::hover) {
         if (node->role == Role::dialog || node->role == Role::tooltip) return {Status::not_supported, {}};
         return state_->simulate_hover(ref.id, ref.item);
@@ -4274,8 +3894,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
-        if (auto it = state_->edits_.find(ref.id); it != state_->edits_.end() && it->second.session.composing)
-            return {Status::busy, {}};
+        if (state_->text_composing(ref.id)) return {Status::busy, {}};
         return {Status::invalid_value, {}};
     };
     if (verb == Verb::context_menu) {
@@ -4285,100 +3904,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         else if (!std::holds_alternative<std::monostate>(argument)) return invalid_argument();
         return state_->open_menu(ref.id, at, std::move(item));
     }
-    if (!ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) &&
-        (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
-        return invalid_argument();
-    if (ref.item && node->role == Role::list_item && state_->lists_.contains(ref.id) && verb == Verb::focus) {
-        auto handle = state_->layout_handle(ref.id);
-        return std::get<ListHandle>(handle).focus(*ref.item);
-    }
-    if (!ref.item && verb == Verb::focus && (node->role != Role::label || node->focusable) && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
-        return state_->focus(ref.id);
+    const auto* control = state_->find(ref.id);
+    const detail::ComponentType* type = control ? &detail::component_type(control->kind) : nullptr;
+    if (type && !ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) && type->item_role()) return invalid_argument();
+    if (type && !ref.item && verb == Verb::focus && (type->can_focus() || node->focusable)) return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
-    if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
-    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_justify_method || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
-        // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
-        if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
-        if (verb == Verb::set_text_align) {
-            if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
-        } else if (verb == Verb::set_justify_method) {
-            if (auto method = std::get_if<JustifyMethod>(&argument)) return state_->set_justify_method(ref.id, *method);
-        } else if (verb == Verb::set_line_spacing) {
-            if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
-        } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::scroll) {
-        if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
-        if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
-        return invalid_argument();
-    }
-    if (node->role == Role::text && (verb == Verb::select_word || verb == Verb::select_paragraph || verb == Verb::double_click || verb == Verb::triple_click)) {
-        auto offset = std::get_if<int>(&argument);
-        if (!offset || *offset < 0) return invalid_argument();
-        const auto at = static_cast<unsigned>(*offset);
-        return verb == Verb::select_word ? state_->select_word(ref.id, at) : verb == Verb::select_paragraph ? state_->select_paragraph(ref.id, at)
-             : verb == Verb::double_click ? state_->double_click(ref.id, at) : state_->triple_click(ref.id, at);
-    }
-    if (node->role == Role::text && verb == Verb::set_word_segmentation) {
-        if (auto mode = std::get_if<WordSegmentation>(&argument)) return state_->set_word_segmentation(ref.id, *mode);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_value) {
-        if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
-        if (auto value = std::get_if<RichText>(&argument)) return state_->set_rich_value(ref.id, *value);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_style) {
-        if (auto edit = std::get_if<StyleEdit>(&argument)) return state_->set_style(ref.id, edit->begin, edit->end, edit->change);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_typing_style) {
-        if (auto style = std::get_if<TextStyle>(&argument)) return state_->set_typing_style(ref.id, *style);
-        return invalid_argument();
-    }
-    if (node->role == Role::text) {
-        if (verb == Verb::select) {
-            if (auto selection = std::get_if<Selection>(&argument)) return state_->select(ref.id, selection->anchor, selection->caret);
-            return invalid_argument();
-        }
-        if (verb == Verb::undo) return state_->undo(ref.id);
-        if (verb == Verb::redo) return state_->redo(ref.id);
-        if (verb == Verb::copy) return state_->copy(ref.id);
-        if (verb == Verb::cut) return state_->cut(ref.id);
-        if (verb == Verb::paste) {
-            if (auto value = std::get_if<std::u16string>(&argument)) return state_->paste(ref.id, *value);
-            return invalid_argument();
-        }
-    }
-    auto handle = state_->layout_handle(ref.id);
-    if (!ref.item && verb == Verb::confirm) {
-        if (auto text = std::get_if<TextHandle>(&handle); text && state_->edits_.at(ref.id).confirmed) return text->confirm();
-        if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && state_->bools_.at(ref.id).confirmed) return checkbox->confirm();
-        if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && state_->radios_.at(ref.id).confirmed) return radio->confirm();
-        if (auto slider = std::get_if<SliderHandle>(&handle); slider && state_->numerics_.at(ref.id).confirmed) return slider->confirm();
-        if (auto dropdown = std::get_if<DropdownHandle>(&handle); dropdown && state_->dropdowns_.at(ref.id).confirmed) return dropdown->confirm();
-    }
-    if (auto tabs = std::get_if<TabsHandle>(&handle); tabs && ref.item && verb == Verb::select) return tabs->activate(*ref.item);
-    if (auto nav = std::get_if<NavigationListHandle>(&handle); nav && ref.item && verb == Verb::select) return nav->select(*ref.item);
-    if (auto list = std::get_if<ListHandle>(&handle); list && ref.item && verb == Verb::select) {
-        detail::UiState::OperationScope operation(state_);
-        auto previous = state_->lists_.at(ref.id).cursor;
-        auto result = list->select(*ref.item);
-        if (auto it = state_->lists_.find(ref.id); it != state_->lists_.end()) it->second.cursor = previous;
-        return result;
-    }
-    if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && verb == Verb::toggle) return checkbox->toggle();
-    if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && ref.item && verb == Verb::select) return radio->select(*ref.item);
-    if (auto dropdown = std::get_if<DropdownHandle>(&handle)) {
-        if (ref.item && verb == Verb::select) return dropdown->select(*ref.item);
-        if (!ref.item && verb == Verb::open) return dropdown->open();
-        if (!ref.item && verb == Verb::cancel) return dropdown->cancel();
-    }
-    if (auto slider = std::get_if<SliderHandle>(&handle); slider && verb == Verb::set_value) {
-        if (auto value = std::get_if<int>(&argument)) return slider->set_value(*value);
-        return invalid_argument();
-    }
+    if (!type) return {Status::not_supported, {}};
+    if (auto result = type->perform({*state_, ref, verb, argument, *node, invalid_argument})) return *result;
     return {Status::not_supported, {}};
 }
 }

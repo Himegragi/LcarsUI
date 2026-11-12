@@ -6,7 +6,7 @@
 class TestComponent final : public lcars::detail::ComponentType {
 public:
     lcars::ComponentHandle handle(lcars::detail::UiState& ui, const lcars::Control& control) const override {
-        return ui.button_layout_handle(control);
+        return ui.typed_handle<lcars::ButtonHandle>(control);
     }
     void arrange(lcars::detail::ComponentLayout& layout) const override {
         layout.placement.bounds = {0, 0, 80, 30};
@@ -18,6 +18,6 @@ public:
     void paint(lcars::detail::ComponentPaint& paint) const override {
         paint.fill(paint.placement.bounds, {17, 91, 173});
     }
-    lcars::Result key_down(lcars::detail::UiState& ui, lcars::KeyPress key) const override { return ui.command_key_down(key); }
-    void pointer_down(lcars::detail::UiState& ui) const override { ui.command_pointer_down(); }
+    lcars::Result key_down(lcars::detail::UiState& ui, lcars::KeyPress key) const override { return lcars::detail::command_key_down(ui, key); }
+    void pointer_down(lcars::detail::UiState& ui, const lcars::Control&, std::optional<std::size_t>) const override { lcars::detail::command_pointer_down(ui); }
 };

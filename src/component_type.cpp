@@ -187,10 +187,113 @@ void keep_ring_room(FieldLayout& f, int ring) {
     f.surface.h += grow;
     f.height += grow;
 }
+bool plain_key(KeyPress key) { return !key.ctrl || !key.letter; }
+bool arrow_key(Key key) {
+    return key == Key::left || key == Key::right || key == Key::up || key == Key::down || key == Key::home || key == Key::end;
+}
+template <class T> bool diverged(bool connected, const T& origin, const T& source, const T& value) { return connected && origin != source && value != source; }
+template <class Field> bool admits_write(const Field& field) { return field.connected && (field.confirmation_member || field.immediate || field.confirmed); }
+std::u16string number_text(int value) { auto digits = std::to_string(value); return {digits.begin(), digits.end()}; }
+// The confirm verb of a field that has a confirmed write.
+template <class Handle, class Fields> std::optional<Result> confirm_verb(const PerformContext& c, const Fields& fields) {
+    if (c.ref.item || c.verb != Verb::confirm) return std::nullopt;
+    auto it = fields.find(c.ref.id);
+    if (it == fields.end() || !it->second.confirmed) return std::nullopt;
+    return std::get<Handle>(c.ui.layout_handle(c.ref.id)).confirm();
+}
+template <class Fields> bool has_confirmed_write(const Fields& fields, const Control& c) {
+    auto it = fields.find(c.id);
+    return it != fields.end() && bool(it->second.confirmed);
+}
+bool is_flow_verb(Verb verb) { return verb == Verb::set_text_align || verb == Verb::set_justify_method || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing; }
+// Labels and text fields share the text flow verbs; the same UiState entry points as the typed handles, so the same Status.
+void flow_verbs(const VerbContext& c, std::vector<Verb>& out) {
+    if (c.ui.renderer_failed()) return;
+    for (auto flow : {Verb::set_text_align, Verb::set_justify_method, Verb::set_line_spacing, Verb::set_paragraph_spacing}) out.push_back(flow);
+}
+std::optional<Result> flow_perform(const PerformContext& c) {
+    if (c.ref.item || !is_flow_verb(c.verb)) return std::nullopt;
+    if (c.verb == Verb::set_text_align) {
+        if (auto align = std::get_if<TextAlign>(&c.argument)) return c.ui.set_text_align(c.ref.id, *align);
+    } else if (c.verb == Verb::set_justify_method) {
+        if (auto method = std::get_if<JustifyMethod>(&c.argument)) return c.ui.set_justify_method(c.ref.id, *method);
+    } else if (c.verb == Verb::set_line_spacing) {
+        if (auto multiple = std::get_if<double>(&c.argument)) return c.ui.set_line_spacing(c.ref.id, *multiple);
+    } else if (auto dip = std::get_if<int>(&c.argument)) return c.ui.set_paragraph_spacing(c.ref.id, *dip);
+    return c.invalid_argument();
+}
+// Tabs and navigation lists share their pages: the candidate, the options with their error marks, the selected page's label.
+void describe_pages(const UiState& ui, const Control& c, Semantics& s) {
+    auto& all = UiState::Internals::tabs(ui);
+    auto it = all.find(c.id);
+    if (it == all.end()) return;
+    const auto& t = it->second;
+    s.candidate = t.pages[t.candidate].value;
+    for (std::size_t i = 0; i < t.pages.size(); ++i) {
+        const auto& page = t.pages[i];
+        bool invalid = false;
+        for (const auto& member : page.members) {
+            auto member_id = ui.layout_id(member);
+            if (member_id) {
+                auto& errors = UiState::Internals::errors(ui);
+                auto error = errors.find(*member_id);
+                if (error != errors.end() && !error->second.empty()) { invalid = true; break; }
+            }
+        }
+        s.options.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
+        if (i == t.active) s.value = page.label;
+    }
+}
+// A release over the page the press armed selects it: tabs and navigation lists share their pages.
+Result page_release(UiState& ui, const PointerRelease& release) {
+    auto& pages = UiState::Internals::tabs(ui).at(release.id).pages;
+    if (!release.pressed_option || release.pressed_option != release.option || *release.option >= pages.size()) return {};
+    return ui.activate_tab(release.id, pages[*release.option].value);
+}
 class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_label(std::move(c)); }
+    std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
+        if (c.role == TextRole::error) {
+            auto& errors = UiState::Internals::errors(ui);
+            auto it = errors.find(c.target);
+            return it == errors.end() ? std::u16string{} : it->second;
+        }
+        auto& providers = UiState::Internals::providers(ui);
+        if (auto it = providers.find(c.id); it != providers.end()) return it->second();
+        return std::nullopt;
+    }
+    bool accepts_text_provider() const override { return true; }
+    void describe_node(const UiState&, const Control&, const Semantics& s, const NodeRef&, SemanticNode& n) const override {
+        n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits;
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (!c.item) { out.push_back(Verb::set_writing_mode); out.push_back(Verb::set_vertical_digits); }
+        ComponentType::verbs(c, out);
+        if (!c.item) flow_verbs(c, out);
+    }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (!c.ref.item && (c.verb == Verb::set_writing_mode || c.verb == Verb::set_vertical_digits)) {
+            if (auto result = c.ui.available(c.ref.id); !result) return result;  // hidden, or behind a modal dialog
+            auto handle = c.ui.layout_handle(c.ref.id);
+            const auto& label = std::get<LabelHandle>(handle);
+            if (c.verb == Verb::set_writing_mode) {
+                if (const auto* mode = std::get_if<WritingMode>(&c.argument)) return label.set_writing_mode(*mode);
+            } else if (const auto* digits = std::get_if<int>(&c.argument)) return label.set_vertical_digits(*digits);
+            return Result{Status::invalid_value, {}};
+        }
+        return flow_perform(c);
+    }
+    std::string_view name() const override { return "label"; }
+    Role role() const override { return Role::label; }
+    bool supports_text_flow() const override { return true; }
+    bool admits_distribute() const override { return true; }
+    bool supports_vertical_writing() const override { return true; }
+    bool accepts_error() const override { return false; }
+    bool needs_name() const override { return false; }
+    bool handles_key(const UiState&, const Control&, KeyPress) const override { return false; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<LabelHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         if (c.control.writing_mode == WritingMode::vertical) { arrange_vertical(c); return; }  // justify/distribute read as top there (vertical_params)
@@ -283,7 +386,181 @@ public:
 class Text final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.text_layout_handle(c); }
+    void adopt(UiState& ui, const Control& c) const override { ui.adopt_text(c); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_text(std::move(c)); }
+    bool focus_always_visible(const Semantics& s) const override { return !s.read_only && s.enabled; }
+    bool labels_in_placement() const override { return true; }
+    // The caret's own line, also in a multi-line field.
+    std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>&, int) const override {
+        if (const auto* session = state.edit(target.id)) {
+            const auto caret = target.caret_rect(session->visible_caret());
+            return Rect{caret.x, caret.y, 0, caret.h};
+        }
+        return Rect{target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
+    }
+    bool has_builtin_menu() const override { return true; }
+    void builtin_menu_entries(const UiState& ui, const Control& c, bool clipboard_text, std::vector<UiState::MenuEntry>& raw) const override {
+        const auto& field = UiState::Internals::edits(ui).at(c.id);
+        const bool editable = !c.read_only && !field.session.composing && field.has_source_value &&
+                              (field.confirmation_member || field.immediate || field.confirmed);
+        const bool selected = field.session.begin() != field.session.end();
+        auto separator = [&] { UiState::MenuEntry entry; entry.separator = true; raw.push_back(std::move(entry)); };
+        auto add = [&](const char* id, std::u16string label, char16_t key, std::u16string hint, bool enabled) {
+            raw.push_back({id, std::move(label), std::move(hint), enabled, false, key});
+        };
+        add(menu_undo, u"復原(U)", u'U', u"Ctrl+Z", editable && !field.past.empty());
+        add(menu_redo, u"重做(R)", u'R', u"Ctrl+Y", editable && !field.future.empty());
+        separator();
+        add(menu_cut, u"剪下(T)", u'T', u"Ctrl+X", editable && selected);
+        add(menu_copy, u"複製(C)", u'C', u"Ctrl+C", selected);
+        add(menu_paste, u"貼上(P)", u'P', u"Ctrl+V", editable && clipboard_text);
+        add(menu_delete, u"刪除(D)", u'D', u"Del", editable && selected);
+        separator();
+        add(menu_select_all, u"全選(A)", u'A', u"Ctrl+A", true);
+        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with 復原(U).
+            separator();
+            add(menu_bold, u"粗體(B)", u'B', u"Ctrl+B", editable);
+            add(menu_italic, u"斜體(I)", u'I', u"Ctrl+I", editable);
+            add(menu_underline, u"底線(U)", u'U', u"Ctrl+U", editable);
+        }
+    }
+    Result run_builtin_menu(UiState& ui, const std::string& target, std::string_view command) const override {
+        if (command == menu_undo) return ui.undo(target);
+        if (command == menu_redo) return ui.redo(target);
+        if (command == menu_cut) return ui.cut(target);
+        if (command == menu_copy) return ui.copy(target);
+        if (command == menu_paste) return ui.paste_clipboard(target);
+        if (command == menu_delete) return ui.delete_selection(target);
+        if (command == menu_bold) return ui.toggle_style(target, StyleAttribute::bold);
+        if (command == menu_italic) return ui.toggle_style(target, StyleAttribute::italic);
+        if (command == menu_underline) return ui.toggle_style(target, StyleAttribute::underline);
+        if (command == menu_select_all) {
+            auto& edits = UiState::Internals::edits(ui);
+            auto it = edits.find(target);
+            if (it == edits.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+            return ui.select(target, 0, static_cast<unsigned>(it->second.session.text.size()));
+        }
+        return {Status::not_found, u"沒有這個選單項目"};
+    }
+    std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
+        auto& edits = UiState::Internals::edits(ui);
+        if (auto it = edits.find(c.id); it != edits.end()) return it->second.session.text;
+        return std::nullopt;
+    }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        s.multiline = c.multiline; s.visible_lines = c.multiline ? c.visible_lines : 0;
+        auto& edits = UiState::Internals::edits(ui);
+        auto it = edits.find(c.id);
+        if (it == edits.end()) return;
+        const auto& field = it->second;
+        if (c.multiline) {
+            const auto& m = field.multi;
+            s.scroll_line = m.pending_first.value_or(m.first);
+            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
+        }
+        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
+        s.rich = field.rich;
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& edits = UiState::Internals::edits(ui);
+        auto it = edits.find(c.id);
+        if (it == edits.end()) return;
+        if (c.multiline) s.operations.push_back(Operation::scroll);
+        s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
+        const auto& field = it->second;
+        if (!c.read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
+            s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
+            if (field.rich) s.operations.push_back(Operation::style);
+            if (!field.past.empty()) s.operations.push_back(Operation::undo);
+            if (!field.future.empty()) s.operations.push_back(Operation::redo);
+        }
+    }
+    void describe_node(const UiState& ui, const Control& c, const Semantics& s, const NodeRef& ref, SemanticNode& n) const override {
+        auto& edits = UiState::Internals::edits(ui);
+        auto it = edits.find(c.id);
+        if (it == edits.end()) return;
+        const auto& field = it->second;
+        n.text_selection = field.session.selection; n.text_revision = field.session.revision;
+        if (field.rich) {
+            n.rich = true; n.styles = field.spans;
+            n.typing_style = UiState::Internals::insertion_style(ui, field, field.session.begin(), field.session.end());
+        }
+        if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
+        if (!ref.item) {
+            n.word_segmentation = field.segmentation;
+            n.word_segmentation_in_use = segmentation_in_use(field.segmentation, UiState::Internals::dictionary(ui));
+        }
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        ComponentType::verbs(c, out);
+        if (c.item) return;
+        auto add = [&](Verb verb, bool condition) { if (condition) out.push_back(verb); };
+        add(Verb::set_value, c.admits(Operation::edit));
+        add(Verb::select, c.admits(Operation::select));
+        add(Verb::undo, c.admits(Operation::undo));
+        add(Verb::redo, c.admits(Operation::redo));
+        add(Verb::copy, c.admits(Operation::copy));
+        add(Verb::cut, c.admits(Operation::cut));
+        add(Verb::paste, c.admits(Operation::paste));
+        add(Verb::scroll, c.semantics.multiline && c.admits(Operation::scroll));
+        flow_verbs(c, out);
+        add(Verb::set_style, c.admits(Operation::style));
+        add(Verb::set_typing_style, c.admits(Operation::style));
+        for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+            add(word_verb, c.admits(Operation::select));
+    }
+    bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::edits(ui), c); }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        auto& ui = c.ui;
+        if (auto result = flow_perform(c)) return result;
+        if (c.verb == Verb::scroll) {
+            if (!ui.find(c.ref.id)->multiline) return Result{Status::not_supported, {}};
+            if (auto line = std::get_if<int>(&c.argument); line && *line >= 0) return ui.set_scroll_line(c.ref.id, static_cast<unsigned>(*line));
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::select_word || c.verb == Verb::select_paragraph || c.verb == Verb::double_click || c.verb == Verb::triple_click) {
+            auto offset = std::get_if<int>(&c.argument);
+            if (!offset || *offset < 0) return c.invalid_argument();
+            const auto at = static_cast<unsigned>(*offset);
+            return c.verb == Verb::select_word ? ui.select_word(c.ref.id, at) : c.verb == Verb::select_paragraph ? ui.select_paragraph(c.ref.id, at)
+                 : c.verb == Verb::double_click ? ui.double_click(c.ref.id, at) : ui.triple_click(c.ref.id, at);
+        }
+        if (c.verb == Verb::set_word_segmentation) {
+            if (auto mode = std::get_if<WordSegmentation>(&c.argument)) return ui.set_word_segmentation(c.ref.id, *mode);
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::set_value) {
+            if (auto value = std::get_if<std::u16string>(&c.argument)) return ui.set_value(c.ref.id, *value);
+            if (auto value = std::get_if<RichText>(&c.argument)) return ui.set_rich_value(c.ref.id, *value);
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::set_style) {
+            if (auto edit = std::get_if<StyleEdit>(&c.argument)) return ui.set_style(c.ref.id, edit->begin, edit->end, edit->change);
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::set_typing_style) {
+            if (auto style = std::get_if<TextStyle>(&c.argument)) return ui.set_typing_style(c.ref.id, *style);
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::select) {
+            if (auto selection = std::get_if<Selection>(&c.argument)) return ui.select(c.ref.id, selection->anchor, selection->caret);
+            return c.invalid_argument();
+        }
+        if (c.verb == Verb::undo) return ui.undo(c.ref.id);
+        if (c.verb == Verb::redo) return ui.redo(c.ref.id);
+        if (c.verb == Verb::copy) return ui.copy(c.ref.id);
+        if (c.verb == Verb::cut) return ui.cut(c.ref.id);
+        if (c.verb == Verb::paste) {
+            if (auto value = std::get_if<std::u16string>(&c.argument)) return ui.paste(c.ref.id, *value);
+            return c.invalid_argument();
+        }
+        return confirm_verb<TextHandle>(c, UiState::Internals::edits(ui));
+    }
+    std::string_view name() const override { return "text"; }
+    Role role() const override { return Role::text; }
+    bool supports_text_flow() const override { return true; }
+    bool supports_rich_text() const override { return true; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<TextHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         const auto& control = c.control;
@@ -502,13 +779,24 @@ public:
         if (focused && c.window_focused && enabled) marked(c, PaintRole::caret, [&] { c.fill({at(session->visible_caret()), editor.y, d(c.presentation().thin) + 1, editor.h}, p.accent); });
     }
     bool selects_text() const override { return true; }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.text_key_down(key); }
+    bool handles_key(const UiState&, const Control& c, KeyPress key) const override {
+        // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
+        const bool multi = c.multiline;
+        // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
+        const bool style_key = c.rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
+        return key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
+                           (!key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) ||
+                           (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
+            (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
+             (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
+    }
+    Result key_down(UiState& ui, KeyPress key) const override { return ui.edit_key(key); }
 };
 // Legacy toggle/navigation use the button presentation, but have no button activation behavior.
 class Command : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.button_layout_handle(c); }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<ButtonHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         int line = c.measure.line_height(p.text_size);
@@ -546,14 +834,82 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
-    bool has_activate_operation() const override { return true; }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.command_key_down(key); }
-    void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_button(std::move(c)); }
+    void describe_operations(const UiState&, const Control&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_node(const UiState& ui, const Control& c, const Semantics&, const NodeRef& ref, SemanticNode& n) const override {
+        if (ref.item) return;
+        for (const auto& binding : UiState::Internals::shortcuts(ui)) {
+            if (binding.target != c.id) continue;
+            const auto& chord = binding.chord;
+            if (chord.ctrl) n.accelerator_key += u"Ctrl+";
+            if (chord.shift) n.accelerator_key += u"Shift+";
+            if (chord.letter) n.accelerator_key += chord.letter;
+            else {
+                switch (chord.key) {
+                case Key::enter: n.accelerator_key += u"Enter"; break;
+                case Key::space: n.accelerator_key += u"Space"; break;
+                case Key::left: n.accelerator_key += u"Left"; break;
+                case Key::right: n.accelerator_key += u"Right"; break;
+                case Key::up: n.accelerator_key += u"Up"; break;
+                case Key::down: n.accelerator_key += u"Down"; break;
+                case Key::home: n.accelerator_key += u"Home"; break;
+                case Key::end: n.accelerator_key += u"End"; break;
+                case Key::page_up: n.accelerator_key += u"PageUp"; break;
+                case Key::page_down: n.accelerator_key += u"PageDown"; break;
+                case Key::backspace: n.accelerator_key += u"Backspace"; break;
+                case Key::del: n.accelerator_key += u"Delete"; break;
+                default: break;
+                }
+            }
+            break;
+        }
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        ComponentType::verbs(c, out);
+        if (!c.item && c.ui.has_action(c.control.id) && c.admits(Operation::activate)) out.push_back(Verb::invoke);
+    }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.verb == Verb::invoke) return c.ui.invoke(c.ref.id);
+        return std::nullopt;
+    }
+    std::string_view name() const override { return "button"; }
+    Role role() const override { return Role::button; }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override { return plain_key(key) && (key.key == Key::enter || key.key == Key::space); }
+    Result key_down(UiState& ui, KeyPress key) const override { return command_key_down(ui, key); }
+    void pointer_down(UiState& ui, const Control&, std::optional<std::size_t>) const override { command_pointer_down(ui); }
 };
 class Checkbox final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.checkbox_layout_handle(c); }
+    std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
+        auto& bools = UiState::Internals::bools(ui);
+        if (auto it = bools.find(c.id); it != bools.end()) return std::u16string(it->second.value ? u"true" : u"false");
+        return std::nullopt;
+    }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& bools = UiState::Internals::bools(ui);
+        if (auto it = bools.find(c.id); it != bools.end()) {
+            s.checked = it->second.value;
+            s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
+        }
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& bools = UiState::Internals::bools(ui);
+        auto it = bools.find(c.id);
+        if (!s.executing && (it == bools.end() || admits_write(it->second))) s.operations.push_back(Operation::activate);
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        ComponentType::verbs(c, out);
+        if (!c.item && c.admits(Operation::activate)) out.push_back(Verb::toggle);
+    }
+    bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::bools(ui), c); }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.verb == Verb::toggle) return std::get<CheckboxHandle>(c.ui.layout_handle(c.ref.id)).toggle();
+        return confirm_verb<CheckboxHandle>(c, UiState::Internals::bools(c.ui));
+    }
+    std::string_view name() const override { return "checkbox"; }
+    Role role() const override { return Role::checkbox; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<CheckboxHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         Command::arrange(c);
         int extra = scaled(c.scale, c.presentation().checkbox_extra);
@@ -578,11 +934,9 @@ public:
         if (c.semantics.checked.value_or(false))
             c.fill({x + 2 * inset, y + 2 * inset, size - 4 * inset, size - 4 * inset}, p.accent);
     }
-    bool has_activate_operation() const override { return true; }
-    Result key_down(UiState& ui, KeyPress key) const override {
-        return key.key == Key::space ? ui.command_key_down(key) : Result{};
-    }
-    void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override { return plain_key(key) && (key.key == Key::enter || key.key == Key::space); }
+    Result key_down(UiState& ui, KeyPress key) const override { return key.key == Key::space ? command_key_down(ui, key) : Result{}; }
+    void pointer_down(UiState& ui, const Control&, std::optional<std::size_t>) const override { command_pointer_down(ui); }
 protected:
     int indicator_px(const UiState& ui, const Appearance& appearance, float scale) const override {
         return scaled(scale, appearance.component_presentation(ui.presentation().density).indicator);
@@ -591,7 +945,38 @@ protected:
 class RadioGroup final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.radio_layout_handle(c); }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& radios = UiState::Internals::radios(ui);
+        auto it = radios.find(c.id);
+        if (it == radios.end()) return;
+        s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
+        for (const auto& option : it->second.options) {
+            bool selected = it->second.value && *it->second.value == option.value;
+            s.options.push_back({option.value, option.label, option.enabled, selected});
+            if (selected) s.value = option.label;
+        }
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& radios = UiState::Internals::radios(ui);
+        auto it = radios.find(c.id);
+        if (it == radios.end()) return;
+        const auto& f = it->second;
+        if (admits_write(f) && std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
+            s.operations.push_back(Operation::select);
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (c.item) { if (c.admits(Operation::select)) out.push_back(Verb::select); }
+        else ComponentType::verbs(c, out);
+    }
+    bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::radios(ui), c); }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.ref.item && c.verb == Verb::select) return std::get<RadioGroupHandle>(c.ui.layout_handle(c.ref.id)).select(*c.ref.item);
+        return confirm_verb<RadioGroupHandle>(c, UiState::Internals::radios(c.ui));
+    }
+    std::string_view name() const override { return "radio_group"; }
+    Role role() const override { return Role::radio_group; }
+    std::optional<Role> item_role() const override { return Role::radio_option; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<RadioGroupHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
@@ -643,12 +1028,106 @@ public:
         paint_lines(c, item.description_lines, item.text_size, p.muted);
         paint_errors(c, item.error_lines, item.text_size, p.error);
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.radio_key_down(key); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override { return plain_key(key) && arrow_key(key.key); }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        if (key.repeat) return {};
+        int direction = key.key == Key::right || key.key == Key::down ? 1 : key.key == Key::left || key.key == Key::up ? -1 : 0;
+        if (!direction) return {};
+        auto& field = UiState::Internals::radios(ui).at(ui.focused());
+        int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
+        for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
+        for (int i = index + direction; i >= 0 && i < n; i += direction)
+            if (field.options[i].enabled) return ui.select_option(ui.focused(), field.options[i].value);
+        return {};
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
+    Result pointer_up(UiState& ui, const PointerRelease& release) const override {
+        auto& field = UiState::Internals::radios(ui).at(release.id);
+        if (!release.pressed_option || release.pressed_option != release.option || *release.option >= field.options.size()) return {};
+        return ui.select_option(release.id, field.options[*release.option].value);
+    }
 };
 class List final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
+    bool has_row_cursor() const override { return true; }
+    // A list row's own anchor for a keyboard-opened menu.
+    std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) const override {
+        if (!item) return std::nullopt;
+        auto semantic = state.describe(target.id);
+        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
+            if (semantic->options[i].value == *item) {
+                const auto& row = target.options[i];
+                return Rect{row.x + row_inset, row.y, 0, row.h};
+            }
+        return std::nullopt;
+    }
+    // A menu is opened for a row; from the keyboard that is the current one.
+    std::optional<OptionValue> menu_cursor(const UiState& ui, const Control& c) const override { return UiState::Internals::lists(ui).at(c.id).cursor; }
+    Result check_menu_item(const UiState& ui, const Control& c, const OptionValue& item) const override {
+        const auto& items = UiState::Internals::lists(ui).at(c.id).items;
+        auto row = std::find_if(items.begin(), items.end(), [&](const auto& r) { return r.value == item; });
+        if (row == items.end()) return {Status::not_found, u"沒有這個項目"};
+        if (!row->enabled) return {Status::disabled, u"項目已停用"};
+        return {};
+    }
+    void menu_row_chosen(UiState& ui, const std::string& id, const OptionValue& item) const override {
+        (void)std::get<ListHandle>(ui.layout_handle(id)).select(item);
+        auto& lists = UiState::Internals::lists(ui);
+        if (auto list = lists.find(id); list != lists.end()) list->second.cursor = item;
+    }
+    std::optional<Query<OptionValue>> menu_row(const UiState& ui, const Control& c, std::size_t option) const override {
+        const auto& items = UiState::Internals::lists(ui).at(c.id).items;
+        if (option >= items.size()) return std::nullopt;
+        if (!items[option].enabled) return Query<OptionValue>{Status::disabled, u"項目已停用", std::nullopt};
+        return Query<OptionValue>{Status::ok, {}, items[option].value};
+    }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& lists = UiState::Internals::lists(ui);
+        auto it = lists.find(c.id);
+        if (it == lists.end()) return;
+        const auto& f = it->second; auto value = f.source.read ? f.source.read() : std::optional<OptionValue>{};
+        s.candidate = f.cursor;
+        for (const auto& item : f.items) {
+            bool selected = value && *value == item.value;
+            s.options.push_back({item.value, item.label, item.enabled, selected});
+            if (selected) s.value = item.label;
+        }
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& lists = UiState::Internals::lists(ui);
+        auto it = lists.find(c.id);
+        if (it == lists.end()) return;
+        const auto& f = it->second;
+        if (!c.read_only && f.source.read && f.immediate &&
+            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (!c.item) { ComponentType::verbs(c, out); return; }
+        if (c.admits(Operation::select)) out.push_back(Verb::select);
+        if (c.admits(Operation::focus)) out.push_back(Verb::focus);
+        if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
+    }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (!c.ref.item) return std::nullopt;
+        auto handle = c.ui.layout_handle(c.ref.id);
+        auto& list = std::get<ListHandle>(handle);
+        if (c.verb == Verb::focus) return list.focus(*c.ref.item);
+        if (c.verb != Verb::select) return std::nullopt;
+        // A semantic selection does not move the entry cursor.
+        UiState::OperationScope operation(&c.ui);
+        auto& lists = UiState::Internals::lists(c.ui);
+        auto previous = lists.at(c.ref.id).cursor;
+        auto result = list.select(*c.ref.item);
+        if (auto it = lists.find(c.ref.id); it != lists.end()) it->second.cursor = previous;
+        return result;
+    }
+    std::string_view name() const override { return "list"; }
+    Role role() const override { return Role::list; }
+    std::optional<Role> item_role() const override { return Role::list_item; }
+    bool requires_typed_creation() const override { return true; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<ListHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         // A row is tall enough for its ring, and its text starts a ring's thickness from the edge, focused or not.
@@ -691,12 +1170,74 @@ public:
             c.text(line.text, p.text_size, line.bounds.x, line.bounds.y, item.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.list_key_down(key); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override { return plain_key(key) && (key.key == Key::space || arrow_key(key.key)); }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        auto& f = UiState::Internals::lists(ui).at(ui.focused());
+        auto handle = ui.layout_handle(ui.focused());
+        auto& list = std::get<ListHandle>(handle);
+        if (key.key == Key::space) return f.cursor ? list.select(*f.cursor) : Result{};
+        if (!arrow_key(key.key)) return {};
+        int n = static_cast<int>(f.items.size());
+        int current = -1;
+        for (int i = 0; i < n; ++i) if (f.cursor && f.items[i].value == *f.cursor) { current = i; break; }
+        int step = key.key == Key::up || key.key == Key::left || key.key == Key::end ? -1 : 1;
+        int start = key.key == Key::home ? 0 : key.key == Key::end ? n - 1 : current < 0 ? (step > 0 ? 0 : n - 1) : current + step;
+        for (int i = start; i >= 0 && i < n; i += step) if (f.items[i].enabled) return list.select(f.items[i].value);
+        return {};
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override {
+        const auto& items = UiState::Internals::lists(ui).at(c.id).items;
+        ui.arm_pointer(c.id, option, option && *option < items.size() ? std::optional<OptionValue>(items[*option].value) : std::nullopt);
+    }
+    Result pointer_up(UiState& ui, const PointerRelease& release) const override {
+        const auto& items = UiState::Internals::lists(ui).at(release.id).items;
+        if (!release.pressed_value || !release.option || *release.option >= items.size() || items[*release.option].value != *release.pressed_value) return {};
+        return std::get<ListHandle>(ui.layout_handle(release.id)).select(*release.pressed_value);
+    }
 };
 class Dropdown final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
+    bool opens_popup() const override { return true; }
+    ScrollState* popup_scroll(UiState& ui, std::string_view id) const override { return &ui.dropdown_scroll(std::string(id)); }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& dropdowns = UiState::Internals::dropdowns(ui);
+        auto it = dropdowns.find(c.id);
+        if (it == dropdowns.end()) return;
+        const auto& f = it->second;
+        s.source_conflict = diverged(f.connected, f.origin, f.source_value, f.value);
+        s.expanded = ui.popup_open(c.id); s.candidate = f.candidate;
+        for (const auto& option : f.options) {
+            bool selected = f.value && *f.value == option.value;
+            s.options.push_back({option.value, option.label, option.enabled, selected});
+            if (selected) s.value = option.label;
+        }
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& dropdowns = UiState::Internals::dropdowns(ui);
+        auto it = dropdowns.find(c.id);
+        if (it != dropdowns.end() && admits_write(it->second)) s.operations.push_back(Operation::select);
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (c.item) { if (c.admits(Operation::select)) out.push_back(Verb::select); return; }
+        ComponentType::verbs(c, out);
+        if (c.admits(Operation::select)) { out.push_back(Verb::open); out.push_back(Verb::cancel); }
+    }
+    bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::dropdowns(ui), c); }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        auto handle = c.ui.layout_handle(c.ref.id);
+        auto& dropdown = std::get<DropdownHandle>(handle);
+        if (c.ref.item && c.verb == Verb::select) return dropdown.select(*c.ref.item);
+        if (!c.ref.item && c.verb == Verb::open) return dropdown.open();
+        if (!c.ref.item && c.verb == Verb::cancel) return dropdown.cancel();
+        return confirm_verb<DropdownHandle>(c, UiState::Internals::dropdowns(c.ui));
+    }
+    std::string_view name() const override { return "dropdown"; }
+    Role role() const override { return Role::dropdown; }
+    std::optional<Role> item_role() const override { return Role::dropdown_option; }
+    bool requires_typed_creation() const override { return true; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<DropdownHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
         // The box (and its ring) frames the name, the value row and any error text: all of it keeps a ring's thickness
@@ -748,12 +1289,81 @@ public:
         paint_lines(c, c.placement.description_lines, c.placement.text_size, palette.muted);
         paint_errors(c, c.placement.error_lines, c.placement.text_size, palette.error);
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.dropdown_key_down(key); }
+    bool handles_key(const UiState& ui, const Control& c, KeyPress key) const override {
+        return plain_key(key) && (key.key == Key::enter || key.key == Key::space || (ui.popup_open(c.id) && (arrow_key(key.key) || key.key == Key::escape)));
+    }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        const Id& focus = ui.focused();
+        auto& f = UiState::Internals::dropdowns(ui).at(focus);
+        if (key.key == Key::escape) { ui.close_popup(); return {}; }
+        if (key.key == Key::enter || key.key == Key::space) {
+            if (key.repeat) return {};
+            if (!ui.popup_open(focus)) return std::get<DropdownHandle>(ui.layout_handle(focus)).open();
+            auto candidate = f.candidate; ui.close_popup(); return candidate ? ui.select_dropdown(focus, *candidate) : Result{};
+        }
+        if (!ui.popup_open(focus)) return {};
+        int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
+        if (key.key == Key::home) direction = 1;
+        if (key.key == Key::end) direction = -1;
+        if (!direction) return {};
+        int n = static_cast<int>(f.options.size()), index = direction > 0 ? -1 : n;
+        if (key.key != Key::home && key.key != Key::end) for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
+        f.reveal = true;
+        for (int i = index + direction; i >= 0 && i < n; i += direction) if (f.options[i].enabled) { f.candidate = f.options[i].value; break; }
+        ui.invalidate(); return {};
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override {
+        const auto& f = UiState::Internals::dropdowns(ui).at(c.id);
+        ui.arm_pointer(c.id, option, ui.popup_open(c.id) && option && *option < f.options.size() ? std::optional<OptionValue>(f.options[*option].value) : std::nullopt);
+    }
+    Result pointer_up(UiState& ui, const PointerRelease& release) const override {
+        const auto& f = UiState::Internals::dropdowns(ui).at(release.id);
+        if (release.pressed_value) {
+            if (!ui.popup_open(release.id) || !release.option || *release.option >= f.options.size() || f.options[*release.option].value != *release.pressed_value) return {};
+            ui.close_popup(); return ui.select_dropdown(release.id, *release.pressed_value);
+        }
+        if (release.pressed_option || release.option) return {};
+        return std::get<DropdownHandle>(ui.layout_handle(release.id)).open();
+    }
 };
 class Slider final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::error, S::conflict}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.slider_layout_handle(c); }
+    std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
+        auto& numerics = UiState::Internals::numerics(ui);
+        if (auto it = numerics.find(c.id); it != numerics.end()) return number_text(it->second.value);
+        return std::nullopt;
+    }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& numerics = UiState::Internals::numerics(ui);
+        auto it = numerics.find(c.id);
+        if (it == numerics.end()) return;
+        s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
+        s.slider_range = it->second.range; s.numeric_value = it->second.value;
+    }
+    void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& numerics = UiState::Internals::numerics(ui);
+        auto it = numerics.find(c.id);
+        if (it != numerics.end() && !c.read_only && admits_write(it->second)) s.operations.push_back(Operation::edit);
+    }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        ComponentType::verbs(c, out);
+        if (!c.item && c.admits(Operation::edit)) out.push_back(Verb::set_value);
+    }
+    bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::numerics(ui), c); }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.verb == Verb::set_value) {
+            if (auto value = std::get_if<int>(&c.argument)) return std::get<SliderHandle>(c.ui.layout_handle(c.ref.id)).set_value(*value);
+            return c.invalid_argument();
+        }
+        return confirm_verb<SliderHandle>(c, UiState::Internals::numerics(c.ui));
+    }
+    std::string_view name() const override { return "slider"; }
+    Role role() const override { return Role::slider; }
+    bool requires_typed_creation() const override { return true; }
+    bool begin_value_drag(UiState& ui, const Placement& p, int x, float scale) const override { ui.slider_pointer_down(p.id, x, p.slider_track, scale); return true; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<SliderHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
@@ -800,12 +1410,52 @@ public:
             if (c.hovered()) c.hover(thumb, size / 2);  // anywhere on the slider marks the thumb
         }
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override { return plain_key(key) && arrow_key(key.key); }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        const Id id = ui.focused();
+        auto& f = UiState::Internals::numerics(ui).at(id);
+        const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
+        long long target = value;
+        switch (key.key) {
+        case Key::home: target = lo; break;
+        case Key::end: target = hi; break;
+        case Key::right: case Key::up:
+            if (value < hi) target = std::min(hi, lo + ((value - lo) / step + 1) * step);
+            break;
+        case Key::left: case Key::down:
+            if (value > lo) target = lo + ((value - lo - 1) / step) * step;
+            break;
+        default: return {};
+        }
+        const double from = ui.slider_display_ratio(id);
+        auto result = ui.slider_set_value(id, static_cast<int>(target));
+        ui.slider_started_moving(id, from, static_cast<int>(value));
+        return result;
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
+    Result pointer_up(UiState&, const PointerRelease&) const override { return {}; }
 };
 class Progress final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.progress_layout_handle(c); }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override {
+        auto& progresses = UiState::Internals::progresses(ui);
+        auto it = progresses.find(c.id);
+        if (it == progresses.end()) return;
+        s.read_only = true;
+        if (it->second.source.read) {
+            int displayed = std::clamp(it->second.source.read(), 0, 100);
+            s.numeric_value = displayed;
+            s.value = number_text(displayed) + u"%";
+        }
+    }
+    std::string_view name() const override { return "progress"; }
+    Role role() const override { return Role::progress; }
+    bool requires_typed_creation() const override { return true; }
+    bool needs_name() const override { return false; }
+    bool handles_key(const UiState&, const Control&, KeyPress) const override { return false; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<ProgressHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantic = *c.ui.describe(c.control.id);
@@ -830,7 +1480,22 @@ public:
 class Tabs final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate, S::error}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override { describe_pages(ui, c, s); }
+    void describe_operations(const UiState&, const Control&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_node(const UiState&, const Control&, const Semantics&, const NodeRef&, SemanticNode& n) const override { n.selection_required = true; }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (!c.item) { ComponentType::verbs(c, out); return; }
+        if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);
+    }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.ref.item && c.verb == Verb::select) return std::get<TabsHandle>(c.ui.layout_handle(c.ref.id)).activate(*c.ref.item);
+        return std::nullopt;
+    }
+    std::string_view name() const override { return "tabs"; }
+    Role role() const override { return Role::tabs; }
+    std::optional<Role> item_role() const override { return Role::tab_item; }
+    bool requires_typed_creation() const override { return true; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<TabsHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto semantics = *c.ui.describe(c.control.id);
         // A tab is tall enough for its ring, and its label starts a ring's thickness from the edge, focused or not.
@@ -879,13 +1544,45 @@ public:
             marked(c, option.invalid ? PaintRole::error_text : PaintRole::content, [&] { c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted); });
         }
     }
-    bool has_activate_operation() const override { return true; }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.tabs_key_down(key); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override {
+        return plain_key(key) && (key.key == Key::enter || key.key == Key::space || key.key == Key::left || key.key == Key::right);
+    }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        auto& t = UiState::Internals::tabs(ui).at(ui.focused());
+        if (key.key == Key::left || key.key == Key::right) {
+            int dir = key.key == Key::left ? -1 : 1;
+            int i = static_cast<int>(t.candidate);
+            for (std::size_t n = 0; n < t.pages.size(); ++n) {
+                i = (i + dir + static_cast<int>(t.pages.size())) % static_cast<int>(t.pages.size());
+                if (t.pages[static_cast<std::size_t>(i)].enabled) { t.candidate = static_cast<std::size_t>(i); break; }
+            }
+            ui.invalidate();
+            return {};
+        }
+        return command_key_down(ui, key);
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
+    Result pointer_up(UiState& ui, const PointerRelease& release) const override { return page_release(ui, release); }
 };
 class NavigationList final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected}); }
-    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.navigation_layout_handle(c); }
+    void describe(const UiState& ui, const Control& c, Semantics& s) const override { describe_pages(ui, c, s); }
+    void describe_node(const UiState&, const Control&, const Semantics&, const NodeRef&, SemanticNode& n) const override { n.selection_required = true; }
+    void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
+        if (!c.item) { ComponentType::verbs(c, out); return; }
+        if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);
+        if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
+    }
+    std::optional<Result> perform(const PerformContext& c) const override {
+        if (c.ref.item && c.verb == Verb::select) return std::get<NavigationListHandle>(c.ui.layout_handle(c.ref.id)).select(*c.ref.item);
+        return std::nullopt;
+    }
+    std::string_view name() const override { return "navigation_list"; }
+    Role role() const override { return Role::list; }
+    std::optional<Role> item_role() const override { return Role::list_item; }
+    ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<NavigationListHandle>(c); }
     int natural_width(const ComponentLayout& c) const override {
         auto semantic = c.ui.describe(c.control.id);
         int width = 0;
@@ -930,7 +1627,29 @@ public:
             c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.navigation_key_down(key); }
+    bool handles_key(const UiState&, const Control&, KeyPress key) const override {
+        return plain_key(key) && (key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end);
+    }
+    Result key_down(UiState& ui, KeyPress key) const override {
+        UiState::OperationScope operation(&ui);
+        if (auto r = ui.available(ui.focused()); !r) return r;
+        auto& t = UiState::Internals::tabs(ui).at(ui.focused());
+        int index = static_cast<int>(t.active), last = static_cast<int>(t.pages.size()) - 1;
+        if (key.key == Key::home) index = -1;
+        else if (key.key == Key::end) index = last + 1;
+        else if (key.key != Key::up && key.key != Key::down) return {};
+        int direction = key.key == Key::up || key.key == Key::end ? -1 : 1;
+        for (index += direction; index >= 0 && index <= last; index += direction)
+            if (t.pages[static_cast<std::size_t>(index)].enabled) return ui.activate_tab(ui.focused(), t.pages[static_cast<std::size_t>(index)].value);
+        return {};
+    }
+    bool ignores_press(const UiState& ui, const Control& c, std::optional<std::size_t> option) const override {
+        if (!option) return false;
+        const auto& pages = UiState::Internals::tabs(ui).at(c.id).pages;
+        return *option >= pages.size() || !pages[*option].enabled;
+    }
+    void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
+    Result pointer_up(UiState& ui, const PointerRelease& release) const override { return page_release(ui, release); }
 };
 NavigationList navigation_list;
 Tabs tabs;
@@ -988,12 +1707,36 @@ ComponentPaint::RingShape ComponentPaint::focus_ring(Rect outer, int own_radius,
     });
     return shape;
 }
-const ComponentType& component_type(Kind kind) {
+Result command_key_down(UiState& ui, KeyPress key) {
+    UiState::OperationScope operation(&ui);
+    if (key.repeat) return {};
+    if (key.key == Key::enter) return ui.invoke(ui.focused());
+    if (key.key == Key::space) ui.arm_key(ui.focused());
+    return {};
+}
+void command_pointer_down(UiState& ui) {
+    UiState::OperationScope operation(&ui);
+    ui.arm_pointer(ui.focused());
+}
+void ComponentType::seed(UiState& ui, Control control) const { ui.seed_plain(std::move(control)); }
+bool VerbContext::admits(Operation operation) const {
+    return std::find(semantics.operations.begin(), semantics.operations.end(), operation) != semantics.operations.end();
+}
+Result ComponentType::pointer_up(UiState& ui, const PointerRelease& release) const { return ui.invoke(release.id); }
+void ComponentType::verbs(const VerbContext& c, std::vector<Verb>& out) const {
+    if (c.item) return;
+    if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
+    if (c.admits(Operation::focus)) out.push_back(Verb::focus);
+}
+const ComponentType* find_component_type(Kind kind) {
     auto test = test_types().find(kind);
-    if (test != test_types().end()) return *test->second;
+    if (test != test_types().end()) return test->second;
     auto it = types().find(kind);
-    if (it == types().end()) throw std::invalid_argument("Unknown component type");
-    return *it->second;
+    return it == types().end() ? nullptr : it->second;
+}
+const ComponentType& component_type(Kind kind) {
+    if (const auto* type = find_component_type(kind)) return *type;
+    throw std::invalid_argument("Unknown component type");
 }
 ScopedComponentType::ScopedComponentType(Kind kind, const ComponentType& type) : kind_(kind) {
     if (types().contains(kind) || !test_types().emplace(kind, &type).second)

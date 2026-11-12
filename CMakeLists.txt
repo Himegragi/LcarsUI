@@ -348,6 +348,11 @@ if(LCARS_BUILD_TESTS)
   target_include_directories(lcars_navigation_tests PRIVATE src)
   target_link_libraries(lcars_navigation_tests PRIVATE lcars_core)
   add_test(NAME navigation COMMAND lcars_navigation_tests)
+  add_executable(lcars_component_registry_tests tests/component_registry.cpp)
+  lcars_target(lcars_component_registry_tests)
+  target_include_directories(lcars_component_registry_tests PRIVATE src tests)
+  target_link_libraries(lcars_component_registry_tests PRIVATE lcars_core)
+  add_test(NAME component_registry COMMAND lcars_component_registry_tests)
 endif()
 
 
