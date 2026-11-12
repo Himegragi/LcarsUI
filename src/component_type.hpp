@@ -55,8 +55,6 @@ public:
     // on every side; a radius larger than half the shorter side becomes a capsule.
     struct RingShape { Rect inner; int outer_radius = 0, inner_radius = 0; };
     static RingShape ring_shape(Rect outer, int radius, int width);
-    // The focus ring's thickness now: the presentation setting, else the appearance's default (3 DIP).
-    int ring_width() const;
     // The focus ring's radius now: the presentation setting, else `own`, the component's own corner radius.
     int ring_radius(int own) const;
     // What lies behind a component that paints no background of its own: the page, or the open dialog's panel.
