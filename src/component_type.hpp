@@ -4,6 +4,7 @@
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
+#include "core_internal.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
@@ -137,9 +138,8 @@ public:
     virtual bool supports_vertical_writing() const { return false; }
     // Ui::set_error is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
     virtual bool accepts_error() const { return true; }
-    // Ui::bind_text is for a type whose text the application can supply on demand; a dropdown's items show only while it is expanded.
+    // Ui::bind_text is for a type whose text the application can supply on demand.
     virtual bool accepts_text_provider() const { return false; }
-    virtual bool hides_items_until_expanded() const { return false; }
     virtual bool needs_name() const { return true; }
     // ---- Input.
     // Whether the focused control takes this key itself (key_down runs) or leaves it to the application's shortcuts.
@@ -162,6 +162,33 @@ public:
     // A verb arriving at the control or one of its items; nullopt: not this type's verb.
     virtual std::optional<Result> perform(const PerformContext&) const { return std::nullopt; }
     virtual bool confirm_pending(const UiState&, const Control&) const { return false; }
+    // ---- What the layout, the host and the context menu ask a type.
+    // A control supplied as data (the UiState constructor, the test seam) is registered with the state that goes with it.
+    virtual void adopt(UiState&, const Control&) const {}
+    virtual void seed(UiState&, Control) const;
+    // The type opens a popup that holds its items (a dropdown): the popup owns the wheel and a press outside it closes it, its
+    // items show no bounds while it is closed and start no tooltip. popup_scroll is the popup's scroll state.
+    virtual bool opens_popup() const { return false; }
+    virtual ScrollState* popup_scroll(UiState&, std::string_view /*id*/) const { return nullptr; }
+    // The type's rows have an entry cursor (a list): layout keeps the cursor row visible and anchors the scroll to a row, a
+    // press does not move the row under the pointer, and the keyboard menu hangs from the current row.
+    virtual bool has_row_cursor() const { return false; }
+    // Associated labels (name, description, error) are drawn inside the placement and share its semantic bounds.
+    virtual bool labels_in_placement() const { return false; }
+    // The type's focus indicator shows while the control is focused even without keyboard cues (an editable text field).
+    virtual bool focus_always_visible(const Semantics&) const { return false; }
+    // Where a keyboard-opened context menu hangs; nullopt: from the component's visible box.
+    virtual std::optional<Rect> keyboard_anchor(UiState&, const Placement&, const std::optional<OptionValue>&, int /*row_inset*/) const { return std::nullopt; }
+    // A pointer press starts a value drag (a slider); true when it did.
+    virtual bool begin_value_drag(UiState&, const Placement&, int /*x*/, float /*scale*/) const { return false; }
+    // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
+    virtual bool has_builtin_menu() const { return false; }
+    virtual void builtin_menu_entries(const UiState&, const Control&, bool /*clipboard_text*/, std::vector<UiState::MenuEntry>&) const {}
+    virtual Result run_builtin_menu(UiState&, const std::string&, std::string_view) const { return {Status::not_found, u"沒有這個選單項目"}; }
+    virtual std::optional<OptionValue> menu_cursor(const UiState&, const Control&) const { return std::nullopt; }
+    virtual Result check_menu_item(const UiState&, const Control&, const OptionValue&) const { return {Status::invalid_value, u"只有清單可以指定項目"}; }
+    virtual void menu_row_chosen(UiState&, const std::string&, const OptionValue&) const {}
+    virtual std::optional<Query<OptionValue>> menu_row(const UiState&, const Control&, std::size_t /*option*/) const { return std::nullopt; }
     virtual void arrange(ComponentLayout&) const = 0;
     virtual void paint(ComponentPaint&) const = 0;
     // A negative width means the component shares its row's remaining space.

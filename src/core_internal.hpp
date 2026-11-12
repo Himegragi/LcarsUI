@@ -169,6 +169,9 @@ public:
     const Control* find(std::string_view id) const;
     bool registerable(std::string_view id);
     void seed_test_controls(std::vector<Control> controls);
+    void seed_plain(Control control);      // a control of a type with no state of its own
+    void adopt_text(const Control& control);  // the state of a text field supplied as data
+    Result delete_selection(std::string_view id);
     std::map<Id, std::string, std::less<>> overlay_ids_;
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
@@ -202,10 +205,7 @@ public:
     // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
     bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
-    bool draws_focus_indicator(const Semantics& semantics) const {
-        if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
-        return semantics.focused && (focus_indicator_visible() || (semantics.kind == Kind::text && !semantics.read_only && semantics.enabled));
-    }
+    bool draws_focus_indicator(const Semantics& semantics) const;
     // A pointer press anywhere in the client area, including empty space and inert components.
     void pointer_pressed();
     // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
@@ -518,8 +518,6 @@ private:
     Result menu_run_builtin(const Id& target, std::string_view command);
     Result validate_menu_items(const std::vector<MenuItem>& items) const;
     void menu_items_changed(const Id& target);
-    bool field_editable(const Control& control, const Field& field) const;
-    Result delete_selection(std::string_view id);
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     // Pointer hover. hover_ is the raw target; hover_target() filters it against the live state.

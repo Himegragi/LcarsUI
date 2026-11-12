@@ -241,6 +241,7 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_label(std::move(c)); }
     std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
         if (c.role == TextRole::error) {
             auto& errors = UiState::Internals::errors(ui);
@@ -373,6 +374,62 @@ public:
 class Text final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
+    void adopt(UiState& ui, const Control& c) const override { ui.adopt_text(c); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_text(std::move(c)); }
+    bool focus_always_visible(const Semantics& s) const override { return !s.read_only && s.enabled; }
+    bool labels_in_placement() const override { return true; }
+    // The caret's own line, also in a multi-line field.
+    std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>&, int) const override {
+        if (const auto* session = state.edit(target.id)) {
+            const auto caret = target.caret_rect(session->visible_caret());
+            return Rect{caret.x, caret.y, 0, caret.h};
+        }
+        return Rect{target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
+    }
+    bool has_builtin_menu() const override { return true; }
+    void builtin_menu_entries(const UiState& ui, const Control& c, bool clipboard_text, std::vector<UiState::MenuEntry>& raw) const override {
+        const auto& field = UiState::Internals::edits(ui).at(c.id);
+        const bool editable = !c.read_only && !field.session.composing && field.has_source_value &&
+                              (field.confirmation_member || field.immediate || field.confirmed);
+        const bool selected = field.session.begin() != field.session.end();
+        auto separator = [&] { UiState::MenuEntry entry; entry.separator = true; raw.push_back(std::move(entry)); };
+        auto add = [&](const char* id, std::u16string label, char16_t key, std::u16string hint, bool enabled) {
+            raw.push_back({id, std::move(label), std::move(hint), enabled, false, key});
+        };
+        add(menu_undo, u"復原(U)", u'U', u"Ctrl+Z", editable && !field.past.empty());
+        add(menu_redo, u"重做(R)", u'R', u"Ctrl+Y", editable && !field.future.empty());
+        separator();
+        add(menu_cut, u"剪下(T)", u'T', u"Ctrl+X", editable && selected);
+        add(menu_copy, u"複製(C)", u'C', u"Ctrl+C", selected);
+        add(menu_paste, u"貼上(P)", u'P', u"Ctrl+V", editable && clipboard_text);
+        add(menu_delete, u"刪除(D)", u'D', u"Del", editable && selected);
+        separator();
+        add(menu_select_all, u"全選(A)", u'A', u"Ctrl+A", true);
+        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with 復原(U).
+            separator();
+            add(menu_bold, u"粗體(B)", u'B', u"Ctrl+B", editable);
+            add(menu_italic, u"斜體(I)", u'I', u"Ctrl+I", editable);
+            add(menu_underline, u"底線(U)", u'U', u"Ctrl+U", editable);
+        }
+    }
+    Result run_builtin_menu(UiState& ui, const std::string& target, std::string_view command) const override {
+        if (command == menu_undo) return ui.undo(target);
+        if (command == menu_redo) return ui.redo(target);
+        if (command == menu_cut) return ui.cut(target);
+        if (command == menu_copy) return ui.copy(target);
+        if (command == menu_paste) return ui.paste_clipboard(target);
+        if (command == menu_delete) return ui.delete_selection(target);
+        if (command == menu_bold) return ui.toggle_style(target, StyleAttribute::bold);
+        if (command == menu_italic) return ui.toggle_style(target, StyleAttribute::italic);
+        if (command == menu_underline) return ui.toggle_style(target, StyleAttribute::underline);
+        if (command == menu_select_all) {
+            auto& edits = UiState::Internals::edits(ui);
+            auto it = edits.find(target);
+            if (it == edits.end()) return {Status::invalid_value, u"元件不是文字欄位"};
+            return ui.select(target, 0, static_cast<unsigned>(it->second.session.text.size()));
+        }
+        return {Status::not_found, u"沒有這個選單項目"};
+    }
     std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
         auto& edits = UiState::Internals::edits(ui);
         if (auto it = edits.find(c.id); it != edits.end()) return it->second.session.text;
@@ -765,6 +822,7 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
+    void seed(UiState& ui, Control c) const override { (void)ui.add_button(std::move(c)); }
     void describe_operations(const UiState&, const Control&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
     void describe_node(const UiState& ui, const Control& c, const Semantics&, const NodeRef& ref, SemanticNode& n) const override {
         if (ref.item) return;
@@ -990,6 +1048,38 @@ public:
 class List final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate}); }
+    bool has_row_cursor() const override { return true; }
+    // A list row's own anchor for a keyboard-opened menu.
+    std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) const override {
+        if (!item) return std::nullopt;
+        auto semantic = state.describe(target.id);
+        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
+            if (semantic->options[i].value == *item) {
+                const auto& row = target.options[i];
+                return Rect{row.x + row_inset, row.y, 0, row.h};
+            }
+        return std::nullopt;
+    }
+    // A menu is opened for a row; from the keyboard that is the current one.
+    std::optional<OptionValue> menu_cursor(const UiState& ui, const Control& c) const override { return UiState::Internals::lists(ui).at(c.id).cursor; }
+    Result check_menu_item(const UiState& ui, const Control& c, const OptionValue& item) const override {
+        const auto& items = UiState::Internals::lists(ui).at(c.id).items;
+        auto row = std::find_if(items.begin(), items.end(), [&](const auto& r) { return r.value == item; });
+        if (row == items.end()) return {Status::not_found, u"沒有這個項目"};
+        if (!row->enabled) return {Status::disabled, u"項目已停用"};
+        return {};
+    }
+    void menu_row_chosen(UiState& ui, const std::string& id, const OptionValue& item) const override {
+        (void)std::get<ListHandle>(ui.layout_handle(id)).select(item);
+        auto& lists = UiState::Internals::lists(ui);
+        if (auto list = lists.find(id); list != lists.end()) list->second.cursor = item;
+    }
+    std::optional<Query<OptionValue>> menu_row(const UiState& ui, const Control& c, std::size_t option) const override {
+        const auto& items = UiState::Internals::lists(ui).at(c.id).items;
+        if (option >= items.size()) return std::nullopt;
+        if (!items[option].enabled) return Query<OptionValue>{Status::disabled, u"項目已停用", std::nullopt};
+        return Query<OptionValue>{Status::ok, {}, items[option].value};
+    }
     void describe(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& lists = UiState::Internals::lists(ui);
         auto it = lists.find(c.id);
@@ -1106,7 +1196,8 @@ public:
 class Dropdown final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
-    bool hides_items_until_expanded() const override { return true; }
+    bool opens_popup() const override { return true; }
+    ScrollState* popup_scroll(UiState& ui, std::string_view id) const override { return &ui.dropdown_scroll(std::string(id)); }
     void describe(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
@@ -1272,6 +1363,7 @@ public:
     std::string_view name() const override { return "slider"; }
     Role role() const override { return Role::slider; }
     bool requires_typed_creation() const override { return true; }
+    bool begin_value_drag(UiState& ui, const Placement& p, int x, float scale) const override { ui.slider_pointer_down(p.id, x, p.slider_track, scale); return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.typed_handle<SliderHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -1631,6 +1723,7 @@ void command_pointer_down(UiState& ui) {
     UiState::OperationScope operation(&ui);
     ui.arm_pointer(ui.focused());
 }
+void ComponentType::seed(UiState& ui, Control control) const { ui.seed_plain(std::move(control)); }
 bool VerbContext::admits(Operation operation) const {
     return std::find(semantics.operations.begin(), semantics.operations.end(), operation) != semantics.operations.end();
 }

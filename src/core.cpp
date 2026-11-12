@@ -268,16 +268,21 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
         button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
-        if (control.kind == Kind::text) {
-            if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
-            Field field;
-            field.session.text = control.value; field.rich = control.rich;
-            edits_.emplace(control.id, std::move(field));
-        }
+        detail::component_type(control.kind).adopt(*this, control);
     }
     for (const auto& control : controls_)
         if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
+}
+void detail::UiState::adopt_text(const Control& control) {
+    if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
+    Field field;
+    field.session.text = control.value; field.rich = control.rich;
+    edits_.emplace(control.id, std::move(field));
+}
+bool detail::UiState::draws_focus_indicator(const Semantics& semantics) const {
+    if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
+    return semantics.focused && (focus_indicator_visible() || component_type(semantics.kind).focus_always_visible(semantics));
 }
 detail::UiState::~UiState() {
     lifetime_.reset();
@@ -1377,7 +1382,7 @@ Result detail::UiState::simulate_hover(std::string_view id, const std::optional<
     hover_simulated_ = true;
     hover_set(HoverTarget{control->id, item});
     // An item of an open dropdown lives in its popup, which never starts a tooltip.
-    tooltip_hover(item && control->kind == Kind::dropdown ? std::string_view{} : std::string_view(control->id));
+    tooltip_hover(item && component_type(control->kind).opens_popup() ? std::string_view{} : std::string_view(control->id));
     return {};
 }
 Result detail::UiState::clear_simulated_hover() {
@@ -3401,11 +3406,13 @@ SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
     for (auto& control : controls) {
-        if (control.kind == Kind::text) add_text(std::move(control));
-        else if (control.kind == Kind::button) add_button(std::move(control));
-        else if (control.kind == Kind::label) add_label(std::move(control));
-        else { (void)detail::component_type(control.kind); button_lifetimes_.emplace(control.id, std::make_shared<int>(0)); controls_.push_back(std::move(control)); }
+        const auto& type = detail::component_type(control.kind);
+        type.seed(*this, std::move(control));
     }
+}
+void detail::UiState::seed_plain(Control control) {
+    button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
+    controls_.push_back(std::move(control));
 }
 bool detail::UiState::registerable(std::string_view id) {
     const auto* existing = find(id);
@@ -3687,7 +3694,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
-        if (!n.hidden && (!detail::component_type(c->kind).hides_items_until_expanded() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
