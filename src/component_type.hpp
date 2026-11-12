@@ -153,6 +153,7 @@ public:
     // ---- Input.
     // Whether the focused control takes this key itself (key_down runs) or leaves it to the application's shortcuts.
     virtual bool handles_key(const UiState&, const Control&, KeyPress key) const { return !key.ctrl || !key.letter; }
+    virtual Result key_down(UiState&, KeyPress) const { return {}; }
     // A press on this row of the control is ignored altogether (no focus change either).
     virtual bool ignores_press(const UiState&, const Control&, std::optional<std::size_t> /*option*/) const { return false; }
     virtual void pointer_down(UiState&, const Control&, std::optional<std::size_t> /*option*/) const {}
@@ -209,7 +210,6 @@ public:
     virtual bool can_target() const { return false; }
     virtual bool accepts_pointer() const { return true; }
     virtual bool selects_text() const { return false; }
-    virtual Result key_down(UiState&, KeyPress) const { return {}; }
 };
 // The press protocol of a command-like type (a button): Enter runs the component's action, Space arms it for the key
 // release, a pointer press arms it for the release over the same component. The release itself is ComponentType::pointer_up's
