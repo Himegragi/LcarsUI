@@ -191,6 +191,8 @@ struct Page {
         add("text", layout::control(text));
         auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
         add("note", layout::control(note));
+        auto rich = ui.add_text({.id = "rich", .kind = Kind::text, .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        add("rich", layout::control(rich));
         auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
         add("dropdown", layout::control(dropdown));
         auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox, .label = u"Remember me"}).value.value();
@@ -307,6 +309,21 @@ void every_component_draws_one_closed_rounded_ring() {
             check(s.kind == Kind::label || inside(ring->outer, intersect(item.bounds, item.clip)),
                   (label + ": the ring is drawn inside the component, so a scroll area does not clip it").c_str());
         });
+}
+
+// Review item 5: the acceptance line names single-line, multi-line and rich text fields, underline style included. The driver
+// must really reach each kind, so a field kind dropped from the page (or an appearance without underline fields) fails here.
+void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() {
+    int single = 0, multi = 0, rich = 0, underline = 0, boxed = 0;
+    for (const auto& r : runs)
+        for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+            if (s.kind != Kind::text) return;
+            check(find_ring(probe.cmds).has_value(), (label + ": a text field draws its ring").c_str());
+            (s.rich ? rich : s.multiline ? multi : single) += 1;
+            (item.field.underline ? underline : boxed) += 1;
+        });
+    check(single > 0 && multi > 0 && rich > 0, "single-line, multi-line and rich text fields are all driven");
+    check(underline > 0 && boxed > 0, "so are underline-style and boxed fields (one per appearance)");
 }
 
 void the_ring_never_covers_content_and_never_erases_it() {
@@ -544,6 +561,7 @@ int main() {
         {"replacing_accent_moves_focus_unless_focus_is_replaced_too", replacing_accent_moves_focus_unless_focus_is_replaced_too},
         {"focus_needs_three_to_one_on_every_surface", focus_needs_three_to_one_on_every_surface},
         {"every_component_draws_one_closed_rounded_ring", every_component_draws_one_closed_rounded_ring},
+        {"the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields", the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields},
         {"the_ring_never_covers_content_and_never_erases_it", the_ring_never_covers_content_and_never_erases_it},
         {"pressing_tab_through_the_page_moves_nothing", pressing_tab_through_the_page_moves_nothing},
         {"a_new_thickness_changes_the_next_frames_ring_and_padding", a_new_thickness_changes_the_next_frames_ring_and_padding},
