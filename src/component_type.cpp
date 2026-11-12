@@ -178,6 +178,13 @@ void keep_ring_room(FieldLayout& f, int ring) {
 class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
+    std::string_view name() const override { return "label"; }
+    Role role() const override { return Role::label; }
+    bool supports_text_flow() const override { return true; }
+    bool admits_distribute() const override { return true; }
+    bool supports_vertical_writing() const override { return true; }
+    bool accepts_error() const override { return false; }
+    bool needs_name() const override { return false; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.label_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -271,6 +278,10 @@ public:
 class Text final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
+    std::string_view name() const override { return "text"; }
+    Role role() const override { return Role::text; }
+    bool supports_text_flow() const override { return true; }
+    bool supports_rich_text() const override { return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.text_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -534,6 +545,8 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
+    std::string_view name() const override { return "button"; }
+    Role role() const override { return Role::button; }
     bool has_activate_operation() const override { return true; }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.command_key_down(key); }
     void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
@@ -541,6 +554,8 @@ public:
 class Checkbox final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
+    std::string_view name() const override { return "checkbox"; }
+    Role role() const override { return Role::checkbox; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.checkbox_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         Command::arrange(c);
@@ -584,6 +599,9 @@ protected:
 class RadioGroup final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
+    std::string_view name() const override { return "radio_group"; }
+    Role role() const override { return Role::radio_group; }
+    std::optional<Role> item_role() const override { return Role::radio_option; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.radio_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -645,6 +663,10 @@ public:
 class List final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate}); }
+    std::string_view name() const override { return "list"; }
+    Role role() const override { return Role::list; }
+    std::optional<Role> item_role() const override { return Role::list_item; }
+    bool requires_typed_creation() const override { return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
@@ -693,6 +715,10 @@ public:
 class Dropdown final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
+    std::string_view name() const override { return "dropdown"; }
+    Role role() const override { return Role::dropdown; }
+    std::optional<Role> item_role() const override { return Role::dropdown_option; }
+    bool requires_typed_creation() const override { return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
@@ -754,6 +780,9 @@ public:
 class Slider final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::error, S::conflict}); }
+    std::string_view name() const override { return "slider"; }
+    Role role() const override { return Role::slider; }
+    bool requires_typed_creation() const override { return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.slider_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -810,6 +839,10 @@ public:
 class Progress final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
+    std::string_view name() const override { return "progress"; }
+    Role role() const override { return Role::progress; }
+    bool requires_typed_creation() const override { return true; }
+    bool needs_name() const override { return false; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.progress_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
@@ -835,6 +868,10 @@ public:
 class Tabs final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate, S::error}); }
+    std::string_view name() const override { return "tabs"; }
+    Role role() const override { return Role::tabs; }
+    std::optional<Role> item_role() const override { return Role::tab_item; }
+    bool requires_typed_creation() const override { return true; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto semantics = *c.ui.describe(c.control.id);
@@ -890,6 +927,9 @@ public:
 class NavigationList final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected}); }
+    std::string_view name() const override { return "navigation_list"; }
+    Role role() const override { return Role::list; }
+    std::optional<Role> item_role() const override { return Role::list_item; }
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.navigation_layout_handle(c); }
     int natural_width(const ComponentLayout& c) const override {
         auto semantic = c.ui.describe(c.control.id);
@@ -998,12 +1038,15 @@ bool VerbContext::admits(Operation operation) const {
 }
 Result ComponentType::pointer_up(UiState& ui, const PointerRelease& release) const { return ui.invoke(release.id); }
 void ComponentType::verbs(const VerbContext&, std::vector<Verb>&) const {}
-const ComponentType& component_type(Kind kind) {
+const ComponentType* find_component_type(Kind kind) {
     auto test = test_types().find(kind);
-    if (test != test_types().end()) return *test->second;
+    if (test != test_types().end()) return test->second;
     auto it = types().find(kind);
-    if (it == types().end()) throw std::invalid_argument("Unknown component type");
-    return *it->second;
+    return it == types().end() ? nullptr : it->second;
+}
+const ComponentType& component_type(Kind kind) {
+    if (const auto* type = find_component_type(kind)) return *type;
+    throw std::invalid_argument("Unknown component type");
 }
 ScopedComponentType::ScopedComponentType(Kind kind, const ComponentType& type) : kind_(kind) {
     if (types().contains(kind) || !test_types().emplace(kind, &type).second)

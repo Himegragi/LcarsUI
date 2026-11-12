@@ -175,6 +175,8 @@ public:
     virtual void pointer_down(UiState&) const {}
 };
 const ComponentType& component_type(Kind kind);
+// The same, or null for a Kind no type is registered for (the one place a stray Kind value is tolerated).
+const ComponentType* find_component_type(Kind kind);
 // The focus ring's thickness in physical pixels for these settings. Layout reserves at least this much room
 // around whatever a ring frames, whether or not the component is focused, so focus never moves anything.
 int focus_ring_width(const UiState& ui, const Appearance& appearance, float scale);

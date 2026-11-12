@@ -45,21 +45,27 @@ bool valid_value(const Control& control, std::u16string_view text) { return vali
 // A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
 constexpr unsigned max_visible_lines = 1000;
 bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
-// Text flow (#80) belongs to labels and text fields; every other kind must keep the defaults.
-bool supports_text_flow(Kind kind) { return kind == Kind::label || kind == Kind::text; }
+// What a type says about itself; a Kind no type is registered for says nothing.
+bool supports_text_flow(Kind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
 bool valid_text_align(TextAlign align) {
     return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
 }
 bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
 // Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
-bool admits_text_align(Kind kind, TextAlign align) { return align != TextAlign::distribute || kind == Kind::label; }
+bool admits_text_align(Kind kind, TextAlign align) {
+    const auto* type = detail::find_component_type(kind);
+    return align != TextAlign::distribute || (type && type->admits_distribute());
+}
 bool valid_text_flow(const Control& control) {
     if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
     if (!admits_text_align(control.kind, control.text_align)) return false;
     return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
 // A rich field is a multi-line text field; the option exists for no other control.
-bool valid_rich_option(const Control& control) { return !control.rich || (control.kind == Kind::text && control.multiline); }
+bool valid_rich_option(const Control& control) {
+    const auto* type = detail::find_component_type(control.kind);
+    return !control.rich || (type && type->supports_rich_text() && control.multiline);
+}
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
 bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
@@ -257,7 +263,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
         (void)detail::component_type(control.kind);
-        if (control.kind == Kind::slider || control.kind == Kind::dropdown || control.kind == Kind::list || control.kind == Kind::tabs || control.kind == Kind::progress) throw std::invalid_argument("Component requires typed creation");
+        if (detail::component_type(control.kind).requires_typed_creation()) throw std::invalid_argument("Component requires typed creation");
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
@@ -1761,7 +1767,7 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
 Result detail::UiState::writing_support(const Control& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
         return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
-    if (control.kind != Kind::label && control.writing_mode == WritingMode::vertical)
+    if (!detail::component_type(control.kind).supports_vertical_writing() && control.writing_mode == WritingMode::vertical)
         return {Status::invalid_value, u"Only labels support vertical writing"};
     return {};
 }
@@ -3649,7 +3655,7 @@ Result detail::UiState::set_error(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control) return {Status::not_found, u"Component no longer exists"};
-    if (control->kind == Kind::label) return {Status::not_supported, u"標籤不能帶有錯誤"};
+    if (!component_type(control->kind).accepts_error()) return {Status::not_supported, u"標籤不能帶有錯誤"};
     if (message.empty()) { if (auto it = errors_.find(id); it != errors_.end()) errors_.erase(it); }
     else errors_.insert_or_assign(control->id, std::move(message));
     return {};
@@ -3707,9 +3713,8 @@ bool detail::UiState::registerable(std::string_view id) {
     auto overlay = overlay_ids_.find(id);
     if (!id.empty() && !existing && overlay == overlay_ids_.end()) return true;
 #ifndef NDEBUG
-    const char* names[] = {"text", "button", "label", "checkbox", "radio_group", "slider", "dropdown", "list", "tabs", "progress", "navigation_list"};
-    auto kind = existing ? static_cast<unsigned>(existing->kind) : 0;
-    std::string type = existing ? (kind < std::size(names) ? names[kind] : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
+    const auto* registered = existing ? find_component_type(existing->kind) : nullptr;
+    std::string type = existing ? std::string(registered ? registered->name() : "custom") : overlay != overlay_ids_.end() ? overlay->second : "none";
     std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
     diagnostics_.push_back(message);
     output_diagnostic(message);
@@ -3914,7 +3919,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
 #ifndef NDEBUG
     for (const auto& id : semantic_order_) {
         auto c = find(id); auto s = describe(id);
-        if (c && s && c->kind != Kind::label && c->kind != Kind::progress && s->name.empty() && diagnosed_names_.insert(id).second)
+        if (c && s && component_type(c->kind).needs_name() && s->name.empty() && diagnosed_names_.insert(id).second)
         {
             auto message = id + " is focusable but has no name";
             diagnostics_.push_back(message);
@@ -3929,14 +3934,6 @@ std::string detail::UiState::semantic_page(std::string_view id) const {
     auto it = page_members_.find(id);
     if (it == page_members_.end()) return "shared";
     return tabs_.at(it->second.first).pages[it->second.second].value.id;
-}
-static Role semantic_role(Kind kind) {
-    switch (kind) {
-    case Kind::text: return Role::text; case Kind::button: return Role::button; case Kind::label: return Role::label;
-    case Kind::checkbox: return Role::checkbox; case Kind::radio_group: return Role::radio_group; case Kind::slider: return Role::slider;
-    case Kind::dropdown: return Role::dropdown; case Kind::list: case Kind::navigation_list: return Role::list; case Kind::tabs: return Role::tabs; case Kind::progress: return Role::progress;
-    }
-    return Role::label;
 }
 Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
@@ -3966,7 +3963,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
-    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = semantic_role(c->kind);
+    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
@@ -4024,10 +4021,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
-        if (c->kind == Kind::radio_group) n.role = Role::radio_option;
-        else if (c->kind == Kind::dropdown) n.role = Role::dropdown_option;
-        else if (c->kind == Kind::list || c->kind == Kind::navigation_list) n.role = Role::list_item;
-        else if (c->kind == Kind::tabs) n.role = Role::tab_item;
+        if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
