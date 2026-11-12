@@ -4,6 +4,8 @@
 #include "lcars/core.hpp"
 #include "lcars/semantics.hpp"
 #include "core_internal.hpp"
+#include "component_type.hpp"
+#include "fake_measure.hpp"
 #include "check.hpp"
 #include <cstring>
 #include <iostream>
@@ -209,6 +211,72 @@ void key_policy_of_every_built_in_type() { compare(key_table(), golden_keys, "ke
 void semantics_of_every_built_in_type() { compare(semantic_table(false), golden_semantics, "semantic nodes, immediate writes"); }
 void confirm_verb_of_every_built_in_type() { compare(semantic_table(true), golden_confirmed, "semantic nodes, confirmed writes"); }
 
+
+// A component type that exists only in a test. Everything it does comes from its own code and its registration: the
+// press and release, the keys it takes, its place in the semantic tree and the verbs it answers.
+class Stepper final : public detail::ComponentType {
+public:
+    mutable int value = 7, key_presses = 0, presses = 0, releases = 0;
+    mutable Key last_key = Key::other;
+    mutable std::optional<std::size_t> pressed_option, released_pressed_option, released_option;
+    std::string_view name() const override { return "stepper"; }
+    Role role() const override { return Role::slider; }
+    ComponentHandle handle(detail::UiState& ui, const Control& control) const override { return ui.button_layout_handle(control); }
+    void arrange(detail::ComponentLayout& layout) const override { layout.placement.bounds = {0, 0, 80, 30}; }
+    void paint(detail::ComponentPaint& paint) const override { paint.fill(paint.placement.bounds, {17, 91, 173}); }
+    bool handles_key(const detail::UiState&, const Control&, KeyPress key) const override { return key.key == Key::up || key.key == Key::down; }
+    Result key_down(detail::UiState&, KeyPress key) const override { ++key_presses; last_key = key.key; return {}; }
+    bool ignores_press(const detail::UiState&, const Control&, std::optional<std::size_t> option) const override { return option == 5u; }
+    void pointer_down(detail::UiState& ui, const Control& control, std::optional<std::size_t> option) const override {
+        ++presses; pressed_option = option; ui.command_pointer_down();
+    }
+    Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
+        ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};
+    }
+    void describe(const detail::UiState&, const Control&, Semantics& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
+    void describe_operations(const detail::UiState&, const Control&, Semantics& s) const override { s.operations.push_back(Operation::edit); }
+    void verbs(const detail::VerbContext& context, std::vector<Verb>& out) const override {
+        if (!context.item && context.admits(Operation::edit)) out.push_back(Verb::set_value);
+    }
+    std::optional<Result> perform(const detail::PerformContext& context) const override {
+        if (context.verb != Verb::set_value) return std::nullopt;
+        if (const auto* number = std::get_if<int>(&context.argument)) { value = *number; return Result{}; }
+        return context.invalid_argument();
+    }
+};
+constexpr auto stepper_kind = static_cast<Kind>(101);
+
+void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
+    Stepper stepper;
+    detail::ScopedComponentType registration(stepper_kind, stepper);
+    Ui ui; auto& host = detail::access(ui);
+    host.seed_test_controls({{.id = "stepper", .kind = stepper_kind, .label = u"Stepper"}});
+    check(detail::component_type(stepper_kind).name() == "stepper", "the type names itself");
+    // Semantics: its role, its description, its operations and the verbs it offers.
+    auto node = ui.semantics().get({"stepper"});
+    check(node && node->role == Role::slider && node->numeric_value == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
+    check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::set_value) != node->verbs.end(), "the type's verb is offered");
+    check(bool(ui.semantics().perform({"stepper"}, Verb::set_value, 9)) && stepper.value == 9 && ui.semantics().get({"stepper"})->numeric_value == 9, "the type performs its verb");
+    check(ui.semantics().perform({"stepper"}, Verb::set_value, std::u16string(u"nine")).status == Status::invalid_value, "a wrong argument is the common answer");
+    // Keys: it takes Up and Down, and leaves Left to the application's shortcut.
+    int fired = 0;
+    auto sink = ui.add_button({.id = "sink", .kind = Kind::button, .label = u"Sink"}).value.value();
+    sink.bind([&] { ++fired; return Result{}; });
+    check(bool(ui.add_shortcut({.key = Key::left}, sink, host.layout_handle("stepper"))), "shortcut registered");
+    check(bool(host.focus("stepper")), "the type can be focused");
+    host.key_down({.key = Key::up});
+    check(stepper.key_presses == 1 && stepper.last_key == Key::up, "a key the type takes reaches it");
+    host.key_down({.key = Key::left});
+    check(stepper.key_presses == 1 && fired == 1, "a key the type leaves goes to the shortcut");
+    // Pointer: press and release reach the type with the rows; a press it ignores changes nothing.
+    check(bool(host.pointer_down("stepper", 2u)) && stepper.presses == 1 && stepper.pressed_option == 2u, "the press reaches the type");
+    check(bool(host.pointer_up("stepper", 2u)) && stepper.releases == 1 && stepper.released_pressed_option == 2u && stepper.released_option == 2u, "the release reaches the type");
+    check(bool(host.focus("sink")) && host.focused() == "sink", "focus moved away");
+    host.pointer_down("stepper", 5u);
+    host.pointer_up("stepper", 5u);
+    check(stepper.presses == 1 && stepper.releases == 1 && host.focused() == "sink", "an ignored press neither focuses nor arms");
+}
+
 #ifndef NDEBUG
 // The diagnostic that names an existing component's type when its ID is taken again.
 void debug_names_in_diagnostics() {
@@ -231,6 +299,7 @@ int main(int argc, char** argv) {
         {"key policy of every built-in type", key_policy_of_every_built_in_type},
         {"semantics of every built-in type", semantics_of_every_built_in_type},
         {"confirm verb of every built-in type", confirm_verb_of_every_built_in_type},
+        {"a registered type takes part in keys, pointer and semantics", a_registered_type_takes_part_in_keys_pointer_and_semantics},
 #ifndef NDEBUG
         {"debug names in diagnostics", debug_names_in_diagnostics},
 #endif

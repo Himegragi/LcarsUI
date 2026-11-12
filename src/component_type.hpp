@@ -3,6 +3,11 @@
 // to use the typed handles in the public headers; this is not a public plug-in API.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
+#include "lcars/semantics.hpp"
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace lcars::detail {
 class UiState;
@@ -87,11 +92,73 @@ private:
 // Type-level applicability, independent of any instance's current semantic state.
 // Modal and tooltip content are declared by page membership, not by component kind.
 enum class ComponentState { normal, disabled, read_only, selected, candidate, error, conflict, executing };
+// What a pointer press armed, handed back to the type when the button is released over the same component.
+struct PointerRelease {
+    std::string id;                                        // the armed and released component
+    std::optional<std::size_t> pressed_option, option;     // the row under the press and under the release
+    std::optional<OptionValue> pressed_value;              // the row's value when the press recorded one
+};
+// What a type needs to say which verbs one semantic node offers; the node is enabled, visible and not behind a modal.
+struct VerbContext {
+    const UiState& ui;
+    const Control& control;
+    const Semantics& semantics;
+    const SemanticNode& node;
+    bool item;                                             // the node is one item of the control
+    bool admits(Operation operation) const;                // semantics.operations holds it
+};
+// One semantic verb arriving at a type. invalid_argument() is the common answer for a verb whose argument does not fit.
+struct PerformContext {
+    UiState& ui;
+    const NodeRef& ref;
+    Verb verb;
+    const Argument& argument;
+    const SemanticNode& node;
+    std::function<Result()> invalid_argument;
+};
 class ComponentType {
 public:
     virtual ~ComponentType() = default;
     virtual bool supports_state(ComponentState state) const { return state == ComponentState::normal; }
     virtual ComponentHandle handle(UiState&, const Control&) const = 0;
+    // ---- Identity and creation rules. The defaults are what a type with nothing special says.
+    // The name diagnostics use ("custom" for a type that does not name itself).
+    virtual std::string_view name() const { return "custom"; }
+    // The role of the node, and of its items when it has items.
+    virtual Role role() const { return Role::label; }
+    virtual std::optional<Role> item_role() const { return std::nullopt; }
+    // A control of this type cannot be supplied as data: it is created through its typed handle.
+    virtual bool requires_typed_creation() const { return false; }
+    // Alignment, justification and spacing; distribute is for labels only (a field respread at every key would be unusable).
+    virtual bool supports_text_flow() const { return false; }
+    virtual bool admits_distribute() const { return false; }
+    // Control::rich is for multi-line fields of such a type, Control::writing_mode vertical for labels.
+    virtual bool supports_rich_text() const { return false; }
+    virtual bool supports_vertical_writing() const { return false; }
+    // Ui::set_error is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
+    virtual bool accepts_error() const { return true; }
+    virtual bool needs_name() const { return true; }
+    // ---- Input.
+    // Whether the focused control takes this key itself (key_down runs) or leaves it to the application's shortcuts.
+    virtual bool handles_key(const UiState&, const Control&, KeyPress key) const { return !key.ctrl || !key.letter; }
+    // A press on this row of the control is ignored altogether (no focus change either).
+    virtual bool ignores_press(const UiState&, const Control&, std::optional<std::size_t> /*option*/) const { return false; }
+    virtual void pointer_down(UiState&, const Control&, std::optional<std::size_t> /*option*/) const {}
+    // The release over the armed component; the default invokes the component's action.
+    virtual Result pointer_up(UiState&, const PointerRelease&) const;
+    // ---- Semantics.
+    // Fills the type's part of the control's description (values, options, conflicts) and, afterwards, the operations it admits.
+    virtual void describe(const UiState&, const Control&, Semantics&) const {}
+    virtual void describe_operations(const UiState&, const Control&, Semantics&) const {}
+    // The text the control shows when it is not the control's own value (nullopt: control.value).
+    virtual std::optional<std::u16string> display_text(const UiState&, const Control&) const { return std::nullopt; }
+    // The type's own node properties (accelerators, selection, writing mode, text selection...).
+    virtual void describe_node(const UiState&, const Control&, const Semantics&, const NodeRef&, SemanticNode&) const {}
+    // The verbs of the node, in order. The default offers focus and the context menu where the control admits them.
+    virtual void verbs(const VerbContext&, std::vector<Verb>&) const;
+    // A verb arriving at the control or one of its items; nullopt: not this type's verb.
+    virtual std::optional<Result> perform(const PerformContext&) const { return std::nullopt; }
+    virtual bool confirm_pending(const UiState&, const Control&) const { return false; }
     virtual void arrange(ComponentLayout&) const = 0;
     virtual void paint(ComponentPaint&) const = 0;
     // A negative width means the component shares its row's remaining space.

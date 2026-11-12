@@ -993,6 +993,11 @@ ComponentPaint::RingShape ComponentPaint::focus_ring(Rect outer, int own_radius,
     });
     return shape;
 }
+bool VerbContext::admits(Operation operation) const {
+    return std::find(semantics.operations.begin(), semantics.operations.end(), operation) != semantics.operations.end();
+}
+Result ComponentType::pointer_up(UiState& ui, const PointerRelease& release) const { return ui.invoke(release.id); }
+void ComponentType::verbs(const VerbContext&, std::vector<Verb>&) const {}
 const ComponentType& component_type(Kind kind) {
     auto test = test_types().find(kind);
     if (test != test_types().end()) return *test->second;
