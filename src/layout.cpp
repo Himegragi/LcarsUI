@@ -600,7 +600,7 @@ struct Arranger {
                 frame.regions[i].clip = intersect(frame.regions[i].clip, panel);
             }
             for (auto& p : modal_items) {
-                p.popup = true;
+                p.popup = true; p.dialog = true;
                 p.clip = p.clipped ? intersect(p.clip, panel) : panel;
                 p.clipped = true;
                 frame.overlays.push_back(std::move(p));
@@ -628,12 +628,15 @@ struct Arranger {
         const auto& child = node.children.front();
         auto& state = node.scroll_state ? *node.scroll_state : scroll;
         int bar = d(10);
-        int content = height(child, r.w);
+        // A scrolling text is framed by the focus ring at the edge of its viewport: it keeps a ring's thickness from the
+        // sides whether or not it is focused (when it does not overflow it cannot be focused, and stays as padded).
+        const int side = node.scrollable_text ? detail::focus_ring_width(ui, appearance, scale) : 0;
+        int content = height(child, std::max(0, r.w - 2 * side));
         int width = content > r.h ? std::max(0, r.w - bar - d(4)) : r.w;
-        if (width != r.w) content = height(child, width);
+        if (width != r.w) content = height(child, std::max(0, width - 2 * side));
         std::vector<Placement> placed;
         auto region_start = frame.regions.size();
-        place(child, {r.x, r.y, width, 0}, placed);
+        place(child, {r.x + side, r.y, std::max(0, width - 2 * side), 0}, placed);
         ScrollRegion region; region.state = &state; region.viewport = region.clip = r;
         region.extent = content;
         region.maximum = std::max(0, content - r.h);

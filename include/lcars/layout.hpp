@@ -177,6 +177,7 @@ struct Placement {
     bool popup = false;           // an overlay belongs to its source, outside normal layout flow
     bool dropdown_panel = false; // actual dropdown panel, distinct from modal content
     bool tooltip = false;         // explanatory overlay: never receives pointer input
+    bool dialog = false;          // content of the open dialog: it sits on the dialog's panel, not on the page, so what a focus ring's inside is filled with (ComponentPaint::backdrop) is the panel color
     int text_size = 0;            // physical pixels
     int caption_size = 0;         // text fields: label, description and error text size
     std::vector<Line> lines;      // labels and command titles; vertical labels: one line per column

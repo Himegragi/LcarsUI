@@ -2984,7 +2984,7 @@ int main() {
         {"F72 system keyboard cues", focus_visibility::system_setting_forces_display_and_follows_changes},
         {"F72 always mode", focus_visibility::always_mode_forces_display_and_reverts_live},
         {"F72 tooltip after click", focus_visibility::tooltip_waits_for_keyboard_after_a_click},
-        {"F72 slider dot", focus_visibility::slider_focus_is_a_dot_left_of_the_title},
+        {"F72 slider ring", focus_visibility::slider_focus_is_a_ring_around_the_title_and_the_track},
         {"F72 slider thumb after pointer", focus_visibility::slider_thumb_stays_normal_after_pointer_use},
         {"Dark error inventory", [] { x04_error_inventory_at_each_size_and_scale(true); }},
         {"Dark disabled inventory", [] { x04_disabled_inventory_at_each_size_and_scale(true); }},

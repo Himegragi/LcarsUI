@@ -13,8 +13,12 @@ struct SettingsDocument {
     int next_item_id;
     lcars::PresentationSettings presentation;
     std::string accent = "default";  // "default", "green" or "orange": the palette override set chosen on the appearance page
+    std::string focus_color = "default";  // "default" (the ring follows the accent), "green" or "orange": overrides the palette's `focus` role
     bool operator==(const SettingsDocument&) const = default;
 };
+// The one spelling of FocusIndicatorMode in the focus-mode dropdown and in the settings file; unknown ids have no mode.
+const char* focus_mode_id(lcars::FocusIndicatorMode mode);
+std::optional<lcars::FocusIndicatorMode> focus_mode_from_id(std::string_view id);
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
 struct AboutInfo {
     bool diagnostics = false;
@@ -64,21 +68,34 @@ private:
     lcars::Result refresh_items();
     lcars::Result save_document();
     SettingsDocument snapshot() const;
-    void apply(const SettingsDocument&);
+    lcars::Result apply(const SettingsDocument&);  // every part is applied; the first failure is returned
     void dirty(bool coalesce = false);
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
-    bool saved_once_ = false, volume_group_ = false, text_size_group_ = false, dirty_state_ = false;
+    bool saved_once_ = false, dirty_state_ = false;
     std::function<void()> text_size_changed_, dark_changed_, compact_changed_, justify_left_changed_;
     lcars::LabelHandle preview_, font_status_;
     std::function<void()> font_changed_;
     void refresh_fonts();
     lcars::ButtonHandle reset_appearance_;
-    std::string accent_value_ = "default";
-    std::function<void()> accent_changed_;
+    std::string accent_value_ = "default", focus_color_value_ = "default";
+    std::function<void()> accent_changed_, focus_color_changed_;
+    // One palette override list stands for both choices (set_palette_overrides replaces the whole list).
+    lcars::Result apply_palette(const std::string& accent_id, const std::string& focus_id);
     lcars::Result apply_accent(const std::string& id);
+    lcars::Result apply_focus_color(const std::string& id);
+    // The focus ring controls (#90): the callbacks that tell each control's data source the presentation changed.
+    std::function<void()> focus_mode_changed_, focus_width_changed_, focus_radius_same_changed_, focus_radius_changed_;
+    std::optional<int> focus_radius_memory_;  // the radius the user last chose (or loaded): what unchecking "same as the component" brings back
+    int focus_radius_start() const;           // memory, else the bound appearance's own radius (Web 6 when none is bound): unchecking changes nothing drawn
+    lcars::Result presentation_changed();   // every control that mirrors the presentation re-reads it; the first control that cannot be updated is reported
+    lcars::Result refresh_focus_controls(); // with the indicator off, the ring's width, radius and color controls are disabled (values kept)
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
+    // A slider drag is one undo step: while a slider keeps the focus its changes join the first one. drag_group_ is the id of the
+    // slider whose changes are joining (empty = none), so dirty(false) and apply() end every slider's group with one assignment.
+    std::string drag_group_;
+    void connect_slider(lcars::SliderHandle& slider, const char* id, std::function<lcars::Result(const lcars::NumericChange&, bool join)> change);
 public:
     lcars::Ui ui;
     lcars::ScrollState scroll;
@@ -103,9 +120,13 @@ public:
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region, font, accent;
     lcars::SliderHandle volume, text_size;
+    // The focus ring (#90): when and how it shows. Width, radius and color are disabled while the indicator is off.
+    lcars::DropdownHandle focus_mode, focus_color;    // PresentationSettings::focus_indicator; the palette's `focus` role
+    lcars::SliderHandle focus_width, focus_radius;    // focus_ring_width (2-6 DIP); focus_ring_radius (0-32 DIP, shown unless "same as the component")
+    lcars::CheckboxHandle focus_radius_same;          // checked = focus_ring_radius left empty
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
-    void load_document(const SettingsDocument&);
+    lcars::Result load_document(const SettingsDocument&);  // a part that cannot be applied is also announced in the load notice
     void show_load_notice(std::u16string title, std::u16string message);
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
@@ -116,6 +137,11 @@ public:
     const std::string& accent_id() const { return accent_value_; }
     // The palette overrides one accent choice stands for (appearances that are not linked are skipped).
     static std::vector<lcars::PaletteOverride> accent_overrides(const std::string& id);
+    // Ring colors: "default" overrides nothing (the ring follows the accent); "green" and "orange" override `focus`
+    // for every linked built-in appearance in light and dark, each passing the 3:1 rule on every surface.
+    lcars::Result set_focus_color(const std::string& id);
+    const std::string& focus_color_id() const { return focus_color_value_; }
+    static std::vector<lcars::PaletteOverride> focus_color_overrides(const std::string& id);
     explicit Demo(AboutInfo about = {});
     void set_renderer(std::u16string value);
     lcars::layout::Node page() const;

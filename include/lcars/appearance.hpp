@@ -25,6 +25,11 @@ struct Palette {
     // Pointer hover: this color at hover_alpha (0-255) is laid over the hovered component or item.
     // Fields left out of a custom palette keep a faint black overlay (6%).
     Color hover{0,0,0}; unsigned char hover_alpha = 15;
+    // The focus ring's color; >= 3:1 on background, panel and surface. Left empty it is the accent, whatever the accent is
+    // when the palette is used (focus_color()): a palette that assigns `accent` after construction, or an accent override,
+    // moves the ring with it. Setting `focus` pins the ring to its own color. Read the ring color through focus_color().
+    std::optional<Color> focus;
+    Color focus_color() const { return focus.value_or(accent); }
     bool operator==(const Palette&) const = default;
 };
 // Palette roles are addressed by name so an override list never needs a field list of its own:

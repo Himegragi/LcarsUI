@@ -49,6 +49,21 @@ public:
     // Whether this component draws its focus indicator now. Built-in components draw the indicator
     // from this value alone, never from semantics.focused.
     bool focus_visible;
+
+    // Rounded frames, thin or the focus ring (#90). All sizes are physical pixels. A frame is two rounded fills, the
+    // `edge` color over the whole outer rect and the `fill` color over what is left after the band, so it is closed
+    // on every side; a radius larger than half the shorter side becomes a capsule.
+    struct RingShape { Rect inner; int outer_radius = 0, inner_radius = 0; };
+    static RingShape ring_shape(Rect outer, int radius, int width);
+    // The focus ring's radius now: the presentation setting, else `own`, the component's own corner radius.
+    int ring_radius(int own) const;
+    // What lies behind a component that paints no background of its own: the page, or the open dialog's panel.
+    Color backdrop() const;
+    // A thin frame: `edge` under `role`, then `fill`. Returns the shape inside the band for hover and content.
+    RingShape frame(Rect outer, int radius, int width, Color edge, Color fill, PaintRole role = PaintRole::content);
+    // The focus ring around `outer`, drawn from the ring thickness and radius: the focus color (the error color
+    // when `invalid`) over the band and `fill` inside, both marked focus_indicator. Draw it before the content it frames.
+    RingShape focus_ring(Rect outer, int own_radius, Color fill, bool invalid = false);
     virtual void role(PaintRole) {}
     // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it. The default
     // draws the shape through fill()/rounded() (a Color has no alpha) and, for exactly that call, reports the
@@ -93,6 +108,9 @@ public:
     virtual void pointer_down(UiState&) const {}
 };
 const ComponentType& component_type(Kind kind);
+// The focus ring's thickness in physical pixels for these settings. Layout reserves at least this much room
+// around whatever a ring frames, whether or not the component is focused, so focus never moves anything.
+int focus_ring_width(const UiState& ui, const Appearance& appearance, float scale);
 // Text flow (#80), in physical pixels. A row is what one display line occupies: the font's line height
 // times the line spacing (never less than the line height). The paragraph gap is the extra space after
 // a paragraph ended by an LF, scaled from DIP, never rounded up to a pixel when it is 0.

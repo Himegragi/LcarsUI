@@ -405,7 +405,11 @@ int demo_compare(const std::filesystem::path& evidence) {
             if(const auto* nav=host.frame().find(demo.nav)) { demo.scroll.offset+=nav->bounds.y+nav->bounds.h/2-(scale==1.f?720:480)/2; host.pump(); }
         }
         if(scenario==8) setup &= bool(demo.nav.select({"about"}));  // the vertical writing label (#82)
-        host.pump(); auto result=host.compare_gpu(960,720,scale);
+        // The real mouse is wherever the person running this left it, and the host reads it when the window takes the focus (and
+        // Windows may send a mouse move when the window appears under it): a hovered row or dropdown would change the picture. The
+        // pictures are about the focus indicator, so the pointer stays out of them. Production behavior is untouched.
+        host.pump(); detail::access(demo.ui).pointer_left(); setup &= !detail::access(demo.ui).hover_target();
+        auto result=host.compare_gpu(960,720,scale);
         auto has_role=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
         bool cues=true;
         if(scenario==0) cues=has_role("general.name",1) && has_role("general.name",2);
@@ -1220,7 +1224,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
     auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
     auto start = region();
     report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
-                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w,
+                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w - (label().column_layout.track.x - label().bounds.x),  // a ring's thickness in from the edge (#90): the bar starts at x = ring
         "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
     const auto bounds = label().bounds;
     POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};

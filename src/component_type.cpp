@@ -11,6 +11,9 @@ namespace lcars::detail {
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
 ComponentPresentation ComponentPaint::presentation() const { return appearance.component_presentation(ui.presentation().density); }
 ComponentPresentation ComponentLayout::presentation() const { return appearance.component_presentation(ui.presentation().density); }
+// The width a line of text keeps when it starts at `text_x` instead of at its natural `gap` (a ring pushes text inward) and `trailing`
+// pixels stay free on the right.
+static int room_after(int width, int trailing, int text_x, int gap) { return std::max(0, width - trailing - (text_x - gap)); }
 int text_row(int line_height, double line_spacing) {
     return std::max(line_height, static_cast<int>(std::lround(line_height * line_spacing)));
 }
@@ -95,17 +98,34 @@ std::u16string command_title(const ComponentLayout& c) {
     if (semantic && semantic->executing) title += c.presentation().executing_suffix;
     return title;
 }
-int command_width(const ComponentLayout& c) {
-    return static_cast<int>(std::ceil(c.measure.measure(command_title(c), c.placement.text_size).width)) +
-           2 * c.appearance.button_padding(c.scale, c.ui.presentation().density);
-}
 int scaled(float scale, int value) { return std::max(1, static_cast<int>(std::lround(value * scale))); }
+// A command's side padding never falls below the focus ring's thickness, so the ring cannot reach the title.
+int command_padding(const ComponentLayout& c) {
+    return std::max(c.appearance.button_padding(c.scale, c.ui.presentation().density), focus_ring_width(c.ui, c.appearance, c.scale));
+}
+int command_width(const ComponentLayout& c) {
+    return static_cast<int>(std::ceil(c.measure.measure(command_title(c), c.placement.text_size).width)) + 2 * command_padding(c);
+}
+// The height of a button-like box around `content` pixels of title and indicator: the appearance's height, never
+// less than the content plus a ring's thickness above and below it.
+int command_height(const UiState& ui, const Appearance& appearance, float scale, int text_height, int content) {
+    return std::max(appearance.button_height(text_height, scale, ui.presentation().density), content + 2 * focus_ring_width(ui, appearance, scale));
+}
+// The box of a button-like component: the whole placement unless the component stacks error or conflict text below it.
+Rect command_box(const ComponentPaint& c, int indicator) {
+    const auto& item = c.placement;
+    const int lines = static_cast<int>(item.lines.size()), line_height = lines ? item.lines.front().bounds.h : 0;
+    const int text_height = lines * line_height;
+    Rect box = item.bounds;
+    box.h = std::min(box.h, command_height(c.ui, c.appearance, c.scale, text_height, std::max(text_height, indicator)));
+    return box;
+}
 Rect offset(Rect rect, Rect origin) { return {rect.x + origin.x, rect.y + origin.y, rect.w, rect.h}; }
-int conflict_lines(ComponentLayout& c, int y, bool conflict) {
+int conflict_lines(ComponentLayout& c, int y, bool conflict, int inset = 0) {
     if (!conflict) return y;
     auto& p = c.placement;
-    p.description_lines = block(c.measure, c.presentation().conflict_suffix, p.text_size, c.width);
-    for (auto& line : p.description_lines) line.bounds.y += y;
+    p.description_lines = block(c.measure, c.presentation().conflict_suffix, p.text_size, std::max(1, c.width - 2 * inset));
+    for (auto& line : p.description_lines) { line.bounds.x += inset; line.bounds.y += y; }
     return y + height_of(p.description_lines);
 }
 template<class F> void marked(ComponentPaint& c, PaintRole role, F&& paint) { c.role(role); paint(); c.role(PaintRole::content); }
@@ -127,11 +147,33 @@ void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, 
         });
     }
 }
-// The slider's focus dot sits left of the title. Its room is always reserved, so the title never moves
-// when the indicator appears. Diameter is ~40% of the text size.
-struct SliderDot { int diameter, gap; int room() const { return diameter + gap; } };
-SliderDot slider_dot(const Appearance& appearance, float scale, int text_size, Density density) {
-    return {std::max(2, static_cast<int>(std::lround(text_size * 0.4))), scaled(scale, appearance.component_presentation(density).gap_small)};
+// The focus ring of a text field is drawn at the edge of its surface, so whatever the surface holds (the editor and, in an
+// appearance that puts it inside, the label) keeps a ring's thickness of room from every edge. Missing room is added: the
+// content moves in from the sides, and the surface grows at the top and bottom, pushing what follows it down. It does this
+// whether or not the field is focused, so focus never moves anything.
+void keep_ring_room(FieldLayout& f, int ring) {
+    const Rect surface = f.surface;
+    if (surface.w <= 0 || surface.h <= 0) return;
+    auto held = [&](const Rect& r) {
+        return r.w > 0 && r.h > 0 && r.x >= surface.x && r.y >= surface.y && r.x + r.w <= surface.x + surface.w && r.y + r.h <= surface.y + surface.h;
+    };
+    Rect* contents[] = {&f.label, &f.editor};
+    int left = ring, right = ring, top = ring, bottom = ring;  // the room each side already has, capped at what is needed
+    for (const Rect* r : contents) {
+        if (!held(*r)) continue;
+        left = std::min(left, r->x - surface.x);
+        right = std::min(right, surface.x + surface.w - (r->x + r->w));
+        top = std::min(top, r->y - surface.y);
+        bottom = std::min(bottom, surface.y + surface.h - (r->y + r->h));
+    }
+    const int add_left = ring - left, add_right = ring - right, add_top = ring - top, add_bottom = ring - bottom;
+    if (!add_left && !add_right && !add_top && !add_bottom) return;
+    const int grow = add_top + add_bottom, below = surface.y + surface.h;
+    for (Rect* r : contents)
+        if (held(*r)) { r->x += add_left; r->w = std::max(0, r->w - add_left - add_right); r->y += add_top; }
+    for (Rect* r : {&f.description, &f.error}) if (r->h > 0 && r->y >= below) r->y += grow;
+    f.surface.h += grow;
+    f.height += grow;
 }
 class Label final : public ComponentType {
 public:
@@ -163,15 +205,18 @@ public:
         auto columns = flow_vertical(c.measure, text, em, c.control.vertical_digits, c.vertical_height);
         int content = content_width(columns);
         const bool sideways = content > c.width;
+        // A label that scrolls can take focus and is framed by the ring at the edge of its box: the columns, the bar and
+        // the reading position all keep a ring's thickness from that edge (the same room is kept focused or not).
+        const int ring = sideways ? focus_ring_width(c.ui, c.appearance, c.scale) : 0;
         const int bar_room = sideways ? bar + gap : 0;
-        if (sideways && c.vertical_height > 0) {  // the bar takes some of the height: wrap again for the shorter columns
-            columns = flow_vertical(c.measure, text, em, c.control.vertical_digits, std::max(em, c.vertical_height - bar_room));
+        if (sideways && c.vertical_height > 0) {  // the bar and the ring take some of the height: wrap again for the shorter columns
+            columns = flow_vertical(c.measure, text, em, c.control.vertical_digits, std::max(em, c.vertical_height - bar_room - 2 * ring));
             content = content_width(columns);
         }
         int tallest = 0;
         for (const auto& column : columns) tallest = std::max(tallest, column.bounds.h);
-        const int area = c.vertical_height > 0 ? std::max(0, c.vertical_height - bar_room) : tallest;
-        const int width = std::min(content, c.width), maximum = std::max(0, content - width);
+        const int area = c.vertical_height > 0 ? std::max(0, c.vertical_height - bar_room - 2 * ring) : tallest;
+        const int width = std::min(content, c.width), view = std::max(0, width - 2 * ring), maximum = std::max(0, content - view);
         auto& state = c.ui.vertical_scroll(c.control.id);
         const int offset = std::clamp(state.offset, 0, maximum);
         if (c.settle) { state.offset = offset; c.ui.set_vertical_scroll(c.control.id, maximum, pitch); }
@@ -181,17 +226,17 @@ public:
             cursor -= pitch;
             int slack = std::max(0, area - column.bounds.h);
             int top = params.align == VerticalParams::Align::center ? slack / 2 : params.align == VerticalParams::Align::bottom ? slack : 0;
-            column.bounds = {cursor - (content - width) + offset, top, pitch, column.bounds.h};
+            column.bounds = {cursor - (content - view) + offset + ring, top + ring, pitch, column.bounds.h};
             p.lines.push_back({column.bounds, text.substr(column.begin, column.end - column.begin)});
             if (column.last_in_paragraph && i + 1 < columns.size()) cursor -= params.paragraph_spacing;
         }
-        p.bounds = {0, 0, width, area + bar_room};
+        p.bounds = {0, 0, width, area + bar_room + 2 * ring};
         auto& v = p.column_layout;
         v.em = em; v.pitch = pitch; v.extent = content; v.maximum = maximum; v.offset = offset;
         if (maximum > 0) {
-            v.track = {0, p.bounds.h - bar, width, bar};
-            int thumb = std::min(width, std::max(scaled(c.scale, 24), width * width / std::max(1, content)));
-            v.thumb = {(width - thumb) * (maximum - offset) / maximum, v.track.y, thumb, bar};
+            v.track = {ring, p.bounds.h - ring - bar, view, bar};
+            int thumb = std::min(view, std::max(scaled(c.scale, 24), view * view / std::max(1, content)));
+            v.thumb = {ring + (view - thumb) * (maximum - offset) / maximum, v.track.y, thumb, bar};
         }
         v.columns = std::move(columns);
     }
@@ -211,16 +256,9 @@ public:
         if (c.semantics.role == TextRole::error) marked(c, PaintRole::error_text, paint); else paint();
     }
     void paint(ComponentPaint& c) const override {
-        if (c.focus_visible) {
-            auto r = c.placement.clip;
-            auto color = c.palette().accent;
-            int edge = std::max(1, scaled(c.scale, c.presentation().focus));
-            marked(c, PaintRole::focus_indicator, [&] {
-                c.fill({r.x, r.y, r.w, edge}, color);
-                c.fill({r.x, r.y + r.h - edge, r.w, edge}, color);
-                c.fill({r.x, r.y, edge, r.h}, color);
-                c.fill({r.x + r.w - edge, r.y, edge, r.h}, color);
-            });
+        if (c.focus_visible) {  // a scrolling text: the ring frames its viewport, the text slides under the band, never over it
+            const auto shape = c.focus_ring(c.placement.clip, scaled(c.scale, c.appearance.radius()), c.backdrop(), c.semantics.invalid);
+            c.clip(shape.inner);
         }
         if (c.placement.vertical) paint_vertical(c, c.palette().text);
         else if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.palette().text);
@@ -243,7 +281,9 @@ public:
         if (control.read_only) name += c.presentation().read_only_suffix;
         if (!control.enabled) name += c.presentation().disabled_suffix;
         int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale);
         auto probe = c.appearance.arrange_field(c.width, {line, line, line, line}, c.scale, c.ui.presentation().density);
+        keep_ring_room(probe, ring);
         auto label = block(c.measure, name, caption, probe.label.w);
         auto description_text = semantics.description;
         if (semantics.source_conflict) {
@@ -256,6 +296,7 @@ public:
         // A fixed number of lines: every row, plus room for a paragraph gap between each pair of them.
         const int editor_height = control.multiline ? row * static_cast<int>(control.visible_lines) + paragraph_gap(control, c.scale) * static_cast<int>(control.visible_lines - 1) : row;
         p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), editor_height}, c.scale, c.ui.presentation().density);
+        keep_ring_room(p.field, ring);
         auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
         anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
         p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
@@ -414,17 +455,21 @@ public:
         auto d = [&](int value) { return scaled(c.scale, value); };
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
         bool focused = semantics.focused, enabled = semantics.enabled, cue = c.focus_visible;
-        int ring = cue ? d(c.presentation().inset) : d(c.presentation().thin);
-        // The edge identifies the field: outline when usable, the light divider color when disabled.
-        Color edge = semantics.invalid ? p.error : cue ? p.accent : enabled ? p.outline : p.border;
-        marked(c, (cue ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(surface, d(c.appearance.radius()), f.underline ? (enabled ? p.surface : p.background) : edge); });
-        if (!f.underline) {
-            Rect inner{surface.x + ring, surface.y + ring, surface.w - 2 * ring, surface.h - 2 * ring};
-            c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
-            if (c.hovered()) c.hover(inner, std::max(0, d(c.appearance.radius()) - ring));
+        const int radius = d(c.appearance.radius()), thin = d(c.presentation().thin);
+        const Color fill = enabled ? p.surface : p.background;
+        // The edge identifies the field: outline when usable, the light divider color when disabled, error when invalid.
+        const Color edge = semantics.invalid ? p.error : enabled ? p.outline : p.border;
+        const PaintRole error = semantics.invalid ? PaintRole::error_indicator : PaintRole::content;
+        if (cue) {  // the focus ring replaces the edge, or the underline of the underline style
+            const auto shape = c.focus_ring(surface, radius, fill, semantics.invalid);
+            if (c.hovered()) c.hover(shape.inner, shape.inner_radius);
+        } else if (!f.underline) {
+            const auto shape = c.frame(surface, radius, thin, edge, fill, error);
+            if (c.hovered()) c.hover(shape.inner, shape.inner_radius);
         } else {
-            if (c.hovered()) c.hover(surface, d(c.appearance.radius()));
-            marked(c, (cue ? PaintRole::focus_indicator : PaintRole::content) | (semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.fill({surface.x, surface.y + surface.h - 2 * ring, surface.w, 2 * ring}, edge); });
+            c.rounded(surface, radius, fill);
+            if (c.hovered()) c.hover(surface, radius);
+            marked(c, error, [&] { c.fill({surface.x, surface.y + surface.h - 2 * thin, surface.w, 2 * thin}, edge); });
         }
         paint_lines(c, item.label_lines, item.caption_size, semantics.invalid ? p.error : p.muted);
         paint_lines(c, item.description_lines, item.caption_size, p.muted);
@@ -456,10 +501,10 @@ public:
         auto& p = c.placement;
         int line = c.measure.line_height(p.text_size);
         int w = std::min(c.width, command_width(c));
-        int room = std::max(1, w - 2 * c.appearance.button_padding(c.scale, c.ui.presentation().density));
+        int room = std::max(1, w - 2 * command_padding(c));
         auto lines = wrap(c.measure, command_title(c), p.text_size, room);
         int text_height = static_cast<int>(lines.size()) * line;
-        int h = c.appearance.button_height(text_height, c.scale, c.ui.presentation().density);
+        int h = command_height(c.ui, c.appearance, c.scale, text_height, std::max(text_height, indicator_px(c.ui, c.appearance, c.scale)));
         p.bounds = {0, 0, w, h};
         int y = (h - text_height) / 2;
         for (auto& text : lines) {
@@ -473,14 +518,18 @@ public:
         auto p = c.palette();
         auto d = [&](int value) { return scaled(c.scale, value); };
         bool focused = c.focus_visible, enabled = c.semantics.enabled;
-        int ring = focused ? d(c.presentation().focus) : d(c.presentation().thin);
-        marked(c, focused ? PaintRole::focus_indicator : PaintRole::content, [&] { c.rounded(item.bounds, d(c.appearance.radius()), focused ? p.accent : enabled ? p.border : p.background); });
-        Rect inner{item.bounds.x + ring, item.bounds.y + ring, item.bounds.w - 2 * ring, item.bounds.h - 2 * ring};
-        c.rounded(inner, std::max(0, d(c.appearance.radius()) - ring), enabled ? p.surface : p.background);
-        if (c.hovered()) c.hover(inner, std::max(0, d(c.appearance.radius()) - ring));
+        const int radius = d(c.appearance.radius());
+        const Color fill = enabled ? p.surface : p.background;
+        const Rect box = command_box(c, indicator_px(c.ui, c.appearance, c.scale));
+        const auto shape = focused ? c.focus_ring(box, radius, fill, c.semantics.invalid)
+                                   : c.frame(box, radius, d(c.presentation().thin), enabled ? p.border : p.background, fill);
+        if (c.hovered()) c.hover(shape.inner, shape.inner_radius);
         paint_lines(c, item.lines, item.text_size, enabled ? p.text : p.muted);
     }
     int natural_width(const ComponentLayout& c) const override { return command_width(c); }
+protected:
+    // What the box must hold besides its title: the checkbox's square.
+    virtual int indicator_px(const UiState&, const Appearance&, float) const { return 0; }
 };
 class Button final : public Command {
 public:
@@ -512,8 +561,9 @@ public:
         paint_lines(c, c.placement.description_lines, c.placement.text_size, c.palette().muted);
         paint_errors(c, c.placement.error_lines, c.placement.text_size, c.palette().error);
         auto p = c.palette();
-        int size = scaled(c.scale, c.presentation().indicator), x = c.placement.bounds.x + scaled(c.scale, c.presentation().gap);
-        int y = c.placement.bounds.y + (c.appearance.button_height(c.placement.lines.front().bounds.h, c.scale, c.ui.presentation().density) - size) / 2;
+        int size = scaled(c.scale, c.presentation().indicator);
+        int x = c.placement.bounds.x + std::max(scaled(c.scale, c.presentation().gap), focus_ring_width(c.ui, c.appearance, c.scale));  // never under the ring
+        int y = c.placement.bounds.y + (command_box(c, size).h - size) / 2;
 
         c.fill({x, y, size, size}, c.semantics.enabled ? p.outline : p.border);
         int inset = scaled(c.scale, c.presentation().inset);
@@ -526,6 +576,10 @@ public:
         return key.key == Key::space ? ui.command_key_down(key) : Result{};
     }
     void pointer_down(UiState& ui) const override { ui.command_pointer_down(); }
+protected:
+    int indicator_px(const UiState& ui, const Appearance& appearance, float scale) const override {
+        return scaled(scale, appearance.component_presentation(ui.presentation().density).indicator);
+    }
 };
 class RadioGroup final : public ComponentType {
 public:
@@ -534,12 +588,17 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), row = std::max(scaled(c.scale, 24), line + scaled(c.scale, c.presentation().gap));
+        // The ring frames one option row: the row is tall enough for the label and the circle plus a ring above and below,
+        // and both keep a ring's thickness from the row's edges.
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale), size = scaled(c.scale, c.presentation().indicator);
+        int line = c.measure.line_height(p.text_size), row = std::max({scaled(c.scale, 24), line + scaled(c.scale, c.presentation().gap), line + 2 * ring, size + 2 * ring});
+        const int circle_x = std::max(scaled(c.scale, c.presentation().gap_small), ring);
+        const int label_x = std::max(scaled(c.scale, c.presentation().radio_label_offset), circle_x + size + scaled(c.scale, c.presentation().gap));
         p.lines.push_back({{0, 0, c.width, line}, semantics.name + (semantics.enabled ? u"" : c.presentation().disabled_suffix)});
         int y = line + scaled(c.scale, c.presentation().gap_small);
         for (const auto& option : semantics.options) {
             p.options.push_back({0, y, c.width, row});
-            p.lines.push_back({{scaled(c.scale, c.presentation().radio_label_offset), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().radio_label_offset)), line}, option.label + (option.enabled ? u"" : c.presentation().disabled_suffix)});
+            p.lines.push_back({{label_x, y + (row - line) / 2, std::max(0, c.width - label_x - ring), line}, option.label + (option.enabled ? u"" : c.presentation().disabled_suffix)});
             y += row;
         }
         y = conflict_lines(c, y, semantics.source_conflict);
@@ -554,18 +613,29 @@ public:
         auto p = c.palette();
         const auto& item = c.placement;
         if (!item.lines.empty()) c.text(item.lines[0].text, item.text_size, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
-        if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.fill({item.bounds.x, item.bounds.y, scaled(c.scale, c.presentation().inset), item.bounds.h}, p.accent); });
+        // The ring frames the selected option's row, or the first usable one while nothing is selected.
+        std::optional<std::size_t> framed;
+        if (c.focus_visible) {
+            for (std::size_t i = 0; i < c.semantics.options.size() && i < item.options.size(); ++i)
+                if (c.semantics.options[i].selected) { framed = i; break; }
+            for (std::size_t i = 0; !framed && i < c.semantics.options.size() && i < item.options.size(); ++i)
+                if (c.semantics.options[i].enabled) framed = i;
+        }
         for (std::size_t i = 0; i < item.options.size(); ++i) {
             const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
             int size = scaled(c.scale, c.presentation().indicator), inset = scaled(c.scale, c.presentation().focus);
-            int x = r.x + scaled(c.scale, c.presentation().gap_small), y = r.y + (r.h - size) / 2;
-            if (c.hovered(option.value)) c.hover(r);
+            int x = r.x + std::max(scaled(c.scale, c.presentation().gap_small), focus_ring_width(c.ui, c.appearance, c.scale)), y = r.y + (r.h - size) / 2;
+            Rect shown = r; int shown_radius = 0;  // what hover covers: the row, or what the ring leaves of it
+            if (framed == i) {
+                const auto shape = c.focus_ring(r, scaled(c.scale, c.appearance.radius()), c.backdrop(), c.semantics.invalid);
+                shown = shape.inner; shown_radius = shape.inner_radius;
+            }
+            if (c.hovered(option.value)) c.hover(shown, shown_radius);
             auto color = option.enabled && c.semantics.enabled ? p.outline : p.border;
             c.rounded({x, y, size, size}, size / 2, color);
             c.rounded({x + inset, y + inset, size - 2 * inset, size - 2 * inset}, size / 2, option.selected ? p.accent : p.surface);
             const auto& label = item.lines[i + 1];
             c.text(label.text, item.text_size, label.bounds.x, label.bounds.y, option.enabled && c.semantics.enabled ? p.text : p.muted);
-            if (c.focus_visible && option.selected) marked(c, PaintRole::focus_indicator, [&] { c.fill({r.x, r.y + r.h - scaled(c.scale, c.presentation().inset), r.w, scaled(c.scale, c.presentation().inset)}, p.accent); });
         }
         paint_lines(c, item.description_lines, item.text_size, p.muted);
         paint_errors(c, item.error_lines, item.text_size, p.error);
@@ -578,19 +648,21 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.list_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), row = line + scaled(c.scale, c.presentation().row_padding);
+        // A row is tall enough for its ring, and its text starts a ring's thickness from the edge, focused or not.
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale), text_x = std::max(scaled(c.scale, c.presentation().gap), ring);
+        int line = c.measure.line_height(p.text_size), row = std::max(line + scaled(c.scale, c.presentation().row_padding), line + 2 * ring);
         p.label_lines = block(c.measure, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix), p.text_size, c.width);
         int y = height_of(p.label_lines);
         if (y) y += scaled(c.scale, c.presentation().gap_small);
         if (s.options.empty()) {
-            p.lines.push_back({{scaled(c.scale, c.presentation().gap), y, c.width, line}, c.presentation().no_items});
+            p.lines.push_back({{text_x, y, c.width, line}, c.presentation().no_items});
             y += row;
         }
         for (const auto& item : s.options) {
             p.options.push_back({0, y, c.width, row});
             auto text = (item.selected ? c.presentation().selected_marker : c.presentation().unselected_marker) + item.label;
             if (!item.enabled) text += c.presentation().disabled_suffix;
-            p.lines.push_back({{scaled(c.scale, c.presentation().gap), y + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().body_spacing)), line}, std::move(text)});
+            p.lines.push_back({{text_x, y + (row - line) / 2, room_after(c.width, scaled(c.scale, c.presentation().body_spacing), text_x, scaled(c.scale, c.presentation().gap)), line}, std::move(text)});
             y += row;
         }
         p.bounds = {0, 0, c.width, y};
@@ -604,10 +676,14 @@ public:
             // Avoid shaping and submitting text for rows entirely outside the viewport.
             const auto visible = intersect(row, p.clip);
             if (visible.w <= 0 || visible.h <= 0) continue;
-            if (item.selected) marked(c, PaintRole::selection, [&] { c.fill(row, palette.selection); });
-            if (c.hovered(item.value)) c.hover(row);
-            if (c.focus_visible && c.semantics.candidate == item.value)
-                marked(c, PaintRole::focus_indicator, [&] { c.fill({row.x, row.y, scaled(c.scale, c.presentation().focus), row.h}, palette.accent); });
+            // The ring frames the candidate row; the selected row keeps its selection color inside it.
+            Rect shown = row; int shown_radius = 0;
+            if (c.focus_visible && c.semantics.candidate == item.value) {
+                const auto shape = c.focus_ring(row, scaled(c.scale, c.appearance.radius()), c.backdrop(), c.semantics.invalid);
+                shown = shape.inner; shown_radius = shape.inner_radius;
+            }
+            if (item.selected) marked(c, PaintRole::selection, [&] { if (shown_radius > 0) c.rounded(shown, shown_radius, palette.selection); else c.fill(shown, palette.selection); });
+            if (c.hovered(item.value)) c.hover(shown, shown_radius);
             const auto& line = p.lines[i];
             c.text(line.text, p.text_size, line.bounds.x, line.bounds.y, item.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
@@ -620,16 +696,21 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.dropdown_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement; auto s = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), row = c.appearance.button_height(line, c.scale, c.ui.presentation().density);
-        p.lines.push_back({{0, 0, c.width, line}, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix)});
-        p.lines.push_back({{scaled(c.scale, c.presentation().gap), line + (row - line) / 2, std::max(0, c.width - scaled(c.scale, c.presentation().body_spacing)), line}, s.value.empty() ? c.presentation().no_selection : s.value});
-        int y = line + row;
-        y = conflict_lines(c, y, s.source_conflict);
+        // The box (and its ring) frames the name, the value row and any error text: all of it keeps a ring's thickness
+        // from the edge, focused or not.
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale);
+        int line = c.measure.line_height(p.text_size), row = std::max(c.appearance.button_height(line, c.scale, c.ui.presentation().density), line + 2 * ring);
+        p.lines.push_back({{ring, ring, std::max(0, c.width - 2 * ring), line}, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix)});
+        const int value_x = std::max(scaled(c.scale, c.presentation().gap), ring);
+        p.lines.push_back({{value_x, ring + line + (row - line) / 2, room_after(c.width, scaled(c.scale, c.presentation().body_spacing), value_x, scaled(c.scale, c.presentation().gap)), line}, s.value.empty() ? c.presentation().no_selection : s.value});
+        int y = ring + line + row;
+        y = conflict_lines(c, y, s.source_conflict, ring);
         if (s.invalid) {
-            p.error_lines = block(c.measure, s.error, p.text_size, c.width);
-            for (auto& l : p.error_lines) l.bounds.y += y;
+            p.error_lines = block(c.measure, s.error, p.text_size, std::max(1, c.width - 2 * ring));
+            for (auto& l : p.error_lines) { l.bounds.x += ring; l.bounds.y += y; }
             y += height_of(p.error_lines);
         }
+        if (y > ring + line + row) y += ring;  // text under the value row also keeps clear of the bottom edge
         p.bounds = {0, 0, c.width, y};
     }
     void paint(ComponentPaint& c) const override {
@@ -652,15 +733,17 @@ public:
             }
             return;
         }
-        marked(c, (c.focus_visible ? PaintRole::focus_indicator : PaintRole::content) | (c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content), [&] { c.rounded(bounds, scaled(c.scale, c.appearance.radius()), c.semantics.invalid ? palette.error : c.focus_visible ? palette.accent : c.semantics.enabled ? palette.outline : palette.border); });
-        int inset = scaled(c.scale, c.presentation().inset);
-        Rect face{bounds.x + inset, bounds.y + inset, std::max(0, bounds.w - 2 * inset), std::max(0, bounds.h - 2 * inset)};
-        c.rounded(face, scaled(c.scale, c.appearance.radius()), palette.surface);
-        if (c.hovered()) c.hover(face, scaled(c.scale, c.appearance.radius()));
+        const int radius = scaled(c.scale, c.appearance.radius());
+        const auto shape = c.focus_visible ? c.focus_ring(bounds, radius, palette.surface, c.semantics.invalid)
+            : c.frame(bounds, radius, scaled(c.scale, c.presentation().inset), c.semantics.invalid ? palette.error : c.semantics.enabled ? palette.outline : palette.border, palette.surface,
+                      c.semantics.invalid ? PaintRole::error_indicator : PaintRole::content);
+        if (c.hovered()) c.hover(shape.inner, shape.inner_radius);
         paint_lines(c, c.placement.lines, c.placement.text_size, c.semantics.enabled ? palette.text : palette.muted);
         if (c.placement.lines.size() > 1) {
             const auto& line = c.placement.lines[1].bounds;
-            c.text(c.presentation().dropdown_marker, c.placement.text_size, bounds.x + std::max(0, bounds.w - scaled(c.scale, c.presentation().dropdown_marker_space)), line.y,
+            // The marker's room is never less than a ring plus a glyph (at most one em wide), so it stays inside the ring.
+            const int marker_room = std::max(scaled(c.scale, c.presentation().dropdown_marker_space), focus_ring_width(c.ui, c.appearance, c.scale) + c.placement.text_size);
+            c.text(c.presentation().dropdown_marker, c.placement.text_size, bounds.x + std::max(0, bounds.w - marker_room), line.y,
                    c.semantics.enabled ? palette.text : palette.muted);
         }
         paint_lines(c, c.placement.description_lines, c.placement.text_size, palette.muted);
@@ -675,15 +758,19 @@ public:
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         auto semantics = *c.ui.describe(c.control.id);
-        int line = c.measure.line_height(p.text_size), pad = scaled(c.scale, c.presentation().slider_pad), track_height = scaled(c.scale, c.presentation().slider_height);
+        // The ring frames the title and the track, so both keep a ring's thickness from its edge; the track also leaves room
+        // for the enlarged thumb at its ends. All of it is reserved whether or not the slider is focused.
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale);
+        const int thumb = scaled(c.scale, c.appearance.component_presentation().body_spacing);
+        int line = c.measure.line_height(p.text_size), track_height = scaled(c.scale, c.presentation().slider_height);
+        const int pad = std::max(scaled(c.scale, c.presentation().slider_pad), ring + (thumb + 1) / 2);
         auto title = semantics.name + u": " + semantics.value + (semantics.enabled ? u"" : c.presentation().disabled_suffix);
         if (semantics.source_conflict) title += c.presentation().conflict_suffix;
-        auto dot = slider_dot(c.appearance, c.scale, p.text_size, c.ui.presentation().density);
-        p.lines = block(c.measure, title, p.text_size, std::max(1, c.width - dot.room()));
-        for (auto& l : p.lines) l.bounds.x += dot.room();
-        int y = height_of(p.lines) + scaled(c.scale, c.presentation().gap_small);
+        p.lines = block(c.measure, title, p.text_size, std::max(1, c.width - 2 * ring));
+        for (auto& l : p.lines) { l.bounds.x += ring; l.bounds.y += ring; }
+        int y = ring + height_of(p.lines) + scaled(c.scale, c.presentation().gap_small);
         p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};
-        y += track_height;
+        y += track_height + ring;
         if (semantics.invalid) {
             p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
             for (auto& l : p.error_lines) l.bounds.y += y;
@@ -693,6 +780,11 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement; auto palette = c.palette();
+        if (c.focus_visible) {  // the ring frames the title and the track; error text stays outside it
+            const int ring = focus_ring_width(c.ui, c.appearance, c.scale);
+            c.focus_ring({item.bounds.x, item.bounds.y, item.bounds.w, item.slider_track.y + item.slider_track.h + ring - item.bounds.y},
+                         scaled(c.scale, c.appearance.radius()), c.backdrop(), c.semantics.invalid);
+        }
         paint_lines(c, item.lines, item.text_size, c.semantics.enabled ? palette.text : palette.muted);
         paint_errors(c, item.error_lines, item.text_size, palette.error);
         auto track = item.slider_track; int thickness = scaled(c.scale, c.presentation().focus);
@@ -711,11 +803,6 @@ public:
             Rect thumb{x - size / 2, track.y + (track.h - size) / 2, size, size};
             c.rounded(thumb, size / 2, c.semantics.enabled ? palette.accent : palette.muted);
             if (c.hovered()) c.hover(thumb, size / 2);  // anywhere on the slider marks the thumb
-        }
-        if (c.focus_visible && !item.lines.empty()) {
-            auto dot = slider_dot(c.appearance, c.scale, item.text_size, c.ui.presentation().density);
-            const auto& first = item.lines.front().bounds;
-            marked(c, PaintRole::focus_indicator, [&] { c.rounded({first.x - dot.room(), first.y + (first.h - dot.diameter) / 2, dot.diameter, dot.diameter}, dot.diameter / 2, palette.accent); });
         }
     }
     Result key_down(UiState& ui, KeyPress key) const override { return ui.slider_key_down(key); }
@@ -751,7 +838,10 @@ public:
     ComponentHandle handle(UiState& ui, const Control& c) const override { return ui.tabs_layout_handle(c); }
     void arrange(ComponentLayout& c) const override {
         auto semantics = *c.ui.describe(c.control.id);
-        int height = c.appearance.button_height(c.measure.line_height(c.placement.text_size), c.scale, c.ui.presentation().density);
+        // A tab is tall enough for its ring, and its label starts a ring's thickness from the edge, focused or not.
+        const int ring = focus_ring_width(c.ui, c.appearance, c.scale), text_x = std::max(scaled(c.scale, c.presentation().gap_small), ring);
+        const int line_height = c.measure.line_height(c.placement.text_size);
+        int height = std::max(c.appearance.button_height(line_height, c.scale, c.ui.presentation().density), line_height + 2 * ring);
         c.placement.label_lines = block(c.measure, semantics.name, c.placement.text_size, c.width);
         int top = height_of(c.placement.label_lines);
         if (top) top += scaled(c.scale, c.presentation().gap_small);
@@ -763,14 +853,14 @@ public:
             std::u16string prefix = option.invalid ? c.presentation().invalid_tab_marker : u"";
             if (!option.enabled) prefix += c.presentation().disabled_tab_marker;
             auto label = option.label;
-            int room = std::max(0, right - left - scaled(c.scale, c.presentation().gap));
+            const int room = room_after(right - left, scaled(c.scale, c.presentation().gap), text_x, scaled(c.scale, c.presentation().gap_small));
             while (!label.empty() && c.measure.measure(prefix + label, c.placement.text_size).width > room) {
                 if (label.back() >= 0xdc00 && label.back() <= 0xdfff && label.size() > 1) label.pop_back();
                 label.pop_back();
             }
             label = prefix + label;
-            c.placement.lines.push_back({{left + scaled(c.scale, c.presentation().gap_small), top + (height - c.measure.line_height(c.placement.text_size)) / 2,
-                                         std::max(0, right - left - scaled(c.scale, c.presentation().gap)), height}, std::move(label)});
+            c.placement.lines.push_back({{left + text_x, top + (height - c.measure.line_height(c.placement.text_size)) / 2,
+                                         room, height}, std::move(label)});
         }
         c.placement.bounds = {0, 0, c.width, top + height};
     }
@@ -779,11 +869,17 @@ public:
         paint_lines(c, c.placement.label_lines, c.placement.text_size, palette.text);
         for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
-            marked(c, option.selected ? PaintRole::selection : PaintRole::content, [&] { c.fill(rect, option.selected ? palette.selection : palette.surface); });
-            if (c.hovered(option.value)) c.hover(rect);
-            if (option.selected) marked(c, PaintRole::selection, [&] { c.fill({rect.x, rect.y + rect.h - scaled(c.scale, c.presentation().focus), rect.w, scaled(c.scale, c.presentation().focus)}, palette.accent); });
-            if (c.focus_visible && c.semantics.candidate && *c.semantics.candidate == option.value)
-                marked(c, PaintRole::focus_indicator, [&] { c.fill({rect.x, rect.y, rect.w, scaled(c.scale, c.presentation().inset)}, palette.accent); });
+            // The ring frames the candidate tab; the tab keeps its fill, and the selected tab its underline, inside the ring.
+            const Color tab_fill = option.selected ? palette.selection : palette.surface;
+            ComponentPaint::RingShape shape{rect, 0, 0};
+            const bool framed = c.focus_visible && c.semantics.candidate && *c.semantics.candidate == option.value;
+            if (framed) shape = c.focus_ring(rect, scaled(c.scale, c.appearance.radius()), tab_fill, c.semantics.invalid);
+            marked(c, option.selected ? PaintRole::selection : PaintRole::content, [&] { if (framed) c.rounded(shape.inner, shape.inner_radius, tab_fill); else c.fill(rect, tab_fill); });
+            if (c.hovered(option.value)) c.hover(shape.inner, shape.inner_radius);
+            if (option.selected) {
+                const int thickness = scaled(c.scale, c.presentation().focus);
+                marked(c, PaintRole::selection, [&] { c.fill({shape.inner.x, shape.inner.y + shape.inner.h - thickness, shape.inner.w, thickness}, palette.accent); });
+            }
             const auto& line = c.placement.lines[i];
             marked(c, option.invalid ? PaintRole::error_text : PaintRole::content, [&] { c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled ? palette.text : palette.muted); });
         }
@@ -807,7 +903,7 @@ public:
         bool material = c.appearance.name() == "Material-inspired";
         int padding = material ? 32 : 16;
         if (c.ui.presentation().density == Density::compact) padding /= 2;
-        int height = std::max(scaled(c.scale, 24), line + scaled(c.scale, padding));
+        int height = std::max({scaled(c.scale, 24), line + scaled(c.scale, padding), line + 2 * focus_ring_width(c.ui, c.appearance, c.scale)});
         for (std::size_t i = 0; i < semantic.options.size(); ++i) {
             int y = static_cast<int>(i) * height;
             c.placement.options.push_back({0, y, c.width, height});
@@ -824,16 +920,17 @@ public:
         if (!material) c.fill({c.placement.bounds.x+c.placement.bounds.w-scaled(c.scale,1), c.placement.bounds.y, scaled(c.scale,1), c.placement.bounds.h}, palette.border);
         for (std::size_t i=0; i<c.placement.options.size(); ++i) {
             const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
+            const int radius = material ? rect.h / 2 : scaled(c.scale, 6);
+            ComponentPaint::RingShape shape{rect, radius, radius};
             if (option.selected) {
-                int radius = material ? rect.h / 2 : scaled(c.scale, 6);
-                if (c.focus_visible) marked(c, PaintRole::focus_indicator, [&] { c.rounded(rect, radius, palette.accent); });
-                auto inset = c.focus_visible ? scaled(c.scale, 2) : 0;
+                // The ring frames the selected row (the row that has the keyboard focus); its selection color sits inside the ring.
+                if (c.focus_visible) shape = c.focus_ring(rect, radius, material ? palette.surface : palette.panel, c.semantics.invalid);
                 marked(c, PaintRole::selection, [&] {
-                    c.rounded({rect.x+inset, rect.y+inset, rect.w-2*inset, rect.h-2*inset}, std::max(0, radius-inset), palette.selection);
-                    if (!material) c.fill({rect.x, rect.y, scaled(c.scale, 3), rect.h}, palette.accent);
+                    c.rounded(shape.inner, shape.inner_radius, palette.selection);
+                    if (!material) c.fill({shape.inner.x, shape.inner.y, scaled(c.scale, 3), shape.inner.h}, palette.accent);
                 });
             }
-            if (c.hovered(option.value)) c.hover(rect, material ? rect.h / 2 : scaled(c.scale, 6));
+            if (c.hovered(option.value)) c.hover(shape.inner, shape.inner_radius);
             const auto& line = c.placement.lines[i];
             c.text(line.text, c.placement.text_size, line.bounds.x, line.bounds.y, option.enabled && c.semantics.enabled ? palette.text : palette.muted);
         }
@@ -864,6 +961,37 @@ std::map<Kind, const ComponentType*>& test_types() {
     thread_local std::map<Kind, const ComponentType*> registry;
     return registry;
 }
+}
+int focus_ring_width(const UiState& ui, const Appearance& appearance, float scale) {
+    const auto& settings = ui.presentation();
+    return scaled(scale, settings.focus_ring_width.value_or(appearance.component_presentation(settings.density).focus));
+}
+int ComponentPaint::ring_radius(int own) const {
+    const auto& radius = ui.presentation().focus_ring_radius;
+    return radius ? static_cast<int>(std::lround(*radius * scale)) : own;
+}
+Color ComponentPaint::backdrop() const { return placement.dialog ? palette().surface : palette().background; }
+ComponentPaint::RingShape ComponentPaint::ring_shape(Rect outer, int radius, int width) {
+    RingShape shape;
+    shape.outer_radius = std::clamp(radius, 0, std::max(0, std::min(outer.w, outer.h) / 2));  // a radius that is too large is a capsule
+    shape.inner = {outer.x + width, outer.y + width, std::max(0, outer.w - 2 * width), std::max(0, outer.h - 2 * width)};
+    shape.inner_radius = std::max(0, shape.outer_radius - width);
+    return shape;
+}
+ComponentPaint::RingShape ComponentPaint::frame(Rect outer, int radius, int width, Color edge, Color fill, PaintRole frame_role) {
+    const auto shape = ring_shape(outer, radius, width);
+    marked(*this, frame_role, [&] { rounded(outer, shape.outer_radius, edge); });
+    rounded(shape.inner, shape.inner_radius, fill);
+    return shape;
+}
+ComponentPaint::RingShape ComponentPaint::focus_ring(Rect outer, int own_radius, Color fill, bool invalid) {
+    const auto shape = ring_shape(outer, ring_radius(own_radius), focus_ring_width(ui, appearance, scale));
+    const auto marks = invalid ? PaintRole::focus_indicator | PaintRole::error_indicator : PaintRole::focus_indicator;
+    marked(*this, marks, [&] {
+        rounded(outer, shape.outer_radius, invalid ? palette().error : palette().focus_color());
+        rounded(shape.inner, shape.inner_radius, fill);
+    });
+    return shape;
 }
 const ComponentType& component_type(Kind kind) {
     auto test = test_types().find(kind);

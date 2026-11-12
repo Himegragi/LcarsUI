@@ -178,7 +178,10 @@ Result detail::UiState::set_presentation(const PresentationSettings& settings) {
     if (settings.text_size < min_text_size || settings.text_size > max_text_size ||
         (settings.density != Density::standard && settings.density != Density::compact) ||
         (settings.hover != Hover::on && settings.hover != Hover::off) ||
-        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always) ||
+        (settings.focus_indicator != FocusIndicatorMode::automatic && settings.focus_indicator != FocusIndicatorMode::always &&
+         settings.focus_indicator != FocusIndicatorMode::never) ||
+        (settings.focus_ring_width && (*settings.focus_ring_width < min_focus_ring_width || *settings.focus_ring_width > max_focus_ring_width)) ||
+        (settings.focus_ring_radius && (*settings.focus_ring_radius < min_focus_ring_radius || *settings.focus_ring_radius > max_focus_ring_radius)) ||
         (settings.motion != Motion::automatic && settings.motion != Motion::off))
         return {Status::invalid_value, u"Invalid presentation setting"};
     if (settings.variant.name == "high-contrast") return {Status::not_supported, u"High contrast is a later phase"};
@@ -210,8 +213,9 @@ std::u16string ascii16(const std::string& text) { return std::u16string(text.beg
 }
 Palette detail::UiState::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
     auto palette = appearance.palette(variant);
-    if (palette_overrides_.empty() || !is_builtin_appearance(appearance)) return palette;
-    return apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+    if (!palette_overrides_.empty() && is_builtin_appearance(appearance)) palette = apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+    palette.focus = palette.focus_color();  // settled here for every appearance: the ring is the accent unless the palette or an override pinned it
+    return palette;
 }
 Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overrides) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
@@ -1282,7 +1286,7 @@ void detail::UiState::refresh_tooltips() {
     for (auto& [id, tip] : tooltips_) {
         auto visible = visibility_.find(id);
         bool on_screen = !has_frame_visibility_ || (visible != visibility_.end() && visible->second);
-        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && focus_indicator_visible()) || tooltip_hover_ == id) && bool(available(id));
+        bool eligible = on_screen && window_active_ && !modal_ && ((focus_ == id && keyboard_focus_cues()) || tooltip_hover_ == id) && bool(available(id));
         if (eligible != tip.eligible) {
             tip.eligible = eligible;
             tip.visible = false;

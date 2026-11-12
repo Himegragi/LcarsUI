@@ -273,8 +273,10 @@ void Canvas::fill(Rect r,Color color,unsigned alpha){
 }
 void Canvas::rounded(Rect r,int radius,Color color,unsigned alpha){
     radius=std::max(0,std::min({radius,r.w/2,r.h/2}));
+    // Three bands that do not overlap, so a translucent fill (hover) blends each pixel once, as the draw-list renderer does.
     fill({r.x+radius,r.y,r.w-radius*2,r.h},color,alpha);
-    fill({r.x,r.y+radius,r.w,r.h-radius*2},color,alpha);
+    fill({r.x,r.y+radius,radius,r.h-radius*2},color,alpha);
+    fill({r.x+r.w-radius,r.y+radius,radius,r.h-radius*2},color,alpha);
     for(int y=0;y<radius;++y)for(int x=0;x<radius;++x){
         float dx=radius-x-0.5f,dy=radius-y-0.5f;
         float coverage=std::clamp(radius+0.5f-std::sqrt(dx*dx+dy*dy),0.f,1.f);

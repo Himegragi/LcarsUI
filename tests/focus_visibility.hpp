@@ -9,6 +9,7 @@
 //   - detail::UiState::focus() and the handles' focus()              (programmatic focus must not change the state)
 //   - detail::UiState::set_system_keyboard_cues(bool)                (SPI_GETKEYBOARDCUES test seam)
 //   - detail::component_type(kind).paint(...) observed through PaintRoleProbe
+#include "focus_marks.hpp"
 namespace focus_visibility {
 struct Fixture {
     Ui ui;
@@ -38,7 +39,8 @@ struct Fixture {
         for (const auto& placement : laid.items) if (placement.id == id) return &placement;
         return nullptr;
     }
-    // Paint count of focus_indicator marks for one component, drawn from a fresh frame.
+    // How many focus rings (#90) one component draws, from a fresh frame. A ring is a pair of rounded fills marked
+    // focus_indicator (the band in the ring color, then what it frames), so the marks always come in twos.
     int indicator(std::string_view id) {
         auto laid = frame();
         auto semantic = state().describe(id);
@@ -46,7 +48,9 @@ struct Fixture {
         check(item && semantic, "focus visibility fixture finds the placement");
         PaintRoleProbe probe(state(), *item, *semantic, *appearance, 1.f, true);
         detail::component_type(item->kind).paint(probe);
-        return probe.count(detail::PaintRole::focus_indicator);
+        const int rings = focus_marks::rings(probe.count(detail::PaintRole::focus_indicator));
+        check(rings >= 0, "focus indicator marks come as ring pairs (no strip, bar or dot)");
+        return rings;
     }
 };
 void nothing_is_drawn_before_any_input() {
@@ -192,7 +196,7 @@ void tooltip_waits_for_keyboard_after_a_click() {
     host.tooltip_time(5000);
     check(!*tip.visible(), "A pointer press ends the keyboard eligibility");
 }
-struct SliderPaint { std::vector<Rect> dots; int title_x = -1; int thumb = 0; };
+struct SliderPaint { std::vector<Rect> ring; int title_x = -1; int thumb = 0; };
 SliderPaint paint_slider(Fixture& f) {
     auto laid = f.frame();
     auto semantic = f.state().describe("volume");
@@ -202,32 +206,32 @@ SliderPaint paint_slider(Fixture& f) {
     detail::component_type(item->kind).paint(probe);
     SliderPaint out;
     for (const auto& [role, rect] : probe.emitted) {
-        if (static_cast<unsigned>(role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) out.dots.push_back(rect);
+        if (static_cast<unsigned>(role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) out.ring.push_back(rect);
         else if (out.title_x < 0) out.title_x = rect.x;
     }
     for (const auto& command : probe.recording.list.commands)
-        if (command.type == detail::DrawCommand::Type::rounded && command.role == detail::PaintRole::content) out.thumb = command.rect.w;
+        if (command.type == detail::DrawCommand::Type::rounded && command.role == detail::PaintRole::content && focus_marks::is_thumb(command.rect)) out.thumb = command.rect.w;
     return out;
 }
-void slider_focus_is_a_dot_left_of_the_title() {
-    int previous = 0;
+// #90: the slider's indicator is the ring around the title and the track (no dot any more); the thumb still grows while it shows.
+void slider_focus_is_a_ring_around_the_title_and_the_track() {
     for (int size : {12, 16, 28}) {
         Fixture f;
         auto settings = f.ui.presentation(); settings.text_size = size;
         check(bool(f.ui.set_presentation(settings)), "text size accepted");
         f.slider.focus();
         auto hidden = paint_slider(f);
-        check(hidden.dots.empty(), "Hidden: no dot and no underline");
+        check(hidden.ring.empty(), "Hidden: no ring");
         f.state().key_down({Key::tab}); f.state().key_down({Key::tab, true});  // visible; focus returns to the slider
         check(f.slider.describe()->focused, "slider keeps focus after Tab, Shift+Tab");
         auto shown = paint_slider(f);
-        check(shown.dots.size() == 1, "Shown: exactly one focus_indicator mark (the dot, no underline)");
-        const Rect dot = shown.dots[0];
-        check(dot.w == dot.h && dot.w > previous, "Dot diameter grows with the text size");
-        previous = dot.w;
-        check(dot.x + dot.w <= shown.title_x && dot.x >= 0, "The dot sits left of the title text");
+        check(focus_marks::is_one_ring(static_cast<int>(shown.ring.size())), "Shown: exactly one ring (two rounded fills), no dot or strip");
+        const Rect outer = shown.ring[0], inner = shown.ring[1];
+        check(inner.x - outer.x == 3 && inner.y - outer.y == 3 && outer.x + outer.w - (inner.x + inner.w) == 3 && outer.y + outer.h - (inner.y + inner.h) == 3,
+              "The ring is 3 DIP thick on every side at every text size");
+        check(shown.title_x >= inner.x && shown.title_x < inner.x + inner.w, "The title sits inside the ring");
         check(shown.title_x == hidden.title_x, "Title x is the same with and without the indicator");
-        check(shown.thumb > hidden.thumb, "The thumb grows only while the indicator is drawn");
+        check(hidden.thumb == focus_marks::plain_thumb(*appearance) && shown.thumb == focus_marks::enlarged_thumb(*appearance), "The thumb grows only while the indicator is drawn");
     }
 }
 void slider_thumb_stays_normal_after_pointer_use() {
@@ -241,11 +245,11 @@ void slider_thumb_stays_normal_after_pointer_use() {
     f.state().slider_pointer_down("volume", middle, item->slider_track);
     f.state().slider_pointer("volume", middle + 3);
     auto dragging = paint_slider(f);
-    check(dragging.thumb == normal && dragging.dots.empty(), "Dragging with the mouse keeps the normal thumb and no dot");
+    check(dragging.thumb == normal && dragging.ring.empty(), "Dragging with the mouse keeps the normal thumb and no ring");
     f.state().pointer_up("volume");
     auto released = paint_slider(f);
-    check(released.thumb == normal && released.dots.empty(), "After the drag the thumb is still normal");
+    check(released.thumb == normal && released.ring.empty(), "After the drag the thumb is still normal");
     f.state().key_down({Key::tab}); f.state().key_down({Key::tab, true});
-    check(paint_slider(f).thumb > normal, "Tab into the slider enlarges the thumb");
+    check(normal == focus_marks::plain_thumb(*appearance) && paint_slider(f).thumb == focus_marks::enlarged_thumb(*appearance), "Tab into the slider enlarges the thumb");
 }
 }
