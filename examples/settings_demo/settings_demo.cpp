@@ -66,6 +66,50 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
     accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
+    // The focus ring (#90): one dropdown for when it shows, a thickness slider, a radius (same as the component, or a slider) and a color.
+    focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.kind=Kind::dropdown,.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
+    focus_width = ui.add_slider({.id="appearance.focus_width",.kind=Kind::slider,.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
+    focus_radius_same = ui.add_checkbox({.id="appearance.focus_radius_same",.kind=Kind::checkbox,.label=u"焦點外框圓角跟元件一樣"}).value.value();
+    focus_radius = ui.add_slider({.id="appearance.focus_radius",.kind=Kind::slider,.label=u"焦點外框圓角"},{min_focus_ring_radius,max_focus_ring_radius,1}).value.value();
+    focus_color = ui.add_dropdown({.id="appearance.focus_color",.kind=Kind::dropdown,.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    for (ComponentHandle member : {ComponentHandle{focus_mode}, ComponentHandle{focus_width}, ComponentHandle{focus_radius_same}, ComponentHandle{focus_radius}, ComponentHandle{focus_color}}) nav.add_member({"appearance"}, member);
+    focus_mode.connect_source({[this]() -> std::optional<OptionValue> {
+        const auto mode = ui.presentation().focus_indicator;
+        return OptionValue{mode == FocusIndicatorMode::never ? "never" : mode == FocusIndicatorMode::always ? "always" : "automatic"};
+    }, subscribe_to(focus_mode_changed_)});
+    focus_mode.connect_immediate([this](const DropdownChange& c) {
+        auto settings = ui.presentation(); const std::string id = c.value ? c.value->id : "automatic";
+        settings.focus_indicator = id == "never" ? FocusIndicatorMode::never : id == "always" ? FocusIndicatorMode::always : FocusIndicatorMode::automatic;
+        return set_presentation(settings);
+    });
+    // 3 DIP is the appearances' own ring thickness (ComponentPresentation::focus): what the slider shows while the setting is empty.
+    focus_width.connect_source({[this] { return ui.presentation().focus_ring_width.value_or(3); }, subscribe_to(focus_width_changed_)});
+    focus_width.connect_immediate([this](const NumericChange& change) {
+        auto settings = ui.presentation(); settings.focus_ring_width = change.value;
+        const bool focused = focus_width.describe()->focused;
+        auto result = set_presentation(settings, focused && focus_width_group_); if (!result) return result;
+        focus_width_group_ = focused;
+        return Result{};
+    });
+    focus_width.on_blur([this] { focus_width_group_ = false; });
+    focus_radius_same.connect_source({[this] { return !ui.presentation().focus_ring_radius.has_value(); }, subscribe_to(focus_radius_same_changed_)});
+    focus_radius_same.connect_immediate([this](const BoolChange& c) {
+        auto settings = ui.presentation();
+        settings.focus_ring_radius = c.value ? std::nullopt : std::optional<int>{focus_radius_memory_};
+        return set_presentation(settings);
+    });
+    focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_memory_); }, subscribe_to(focus_radius_changed_)});
+    focus_radius.connect_immediate([this](const NumericChange& change) {
+        auto settings = ui.presentation(); settings.focus_ring_radius = change.value; focus_radius_memory_ = change.value;
+        const bool focused = focus_radius.describe()->focused;
+        auto result = set_presentation(settings, focused && focus_radius_group_); if (!result) return result;
+        focus_radius_group_ = focused;
+        return Result{};
+    });
+    focus_radius.on_blur([this] { focus_radius_group_ = false; });
+    focus_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{focus_color_value_}; }, subscribe_to(focus_color_changed_)});
+    focus_color.connect_immediate([this](const DropdownChange& c) { return set_focus_color(c.value ? c.value->id : "default"); });
+    refresh_focus_controls();
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
@@ -76,7 +120,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
     compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
     reset_appearance_.bind([this] {
-        if (auto r = apply_accent("default"); !r) return r;
+        if (auto r = apply_palette("default", "default"); !r) return r;
+        accent_value_ = focus_color_value_ = "default"; if (accent_changed_) accent_changed_(); if (focus_color_changed_) focus_color_changed_();
         return set_presentation(PresentationSettings{});
     });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
@@ -316,19 +361,31 @@ void Demo::refresh_fonts() {
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
     font_status_.connect_source([status] { return status; });
 }
-std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
-    struct Colors { Color accent, on_accent, selection; };
-    struct Row { const char* appearance; const char* variant; Colors green, orange; };
-    // Every row passes check_palette_contrast on top of that appearance's built-in palette.
-    static const Row rows[] = {
-        {"Minimal Web", "light", {{20,110,50}, {255,255,255}, {205,235,210}}, {{170,70,0}, {255,255,255}, {255,225,195}}},
-        {"Minimal Web", "dark", {{110,200,130}, {8,40,16}, {36,92,52}}, {{255,170,90}, {50,24,0}, {120,66,20}}},
-        {"Material-inspired", "light", {{28,106,60}, {255,255,255}, {200,235,205}}, {{160,70,0}, {255,255,255}, {255,220,190}}},
-        {"Material-inspired", "dark", {{150,220,160}, {10,50,20}, {40,95,55}}, {{255,184,120}, {70,30,0}, {110,62,20}}},
-    };
+namespace {
+struct AccentColors { Color accent, on_accent, selection; };
+struct AccentRow { const char* appearance; const char* variant; AccentColors green, orange; };
+// Every row passes check_palette_contrast on top of that appearance's built-in palette. The ring color choices reuse
+// the accent of the same row: those colors are already 3:1 on every surface (the focus rules in check_palette_contrast).
+const AccentRow accent_rows[] = {
+    {"Minimal Web", "light", {{20,110,50}, {255,255,255}, {205,235,210}}, {{170,70,0}, {255,255,255}, {255,225,195}}},
+    {"Minimal Web", "dark", {{110,200,130}, {8,40,16}, {36,92,52}}, {{255,170,90}, {50,24,0}, {120,66,20}}},
+    {"Material-inspired", "light", {{28,106,60}, {255,255,255}, {200,235,205}}, {{160,70,0}, {255,255,255}, {255,220,190}}},
+    {"Material-inspired", "dark", {{150,220,160}, {10,50,20}, {40,95,55}}, {{255,184,120}, {70,30,0}, {110,62,20}}},
+};
+}
+std::vector<PaletteOverride> Demo::focus_color_overrides(const std::string& id) {
     std::vector<PaletteOverride> list;
     if (id != "green" && id != "orange") return list;
-    for (const auto& row : rows) {
+    for (const auto& row : accent_rows) {
+        if (!builtin_appearance(row.appearance)) continue;
+        list.push_back({row.appearance, ThemeVariant{row.variant}, "focus", (id == "green" ? row.green : row.orange).accent});
+    }
+    return list;
+}
+std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
+    std::vector<PaletteOverride> list;
+    if (id != "green" && id != "orange") return list;
+    for (const auto& row : accent_rows) {
         if (!builtin_appearance(row.appearance)) continue;
         const auto& c = id == "green" ? row.green : row.orange;
         ThemeVariant variant{row.variant};
@@ -338,9 +395,19 @@ std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
     }
     return list;
 }
+Result Demo::apply_palette(const std::string& accent_id, const std::string& focus_id) {
+    auto list = accent_overrides(accent_id), focus = focus_color_overrides(focus_id);
+    list.insert(list.end(), focus.begin(), focus.end());
+    return ui.set_palette_overrides(std::move(list));
+}
 Result Demo::apply_accent(const std::string& id) {
-    auto result = ui.set_palette_overrides(accent_overrides(id));
+    auto result = apply_palette(id, focus_color_value_);
     if (result) { accent_value_ = id; if (accent_changed_) accent_changed_(); }
+    return result;
+}
+Result Demo::apply_focus_color(const std::string& id) {
+    auto result = apply_palette(accent_value_, id);
+    if (result) { focus_color_value_ = id; if (focus_color_changed_) focus_color_changed_(); }
     return result;
 }
 Result Demo::set_accent(const std::string& id) {
@@ -348,12 +415,29 @@ Result Demo::set_accent(const std::string& id) {
     if (result) dirty();
     return result;
 }
+Result Demo::set_focus_color(const std::string& id) {
+    auto result = apply_focus_color(id);
+    if (result) dirty();
+    return result;
+}
+void Demo::presentation_changed() {
+    refresh_fonts();
+    for (auto* slot : {&font_changed_, &text_size_changed_, &dark_changed_, &compact_changed_, &justify_left_changed_,
+                       &focus_mode_changed_, &focus_width_changed_, &focus_radius_same_changed_, &focus_radius_changed_})
+        if (*slot) (*slot)();
+    refresh_focus_controls();
+}
+void Demo::refresh_focus_controls() {
+    // The indicator off leaves nothing to style: the three controls are disabled but keep their values for when it comes back.
+    const bool styling = ui.presentation().focus_indicator != FocusIndicatorMode::never;
+    for (auto result : {focus_width.enable(styling), focus_radius_same.enable(styling), focus_radius.enable(styling), focus_color.enable(styling)}) (void)result;
+}
 Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
-    auto result=ui.set_presentation(settings); if (result) { refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); dirty(coalesce); } return result;
+    auto result=ui.set_presentation(settings); if (result) { presentation_changed(); dirty(coalesce); } return result;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
-    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation(), accent_value_};
+    return {name_value_, notices_value_, mode_value_, region_value_, volume_value_, items_, next_item_id_, ui.presentation(), accent_value_, focus_color_value_};
 }
 void Demo::update_history_controls() {
     auto description = name.describe();
@@ -380,8 +464,12 @@ void Demo::apply(const SettingsDocument& value) {
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
-    apply_accent(value.accent);
-    ui.set_presentation(value.presentation); refresh_fonts(); if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_(); if (compact_changed_) compact_changed_(); if (justify_left_changed_) justify_left_changed_(); refresh_items(); current_=value; update_history_controls();
+    if (apply_palette(value.accent, value.focus_color)) {
+        accent_value_=value.accent; focus_color_value_=value.focus_color;
+        if (accent_changed_) accent_changed_(); if (focus_color_changed_) focus_color_changed_();
+    }
+    ui.set_presentation(value.presentation); if (value.presentation.focus_ring_radius) focus_radius_memory_=*value.presentation.focus_ring_radius;
+    presentation_changed(); refresh_items(); current_=value; update_history_controls();
 }
 void Demo::load_document(const SettingsDocument& value) {
     apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
@@ -441,7 +529,10 @@ layout::Node Demo::page() const {
         content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
         content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent));
+        content.push_back(control(focus_mode)); content.push_back(control(focus_width)); content.push_back(control(focus_radius_same));
+        if (ui.presentation().focus_ring_radius) content.push_back(control(focus_radius));  // the slider shows once "same as the component" is unchecked
+        content.push_back(control(focus_color)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
     if (nav.selected()->id == "about") {
         for (auto label : about_labels_) content.push_back(control(label));
         content.push_back(vertical_text(about_vertical_, 200));

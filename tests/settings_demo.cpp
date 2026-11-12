@@ -257,6 +257,138 @@ void loading_a_document_applies_its_accent() {
     test::check(demo.ui.palette_overrides().empty(), "loading the default clears the overrides");
 }
 
+
+// #90: the focus ring controls on the appearance page, through the semantic layer (the same operations UIA performs).
+const Color focus_green_light_web{20, 110, 50}, focus_orange_light_web{170, 70, 0};
+void focus_ring_controls_are_on_the_appearance_page_with_their_defaults() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    auto mode = tree.get({"appearance.focus_mode"}); auto modes = tree.children({"appearance.focus_mode"});
+    test::check(mode && mode->role == Role::dropdown && mode->name == u"焦點標示" && modes && modes->size() == 3, "the mode dropdown offers automatic, always and never");
+    test::check(tree.get({"appearance.focus_mode", OptionValue{"automatic"}})->selected, "automatic is selected by default");
+    auto width = tree.get({"appearance.focus_width"});
+    test::check(width && width->role == Role::slider && width->name == u"焦點外框粗細" && width->numeric_value == 3 && width->range && width->range->minimum == 2 && width->range->maximum == 6, "the thickness slider is 2-6 and shows the appearance's 3 DIP");
+    auto same = tree.get({"appearance.focus_radius_same"});
+    test::check(same && same->role == Role::checkbox && same->checked == std::optional<bool>(true), "the radius is 'same as the component' by default");
+    auto color = tree.get({"appearance.focus_color"});
+    test::check(color && color->name == u"焦點外框顏色" && tree.children({"appearance.focus_color"})->size() == 3 && tree.get({"appearance.focus_color", OptionValue{"default"}})->selected, "the color dropdown offers default, green and orange");
+    const auto& presentation = demo.ui.presentation();
+    test::check(presentation.focus_indicator == FocusIndicatorMode::automatic && !presentation.focus_ring_width && !presentation.focus_ring_radius && demo.focus_color_id() == "default", "nothing is set by default: the settings are empty");
+    auto order = detail::access(demo.ui).focus_order();
+    auto at = [&](const char* id) { return std::find(order.begin(), order.end(), std::string(id)) - order.begin(); };
+    test::check(at("appearance.accent") < at("appearance.focus_mode") && at("appearance.focus_mode") < at("appearance.focus_width") && at("appearance.focus_width") < at("appearance.focus_radius_same") &&
+                at("appearance.focus_radius_same") < at("appearance.focus_color") && at("appearance.focus_color") < at("appearance.reset"), "they follow the existing controls in tab order, before the reset button");
+}
+void the_focus_ring_controls_apply_to_the_presentation() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"always"}}, Verb::select)) && demo.ui.presentation().focus_indicator == FocusIndicatorMode::always, "the mode dropdown sets always");
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"never"}}, Verb::select)) && demo.ui.presentation().focus_indicator == FocusIndicatorMode::never, "and never");
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"automatic"}}, Verb::select)) && demo.ui.presentation().focus_indicator == FocusIndicatorMode::automatic, "and automatic");
+    test::check(bool(tree.perform({"appearance.focus_width"}, Verb::set_value, 5)) && demo.ui.presentation().focus_ring_width == 5 && tree.get({"appearance.focus_width"})->numeric_value == 5, "the slider sets the thickness");
+    test::check(bool(tree.perform({"appearance.focus_radius_same"}, Verb::toggle)) && demo.ui.presentation().focus_ring_radius.has_value() && *tree.get({"appearance.focus_radius_same"})->checked == false, "unchecking 'same as the component' sets a radius");
+    test::check(bool(tree.perform({"appearance.focus_radius"}, Verb::set_value, 20)) && demo.ui.presentation().focus_ring_radius == 20, "and the radius slider sets it");
+    test::check(bool(tree.perform({"appearance.focus_radius_same"}, Verb::toggle)) && !demo.ui.presentation().focus_ring_radius, "checking it again clears the radius");
+    test::check(bool(tree.perform({"appearance.focus_radius_same"}, Verb::toggle)) && demo.ui.presentation().focus_ring_radius == 20, "and unchecking again brings the last radius back");
+    test::check(!tree.perform({"appearance.focus_width"}, Verb::set_value, 7) && demo.ui.presentation().focus_ring_width == 5, "a thickness out of range is refused and changes nothing");
+    // The next frame is laid out and painted for the new settings.
+    test::FakeMeasure measure; ScrollState scroll;
+    auto frame = arrange(demo.page(), demo.ui, web_appearance(), measure, 960, 720, 1.f, scroll);
+    test::check(frame.find(demo.focus_radius) != nullptr, "the radius slider is on the page while a radius is set");
+    tree.perform({"appearance.focus_radius_same"}, Verb::toggle);
+    frame = arrange(demo.page(), demo.ui, web_appearance(), measure, 960, 720, 1.f, scroll);
+    test::check(frame.find(demo.focus_radius) == nullptr && frame.find(demo.focus_radius_same) != nullptr, "it is not on the page while the radius is 'same as the component'");
+}
+void the_indicator_off_disables_the_other_three_and_keeps_their_values() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    tree.perform({"appearance.focus_width"}, Verb::set_value, 5);
+    tree.perform({"appearance.focus_radius_same"}, Verb::toggle); tree.perform({"appearance.focus_radius"}, Verb::set_value, 12);
+    tree.perform({"appearance.focus_color", OptionValue{"green"}}, Verb::select);
+    for (const char* id : {"appearance.focus_width", "appearance.focus_radius_same", "appearance.focus_radius", "appearance.focus_color"}) test::check(tree.get({id})->enabled, (std::string(id) + " is enabled while the indicator shows").c_str());
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"never"}}, Verb::select)), "choose never");
+    for (const char* id : {"appearance.focus_width", "appearance.focus_radius_same", "appearance.focus_radius", "appearance.focus_color"}) test::check(!tree.get({id})->enabled, (std::string(id) + " is disabled with the indicator off").c_str());
+    test::check(!tree.perform({"appearance.focus_width"}, Verb::set_value, 4) && demo.ui.presentation().focus_ring_width == 5, "a disabled control cannot be driven");
+    test::check(tree.get({"appearance.focus_width"})->numeric_value == 5 && tree.get({"appearance.focus_radius"})->numeric_value == 12 && tree.get({"appearance.focus_color", OptionValue{"green"}})->selected &&
+                *tree.get({"appearance.focus_radius_same"})->checked == false, "their values stay");
+    test::check(demo.ui.presentation().focus_ring_width == 5 && demo.ui.presentation().focus_ring_radius == 12 && demo.focus_color_id() == "green", "so do the presentation settings and the palette");
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"always"}}, Verb::select)), "choose always");
+    for (const char* id : {"appearance.focus_width", "appearance.focus_radius_same", "appearance.focus_radius", "appearance.focus_color"}) test::check(tree.get({id})->enabled, (std::string(id) + " is back").c_str());
+    test::check(tree.get({"appearance.focus_width"})->numeric_value == 5 && tree.get({"appearance.focus_radius"})->numeric_value == 12 && tree.get({"appearance.focus_color", OptionValue{"green"}})->selected, "with the values they had");
+}
+void ring_colors_pass_three_to_one_everywhere_and_follow_the_accent_by_default() {
+    for (const char* id : {"default", "green", "orange"}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics();
+        test::check(bool(tree.perform({"appearance.focus_color", OptionValue{id}}, Verb::select)) && demo.focus_color_id() == id && tree.get({"appearance.focus_color", OptionValue{id}})->selected, "select the ring color");
+        for (const auto* appearance : {&web_appearance(), &material_appearance()})
+            for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+                auto palette = demo.ui.effective_palette(*appearance, variant);
+                const std::string where = std::string(id) + " " + std::string(appearance->name()) + " " + variant.name;
+                test::check(palette && check_palette_contrast(*palette).empty(), (where + " passes every contrast rule").c_str());
+                for (auto surface : {palette->background, palette->panel, palette->surface})
+                    test::check(contrast_ratio(palette->focus, surface) >= 3.0, (where + " ring is 3:1 on every surface").c_str());
+                test::check((palette->focus == appearance->palette(variant).focus) == (std::string(id) == "default"), (where + ": default leaves the ring on the accent, the others change it").c_str());
+            }
+    }
+    settings_demo::Demo demo;
+    test::check(bool(demo.set_accent("green")), "choose a green accent");
+    auto palette = demo.ui.effective_palette(web_appearance(), ThemeVariant::light());
+    test::check(palette->focus == focus_green_light_web && palette->focus == palette->accent, "with the default ring color the ring follows the accent");
+    test::check(bool(demo.set_focus_color("orange")), "choose an orange ring");
+    palette = demo.ui.effective_palette(web_appearance(), ThemeVariant::light());
+    test::check(palette->focus == focus_orange_light_web && palette->accent == focus_green_light_web, "an own ring color is not dragged along by the accent");
+    test::check(bool(demo.set_focus_color("default")), "back to the default ring color");
+    palette = demo.ui.effective_palette(web_appearance(), ThemeVariant::light());
+    test::check(palette->focus == focus_green_light_web, "and the ring follows the accent again");
+}
+void ring_colors_paint_the_focus_indicator() {
+    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+        settings_demo::Demo demo; demo.nav.select({"appearance"});
+        auto& tree = demo.ui.semantics(); auto& state = detail::access(demo.ui);
+        tree.perform({"appearance.focus_mode", OptionValue{"always"}}, Verb::select);
+        tree.perform({"appearance.focus_color", OptionValue{"orange"}}, Verb::select);
+        test::FakeMeasure measure; ScrollState scroll;
+        auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1.f, scroll);
+        test::check(bool(state.focus("appearance.reset")), "focus the reset button");
+        auto placed = std::find_if(frame.items.begin(), frame.items.end(), [](const Placement& p) { return p.id == "appearance.reset"; });
+        test::check(placed != frame.items.end(), "reset button is placed");
+        auto semantic = state.describe("appearance.reset");
+        DarkProbe paint(state, *placed, *semantic, *appearance, 1.f, true);
+        detail::component_type(semantic->kind).paint(paint);
+        const auto orange = demo.ui.effective_palette(*appearance, demo.ui.presentation().variant)->focus;
+        test::check(paint.has(orange, detail::PaintRole::focus_indicator) && orange != appearance->palette(ThemeVariant::light()).accent, "the ring is painted in the chosen color");
+    }
+}
+void the_focus_ring_settings_are_history_saved_state_and_reset() {
+    settings_demo::Demo demo; demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    test::check(!demo.is_dirty(), "clean before the choices");
+    test::check(bool(tree.perform({"appearance.focus_color", OptionValue{"green"}}, Verb::select)) && demo.is_dirty() && demo.document().focus_color == "green", "the color dirties the document and is part of it");
+    test::check(bool(tree.perform({"appearance.focus_mode", OptionValue{"never"}}, Verb::select)) && demo.document().presentation.focus_indicator == FocusIndicatorMode::never, "so does the mode");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.ui.presentation().focus_indicator == FocusIndicatorMode::automatic && tree.get({"appearance.focus_width"})->enabled, "undo restores the mode, and the controls follow");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.focus_color_id() == "default" && demo.ui.palette_overrides().empty(), "undo restores the ring color");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Y'})) && demo.focus_color_id() == "green" && bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Y'})) &&
+                demo.ui.presentation().focus_indicator == FocusIndicatorMode::never && !tree.get({"appearance.focus_width"})->enabled, "redo reapplies both");
+    tree.perform({"appearance.focus_mode", OptionValue{"always"}}, Verb::select); tree.perform({"appearance.focus_width"}, Verb::set_value, 6);
+    tree.perform({"appearance.focus_color", OptionValue{"orange"}}, Verb::select);
+    test::check(bool(tree.perform({"appearance.reset"}, Verb::invoke)) && demo.ui.presentation() == PresentationSettings{} && demo.focus_color_id() == "default" && demo.accent_id() == "default" && demo.ui.palette_overrides().empty(), "reset appearance resets the focus settings and the ring color too");
+    test::check(!demo.ui.presentation().focus_ring_width && *tree.get({"appearance.focus_radius_same"})->checked && tree.get({"appearance.focus_width"})->numeric_value == 3, "the controls show the defaults again");
+    test::check(bool(detail::access(demo.ui).key_down({.ctrl=true, .letter=u'Z'})) && demo.focus_color_id() == "orange" && demo.ui.presentation().focus_ring_width == 6, "reset is one history step");
+}
+void loading_a_document_applies_the_focus_ring_settings() {
+    settings_demo::Demo demo; auto document = demo.document();
+    test::check(document.focus_color == "default" && document.presentation.focus_indicator == FocusIndicatorMode::automatic && !document.presentation.focus_ring_width && !document.presentation.focus_ring_radius, "a new document has the defaults");
+    document.presentation.focus_indicator = FocusIndicatorMode::never; document.presentation.focus_ring_width = 4; document.presentation.focus_ring_radius = 9; document.focus_color = "orange";
+    demo.load_document(document); demo.nav.select({"appearance"});
+    auto& tree = demo.ui.semantics();
+    test::check(demo.ui.presentation().focus_indicator == FocusIndicatorMode::never && demo.ui.presentation().focus_ring_width == 4 && demo.ui.presentation().focus_ring_radius == 9, "the presentation settings are applied");
+    test::check(demo.focus_color_id() == "orange" && demo.ui.effective_palette(web_appearance(), ThemeVariant::light())->focus == focus_orange_light_web, "the ring color is applied");
+    test::check(tree.get({"appearance.focus_mode", OptionValue{"never"}})->selected && tree.get({"appearance.focus_width"})->numeric_value == 4 && tree.get({"appearance.focus_radius"})->numeric_value == 9 &&
+                *tree.get({"appearance.focus_radius_same"})->checked == false && tree.get({"appearance.focus_color", OptionValue{"orange"}})->selected, "the controls show them");
+    test::check(!tree.get({"appearance.focus_width"})->enabled, "and the indicator being off disables the three");
+}
+
 // #84: the appearance page's checkbox is the user's way to turn justified text off (WCAG 1.4.8).
 void the_justify_left_checkbox_switches_the_presentation_setting() {
     settings_demo::Demo demo; demo.nav.select({"appearance"});
@@ -1277,4 +1409,4 @@ void items_context_menu_acts_on_the_clicked_row() {
     test::check(bool(core.key_down({.key = Key::enter})) && *demo.delete_dialog.is_open(), "Down, Down, Enter runs Delete(D)");
 }
 
-int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"item note rich", item_note_is_rich_with_a_style_bar}, {"note colors readable", note_colors_are_readable_in_every_appearance_and_theme}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"justify-left checkbox", the_justify_left_checkbox_switches_the_presentation_setting}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }
+int main() { const test::Case cases[] = {{"items context menu", items_context_menu_acts_on_the_clicked_row}, {"focus ring controls are on the appearance page with their de", focus_ring_controls_are_on_the_appearance_page_with_their_defaults}, {"the focus ring controls apply to the presentation", the_focus_ring_controls_apply_to_the_presentation}, {"the indicator off disables the other three and keeps their v", the_indicator_off_disables_the_other_three_and_keeps_their_values}, {"ring colors pass three to one everywhere and follow the acce", ring_colors_pass_three_to_one_everywhere_and_follow_the_accent_by_default}, {"ring colors paint the focus indicator", ring_colors_paint_the_focus_indicator}, {"the focus ring settings are history saved state and reset", the_focus_ring_settings_are_history_saved_state_and_reset}, {"loading a document applies the focus ring settings", loading_a_document_applies_the_focus_ring_settings}, {"slider undo redo land at once", slider_undo_redo_land_at_once}, {"item note multi-line", item_note_is_a_multiline_field}, {"item note rich", item_note_is_rich_with_a_style_bar}, {"note colors readable", note_colors_are_readable_in_every_appearance_and_theme}, {"slider thumb follows pointer", slider_thumb_follows_pointer_value_snaps}, {"slider thumb track ends", slider_thumb_stops_at_track_ends}, {"slider interrupted drag", slider_interrupted_drag_returns_to_tick}, {"slider one write and one undo", slider_drag_is_one_write_per_value_and_one_undo}, {"slider drag frozen basis", slider_drag_basis_is_frozen_when_layout_moves}, {"failure draft save", failure_draft_save}, {"failure choices", failure_choices}, {"close invalid name", close_invalid_name}, {"failure retry flow", failure_retry_flow}, {"close save and layout", close_save_and_layout}, {"close item draft", close_item_draft}, {"close dialog flow", close_dialog_flow}, {"appearance interleaved history", appearance_interleaved_history}, {"appearance missing font", appearance_missing_font}, {"appearance font", appearance_font_history}, {"appearance toggle and reset", appearance_toggle_reset}, {"HS08 appearance size", appearance_size_history}, {"HS01 counted steps", hs01_step_matrix}, {"HS01 non-history", hs01_non_history_matrix}, {"IT03 no-op edit history", it03_unchanged_edit_has_no_history}, {"HS03 value and saved state", hs03_value_equality_and_saved_name}, {"HS02 full sequence", hs02_undo_redo_sequence}, {"history toggle undo", history_toggle_undo}, {"history save", history_save_revert}, {"history draft", history_draft_dirty}, {"history slider", history_slider_group}, {"history title", history_title_notification}, {"history invalid", history_invalid_draft}, {"history invalid save", history_invalid_save}, {"history save name", history_save_focused_name}, {"history revert", history_revert_is_undoable}, {"history items", history_items}, {"history presentation", history_presentation}, {"history limit", history_limit_and_branch}, {"history field", history_field_shortcuts}, {"history delete", history_delete_restore}, {"history repeat", history_key_repeat}, {"About keyboard scroll", about_keyboard_scroll}, {"TD01 failure diagnostic", td01_failure_diagnostic}, {"About licenses", about_licenses}, {"demo text flow", demo_text_flow}, {"About page content", about_page_content}, {"About vertical label", about_vertical_label}, {"settings demo", exercise}, {"IT01 search count and empty state", item_search_count_and_empty_state}, {"semantic navigation pages", semantic_navigation_pages}, {"semantic Items dialogs", semantic_items_and_dialogs}, {"accent choices pass contrast", accent_choices_pass_contrast_everywhere}, {"accent repaints page", accent_choice_repaints_the_page_in_the_chosen_color}, {"accent history and reset", accent_is_history_saved_state_and_reset}, {"accent loaded from document", loading_a_document_applies_its_accent}, {"accent tab order", accent_follows_the_existing_appearance_controls_in_tab_order}, {"justify-left checkbox", the_justify_left_checkbox_switches_the_presentation_setting}, {"dark newer components", dark_new_component_sweep}, {"compact newer components", compact_new_component_layout}}; return test::run("settings demo", cases); }

@@ -190,10 +190,11 @@ auto result = ui.set_palette_overrides({
 });
 ```
 
-- Roles are the names in `Palette` (`lcars::palette_roles()`: `background`, `panel`, `surface`, `text`, `muted`, `border`, `outline`, `accent`, `on_accent`, `selection`, `error`, `scrim`, `hover`, plus `scrim_alpha` and `hover_alpha` with an `int` value 0-255). A color added to `Palette` later becomes overridable without further changes.
+- Roles are the names in `Palette` (`lcars::palette_roles()`: `background`, `panel`, `surface`, `text`, `muted`, `border`, `outline`, `accent`, `on_accent`, `selection`, `error`, `scrim`, `hover`, `focus`, plus `scrim_alpha` and `hover_alpha` with an `int` value 0-255). A color added to `Palette` later becomes overridable without further changes.
 - `outline` is the edge that identifies a control (text field box or underline, dropdown box, checkbox box, radio circle, slider track, scrollbar thumb, and a progress track that shows no value text); disabled controls draw it with `border` instead. `border` stays the light color for decorative lines (button edge, list divider, tooltip edge).
+- `focus` is the focus ring's color. It equals `accent` in the built-in palettes and follows a replaced `accent` unless the list also replaces `focus` itself; a custom palette that leaves it out gets its accent.
 - The list is replaced as a whole and takes effect on the next frame; `set_palette_overrides({})` restores the built-in colors. Overrides apply only to the built-in appearances whose module is linked; a custom `Appearance` is never affected.
-- Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, and `outline` on `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalid_value` with a message naming the pair and its ratio, and the previous list stays active. `lcars::check_palette_contrast(palette)` runs the same rules so an application can pre-check a palette.
+- Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, `outline` on `background` and `panel`, and `focus` (the focus ring) on `surface`, `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalid_value` with a message naming the pair and its ratio, and the previous list stays active. `lcars::check_palette_contrast(palette)` runs the same rules so an application can pre-check a palette.
 - `Ui::palette_overrides()` reads the list; `Ui::effective_palette(appearance, variant)` and `SemanticTree::effective_palette()` (read-only; the Desktop host binds its appearance, a core-only host calls `Ui::bind_appearance`) report the colors that actually paint.
 
 ## Pointer hover
@@ -206,16 +207,32 @@ Buttons, checkboxes, radio options, dropdowns (body and open options), list rows
 - Paint code asks `ComponentPaint::hovered()` / `hovered(item)` and draws through `ComponentPaint::hover(rect, radius)` (`PaintRole::hover`); a custom component type follows the same two calls.
 ## Focus indicator
 
-Focus indicators (the accent ring, bar or dot that marks the focused component) are drawn only while the
+The focus indicator is one closed rounded ring in the palette's `focus` color (by default the accent), drawn inside the
+focused component's edge so it takes no room and a scroll area cannot clip it. It frames the whole component; in a
+component made of rows it frames the row that has the focus: the selected option of a radio group (the first usable one
+while none is selected), the candidate row of a list, the candidate tab (the selected tab keeps its underline inside the
+ring), the selected row of a navigation list; a slider is framed around its title and track, a text field around its whole
+box, a scrolling or vertical label around its viewport. A component with an error uses the `error` color; unfocused, it
+keeps its thin error frame. Every component keeps a ring's thickness of room around what the ring frames, whether or
+not it is focused, so focus never moves anything.
+
+Focus indicators are drawn only while the
 user is working with the keyboard, like `:focus-visible` in browsers. Any key without Ctrl or Alt turns them on
 (a modifier on its own, and the F10 that only closes an open menu, change nothing);
 a pointer press anywhere in the window, with either mouse button, turns them off. Moving focus from code (`focus()`, semantic
 operations, UI Automation `SetFocus`) never changes this state, and semantics and UIA always report the real
-focus. Editable text fields always draw the indicator while focused. The slider marks focus with a dot left of
-its title; the room for the dot is always reserved so the title never shifts.
+focus. Editable text fields always draw the indicator while focused (unless the mode is `never`). A focused slider also
+enlarges its thumb.
 
-* `PresentationSettings::focus_indicator` is `FocusIndicatorMode::automatic` (default) or `always`; switch it
-  with `Ui::set_presentation`. There is no "never" mode.
+* `PresentationSettings::focus_indicator` is `FocusIndicatorMode::automatic` (default), `always` or `never`; switch it
+  with `Ui::set_presentation`. `never` draws no focus indicator on any component (editable text fields included) and the
+  slider thumb does not grow; the text caret is not a focus indicator and still draws, and `focused`, UIA's
+  `HasKeyboardFocus` and the focus events are untouched. `never` also wins over the Windows setting below.
+* `PresentationSettings::focus_ring_width` (DIP, 2-6) and `focus_ring_radius` (DIP, 0-32) are empty by default: the
+  appearance's own 3 DIP and the component's own corner radius (Web 6, Material 16; a radius larger than half the
+  ring's shorter side makes a capsule). A value outside the range makes `set_presentation` return `invalid_value` and
+  apply nothing, like a text size outside 12-28. A new value takes effect on the next frame and the layout reflows once
+  (the room around the ring follows the thickness). The ring color is the palette role `focus`, see "Palette overrides".
 * Windows "Always underline access keys and show keyboard focus" (`SPI_GETKEYBOARDCUES`) forces the indicator
   on, and a change takes effect without restarting.
 * `Ui::focus_indicator_visible()` reports whether indicators are being drawn right now. Tooltips (C11) use the
@@ -266,6 +283,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #84 justified text | `-Only ime` (a composition on a justified line: the core test moves the caret rectangle, only a real input method shows the candidate window), `-Only dpi` (pieces are placed at whole pixels at 125 / 150 / 200 %) |
 | #85 context menu | `-Only demo-uia`; the Apps key, Shift+F10 and Alt/F10 with real input (the CTest drivers post messages), right-button release over a row |
 | #86 outline | none beyond `demo_render_compare` (CTest); compare the saved images |
+| #90 focus ring | `-Only dpi` (the ring at 100 / 150 / 200 %), `-Only uia`; Tab through both appearances with the real keyboard (every component, light and dark, standard and compact), then try the four controls on the appearance page |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
