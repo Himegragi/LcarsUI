@@ -115,7 +115,7 @@ Result detail::UiState::open_menu(std::string_view id, std::optional<MenuPositio
         refresh_tooltips();
         if (auto r = available(target); !r) return r;
     }
-    if (text_offset && type.selects_text()) {
+    if (text_offset) {  // a press on text outside the selection moves the caret there first
         if (const auto* session = edit(target)) {
             const bool inside = session->begin() != session->end() && *text_offset >= session->begin() && *text_offset <= session->end();
             if (!inside) select(target, *text_offset, *text_offset);
@@ -128,7 +128,7 @@ Result detail::UiState::open_menu(std::string_view id, std::optional<MenuPositio
     }
     OpenMenu menu;
     menu.target = target; menu.item = std::move(item); menu.at = at;
-    if (type.selects_text() && clipboard_) menu.clipboard_text = bool(clipboard_->read());
+    if (type.has_builtin_menu() && clipboard_) menu.clipboard_text = bool(clipboard_->read());  // its paste item needs to know
     menu_ = std::move(menu);
     if (invalidate_) invalidate_();
     return {};

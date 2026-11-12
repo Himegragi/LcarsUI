@@ -367,7 +367,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
         if (type.opens_popup()) {
             auto current = detail::access(ui).describe(it->id);
             if (!current || !current->expanded) continue; // the frame can outlive a dismissed panel
-            auto& state = *type.popup_scroll(owner, it->id);
+            auto& state = owner.dropdown_scroll(it->id);
             return scroll_to(ui, state, state.offset - delta);
         }
         return false;

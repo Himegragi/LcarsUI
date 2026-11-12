@@ -67,6 +67,9 @@ bool valid_rich_option(const Control& control) {
     return !control.rich || (type && type->supports_rich_text() && control.multiline);
 }
 }
+bool detail::valid_text_control(const Control& control) {
+    return valid_value(control, control.value) && valid_visible_lines(control) && valid_rich_option(control);
+}
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
 bool valid_multi_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, true); }
 void EditSession::select(unsigned anchor, unsigned caret) {
@@ -274,12 +277,6 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
-void detail::UiState::adopt_text(const Control& control) {
-    if (!valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control)) throw std::invalid_argument("Invalid initial text");
-    Field field;
-    field.session.text = control.value; field.rich = control.rich;
-    edits_.emplace(control.id, std::move(field));
-}
 bool detail::UiState::draws_focus_indicator(const Semantics& semantics) const {
     if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
     return semantics.focused && (focus_indicator_visible() || component_type(semantics.kind).focus_always_visible(semantics));
@@ -325,8 +322,7 @@ Query<Semantics> ProgressHandle::describe() const {
 }
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::text || control.id.empty() || find(control.id) ||
-        !valid_value(control, control.value) || !valid_visible_lines(control) || !valid_rich_option(control))
+    if (control.kind != Kind::text || control.id.empty() || find(control.id) || !detail::valid_text_control(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
     field.session.text = control.value; field.rich = control.rich;
@@ -3404,15 +3400,16 @@ void detail::UiState::replace_rich(std::string_view id, RichText rich) {
 Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
+// Controls supplied as data after construction: registered exactly as the constructor registers them.
 void detail::UiState::seed_test_controls(std::vector<Control> controls) {
+    OperationScope operation(this);
     for (auto& control : controls) {
         const auto& type = detail::component_type(control.kind);
-        type.seed(*this, std::move(control));
+        if (control.id.empty() || find(control.id)) throw std::invalid_argument("Control IDs must be nonempty and unique");
+        button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
+        controls_.push_back(std::move(control));
+        type.adopt(*this, controls_.back());
     }
-}
-void detail::UiState::seed_plain(Control control) {
-    button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
-    controls_.push_back(std::move(control));
 }
 bool detail::UiState::registerable(std::string_view id) {
     const auto* existing = find(id);
@@ -3911,6 +3908,11 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
     if (!type) return {Status::not_supported, {}};
     if (auto result = type->perform({*state_, ref, verb, argument, *node, invalid_argument})) return *result;
+    if (verb == Verb::confirm && !ref.item && type->confirm_pending(*state_, *control))
+        return std::visit([](const auto& handle) -> Result {
+            if constexpr (requires { handle.confirm(); }) return handle.confirm();
+            else return {Status::not_supported, {}};
+        }, state_->layout_handle(ref.id));
     return {Status::not_supported, {}};
 }
 }

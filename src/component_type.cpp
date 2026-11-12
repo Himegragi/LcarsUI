@@ -217,14 +217,12 @@ bool arrow_key(Key key) {
 }
 template <class T> bool diverged(bool connected, const T& origin, const T& source, const T& value) { return connected && origin != source && value != source; }
 template <class Field> bool admits_write(const Field& field) { return field.connected && (field.confirmation_member || field.immediate || field.confirmed); }
-std::u16string number_text(int value) { auto digits = std::to_string(value); return {digits.begin(), digits.end()}; }
-// The confirm verb of a field that has a confirmed write.
-template <class Handle, class Fields> std::optional<Result> confirm_verb(const PerformContext& c, const Fields& fields) {
-    if (c.ref.item || c.verb != Verb::confirm) return std::nullopt;
-    auto it = fields.find(c.ref.id);
-    if (it == fields.end() || !it->second.confirmed) return std::nullopt;
-    return std::get<Handle>(c.ui.layout_handle(c.ref.id)).confirm();
+// A text field the user can change now: not read only, not composing, with a source and a write timing. The edit operations
+// and the editing items of the context menu both follow this one rule.
+template <class Field> bool text_editable(const Control& control, const Field& field) {
+    return !control.read_only && !field.session.composing && field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed);
 }
+std::u16string number_text(int value) { auto digits = std::to_string(value); return {digits.begin(), digits.end()}; }
 template <class Fields> bool has_confirmed_write(const Fields& fields, const Control& c) {
     auto it = fields.find(c.id);
     return it != fields.end() && bool(it->second.confirmed);
@@ -277,7 +275,6 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
-    void seed(UiState& ui, Control c) const override { (void)ui.add_label(std::move(c)); }
     std::optional<std::u16string> display_text(const UiState& ui, const Control& c) const override {
         if (c.role == TextRole::error) {
             auto& errors = UiState::Internals::errors(ui);
@@ -410,8 +407,11 @@ public:
 class Text final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
-    void adopt(UiState& ui, const Control& c) const override { ui.adopt_text(c); }
-    void seed(UiState& ui, Control c) const override { (void)ui.add_text(std::move(c)); }
+    void adopt(UiState& ui, const Control& c) const override {
+        if (!valid_text_control(c)) throw std::invalid_argument("Invalid initial text");
+        auto& field = UiState::Internals::edits(ui)[c.id];
+        field.session.text = c.value; field.rich = c.rich;
+    }
     bool focus_always_visible(const Semantics& s) const override { return !s.read_only && s.enabled; }
     bool labels_in_placement() const override { return true; }
     // The caret's own line, also in a multi-line field.
@@ -425,8 +425,7 @@ public:
     bool has_builtin_menu() const override { return true; }
     void builtin_menu_entries(const UiState& ui, const Control& c, bool clipboard_text, std::vector<UiState::MenuEntry>& raw) const override {
         const auto& field = UiState::Internals::edits(ui).at(c.id);
-        const bool editable = !c.read_only && !field.session.composing && field.has_source_value &&
-                              (field.confirmation_member || field.immediate || field.confirmed);
+        const bool editable = text_editable(c, field);
         const bool selected = field.session.begin() != field.session.end();
         auto separator = [&] { UiState::MenuEntry entry; entry.separator = true; raw.push_back(std::move(entry)); };
         auto add = [&](const char* id, std::u16string label, char16_t key, std::u16string hint, bool enabled) {
@@ -492,7 +491,7 @@ public:
         if (c.multiline) s.operations.push_back(Operation::scroll);
         s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
         const auto& field = it->second;
-        if (!c.read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
+        if (text_editable(c, field)) {
             s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
             if (field.rich) s.operations.push_back(Operation::style);
             if (!field.past.empty()) s.operations.push_back(Operation::undo);
@@ -578,7 +577,7 @@ public:
             if (auto value = std::get_if<std::u16string>(&c.argument)) return ui.paste(c.ref.id, *value);
             return c.invalid_argument();
         }
-        return confirm_verb<TextHandle>(c, UiState::Internals::edits(ui));
+        return std::nullopt;
     }
     std::string_view name() const override { return "text"; }
     Role role() const override { return Role::text; }
@@ -858,7 +857,6 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
-    void seed(UiState& ui, Control c) const override { (void)ui.add_button(std::move(c)); }
     void describe_operations(const UiState&, const Control&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
     void describe_node(const UiState& ui, const Control& c, const Semantics&, const NodeRef& ref, SemanticNode& n) const override {
         if (ref.item) return;
@@ -929,7 +927,7 @@ public:
     bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::bools(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.verb == Verb::toggle) return std::get<CheckboxHandle>(c.ui.layout_handle(c.ref.id)).toggle();
-        return confirm_verb<CheckboxHandle>(c, UiState::Internals::bools(c.ui));
+        return std::nullopt;
     }
     std::string_view name() const override { return "checkbox"; }
     Role role() const override { return Role::checkbox; }
@@ -995,7 +993,7 @@ public:
     bool confirm_pending(const UiState& ui, const Control& c) const override { return has_confirmed_write(UiState::Internals::radios(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.ref.item && c.verb == Verb::select) return std::get<RadioGroupHandle>(c.ui.layout_handle(c.ref.id)).select(*c.ref.item);
-        return confirm_verb<RadioGroupHandle>(c, UiState::Internals::radios(c.ui));
+        return std::nullopt;
     }
     std::string_view name() const override { return "radio_group"; }
     Role role() const override { return Role::radio_group; }
@@ -1224,7 +1222,6 @@ class Dropdown final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
     bool opens_popup() const override { return true; }
-    ScrollState* popup_scroll(UiState& ui, std::string_view id) const override { return &ui.dropdown_scroll(std::string(id)); }
     void describe(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
@@ -1255,7 +1252,7 @@ public:
         if (c.ref.item && c.verb == Verb::select) return dropdown.select(*c.ref.item);
         if (!c.ref.item && c.verb == Verb::open) return dropdown.open();
         if (!c.ref.item && c.verb == Verb::cancel) return dropdown.cancel();
-        return confirm_verb<DropdownHandle>(c, UiState::Internals::dropdowns(c.ui));
+        return std::nullopt;
     }
     std::string_view name() const override { return "dropdown"; }
     Role role() const override { return Role::dropdown; }
@@ -1381,7 +1378,7 @@ public:
             if (auto value = std::get_if<int>(&c.argument)) return std::get<SliderHandle>(c.ui.layout_handle(c.ref.id)).set_value(*value);
             return c.invalid_argument();
         }
-        return confirm_verb<SliderHandle>(c, UiState::Internals::numerics(c.ui));
+        return std::nullopt;
     }
     std::string_view name() const override { return "slider"; }
     Role role() const override { return Role::slider; }
@@ -1742,7 +1739,6 @@ void command_pointer_down(UiState& ui) {
     UiState::OperationScope operation(&ui);
     ui.arm_pointer(ui.focused());
 }
-void ComponentType::seed(UiState& ui, Control control) const { ui.seed_plain(std::move(control)); }
 bool VerbContext::admits(Operation operation) const {
     return std::find(semantics.operations.begin(), semantics.operations.end(), operation) != semantics.operations.end();
 }

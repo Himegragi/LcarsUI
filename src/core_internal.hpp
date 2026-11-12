@@ -16,6 +16,8 @@ namespace lcars {
 using Id = std::string;
 namespace detail {
 struct TextHit { unsigned offset = 0; bool upstream = false; };
+// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text and of a field supplied as data).
+bool valid_text_control(const Control& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
     friend class lcars::SemanticTree;
@@ -150,8 +152,6 @@ public:
     const Control* find(std::string_view id) const;
     bool registerable(std::string_view id);
     void seed_test_controls(std::vector<Control> controls);
-    void seed_plain(Control control);      // a control of a type with no state of its own
-    void adopt_text(const Control& control);  // the state of a text field supplied as data
     std::map<Id, std::string, std::less<>> overlay_ids_;
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;

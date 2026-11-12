@@ -171,15 +171,15 @@ public:
     virtual void verbs(const VerbContext&, std::vector<Verb>&) const;
     // A verb arriving at the control or one of its items; nullopt: not this type's verb.
     virtual std::optional<Result> perform(const PerformContext&) const { return std::nullopt; }
+    // The control has a confirmed write waiting for its confirm verb: the node lists Verb::confirm and performs it through the
+    // typed handle's confirm(); a type does not handle the verb itself.
     virtual bool confirm_pending(const UiState&, const Control&) const { return false; }
     // ---- What the layout, the host and the context menu ask a type.
     // A control supplied as data (the UiState constructor, the test seam) is registered with the state that goes with it.
     virtual void adopt(UiState&, const Control&) const {}
-    virtual void seed(UiState&, Control) const;
     // The type opens a popup that holds its items (a dropdown): the popup owns the wheel and a press outside it closes it, its
-    // items show no bounds while it is closed and start no tooltip. popup_scroll is the popup's scroll state.
+    // items show no bounds while it is closed and start no tooltip.
     virtual bool opens_popup() const { return false; }
-    virtual ScrollState* popup_scroll(UiState&, std::string_view /*id*/) const { return nullptr; }
     // The type's rows have an entry cursor (a list): layout keeps the cursor row visible and anchors the scroll to a row, a
     // press does not move the row under the pointer, and the keyboard menu hangs from the current row.
     virtual bool has_row_cursor() const { return false; }
