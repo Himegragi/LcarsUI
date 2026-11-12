@@ -7,8 +7,11 @@
 #include "component_type.hpp"
 #include "fake_measure.hpp"
 #include "check.hpp"
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <iostream>
+#include <stdexcept>
 #include <sstream>
 using namespace lcars;
 using test::check;
@@ -74,20 +77,38 @@ struct Everything {
     }
 };
 
+// Each enumerator is named explicitly, so inserting a value into an enumeration cannot silently mislabel the tables.
+template <class E> struct Named { E value; const char* name; };
+template <class E, std::size_t N> std::string name_in(const Named<E> (&names)[N], E value) {
+    for (const auto& entry : names) if (entry.value == value) return entry.name;
+    throw std::runtime_error("an enumerator has no name in the registry tables");
+}
 std::string name_of(Role role) {
-    static const char* names[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list",
-                                  "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip", "menu", "menu_item", "menu_separator"};
-    return names[static_cast<int>(role)];
+    static const Named<Role> names[] = {
+        {Role::text, "text"}, {Role::button, "button"}, {Role::label, "label"}, {Role::checkbox, "checkbox"}, {Role::radio_group, "radio_group"},
+        {Role::radio_option, "radio_option"}, {Role::slider, "slider"}, {Role::dropdown, "dropdown"}, {Role::dropdown_option, "dropdown_option"},
+        {Role::list, "list"}, {Role::list_item, "list_item"}, {Role::tabs, "tabs"}, {Role::tab_item, "tab_item"}, {Role::progress, "progress"},
+        {Role::dialog, "dialog"}, {Role::tooltip, "tooltip"}, {Role::menu, "menu"}, {Role::menu_item, "menu_item"}, {Role::menu_separator, "menu_separator"}};
+    return name_in(names, role);
 }
 std::string name_of(Verb verb) {
-    static const char* names[] = {"invoke", "toggle", "set_value", "select", "open", "cancel", "focus", "undo", "redo", "copy", "cut", "paste", "confirm", "scroll",
-                                  "set_text_align", "set_line_spacing", "set_paragraph_spacing", "context_menu", "set_writing_mode", "set_vertical_digits", "hover",
-                                  "set_style", "set_typing_style", "set_word_segmentation", "select_word", "select_paragraph", "double_click", "triple_click", "set_justify_method"};
-    return names[static_cast<int>(verb)];
+    static const Named<Verb> names[] = {
+        {Verb::invoke, "invoke"}, {Verb::toggle, "toggle"}, {Verb::set_value, "set_value"}, {Verb::select, "select"}, {Verb::open, "open"},
+        {Verb::cancel, "cancel"}, {Verb::focus, "focus"}, {Verb::undo, "undo"}, {Verb::redo, "redo"}, {Verb::copy, "copy"}, {Verb::cut, "cut"},
+        {Verb::paste, "paste"}, {Verb::confirm, "confirm"}, {Verb::scroll, "scroll"}, {Verb::set_text_align, "set_text_align"},
+        {Verb::set_line_spacing, "set_line_spacing"}, {Verb::set_paragraph_spacing, "set_paragraph_spacing"}, {Verb::context_menu, "context_menu"},
+        {Verb::set_writing_mode, "set_writing_mode"}, {Verb::set_vertical_digits, "set_vertical_digits"}, {Verb::hover, "hover"},
+        {Verb::set_style, "set_style"}, {Verb::set_typing_style, "set_typing_style"}, {Verb::set_word_segmentation, "set_word_segmentation"},
+        {Verb::select_word, "select_word"}, {Verb::select_paragraph, "select_paragraph"}, {Verb::double_click, "double_click"},
+        {Verb::triple_click, "triple_click"}, {Verb::set_justify_method, "set_justify_method"}};
+    return name_in(names, verb);
 }
 std::string name_of(Operation op) {
-    static const char* names[] = {"focus", "activate", "select", "copy", "edit", "cut", "paste", "undo", "redo", "scroll", "style"};
-    return names[static_cast<int>(op)];
+    static const Named<Operation> names[] = {
+        {Operation::focus, "focus"}, {Operation::activate, "activate"}, {Operation::select, "select"}, {Operation::copy, "copy"},
+        {Operation::edit, "edit"}, {Operation::cut, "cut"}, {Operation::paste, "paste"}, {Operation::undo, "undo"}, {Operation::redo, "redo"},
+        {Operation::scroll, "scroll"}, {Operation::style, "style"}};
+    return name_in(names, op);
 }
 std::string describe_node(const SemanticNode& node, const Semantics* semantics) {
     std::ostringstream out;
@@ -147,7 +168,7 @@ std::vector<std::string> key_table() {
     return lines;
 }
 
-const char* const golden_keys[] = {
+const std::vector<std::string> golden_keys = {
     "text: left right home end backspace ctrl+a ctrl+left",
     "button: enter space",
     "label: enter space left right up down home end page_down backspace ctrl+a ctrl+left",
@@ -159,9 +180,8 @@ const char* const golden_keys[] = {
     "tabs: enter space left right ctrl+left",
     "progress: enter space left right up down home end page_down backspace ctrl+a ctrl+left",
     "navigation_list: up down home end",
-    "dropdown(open): enter space left right up down home end ctrl+left",
-    nullptr };
-const char* const golden_semantics[] = {
+    "dropdown(open): enter space left right up down home end ctrl+left"};
+const std::vector<std::string> golden_semantics = {
     "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click, ops=focus,select,copy,edit,cut,paste,",
     "button: button verbs=focus,invoke, ops=focus,activate,",
     "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing, ops=",
@@ -177,39 +197,31 @@ const char* const golden_semantics[] = {
     "tabs[0]: tab_item selection_required verbs=select,",
     "progress: progress verbs= ops=",
     "navigation_list: list selection_required verbs=focus, ops=focus,",
-    "navigation_list[0]: list_item selection_required verbs=select,",
-    nullptr };
-const char* const golden_confirmed[] = {
-    "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click,confirm, ops=focus,select,copy,edit,cut,paste,",
-    "button: button verbs=focus,invoke, ops=focus,activate,",
-    "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing, ops=",
-    "checkbox: checkbox verbs=focus,toggle,confirm, ops=focus,activate,",
-    "radio: radio_group verbs=focus,confirm, ops=focus,select,",
-    "radio[0]: radio_option verbs=select,",
-    "slider: slider verbs=focus,set_value,confirm, ops=focus,edit,",
-    "dropdown: dropdown verbs=focus,open,cancel,confirm, ops=focus,select,",
-    "dropdown[0]: dropdown_option verbs=select,",
-    "list: list verbs=focus, ops=focus,select,",
-    "list[0]: list_item verbs=select,focus,",
-    "tabs: tabs selection_required verbs=focus, ops=focus,activate,",
-    "tabs[0]: tab_item selection_required verbs=select,",
-    "progress: progress verbs= ops=",
-    "navigation_list: list selection_required verbs=focus, ops=focus,",
-    "navigation_list[0]: list_item selection_required verbs=select,",
-    nullptr };
+    "navigation_list[0]: list_item selection_required verbs=select,"};
+// With a confirmed write instead of an immediate one, the five types that take a write timing also list the confirm verb (after
+// their other verbs); every other row is what the immediate table says.
+std::vector<std::string> confirmed_from(const std::vector<std::string>& immediate) {
+    static const char* const confirming[] = {"text", "checkbox", "radio", "slider", "dropdown"};
+    std::vector<std::string> rows;
+    for (auto row : immediate) {
+        for (const char* name : confirming)
+            if (row.starts_with(std::string(name) + ": ")) { row.insert(row.find(" ops="), "confirm,"); break; }
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
 
-template <std::size_t N>
-void compare(const std::vector<std::string>& observed, const char* const (&expected)[N], const char* what) {
+void compare(const std::vector<std::string>& observed, const std::vector<std::string>& expected, const char* what) {
     if (printing) { std::cout << "== " << what << '\n'; for (const auto& line : observed) std::cout << line << '\n'; return; }
-    check(observed.size() == N - 1, what);
-    for (std::size_t i = 0; i + 1 < N && i < observed.size(); ++i) {
+    check(observed.size() == expected.size(), what);
+    for (std::size_t i = 0; i < expected.size() && i < observed.size(); ++i) {
         if (observed[i] != expected[i]) throw std::runtime_error(std::string(what) + ": expected [" + expected[i] + "] observed [" + observed[i] + "]");
     }
 }
 
 void key_policy_of_every_built_in_type() { compare(key_table(), golden_keys, "keys taken by each type (its scoped shortcut stays silent)"); }
 void semantics_of_every_built_in_type() { compare(semantic_table(false), golden_semantics, "semantic nodes, immediate writes"); }
-void confirm_verb_of_every_built_in_type() { compare(semantic_table(true), golden_confirmed, "semantic nodes, confirmed writes"); }
+void confirm_verb_of_every_built_in_type() { compare(semantic_table(true), confirmed_from(golden_semantics), "semantic nodes, confirmed writes"); }
 
 
 // A component type that exists only in a test. Everything it does comes from its own code and its registration: the
@@ -256,6 +268,10 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     auto node = ui.semantics().get({"stepper"});
     check(node && node->role == Role::slider && node->numeric_value == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
     check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::set_value) != node->verbs.end(), "the type's verb is offered");
+    // The operations are the type's own, read from the description (not inferred from a verb): focus comes with any focusable
+    // control, the type adds edit, and nothing else is admitted.
+    const auto described = host.describe("stepper");
+    check(described && described->operations == std::vector<Operation>{Operation::focus, Operation::edit}, "the operations come from the type");
     check(bool(ui.semantics().perform({"stepper"}, Verb::set_value, 9)) && stepper.value == 9 && ui.semantics().get({"stepper"})->numeric_value == 9, "the type performs its verb");
     check(ui.semantics().perform({"stepper"}, Verb::set_value, std::u16string(u"nine")).status == Status::invalid_value, "a wrong argument is the common answer");
     // Keys: it takes Up and Down, and leaves Left to the application's shortcut.
@@ -277,13 +293,17 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     check(stepper.presses == 1 && stepper.releases == 1 && host.focused() == "sink", "an ignored press neither focuses nor arms");
 }
 
+// The one expectation of what each built-in type calls itself: the id of its component in Everything, its Kind and its name. The
+// registry table and the diagnostics (which name the type of an ID that is taken again) are both checked against it.
+struct BuiltIn { const char* component; Kind kind; const char* name; };
+const BuiltIn built_in_types[] = {
+    {"text", Kind::text, "text"}, {"button", Kind::button, "button"}, {"label", Kind::label, "label"}, {"checkbox", Kind::checkbox, "checkbox"},
+    {"radio", Kind::radio_group, "radio_group"}, {"slider", Kind::slider, "slider"}, {"dropdown", Kind::dropdown, "dropdown"}, {"list", Kind::list, "list"},
+    {"tabs", Kind::tabs, "tabs"}, {"progress", Kind::progress, "progress"}, {"navigation_list", Kind::navigation_list, "navigation_list"}};
+
 // Debug names come from the registry, not from the order of the Kind enumeration: each built-in type names itself.
 void built_in_types_name_themselves() {
-    struct Expected { Kind kind; const char* name; };
-    const Expected expected[] = {{Kind::text, "text"}, {Kind::button, "button"}, {Kind::label, "label"}, {Kind::checkbox, "checkbox"},
-        {Kind::radio_group, "radio_group"}, {Kind::slider, "slider"}, {Kind::dropdown, "dropdown"}, {Kind::list, "list"}, {Kind::tabs, "tabs"},
-        {Kind::progress, "progress"}, {Kind::navigation_list, "navigation_list"}};
-    for (const auto& item : expected) check(detail::component_type(item.kind).name() == item.name, item.name);
+    for (const auto& item : built_in_types) check(detail::component_type(item.kind).name() == item.name, item.name);
     check(detail::find_component_type(static_cast<Kind>(99)) == nullptr, "a Kind without a type is not invented");
 }
 
@@ -291,13 +311,16 @@ void built_in_types_name_themselves() {
 // The diagnostic that names an existing component's type when its ID is taken again.
 void debug_names_in_diagnostics() {
     Everything all(false);
+    check(all.components.size() == std::size(built_in_types), "every built-in type has a component here");
     for (const auto& [name, unused] : all.components) {
+        const auto expected = std::find_if(std::begin(built_in_types), std::end(built_in_types), [&](const BuiltIn& item) { return std::string_view(name) == item.component; });
+        check(expected != std::end(built_in_types), name);
+        if (expected == std::end(built_in_types)) continue;
         const auto before = all.ui.diagnostics().size();
         check(all.ui.add_label({.id = name, .kind = Kind::label}).status == Status::invalid_value, "duplicate id is refused");
         check(all.ui.diagnostics().size() == before + 1, "refusal is diagnosed");
         const auto& message = all.ui.diagnostics().back();
-        const std::string expected = std::string_view(name) == "radio" ? "radio_group" : name;
-        check(message.ends_with("existing component type: " + expected), "diagnostic names the type");
+        check(message.ends_with(std::string("existing component type: ") + expected->name), "diagnostic names the type");
     }
 }
 #endif
