@@ -15,7 +15,7 @@ namespace {
 // What the slider paints at the fake clock's current time.
 struct ThumbProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
-    std::vector<Rect> thumbs, dots; std::vector<std::u16string> texts;  // dots: the #72 focus indicator, not the thumb
+    std::vector<Rect> thumbs, dots; std::vector<std::u16string> texts;  // dots: the focus ring (#90: two rounded fills, outer then inner), not the thumb
     detail::PaintRole current = detail::PaintRole::content;
     void role(detail::PaintRole r) override { current = r; }
     void fill(Rect, Color) override {}
@@ -89,26 +89,26 @@ void focus_dot_and_thumb_size_hold_while_the_thumb_slides() {
         check(bool(v.press(Key::right)) && v.state().focus_indicator_visible(), "the arrow key shows the indicator and starts a slide");
         auto start = v.paint();
         check(v.ui.animating().value.value() && near_px(start.center(), v.tick(45)), "sliding, thumb still on the 45 tick at t=0");
-        check(start.thumbs.size() == 1 && start.dots.size() == 1, "one thumb and one focus dot at t=0");
+        check(start.thumbs.size() == 1 && start.dots.size() == 2, "one thumb and one focus ring (two fills) at t=0");
         check(start.thumbs.back().w == enlarged, "the thumb is enlarged while focus-visible at t=0");
         v.now = 75;
         auto middle = v.paint();
         check(v.ui.animating().value.value() && middle.center() > v.tick(45) && middle.center() < v.tick(50), "mid-slide");
-        check(middle.dots.size() == 1 && middle.dots.back().x == start.dots.back().x && middle.dots.back().y == start.dots.back().y &&
-              middle.dots.back().w == start.dots.back().w, "the focus dot stays beside the title while the thumb moves");
+        check(middle.dots.size() == 2 && middle.dots.back().x == start.dots.back().x && middle.dots.back().y == start.dots.back().y &&
+              middle.dots.back().w == start.dots.back().w, "the focus ring stays put while the thumb moves");
         check(middle.thumbs.back().w == enlarged, "the thumb stays enlarged mid-slide");
         // A pointer press elsewhere hides the indicator: dot and enlargement go, the slide goes on.
         v.state().pointer_pressed();
         auto hidden = v.paint();
         check(v.ui.animating().value.value() && near_px(hidden.center(), middle.center()), "hiding the indicator does not restart or stop the slide");
-        check(hidden.dots.empty() && hidden.thumbs.back().w == plain, "no focus dot and a plain thumb mid-slide once hidden");
+        check(hidden.dots.empty() && hidden.thumbs.back().w == plain, "no focus ring and a plain thumb mid-slide once hidden");
         check(bool(v.press(Key::right)) && v.state().focus_indicator_visible(), "a key shows the indicator again, retargeting the slide");
         auto again = v.paint();
-        check(again.dots.size() == 1 && again.thumbs.back().w == enlarged && again.dots.back().x == start.dots.back().x, "dot and enlarged thumb are back mid-slide");
+        check(again.dots.size() == 2 && again.thumbs.back().w == enlarged && again.dots.back().x == start.dots.back().x, "ring and enlarged thumb are back mid-slide");
         v.now = 75 + 150;
         auto done = v.paint();
         check(!v.ui.animating().value.value() && near_px(done.center(), v.tick(55)), "the slide ends on 55");
-        check(done.dots.size() == 1 && done.thumbs.back().w == enlarged && done.dots.back().x == start.dots.back().x, "dot and enlarged thumb hold when the slide ended");
+        check(done.dots.size() == 2 && done.thumbs.back().w == enlarged && done.dots.back().x == start.dots.back().x, "ring and enlarged thumb hold when the slide ended");
     }
 }
 

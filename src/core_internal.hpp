@@ -177,9 +177,14 @@ public:
     const PresentationSettings& presentation() const { return presentation_; }
     // Focus indicator display state. Only real input moves it: key_down and the host's pointer press.
     // Programmatic focus, semantic operations and UIA never change it.
-    bool focus_indicator_visible() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
+    // `never` is checked first and wins over everything, the system's "always show keyboard cues" setting included.
+    bool focus_indicator_visible() const { return presentation_.focus_indicator != FocusIndicatorMode::never && keyboard_focus_cues(); }
+    // Whether the user is working with the keyboard (or the application forces the display on). Drawing is decided by
+    // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
+    bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
     bool draws_focus_indicator(const Semantics& semantics) const {
+        if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
         return semantics.focused && (focus_indicator_visible() || (semantics.kind == Kind::text && !semantics.read_only && semantics.enabled));
     }
     // A pointer press anywhere in the client area, including empty space and inert components.

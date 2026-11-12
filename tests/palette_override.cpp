@@ -97,7 +97,7 @@ void overriding_web_light_accent_changes_only_that_combination() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants) {
             auto expected = appearance->palette(variant);
-            if (appearance == &web_appearance() && variant == ThemeVariant::light()) expected.accent = green;
+            if (appearance == &web_appearance() && variant == ThemeVariant::light()) expected.accent = expected.focus = green;  // the ring follows a replaced accent
             auto effective = ui.effective_palette(*appearance, variant);
             check(effective && *effective == expected, (name_of(*appearance) + " " + variant.name + " effective palette").c_str());
         }
@@ -107,7 +107,7 @@ void overriding_web_light_accent_changes_only_that_combination() {
 // One driver over every palette role: each override changes exactly its own field.
 void every_palette_role_is_overridable_and_isolated() {
     auto roles = palette_roles();
-    check(roles.size() == 15 && std::find(roles.begin(), roles.end(), "outline") != roles.end(), "eleven core colors (incl. outline), scrim, hover and the scrim_alpha and hover_alpha values are roles");
+    check(roles.size() == 16 && std::find(roles.begin(), roles.end(), "outline") != roles.end() && std::find(roles.begin(), roles.end(), "focus") != roles.end(), "eleven core colors (incl. outline), scrim, hover, focus and the scrim_alpha and hover_alpha values are roles");
     check(std::find(roles.begin(), roles.end(), "scrim_alpha") != roles.end() && std::find(roles.begin(), roles.end(), "border") != roles.end(), "known role names present");
     for (const auto* appearance : builtins)
         for (const auto& variant : variants)
@@ -124,7 +124,8 @@ void every_palette_role_is_overridable_and_isolated() {
                 auto effective = ui.effective_palette(*appearance, variant);
                 check(effective.value.has_value(), (label + " readable").c_str());
                 for (auto other : roles) {
-                    auto expected = other == role ? changed : *palette_value(base, other);
+                    const bool follows = role == "accent" && other == "focus";  // the ring follows a replaced accent unless focus is replaced itself
+                    auto expected = other == role || follows ? changed : *palette_value(base, other);
                     check(*palette_value(*effective, other) == expected, (label + " field " + std::string(other)).c_str());
                 }
                 // The same list leaves every other appearance and variant at its built-in value.
@@ -158,6 +159,8 @@ std::vector<ContrastCase> contrast_cases() {
     auto hovered_outline = outlined;
     for (auto& e : hovered_outline) if (e.first == "outline") e.second = gray(0x8A);
     auto with_hovered = [&](std::string role, Color c) { auto list = hovered_outline; for (auto& e : list) if (e.first == role) e.second = c; return list; };
+    std::vector<std::pair<std::string, Color>> ringed{{"focus", gray(0x94)}, {"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}};
+    auto with_ring = [&](std::string role, Color c) { auto list = ringed; for (auto& e : list) if (e.first == role) e.second = c; return list; };
     return {
         {"text/background", surfaces, with("background", gray(250))},
         {"text/panel", surfaces, with("panel", gray(250))},
@@ -166,8 +169,13 @@ std::vector<ContrastCase> contrast_cases() {
         {"muted/surface", {{"muted", gray(0x76)}}, {{"muted", gray(0x77)}}},
         {"error/surface", {{"error", gray(0x76)}}, {{"error", gray(0x77)}}},
         {"on_accent/accent", {{"accent", gray(0x76)}, {"on_accent", gray(255)}}, {{"accent", gray(0x77)}, {"on_accent", gray(255)}}},
-        {"accent/surface", {{"accent", gray(0x94)}, {"on_accent", gray(0)}}, {{"accent", gray(0x95)}, {"on_accent", gray(0)}}},
+        // The ring follows a replaced accent, so the page background is lightened to white too: the case is about accent/surface only.
+        {"accent/surface", {{"accent", gray(0x94)}, {"on_accent", gray(0)}, {"background", gray(255)}}, {{"accent", gray(0x95)}, {"on_accent", gray(0)}, {"background", gray(255)}}},
         // outline: 3:1 (#949494 on white is 3.03:1) on each of surface, background and panel; the surfaces are lightened to white so only the one varied surface decides.
+        // focus (the ring): 3:1 on each of surface, background and panel, same literals as outline (#949494 is 3.03:1 on white, 2.91:1 on 250).
+        {"focus/surface", ringed, with_ring("surface", gray(250))},
+        {"focus/background", ringed, with_ring("background", gray(250))},
+        {"focus/panel", ringed, with_ring("panel", gray(250))},
         {"outline/surface", outlined, with_outline("surface", gray(250)), true},
         {"outline/background", outlined, with_outline("background", gray(250)), true},
         {"outline/panel", outlined, with_outline("panel", gray(250)), true},

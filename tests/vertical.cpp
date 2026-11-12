@@ -203,16 +203,22 @@ void a_horizontal_label_in_the_same_slot_lays_out_as_before() {
     frame = page.arrange_in(400, 200);
     check(placed(frame, page.label).vertical && placed(frame, page.label).column_layout.columns.size() == 3, "The next arrangement is vertical");
 }
+// A scrolling label is framed by the focus ring (3 DIP, 3 px at scale 1) at the edge of its box, so its columns keep that
+// room from both sides: the view is the slot minus the two bands, and the text scrolls that much further.
+constexpr int ring = 3;
 void too_many_columns_make_the_label_scroll_sideways() {
     Page page(cjk(25));  // 72 px of columns in a 48 px slot
     auto frame = page.arrange_in(48, 200);
     const auto& label = placed(frame, page.label);
-    check(label.bounds.w == 48 && label.column_layout.maximum == 24, "The label keeps the slot width; 24 px of columns are out of view");
-    check(frame.regions.size() == 1 && frame.regions[0].horizontal && frame.regions[0].maximum == 24 && frame.regions[0].offset == 0, "A horizontal scroll region starts at the beginning");
+    const int out_of_view = 24 + 2 * ring;
+    check(label.bounds.w == 48 && label.column_layout.maximum == out_of_view, "The label keeps the slot width; 24 px of columns plus the two ring bands are out of view");
+    check(frame.regions.size() == 1 && frame.regions[0].horizontal && frame.regions[0].maximum == out_of_view && frame.regions[0].offset == 0, "A horizontal scroll region starts at the beginning");
     const auto& first = label.column_layout.columns[0];
-    check(first.bounds.x >= label.bounds.x && first.bounds.x + first.bounds.w == label.bounds.x + label.bounds.w, "The start of the text (the right edge) is shown first");
+    check(first.bounds.x >= label.bounds.x && first.bounds.x + first.bounds.w == label.bounds.x + label.bounds.w - ring, "The start of the text (the right edge) is shown first, a ring's thickness in from the edge");
     check(label.column_layout.columns[2].bounds.x < label.bounds.x, "The last column waits off to the left");
     check(label.column_layout.thumb.w > 0 && label.column_layout.thumb.x + label.column_layout.thumb.w == label.column_layout.track.x + label.column_layout.track.w, "The thumb starts at the right end of the bar");
+    check(label.column_layout.track.x == ring && label.column_layout.track.x + label.column_layout.track.w == label.bounds.w - ring &&
+          label.column_layout.track.y + label.column_layout.track.h == label.bounds.h - ring, "The bar lies inside the ring");
     check(label.bounds.h == 200, "The bar does not change the label height");
 }
 void the_wheel_moves_a_sideways_label_toward_the_end_of_the_text() {
@@ -227,7 +233,7 @@ void the_wheel_moves_a_sideways_label_toward_the_end_of_the_text() {
     check(frame.regions[0].offset == 6, "The horizontal wheel moved the view 4 px back");
     frame.wheel(page.ui, x, y, -1000);
     frame = page.arrange_in(48, 200);
-    check(frame.regions[0].offset == 24, "Scrolling stops at the last column");
+    check(frame.regions[0].offset == 24 + 2 * ring, "Scrolling stops at the last column");
     check(!frame.wheel(page.ui, x, y, -10), "At the end the step is not consumed");
 }
 void the_scrollbar_thumb_maps_back_to_an_offset() {
@@ -250,7 +256,7 @@ void keyboard_arrows_scroll_a_focused_sideways_label() {
     check(frame.regions[0].offset == 0, "Right scrolls back toward the start");
     detail::access(page.ui).key_down({.key = Key::end});
     frame = page.arrange_in(48, 200);
-    check(frame.regions[0].offset == 24, "End shows the last column");
+    check(frame.regions[0].offset == 24 + 2 * ring, "End shows the last column");
     detail::access(page.ui).key_down({.key = Key::home});
     frame = page.arrange_in(48, 200);
     check(frame.regions[0].offset == 0, "Home returns to the first column");
@@ -326,7 +332,7 @@ void a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page() {
     check(frame.wheel(ui, item->bounds.x + 10, item->bounds.y + 10, -20) && outer.offset > 0, "Then the page takes it");
     frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
     item = frame.find(label);
-    check(frame.regions[1].viewport == item->bounds && frame.regions[1].track.y + frame.regions[1].track.h == item->bounds.y + item->bounds.h,
+    check(frame.regions[1].viewport == item->bounds && frame.regions[1].track.y + frame.regions[1].track.h + ring == item->bounds.y + item->bounds.h,
           "The label's region moves with the page");
 }
 void text_size_and_scale_change_the_columns() {
@@ -429,7 +435,7 @@ void the_scroll_position_follows_the_content_when_it_shrinks() {
     detail::access(page.ui).focus("label");
     detail::access(page.ui).key_down({.key = Key::end});
     frame = page.arrange_in(48, 200);
-    check(frame.regions[0].offset == 24, "Scrolled to the end");
+    check(frame.regions[0].offset == 24 + 2 * ring, "Scrolled to the end");
     shown = cjk(14);  // two columns: 48 px, exactly the slot
     frame = page.arrange_in(48, 200);
     check(frame.regions.empty() && !page.label.describe()->focusable, "When the text fits again the label stops scrolling");
