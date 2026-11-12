@@ -130,6 +130,9 @@ public:
     double slider_display_ratio(std::string_view id) const;
     void slider_started_moving(const Id& id, double from, int value_before);
     Result edit_key(KeyPress key);  // the keys a text field takes
+    bool renderer_failed() const { return renderer_failed_; }
+    bool has_action(std::string_view id) const { return actions_.contains(id); }
+    bool text_composing(std::string_view id) const { auto it = edits_.find(id); return it != edits_.end() && it->second.session.composing; }
     // The per-type state a component type reads and changes. Nothing outside the registered types reaches into it.
     struct Internals {
         template <class U> static auto& edits(U& ui) { return ui.edits_; }
@@ -140,6 +143,12 @@ public:
         template <class U> static auto& lists(U& ui) { return ui.lists_; }
         template <class U> static auto& numerics(U& ui) { return ui.numerics_; }
         template <class U> static auto& progresses(U& ui) { return ui.progresses_; }
+        template <class U> static auto& errors(U& ui) { return ui.errors_; }
+        template <class U> static auto& providers(U& ui) { return ui.providers_; }
+        template <class U> static auto& shortcuts(U& ui) { return ui.shortcuts_; }
+        template <class U, class F> static bool source_matches(const U& ui, const F& field) { return ui.source_matches(field); }
+        template <class U, class F> static auto insertion_style(const U& ui, const F& field, unsigned first, unsigned last) { return ui.insertion_style(field, first, last); }
+        template <class U> static const WordBreaker& dictionary(const U& ui) { return ui.dictionary(); }
     };
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);

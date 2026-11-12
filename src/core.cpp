@@ -2365,76 +2365,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
     s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
-    if (control->kind == Kind::text) {
-        s.multiline = control->multiline; s.visible_lines = control->multiline ? control->visible_lines : 0;
-        if (auto it = edits_.find(id); it != edits_.end() && control->multiline) {
-            const auto& m = it->second.multi;
-            s.scroll_line = m.pending_first.value_or(m.first);
-            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
-        }
-    }
     s.writing_mode = control->writing_mode; s.vertical_digits = control->vertical_digits;
-    if (auto it = bools_.find(id); it != bools_.end()) {
-        s.checked = it->second.value;
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-    }
-    if (auto it = numerics_.find(id); it != numerics_.end()) {
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-        s.slider_range = it->second.range; s.numeric_value = it->second.value;
-    }
-    if (auto it = progresses_.find(id); it != progresses_.end()) {
-        s.read_only = true;
-        if (it->second.source.read) {
-            int displayed = std::clamp(it->second.source.read(), 0, 100);
-            s.numeric_value = displayed;
-            auto number = std::to_string(displayed);
-            s.value = std::u16string(number.begin(), number.end()) + u"%";
-        }
-    }
-    if (auto it = radios_.find(id); it != radios_.end()) {
-        s.source_conflict = it->second.connected && it->second.origin != it->second.source_value && it->second.value != it->second.source_value;
-        for (const auto& option : it->second.options) {
-            bool selected = it->second.value && *it->second.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
-            if (selected) s.value = option.label;
-        }
-    }
-    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
-        const auto& f = it->second;
-        s.source_conflict = f.connected && f.origin != f.source_value && f.value != f.source_value;
-        s.expanded = popup_source_ == id; s.candidate = f.candidate;
-        for (const auto& option : f.options) {
-            bool selected = f.value && *f.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
-            if (selected) s.value = option.label;
-        }
-    }
-    if (auto it = tabs_.find(id); it != tabs_.end()) {
-        const auto& t = it->second;
-        s.candidate = t.pages[t.candidate].value;
-        for (std::size_t i = 0; i < t.pages.size(); ++i) {
-            const auto& page = t.pages[i];
-            bool invalid = false;
-            for (const auto& member : page.members) {
-                auto member_id = layout_id(member);
-                if (member_id) {
-                    auto error = errors_.find(*member_id);
-                    if (error != errors_.end() && !error->second.empty()) { invalid = true; break; }
-                }
-            }
-            s.options.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
-            if (i == t.active) s.value = page.label;
-        }
-    }
-    if (auto it = lists_.find(id); it != lists_.end()) {
-        const auto& f = it->second; auto value = f.source.read ? f.source.read() : std::optional<OptionValue>{};
-        s.candidate = f.cursor;
-        for (const auto& item : f.items) {
-            bool selected = value && *value == item.value;
-            s.options.push_back({item.value, item.label, item.enabled, selected});
-            if (selected) s.value = item.label;
-        }
-    }
+    component_type(control->kind).describe(*this, *control, s);
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -2447,68 +2379,21 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
         if (!s.description.empty()) s.description += u"\n";
         s.description += tip->second.text;
     }
-    if (auto it = edits_.find(id); it != edits_.end()) {
-        const auto& field = it->second;
-        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !source_matches(field);
-        s.rich = field.rich;
-    }
     if (!s.focusable || renderer_failed_) return s;
     s.operations.push_back(Operation::focus);
-    bool admits_activation = component_type(control->kind).has_activate_operation() && !s.executing;
-    if (auto it = bools_.find(id); it != bools_.end()) {
-        const auto& f = it->second;
-        admits_activation = admits_activation && f.connected && (f.confirmation_member || f.immediate || f.confirmed);
-    }
-    if (admits_activation) s.operations.push_back(Operation::activate);
-    if (auto it = radios_.find(id); it != radios_.end()) {
-        const auto& f = it->second;
-        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed) &&
-            std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
-            s.operations.push_back(Operation::select);
-    }
-    if (auto it = numerics_.find(id); it != numerics_.end()) {
-        const auto& f = it->second;
-        if (!control->read_only && f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::edit);
-    }
-    if (auto it = dropdowns_.find(id); it != dropdowns_.end()) {
-        const auto& f = it->second;
-        if (f.connected && (f.confirmation_member || f.immediate || f.confirmed)) s.operations.push_back(Operation::select);
-    }
-    if (auto it = lists_.find(id); it != lists_.end()) {
-        const auto& f = it->second;
-        if (!control->read_only && f.source.read && f.immediate &&
-            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
-    }
-    if (auto it = edits_.find(id); it != edits_.end()) {
-        if (control->multiline) s.operations.push_back(Operation::scroll);
-        s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
-        const auto& field = it->second;
-        if (!control->read_only && !field.session.composing && (field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed))) {
-            s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
-            if (field.rich) s.operations.push_back(Operation::style);
-            if (!field.past.empty()) s.operations.push_back(Operation::undo);
-            if (!field.future.empty()) s.operations.push_back(Operation::redo);
-        }
-    }
+    component_type(control->kind).describe_operations(*this, *control, s);
     return s;
 }
 std::u16string detail::UiState::text(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return {};
-    if (control->kind == Kind::label && control->role == TextRole::error) {
-        auto it = errors_.find(control->target);
-        return it == errors_.end() ? std::u16string{} : it->second;
-    }
-    if (auto it = edits_.find(id); it != edits_.end()) return it->second.session.text;
-    if (auto it = bools_.find(id); it != bools_.end()) return it->second.value ? u"true" : u"false";
-    if (auto it = numerics_.find(id); it != numerics_.end()) { auto value = std::to_string(it->second.value); return {value.begin(), value.end()}; }
-    if (auto it = providers_.find(id); it != providers_.end()) return it->second();
+    if (auto shown = component_type(control->kind).display_text(*this, *control)) return *shown;
     return control->value;
 }
 void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider) {
     OperationScope operation(this);
     const auto* control = find(id);
-    if (!control || control->kind != Kind::label || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
+    if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
     providers_.insert_or_assign(control->id, std::move(provider));
 }
 const Control* detail::UiState::find(std::string_view id) const {
@@ -3782,56 +3667,18 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
     n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
-    if (!ref.item && c->kind == Kind::button) {
-        for (const auto& binding : u.shortcuts_) {
-            if (binding.target != ref.id) continue;
-            const auto& chord = binding.chord;
-            if (chord.ctrl) n.accelerator_key += u"Ctrl+";
-            if (chord.shift) n.accelerator_key += u"Shift+";
-            if (chord.letter) n.accelerator_key += chord.letter;
-            else {
-                switch (chord.key) {
-                case Key::enter: n.accelerator_key += u"Enter"; break;
-                case Key::space: n.accelerator_key += u"Space"; break;
-                case Key::left: n.accelerator_key += u"Left"; break;
-                case Key::right: n.accelerator_key += u"Right"; break;
-                case Key::up: n.accelerator_key += u"Up"; break;
-                case Key::down: n.accelerator_key += u"Down"; break;
-                case Key::home: n.accelerator_key += u"Home"; break;
-                case Key::end: n.accelerator_key += u"End"; break;
-                case Key::page_up: n.accelerator_key += u"PageUp"; break;
-                case Key::page_down: n.accelerator_key += u"PageDown"; break;
-                case Key::backspace: n.accelerator_key += u"Backspace"; break;
-                case Key::del: n.accelerator_key += u"Delete"; break;
-                default: break;
-                }
-            }
-            break;
-        }
-    }
     if (n.role == Role::label) n.name = s.value;
     // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
-    n.selection_required = c->kind == Kind::navigation_list || c->kind == Kind::tabs;
     n.range = s.slider_range; n.numeric_value = s.numeric_value;
-    if (c->kind == Kind::label) { n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; }
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
-    auto edit = u.edits_.find(ref.id); if (edit != u.edits_.end()) { n.text_selection = edit->second.session.selection; n.text_revision = edit->second.session.revision; }
-    if (edit != u.edits_.end() && edit->second.rich) {
-        n.rich = true; n.styles = edit->second.spans;
-        n.typing_style = u.insertion_style(edit->second, edit->second.session.begin(), edit->second.session.end());
-    }
-    if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
-    if (edit != u.edits_.end() && !ref.item) {
-        n.word_segmentation = edit->second.segmentation;
-        n.word_segmentation_in_use = segmentation_in_use(edit->second.segmentation, u.dictionary());
-    }
+    detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {
         auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.options.end()) return {Status::not_found, {}, {}};
@@ -3840,45 +3687,13 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
-        if (!n.hidden && (c->kind != Kind::dropdown || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
+        if (!n.hidden && (!detail::component_type(c->kind).hides_items_until_expanded() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
-    auto admits = [&](Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
     if (n.enabled && !n.hidden && !n.blocked_by_modal) {
-        auto add = [&](Verb verb, bool condition) { if (condition) n.verbs.push_back(verb); };
-        add(Verb::set_writing_mode, !ref.item && c->kind == Kind::label);
-        add(Verb::set_vertical_digits, !ref.item && c->kind == Kind::label);
-        if (ref.item) {
-            add(Verb::select, (u.tabs_.contains(ref.id) && admits(Operation::focus)) || admits(Operation::select));
-            add(Verb::focus, n.role == Role::list_item && u.lists_.contains(ref.id) && admits(Operation::focus));
-            add(Verb::context_menu, n.role == Role::list_item && u.has_menu(*c) && !u.renderer_failed_);
-        } else {
-            add(Verb::context_menu, u.has_menu(*c) && !u.renderer_failed_);
-            add(Verb::focus, admits(Operation::focus));
-            add(Verb::invoke, n.role == Role::button && u.actions_.contains(ref.id) && admits(Operation::activate));
-            add(Verb::toggle, n.role == Role::checkbox && admits(Operation::activate));
-            add(Verb::set_value, (n.role == Role::text || n.role == Role::slider) && admits(Operation::edit));
-            add(Verb::select, n.role == Role::text && admits(Operation::select));
-            add(Verb::open, n.role == Role::dropdown && admits(Operation::select));
-            add(Verb::cancel, n.role == Role::dropdown && admits(Operation::select));
-            add(Verb::undo, n.role == Role::text && admits(Operation::undo));
-            add(Verb::redo, n.role == Role::text && admits(Operation::redo));
-            add(Verb::copy, n.role == Role::text && admits(Operation::copy));
-            add(Verb::cut, n.role == Role::text && admits(Operation::cut));
-            add(Verb::paste, n.role == Role::text && admits(Operation::paste));
-            add(Verb::scroll, n.role == Role::text && s.multiline && admits(Operation::scroll));
-            for (auto flow : {Verb::set_text_align, Verb::set_justify_method, Verb::set_line_spacing, Verb::set_paragraph_spacing}) add(flow, (n.role == Role::label || n.role == Role::text) && !u.renderer_failed_);
-            add(Verb::set_style, n.role == Role::text && admits(Operation::style));
-            add(Verb::set_typing_style, n.role == Role::text && admits(Operation::style));
-            for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
-                add(word_verb, n.role == Role::text && admits(Operation::select));
-            bool confirmed = (u.edits_.contains(ref.id) && bool(u.edits_.at(ref.id).confirmed)) ||
-                (u.bools_.contains(ref.id) && bool(u.bools_.at(ref.id).confirmed)) ||
-                (u.radios_.contains(ref.id) && bool(u.radios_.at(ref.id).confirmed)) ||
-                (u.dropdowns_.contains(ref.id) && bool(u.dropdowns_.at(ref.id).confirmed)) ||
-                (u.numerics_.contains(ref.id) && bool(u.numerics_.at(ref.id).confirmed));
-            add(Verb::confirm, confirmed && !n.read_only);
-        }
+        const auto& type = detail::component_type(c->kind);
+        type.verbs({u, *c, s, n, ref.item.has_value()}, n.verbs);
+        if (!ref.item && type.confirm_pending(u, *c) && !n.read_only) n.verbs.push_back(Verb::confirm);
     }
     return {Status::ok, {}, n};
 }
@@ -4065,16 +3880,6 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         if (verb == Verb::focus || verb == Verb::hover) return state_->menu_highlight(ref.item->id);  // a menu row's hover is its highlight
         return {Status::not_supported, {}};
     }
-    if (verb == Verb::set_writing_mode || verb == Verb::set_vertical_digits) {
-        if (ref.item || node->role != Role::label) return {Status::not_supported, {}};
-        if (auto result = state_->available(ref.id); !result) return result;  // hidden, or behind a modal dialog
-        auto handle = state_->layout_handle(ref.id);
-        const auto& label = std::get<LabelHandle>(handle);
-        if (verb == Verb::set_writing_mode) {
-            if (const auto* mode = std::get_if<WritingMode>(&argument)) return label.set_writing_mode(*mode);
-        } else if (const auto* digits = std::get_if<int>(&argument)) return label.set_vertical_digits(*digits);
-        return {Status::invalid_value, {}};
-    }
     if (verb == Verb::hover) {
         if (node->role == Role::dialog || node->role == Role::tooltip) return {Status::not_supported, {}};
         return state_->simulate_hover(ref.id, ref.item);
@@ -4082,8 +3887,7 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
     auto invalid_argument = [&]() -> Result {
         if (auto result = state_->available(ref.id); !result) return result;
         if ((verb == Verb::set_value || verb == Verb::paste) && node->read_only) return {Status::read_only, {}};
-        if (auto it = state_->edits_.find(ref.id); it != state_->edits_.end() && it->second.session.composing)
-            return {Status::busy, {}};
+        if (state_->text_composing(ref.id)) return {Status::busy, {}};
         return {Status::invalid_value, {}};
     };
     if (verb == Verb::context_menu) {
@@ -4093,100 +3897,13 @@ Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
         else if (!std::holds_alternative<std::monostate>(argument)) return invalid_argument();
         return state_->open_menu(ref.id, at, std::move(item));
     }
-    if (!ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) &&
-        (node->role == Role::radio_group || node->role == Role::dropdown || node->role == Role::list || node->role == Role::tabs))
-        return invalid_argument();
-    if (ref.item && node->role == Role::list_item && state_->lists_.contains(ref.id) && verb == Verb::focus) {
-        auto handle = state_->layout_handle(ref.id);
-        return std::get<ListHandle>(handle).focus(*ref.item);
-    }
-    if (!ref.item && verb == Verb::focus && (node->role != Role::label || node->focusable) && node->role != Role::progress && node->role != Role::dialog && node->role != Role::tooltip)
-        return state_->focus(ref.id);
+    const auto* control = state_->find(ref.id);
+    const detail::ComponentType* type = control ? &detail::component_type(control->kind) : nullptr;
+    if (type && !ref.item && verb == Verb::select && std::holds_alternative<OptionValue>(argument) && type->item_role()) return invalid_argument();
+    if (type && !ref.item && verb == Verb::focus && (type->can_focus() || node->focusable)) return state_->focus(ref.id);
     if (node->role == Role::dialog && verb == Verb::cancel) return state_->settle_dialog(ref.id, false);
-    if (node->role == Role::button && verb == Verb::invoke) return state_->invoke(ref.id);
-    if (!ref.item && (verb == Verb::set_text_align || verb == Verb::set_justify_method || verb == Verb::set_line_spacing || verb == Verb::set_paragraph_spacing)) {
-        // Labels and text fields only; the same UiState entry points as the typed handles, so the same Status.
-        if (node->role != Role::label && node->role != Role::text) return {Status::not_supported, {}};
-        if (verb == Verb::set_text_align) {
-            if (auto align = std::get_if<TextAlign>(&argument)) return state_->set_text_align(ref.id, *align);
-        } else if (verb == Verb::set_justify_method) {
-            if (auto method = std::get_if<JustifyMethod>(&argument)) return state_->set_justify_method(ref.id, *method);
-        } else if (verb == Verb::set_line_spacing) {
-            if (auto multiple = std::get_if<double>(&argument)) return state_->set_line_spacing(ref.id, *multiple);
-        } else if (auto dip = std::get_if<int>(&argument)) return state_->set_paragraph_spacing(ref.id, *dip);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::scroll) {
-        if (!state_->find(ref.id)->multiline) return {Status::not_supported, {}};
-        if (auto line = std::get_if<int>(&argument); line && *line >= 0) return state_->set_scroll_line(ref.id, static_cast<unsigned>(*line));
-        return invalid_argument();
-    }
-    if (node->role == Role::text && (verb == Verb::select_word || verb == Verb::select_paragraph || verb == Verb::double_click || verb == Verb::triple_click)) {
-        auto offset = std::get_if<int>(&argument);
-        if (!offset || *offset < 0) return invalid_argument();
-        const auto at = static_cast<unsigned>(*offset);
-        return verb == Verb::select_word ? state_->select_word(ref.id, at) : verb == Verb::select_paragraph ? state_->select_paragraph(ref.id, at)
-             : verb == Verb::double_click ? state_->double_click(ref.id, at) : state_->triple_click(ref.id, at);
-    }
-    if (node->role == Role::text && verb == Verb::set_word_segmentation) {
-        if (auto mode = std::get_if<WordSegmentation>(&argument)) return state_->set_word_segmentation(ref.id, *mode);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_value) {
-        if (auto value = std::get_if<std::u16string>(&argument)) return state_->set_value(ref.id, *value);
-        if (auto value = std::get_if<RichText>(&argument)) return state_->set_rich_value(ref.id, *value);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_style) {
-        if (auto edit = std::get_if<StyleEdit>(&argument)) return state_->set_style(ref.id, edit->begin, edit->end, edit->change);
-        return invalid_argument();
-    }
-    if (node->role == Role::text && verb == Verb::set_typing_style) {
-        if (auto style = std::get_if<TextStyle>(&argument)) return state_->set_typing_style(ref.id, *style);
-        return invalid_argument();
-    }
-    if (node->role == Role::text) {
-        if (verb == Verb::select) {
-            if (auto selection = std::get_if<Selection>(&argument)) return state_->select(ref.id, selection->anchor, selection->caret);
-            return invalid_argument();
-        }
-        if (verb == Verb::undo) return state_->undo(ref.id);
-        if (verb == Verb::redo) return state_->redo(ref.id);
-        if (verb == Verb::copy) return state_->copy(ref.id);
-        if (verb == Verb::cut) return state_->cut(ref.id);
-        if (verb == Verb::paste) {
-            if (auto value = std::get_if<std::u16string>(&argument)) return state_->paste(ref.id, *value);
-            return invalid_argument();
-        }
-    }
-    auto handle = state_->layout_handle(ref.id);
-    if (!ref.item && verb == Verb::confirm) {
-        if (auto text = std::get_if<TextHandle>(&handle); text && state_->edits_.at(ref.id).confirmed) return text->confirm();
-        if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && state_->bools_.at(ref.id).confirmed) return checkbox->confirm();
-        if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && state_->radios_.at(ref.id).confirmed) return radio->confirm();
-        if (auto slider = std::get_if<SliderHandle>(&handle); slider && state_->numerics_.at(ref.id).confirmed) return slider->confirm();
-        if (auto dropdown = std::get_if<DropdownHandle>(&handle); dropdown && state_->dropdowns_.at(ref.id).confirmed) return dropdown->confirm();
-    }
-    if (auto tabs = std::get_if<TabsHandle>(&handle); tabs && ref.item && verb == Verb::select) return tabs->activate(*ref.item);
-    if (auto nav = std::get_if<NavigationListHandle>(&handle); nav && ref.item && verb == Verb::select) return nav->select(*ref.item);
-    if (auto list = std::get_if<ListHandle>(&handle); list && ref.item && verb == Verb::select) {
-        detail::UiState::OperationScope operation(state_);
-        auto previous = state_->lists_.at(ref.id).cursor;
-        auto result = list->select(*ref.item);
-        if (auto it = state_->lists_.find(ref.id); it != state_->lists_.end()) it->second.cursor = previous;
-        return result;
-    }
-    if (auto checkbox = std::get_if<CheckboxHandle>(&handle); checkbox && verb == Verb::toggle) return checkbox->toggle();
-    if (auto radio = std::get_if<RadioGroupHandle>(&handle); radio && ref.item && verb == Verb::select) return radio->select(*ref.item);
-    if (auto dropdown = std::get_if<DropdownHandle>(&handle)) {
-        if (ref.item && verb == Verb::select) return dropdown->select(*ref.item);
-        if (!ref.item && verb == Verb::open) return dropdown->open();
-        if (!ref.item && verb == Verb::cancel) return dropdown->cancel();
-    }
-    if (auto slider = std::get_if<SliderHandle>(&handle); slider && verb == Verb::set_value) {
-        if (auto value = std::get_if<int>(&argument)) return slider->set_value(*value);
-        return invalid_argument();
-    }
+    if (!type) return {Status::not_supported, {}};
+    if (auto result = type->perform({*state_, ref, verb, argument, *node, invalid_argument})) return *result;
     return {Status::not_supported, {}};
 }
 }

@@ -137,6 +137,9 @@ public:
     virtual bool supports_vertical_writing() const { return false; }
     // Ui::set_error is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
     virtual bool accepts_error() const { return true; }
+    // Ui::bind_text is for a type whose text the application can supply on demand; a dropdown's items show only while it is expanded.
+    virtual bool accepts_text_provider() const { return false; }
+    virtual bool hides_items_until_expanded() const { return false; }
     virtual bool needs_name() const { return true; }
     // ---- Input.
     // Whether the focused control takes this key itself (key_down runs) or leaves it to the application's shortcuts.
@@ -170,7 +173,6 @@ public:
     virtual bool can_target() const { return false; }
     virtual bool accepts_pointer() const { return true; }
     virtual bool selects_text() const { return false; }
-    virtual bool has_activate_operation() const { return false; }
     virtual Result key_down(UiState&, KeyPress) const { return {}; }
 };
 // The press protocol of a command-like type (a button): Enter runs the component's action, Space arms it for the key
