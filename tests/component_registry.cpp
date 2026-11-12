@@ -221,14 +221,14 @@ public:
     mutable std::optional<std::size_t> pressed_option, released_pressed_option, released_option;
     std::string_view name() const override { return "stepper"; }
     Role role() const override { return Role::slider; }
-    ComponentHandle handle(detail::UiState& ui, const Control& control) const override { return ui.button_layout_handle(control); }
+    ComponentHandle handle(detail::UiState& ui, const Control& control) const override { return ui.typed_handle<ButtonHandle>(control); }
     void arrange(detail::ComponentLayout& layout) const override { layout.placement.bounds = {0, 0, 80, 30}; }
     void paint(detail::ComponentPaint& paint) const override { paint.fill(paint.placement.bounds, {17, 91, 173}); }
     bool handles_key(const detail::UiState&, const Control&, KeyPress key) const override { return key.key == Key::up || key.key == Key::down; }
     Result key_down(detail::UiState&, KeyPress key) const override { ++key_presses; last_key = key.key; return {}; }
     bool ignores_press(const detail::UiState&, const Control&, std::optional<std::size_t> option) const override { return option == 5u; }
     void pointer_down(detail::UiState& ui, const Control& control, std::optional<std::size_t> option) const override {
-        ++presses; pressed_option = option; ui.command_pointer_down();
+        ++presses; pressed_option = option; ui.arm_pointer(control.id, option);
     }
     Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
         ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};

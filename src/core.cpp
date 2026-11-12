@@ -299,8 +299,6 @@ ProgressHandle detail::UiState::add_progress(Control control) {
     progresses_.emplace(id, ProgressField{});
     return ProgressHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::progress_layout_handle(const Control& c) {
-    OperationScope operation(this); return ProgressHandle(this, lifetime_, c.id); }
 Result ProgressHandle::connect_source(NumericSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -360,8 +358,6 @@ CheckboxHandle detail::UiState::add_checkbox(Control control) {
     bind(id, [this, id] { return toggle_checkbox(id); });
     return CheckboxHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::checkbox_layout_handle(const Control& c) {
-    OperationScope operation(this); return CheckboxHandle(this, lifetime_, c.id); }
 Result CheckboxHandle::toggle() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -479,8 +475,6 @@ RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<R
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::radio_layout_handle(const Control& c) {
-    OperationScope operation(this); return RadioGroupHandle(this, lifetime_, c.id); }
 ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> items) {
     OperationScope operation(this);
     if (control.kind != Kind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
@@ -490,8 +484,6 @@ ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> i
     ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
     return ListHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::list_layout_handle(const Control& c) {
-    OperationScope operation(this); return ListHandle(this, lifetime_, c.id); }
 Result ListHandle::connect_source(OptionSource source) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -540,19 +532,6 @@ Result ListHandle::focus(OptionValue value) const {
     list.cursor = std::move(value);
     if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
     if (ui_->invalidate_) ui_->invalidate_();
-    return {};
-}
-Result detail::UiState::list_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& f = lists_.at(focus_);
-    if (key.key == Key::space) return f.cursor ? ListHandle(this, lifetime_, focus_).select(*f.cursor) : Result{};
-    if (key.key != Key::up && key.key != Key::down && key.key != Key::left && key.key != Key::right && key.key != Key::home && key.key != Key::end) return {};
-    int n = static_cast<int>(f.items.size());
-    int current = -1;
-    for (int i = 0; i < n; ++i) if (f.cursor && f.items[i].value == *f.cursor) { current = i; break; }
-    int step = key.key == Key::up || key.key == Key::left || key.key == Key::end ? -1 : 1;
-    int start = key.key == Key::home ? 0 : key.key == Key::end ? n - 1 : current < 0 ? (step > 0 ? 0 : n - 1) : current + step;
-    for (int i = start; i >= 0 && i < n; i += step) if (f.items[i].enabled) return ListHandle(this, lifetime_, focus_).select(f.items[i].value);
     return {};
 }
 Result ListHandle::set_items(std::vector<RadioOption> items) const {
@@ -700,18 +679,6 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     if (result) { field.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::radio_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (key.repeat) return {};
-    int direction = key.key == Key::right || key.key == Key::down ? 1 : key.key == Key::left || key.key == Key::up ? -1 : 0;
-    if (!direction) return {};
-    auto& field = radios_.at(focus_);
-    int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
-    for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
-    for (int i = index + direction; i >= 0 && i < n; i += direction)
-        if (field.options[i].enabled) return select_option(focus_, field.options[i].value);
-    return {};
-}
 Query<Semantics> RadioGroupHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
@@ -733,8 +700,6 @@ DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioO
     DropdownField field; field.options = std::move(options); dropdowns_.emplace(id, std::move(field));
     return DropdownHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::dropdown_layout_handle(const Control& c) {
-    OperationScope operation(this); return DropdownHandle(this, lifetime_, c.id); }
 void detail::UiState::close_popup() {
     OperationScope operation(this);
     if (popup_source_.empty()) return;
@@ -875,26 +840,6 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
     auto notification = notify(); return notification ? result : notification;
 }
-Result detail::UiState::dropdown_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& f = dropdowns_.at(focus_);
-    if (key.key == Key::escape) { close_popup(); return {}; }
-    if (key.key == Key::enter || key.key == Key::space) {
-        if (key.repeat) return {};
-        if (popup_source_ != focus_) return DropdownHandle(this, lifetime_, focus_).open();
-        auto candidate = f.candidate; close_popup(); return candidate ? select_dropdown(focus_, *candidate) : Result{};
-    }
-    if (popup_source_ != focus_) return {};
-    int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
-    if (key.key == Key::home) direction = 1;
-    if (key.key == Key::end) direction = -1;
-    if (!direction) return {};
-    int n = static_cast<int>(f.options.size()), index = direction > 0 ? -1 : n;
-    if (key.key != Key::home && key.key != Key::end) for (int i = 0; i < n; ++i) if (f.candidate && f.options[i].value == *f.candidate) { index = i; break; }
-    f.reveal = true;
-    for (int i = index + direction; i >= 0 && i < n; i += direction) if (f.options[i].enabled) { f.candidate = f.options[i].value; break; }
-    if (invalidate_) invalidate_(); return {};
-}
 Query<Semantics> DropdownHandle::describe() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
@@ -925,8 +870,6 @@ SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
     numerics_.emplace(id, std::move(field));
     return SliderHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::slider_layout_handle(const Control& c) {
-    OperationScope operation(this); return SliderHandle(this, lifetime_, c.id); }
 Result SliderHandle::set_value(int value) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
@@ -1081,28 +1024,6 @@ std::optional<int> detail::UiState::slider_held_x(std::string_view id) const {
     if (slider_drag_ && slider_drag_->held && pointer_armed_ == id && slider_drag_->id == id) return slider_drag_->x;
     return std::nullopt;
 }
-Result detail::UiState::slider_key_down(KeyPress key) {
-    OperationScope operation(this);
-    const Id id = focus_;
-    auto& f = numerics_.at(id);
-    const long long lo = f.range.minimum, hi = f.range.maximum, step = f.range.step, value = f.value;
-    long long target = value;
-    switch (key.key) {
-    case Key::home: target = lo; break;
-    case Key::end: target = hi; break;
-    case Key::right: case Key::up:
-        if (value < hi) target = std::min(hi, lo + ((value - lo) / step + 1) * step);
-        break;
-    case Key::left: case Key::down:
-        if (value > lo) target = lo + ((value - lo - 1) / step) * step;
-        break;
-    default: return {};
-    }
-    const double from = slider_display_ratio(id);
-    auto result = slider_set_value(id, static_cast<int>(target));
-    slider_started_moving(id, from, static_cast<int>(value));
-    return result;
-}
 // A thumb transition is live only while it is still heading to the slider's current value: any
 // other change (application code, undo, a semantic or UIA set, the data source) leaves it stale
 // and the thumb is drawn at the new value at once.
@@ -1201,12 +1122,6 @@ ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     if (!control) return {};
     return component_type(control->kind).handle(*this, *control);
 }
-ComponentHandle detail::UiState::text_layout_handle(const Control& control) {
-    OperationScope operation(this); return TextHandle(this, lifetime_, control.id); }
-ComponentHandle detail::UiState::label_layout_handle(const Control& control) {
-    OperationScope operation(this); return LabelHandle(this, lifetime_, control.id); }
-ComponentHandle detail::UiState::button_layout_handle(const Control& control) {
-    OperationScope operation(this); return ButtonHandle(this, button_lifetimes_.at(control.id), control.id); }
 
 std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) const {
     return std::visit([this](const auto& item) -> std::optional<Id> {
@@ -1266,11 +1181,6 @@ NavigationListHandle detail::UiState::add_navigation_list(Control control, std::
     tabs_.emplace(id, TabsState{std::move(pages), index, index, false, {}});
     return NavigationListHandle(this, lifetime_, std::move(id));
 }
-ComponentHandle detail::UiState::navigation_layout_handle(const Control& c) {
-    OperationScope operation(this); return NavigationListHandle(this, lifetime_, c.id);
-}
-ComponentHandle detail::UiState::tabs_layout_handle(const Control& c) {
-    OperationScope operation(this); return TabsHandle(this, lifetime_, c.id); }
 TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
     OperationScope operation(this);
     auto id = layout_id(source);
@@ -1727,34 +1637,6 @@ Query<OptionValue> NavigationListHandle::selected() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
     return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
-}
-Result detail::UiState::tabs_key_down(KeyPress key) {
-    OperationScope operation(this);
-    auto& t = tabs_.at(focus_);
-    if (key.key == Key::left || key.key == Key::right) {
-        int dir = key.key == Key::left ? -1 : 1;
-        int i = static_cast<int>(t.candidate);
-        for (std::size_t n = 0; n < t.pages.size(); ++n) {
-            i = (i + dir + static_cast<int>(t.pages.size())) % static_cast<int>(t.pages.size());
-            if (t.pages[static_cast<std::size_t>(i)].enabled) { t.candidate = static_cast<std::size_t>(i); break; }
-        }
-        if (invalidate_) invalidate_();
-        return {};
-    }
-    return command_key_down(key);
-}
-Result detail::UiState::navigation_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (auto r = available(focus_); !r) return r;
-    auto& t = tabs_.at(focus_);
-    int index = static_cast<int>(t.active), last = static_cast<int>(t.pages.size()) - 1;
-    if (key.key == Key::home) index = -1;
-    else if (key.key == Key::end) index = last + 1;
-    else if (key.key != Key::up && key.key != Key::down) return {};
-    int direction = key.key == Key::up || key.key == Key::end ? -1 : 1;
-    for (index += direction; index >= 0 && index <= last; index += direction)
-        if (t.pages[static_cast<std::size_t>(index)].enabled) return activate_tab(focus_, t.pages[static_cast<std::size_t>(index)].value);
-    return {};
 }
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
@@ -3398,29 +3280,8 @@ Result detail::UiState::key_down(KeyPress key) {
                 return {};
             }
         }
-        bool handled = false;
-        if (control->kind == Kind::text) {
-            // Multi-line fields also take Enter and the vertical keys; Ctrl+Enter is left to shortcuts.
-            const bool multi = control->multiline;
-            // A rich field also takes Ctrl+B / I / U before any application shortcut on them.
-            const bool style_key = control->rich && (key.letter == u'B' || key.letter == u'I' || key.letter == u'U');
-            handled = key.ctrl ? (key.letter == u'A' || key.letter == u'C' || key.letter == u'X' || key.letter == u'V' || key.letter == u'Z' || key.letter == u'Y' || style_key ||
-                                  (!key.letter && (key.key == Key::left || key.key == Key::right || key.key == Key::backspace || key.key == Key::del)) ||
-                                  (multi && !key.letter && (key.key == Key::home || key.key == Key::end))) :
-                (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
-                 (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
-        } else if (!key.ctrl || !key.letter) {
-            switch (control->kind) {
-            case Kind::list: handled = key.key == Key::space || key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
-            case Kind::navigation_list: handled = key.key == Key::up || key.key == Key::down || key.key == Key::home || key.key == Key::end; break;
-            case Kind::radio_group: case Kind::slider: handled = key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end; break;
-            case Kind::dropdown: handled = key.key == Key::enter || key.key == Key::space || (popup_source_ == focus_ && (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::escape)); break;
-            case Kind::button: case Kind::checkbox: case Kind::tabs: handled = key.key == Key::enter || key.key == Key::space || (control->kind == Kind::tabs && (key.key == Key::left || key.key == Key::right)); break;
-            case Kind::label: case Kind::progress: break;
-            default: handled = true; break;
-            }
-        }
-        if (handled) return component_type(control->kind).key_down(*this, key);
+        const auto& type = component_type(control->kind);
+        if (type.handles_key(*this, *control, key)) return type.key_down(*this, key);
     }
     for (int scoped = 1; scoped >= 0; --scoped) for (const auto& entry : shortcuts_) {
         if ((scoped ? entry.scope == focus_ && !entry.scope.empty() : entry.scope.empty()) && entry.chord.key == key.key && entry.chord.letter == key.letter && entry.chord.ctrl == key.ctrl && entry.chord.shift == key.shift) {
@@ -3434,18 +3295,6 @@ Result detail::UiState::key_down(KeyPress key) {
     }
     return {};
 }
-Result detail::UiState::text_key_down(KeyPress key) {
-    OperationScope operation(this); return edit_key(key); }
-Result detail::UiState::command_key_down(KeyPress key) {
-    OperationScope operation(this);
-    if (key.repeat) return {};
-    if (key.key == Key::enter) return invoke(focus_);
-    if (key.key == Key::space) key_armed_ = focus_;
-    return {};
-}
-void detail::UiState::command_pointer_down() {
-    OperationScope operation(this); pointer_armed_ = focus_; }
-
 namespace {
 // Code-point stepping is the S1 support boundary: no grapheme clusters, no RTL.
 unsigned step(std::u16string_view text, unsigned pos, int direction) {
@@ -3593,10 +3442,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     const auto* control = find(id);
     if (auto result = focusable(*control); !result) return result;
     if (!popup_source_.empty() && popup_source_ != id) close_popup();
-    if (control->kind == Kind::navigation_list && option) {
-        const auto& pages = tabs_.at(control->id).pages;
-        if (*option >= pages.size() || !pages[*option].enabled) return {};
-    }
+    if (component_type(control->kind).ignores_press(*this, *control, option)) return {};
     end_slider_drag(false);
     const Id target = control->id;
     if (auto result = move_focus(target); !result) return result;
@@ -3605,18 +3451,7 @@ Result detail::UiState::pointer_down(std::string_view id, std::optional<std::siz
     refresh_tooltips();
     if (auto result = available(target); !result) return result;
     control = find(target);
-    if (control->kind == Kind::dropdown) {
-        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
-        auto& f = dropdowns_.at(control->id);
-        if (popup_source_ == target && option && *option < f.options.size()) pointer_option_value_ = f.options[*option].value;
-    }
-    else if (control->kind == Kind::list) {
-        pointer_armed_ = control->id; pointer_option_ = option; pointer_option_value_.reset();
-        const auto& items = lists_.at(control->id).items;
-        if (option && *option < items.size()) pointer_option_value_ = items[*option].value;
-    }
-    else if (control->kind == Kind::radio_group || control->kind == Kind::slider || control->kind == Kind::tabs || control->kind == Kind::navigation_list) { pointer_armed_ = control->id; pointer_option_ = option; }
-    else component_type(control->kind).pointer_down(*this);
+    component_type(control->kind).pointer_down(*this, *control, option);
     return {};
 }
 Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_t> option) {
@@ -3626,28 +3461,7 @@ Result detail::UiState::pointer_up(std::string_view id, std::optional<std::size_
     auto pressed_option = std::exchange(pointer_option_, std::nullopt);
     auto pressed_value = std::exchange(pointer_option_value_, std::nullopt);
     if (armed.empty() || armed != id) return {};
-    if (auto it = dropdowns_.find(armed); it != dropdowns_.end()) {
-        if (pressed_value) {
-            if (popup_source_ != armed || !option || *option >= it->second.options.size() || it->second.options[*option].value != *pressed_value) return {};
-            close_popup(); return select_dropdown(armed, *pressed_value);
-        }
-        if (pressed_option || option) return {};
-        return DropdownHandle(this, lifetime_, armed).open();
-    }
-    if (auto it = tabs_.find(armed); it != tabs_.end()) {
-        if (!pressed_option || pressed_option != option || *option >= it->second.pages.size()) return {};
-        return activate_tab(armed, it->second.pages[*option].value);
-    }
-    if (numerics_.contains(armed)) return {};
-    if (auto it = lists_.find(armed); it != lists_.end()) {
-        if (!pressed_value || !option || *option >= it->second.items.size() || it->second.items[*option].value != *pressed_value) return {};
-        return ListHandle(this, lifetime_, armed).select(*pressed_value);
-    }
-    if (auto it = radios_.find(armed); it != radios_.end()) {
-        if (!pressed_option || pressed_option != option || *option >= it->second.options.size()) return {};
-        return select_option(armed, it->second.options[*option].value);
-    }
-    return invoke(armed);
+    return component_type(find(armed)->kind).pointer_up(*this, {armed, pressed_option, option, pressed_value});
 }
 void detail::UiState::cancel_input() {
     OperationScope operation(this); end_text_drag(); key_armed_.clear(); pointer_armed_.clear(); pointer_option_.reset(); pointer_option_value_.reset(); end_slider_drag(false); }

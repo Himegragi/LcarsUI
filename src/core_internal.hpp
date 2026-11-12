@@ -40,14 +40,9 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
     ProgressHandle add_progress(Control control);
-    ComponentHandle progress_layout_handle(const Control& control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
-    ComponentHandle navigation_layout_handle(const Control& control);
-    Result navigation_key_down(KeyPress key);
-    ComponentHandle tabs_layout_handle(const Control& control);
-    Result tabs_key_down(KeyPress key);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
     Result focus_error(const Id& id);
@@ -83,13 +78,7 @@ public:
     DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
     Result open_dialog(const Id& id, const ComponentHandle* opener);
     Result settle_dialog(const Id& id, bool confirmed);
-    ComponentHandle list_layout_handle(const Control& control);
-    Result list_key_down(KeyPress key);
-    ComponentHandle dropdown_layout_handle(const Control& control);
-    Result dropdown_key_down(KeyPress key);
     void close_popup();
-    ComponentHandle slider_layout_handle(const Control& control);
-    Result slider_key_down(KeyPress key);
     Result slider_set_value(const Id& id, int value);
     // A pointer drag converts the mouse x to a value against the track captured at press, so a layout
     // that moves under the pointer cannot change the value. The thumb is drawn at the pointer, not the value.
@@ -112,9 +101,6 @@ public:
     std::optional<double> slider_animated_ratio(std::string_view id) const;
     // Pointer x the thumb is drawn at while the pointer holds it (a drag, or any press with motion off).
     std::optional<int> slider_held_x(std::string_view id) const;
-    ComponentHandle radio_layout_handle(const Control& control);
-    Result radio_key_down(KeyPress key);
-    ComponentHandle checkbox_layout_handle(const Control& control);
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
@@ -124,13 +110,37 @@ public:
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
     bool retired_button(const ComponentHandle& handle) const;
-    // Internal adapters used by registered component types.
-    ComponentHandle text_layout_handle(const Control& control);
-    ComponentHandle label_layout_handle(const Control& control);
-    ComponentHandle button_layout_handle(const Control& control);
-    Result text_key_down(KeyPress key);
-    Result command_key_down(KeyPress key);
-    void command_pointer_down();
+    // What registered component types (src/component_type.cpp) use to act on the state around them.
+    // The typed handle of a component of the given handle type; a type's own handle() returns it.
+    template <class Handle> ComponentHandle typed_handle(const Control& control) {
+        OperationScope operation(this);
+        if constexpr (std::is_same_v<Handle, ButtonHandle>) return Handle(this, button_lifetimes_.at(control.id), control.id);
+        else return Handle(this, lifetime_, control.id);
+    }
+    // A pointer press arms its component with the row under the press (and that row's value); the release over the
+    // same component then reaches pointer_up of its type. A key press arms the component for the release of Space.
+    void arm_pointer(const Id& id, std::optional<std::size_t> option = std::nullopt, std::optional<OptionValue> value = std::nullopt) {
+        pointer_armed_ = id; pointer_option_ = option; pointer_option_value_ = std::move(value);
+    }
+    void arm_key(const Id& id) { key_armed_ = id; }
+    bool popup_open(std::string_view id) const { return popup_source_ == id; }
+    void invalidate() { if (invalidate_) invalidate_(); }
+    Result select_option(const Id& id, OptionValue value);
+    Result select_dropdown(const Id& id, OptionValue value);
+    double slider_display_ratio(std::string_view id) const;
+    void slider_started_moving(const Id& id, double from, int value_before);
+    Result edit_key(KeyPress key);  // the keys a text field takes
+    // The per-type state a component type reads and changes. Nothing outside the registered types reaches into it.
+    struct Internals {
+        template <class U> static auto& edits(U& ui) { return ui.edits_; }
+        template <class U> static auto& bools(U& ui) { return ui.bools_; }
+        template <class U> static auto& radios(U& ui) { return ui.radios_; }
+        template <class U> static auto& dropdowns(U& ui) { return ui.dropdowns_; }
+        template <class U> static auto& tabs(U& ui) { return ui.tabs_; }
+        template <class U> static auto& lists(U& ui) { return ui.lists_; }
+        template <class U> static auto& numerics(U& ui) { return ui.numerics_; }
+        template <class U> static auto& progresses(U& ui) { return ui.progresses_; }
+    };
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
@@ -535,7 +545,6 @@ private:
     Id active_dialog_;
     bool dialog_transitioning_ = false;
     bool dialog_member(std::string_view id) const;
-    Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
     struct NumericField {
         SliderRange range;
@@ -551,7 +560,6 @@ private:
     struct ProgressField { NumericSource source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
-    Result select_option(const Id& id, OptionValue value);
     void option_source_changed(const Id& id);
     Result toggle_checkbox(const Id& id);
     void bool_source_changed(const Id& id);
@@ -587,8 +595,6 @@ private:
     std::map<Id, int, std::less<>> slider_targets_;  // value each running thumb transition is heading to
     static std::string slider_animation_key(std::string_view id) { return "slider:" + std::string(id); }
     bool slider_transition_live(std::string_view id) const;
-    double slider_display_ratio(std::string_view id) const;
-    void slider_started_moving(const Id& id, double from, int value_before);
     void end_slider_drag(bool slide);  // slide: the release of a drag eases to the tick; an interruption lands at once
     void slider_land(std::string_view id);  // drop a running thumb transition: the thumb is at its value now
     std::optional<std::size_t> pointer_option_;
@@ -619,7 +625,6 @@ private:
     Result submit_field(std::string_view id, Field& field,
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
-    Result edit_key(KeyPress key);
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
     // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
     FieldView vertical_view(const Id& id);

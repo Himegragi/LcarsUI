@@ -172,8 +172,12 @@ public:
     virtual bool selects_text() const { return false; }
     virtual bool has_activate_operation() const { return false; }
     virtual Result key_down(UiState&, KeyPress) const { return {}; }
-    virtual void pointer_down(UiState&) const {}
 };
+// The press protocol of a command-like type (a button): Enter runs the component's action, Space arms it for the key
+// release, a pointer press arms it for the release over the same component. The release itself is ComponentType::pointer_up's
+// default, which invokes the action.
+Result command_key_down(UiState& ui, KeyPress key);
+void command_pointer_down(UiState& ui);
 const ComponentType& component_type(Kind kind);
 // The same, or null for a Kind no type is registered for (the one place a stray Kind value is tolerated).
 const ComponentType* find_component_type(Kind kind);
