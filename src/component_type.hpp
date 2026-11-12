@@ -3,13 +3,22 @@
 // to use the typed handles in the public headers; this is not a public plug-in API.
 //
 // Everything that differs between component types is asked of the type here, never decided from Kind elsewhere: Kind is the
-// key of the registry (and public data), nothing more. A new type is one class in component_type.cpp, registered in types(),
-// that overrides what it needs: arrange and paint; name and role; the keys it takes (handles_key, key_down) and its press and
-// release (pointer_down, pointer_up); its part of the semantic tree (describe, describe_operations, describe_node, verbs,
-// perform); and the host, layout and menu questions at the end of ComponentType. The defaults describe a type with nothing
-// special. A typed handle, its Ui::add_x and its field state in UiState are only needed when applications are to configure
-// it from code; a type that is created as data (UiState::seed_test_controls) needs none of them. ScopedComponentType
-// registers a test-only type the same way.
+// key of the registry (and public data), nothing more. The type's own behavior is one class in component_type.cpp, registered
+// in types(), that overrides what it needs: arrange and paint; name and role; the keys it takes (handles_key, key_down) and its
+// press and release (pointer_down, pointer_up); its part of the semantic tree (describe, describe_operations, describe_node,
+// verbs, perform); and the host, layout and menu questions at the end of ComponentType. The defaults describe a type with
+// nothing special. ScopedComponentType registers a test-only type the same way.
+//
+// A type that applications configure from code also needs, outside this file:
+//   - its Kind enumerator, and its typed Handle class and the ComponentHandle variant, in include/lcars/core.hpp;
+//   - Ui::add_x (core.cpp) and UiState::add_x with its kind check, which registers the control and its state;
+//   - its state: a field struct and map in UiState (core_internal.hpp) with an accessor in UiState::Internals
+//     (defined in component_type.cpp), and, when the state holds a source subscription, a line in the UiState destructor's
+//     disconnect loop;
+//   - a Role in include/lcars/semantics.hpp and its UIA mapping, only if no existing Role fits.
+// A type that is created as data (UiState constructor, UiState::seed_test_controls) needs none of this but its Kind value
+// (a test type takes one no built-in has): the class and its registration are enough, and adopt() registers whatever state
+// it keeps.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
