@@ -121,12 +121,24 @@ Rect command_box(const ComponentPaint& c, int indicator) {
     return box;
 }
 Rect offset(Rect rect, Rect origin) { return {rect.x + origin.x, rect.y + origin.y, rect.w, rect.h}; }
+// The one place the lines of a message under a component are laid out: `text` wrapped to `width` pixels into `out`, the
+// lines stacked from row `y` down and `inset` pixels in from the left. Returns the row below the last line.
+int stack_lines(ComponentLayout& c, std::vector<Line>& out, std::u16string_view text, int y, int inset, int width) {
+    out = block(c.measure, text, c.placement.text_size, width);
+    for (auto& line : out) { line.bounds.x += inset; line.bounds.y += y; }
+    return y + height_of(out);
+}
+// The source-conflict note under a component (a second line of text in the description lines), when there is a conflict.
 int conflict_lines(ComponentLayout& c, int y, bool conflict, int inset = 0) {
     if (!conflict) return y;
-    auto& p = c.placement;
-    p.description_lines = block(c.measure, c.presentation().conflict_suffix, p.text_size, std::max(1, c.width - 2 * inset));
-    for (auto& line : p.description_lines) { line.bounds.x += inset; line.bounds.y += y; }
-    return y + height_of(p.description_lines);
+    return stack_lines(c, c.placement.description_lines, c.presentation().conflict_suffix, y, inset, std::max(1, c.width - 2 * inset));
+}
+// The error message under a component, when it is invalid. Text set in from the edges keeps at least one pixel of width;
+// text across the whole width takes the width as given, even none. (A text field does not use this: its appearance decides the
+// rectangle of its error text, so arrange_field wraps the message to that rectangle and anchors it there.)
+int error_lines(ComponentLayout& c, int y, const Semantics& semantics, int inset = 0) {
+    if (!semantics.invalid) return y;
+    return stack_lines(c, c.placement.error_lines, semantics.error, y, inset, inset > 0 ? std::max(1, c.width - 2 * inset) : c.width);
 }
 template<class F> void marked(ComponentPaint& c, PaintRole role, F&& paint) { c.role(role); paint(); c.role(PaintRole::content); }
 void paint_errors(ComponentPaint& c, const std::vector<Line>& lines, int pixels, Color color) {
@@ -549,12 +561,7 @@ public:
         for (auto& line : c.placement.lines) line.bounds.x += extra;
         auto semantics = *c.ui.describe(c.control.id);
         c.placement.bounds.h = conflict_lines(c, c.placement.bounds.h, semantics.source_conflict);
-        if (semantics.invalid) {
-            auto& p = c.placement;
-            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
-            for (auto& line : p.error_lines) line.bounds.y += p.bounds.h;
-            p.bounds.h += height_of(p.error_lines);
-        }
+        c.placement.bounds.h = error_lines(c, c.placement.bounds.h, semantics);
     }
     void paint(ComponentPaint& c) const override {
         Command::paint(c);
@@ -602,11 +609,7 @@ public:
             y += row;
         }
         y = conflict_lines(c, y, semantics.source_conflict);
-        if (semantics.invalid) {
-            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
-            for (auto& l : p.error_lines) l.bounds.y += y;
-            y += height_of(p.error_lines);
-        }
+        y = error_lines(c, y, semantics);
         p.bounds = {0, 0, c.width, y};
     }
     void paint(ComponentPaint& c) const override {
@@ -705,11 +708,7 @@ public:
         p.lines.push_back({{value_x, ring + line + (row - line) / 2, room_after(c.width, scaled(c.scale, c.presentation().body_spacing), value_x, scaled(c.scale, c.presentation().gap)), line}, s.value.empty() ? c.presentation().no_selection : s.value});
         int y = ring + line + row;
         y = conflict_lines(c, y, s.source_conflict, ring);
-        if (s.invalid) {
-            p.error_lines = block(c.measure, s.error, p.text_size, std::max(1, c.width - 2 * ring));
-            for (auto& l : p.error_lines) { l.bounds.x += ring; l.bounds.y += y; }
-            y += height_of(p.error_lines);
-        }
+        y = error_lines(c, y, s, ring);
         if (y > ring + line + row) y += ring;  // text under the value row also keeps clear of the bottom edge
         p.bounds = {0, 0, c.width, y};
     }
@@ -771,11 +770,7 @@ public:
         int y = ring + height_of(p.lines) + scaled(c.scale, c.presentation().gap_small);
         p.slider_track = {pad, y, std::max(1, c.width - 2 * pad), track_height};
         y += track_height + ring;
-        if (semantics.invalid) {
-            p.error_lines = block(c.measure, semantics.error, p.text_size, c.width);
-            for (auto& l : p.error_lines) l.bounds.y += y;
-            y += height_of(p.error_lines);
-        }
+        y = error_lines(c, y, semantics);
         p.bounds = {0, 0, c.width, std::max(y, line)};
     }
     void paint(ComponentPaint& c) const override {
