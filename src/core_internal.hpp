@@ -125,31 +125,12 @@ public:
     void arm_key(const Id& id) { key_armed_ = id; }
     bool popup_open(std::string_view id) const { return popup_source_ == id; }
     void invalidate() { if (invalidate_) invalidate_(); }
-    Result select_option(const Id& id, OptionValue value);
-    Result select_dropdown(const Id& id, OptionValue value);
-    double slider_display_ratio(std::string_view id) const;
-    void slider_started_moving(const Id& id, double from, int value_before);
-    Result edit_key(KeyPress key);  // the keys a text field takes
     bool renderer_failed() const { return renderer_failed_; }
     bool has_action(std::string_view id) const { return actions_.contains(id); }
     bool text_composing(std::string_view id) const { auto it = edits_.find(id); return it != edits_.end() && it->second.session.composing; }
-    // The per-type state a component type reads and changes. Nothing outside the registered types reaches into it.
-    struct Internals {
-        template <class U> static auto& edits(U& ui) { return ui.edits_; }
-        template <class U> static auto& bools(U& ui) { return ui.bools_; }
-        template <class U> static auto& radios(U& ui) { return ui.radios_; }
-        template <class U> static auto& dropdowns(U& ui) { return ui.dropdowns_; }
-        template <class U> static auto& tabs(U& ui) { return ui.tabs_; }
-        template <class U> static auto& lists(U& ui) { return ui.lists_; }
-        template <class U> static auto& numerics(U& ui) { return ui.numerics_; }
-        template <class U> static auto& progresses(U& ui) { return ui.progresses_; }
-        template <class U> static auto& errors(U& ui) { return ui.errors_; }
-        template <class U> static auto& providers(U& ui) { return ui.providers_; }
-        template <class U> static auto& shortcuts(U& ui) { return ui.shortcuts_; }
-        template <class U, class F> static bool source_matches(const U& ui, const F& field) { return ui.source_matches(field); }
-        template <class U, class F> static auto insertion_style(const U& ui, const F& field, unsigned first, unsigned last) { return ui.insertion_style(field, first, last); }
-        template <class U> static const WordBreaker& dictionary(const U& ui) { return ui.dictionary(); }
-    };
+    // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
+    // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
+    struct Internals;
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
@@ -171,7 +152,6 @@ public:
     void seed_test_controls(std::vector<Control> controls);
     void seed_plain(Control control);      // a control of a type with no state of its own
     void adopt_text(const Control& control);  // the state of a text field supplied as data
-    Result delete_selection(std::string_view id);
     std::map<Id, std::string, std::less<>> overlay_ids_;
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
@@ -518,6 +498,7 @@ private:
     Result menu_run_builtin(const Id& target, std::string_view command);
     Result validate_menu_items(const std::vector<MenuItem>& items) const;
     void menu_items_changed(const Id& target);
+    Result delete_selection(std::string_view id);  // Delete and the Delete menu item share it
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     // Pointer hover. hover_ is the raw target; hover_target() filters it against the live state.
@@ -552,6 +533,7 @@ private:
     Id active_dialog_;
     bool dialog_transitioning_ = false;
     bool dialog_member(std::string_view id) const;
+    Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
     struct NumericField {
         SliderRange range;
@@ -567,6 +549,7 @@ private:
     struct ProgressField { NumericSource source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
+    Result select_option(const Id& id, OptionValue value);
     void option_source_changed(const Id& id);
     Result toggle_checkbox(const Id& id);
     void bool_source_changed(const Id& id);
@@ -602,6 +585,8 @@ private:
     std::map<Id, int, std::less<>> slider_targets_;  // value each running thumb transition is heading to
     static std::string slider_animation_key(std::string_view id) { return "slider:" + std::string(id); }
     bool slider_transition_live(std::string_view id) const;
+    double slider_display_ratio(std::string_view id) const;
+    void slider_started_moving(const Id& id, double from, int value_before);
     void end_slider_drag(bool slide);  // slide: the release of a drag eases to the tick; an interruption lands at once
     void slider_land(std::string_view id);  // drop a running thumb transition: the thumb is at its value now
     std::optional<std::size_t> pointer_option_;
@@ -632,6 +617,7 @@ private:
     Result submit_field(std::string_view id, Field& field,
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
+    Result edit_key(KeyPress key);  // the keys a text field takes
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
     // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
     FieldView vertical_view(const Id& id);

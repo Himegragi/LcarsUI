@@ -8,6 +8,30 @@
 #include <stdexcept>
 
 namespace lcars::detail {
+// The per-type state and the engines a component type reaches into. UiState only declares this class, so nothing outside
+// this file can use it: the maps, and the helpers of the engines the types share with the rest of the state.
+struct UiState::Internals {
+    template <class U> static auto& edits(U& ui) { return ui.edits_; }
+    template <class U> static auto& bools(U& ui) { return ui.bools_; }
+    template <class U> static auto& radios(U& ui) { return ui.radios_; }
+    template <class U> static auto& dropdowns(U& ui) { return ui.dropdowns_; }
+    template <class U> static auto& tabs(U& ui) { return ui.tabs_; }
+    template <class U> static auto& lists(U& ui) { return ui.lists_; }
+    template <class U> static auto& numerics(U& ui) { return ui.numerics_; }
+    template <class U> static auto& progresses(U& ui) { return ui.progresses_; }
+    template <class U> static auto& errors(U& ui) { return ui.errors_; }
+    template <class U> static auto& providers(U& ui) { return ui.providers_; }
+    template <class U> static auto& shortcuts(U& ui) { return ui.shortcuts_; }
+    template <class U, class F> static bool source_matches(const U& ui, const F& field) { return ui.source_matches(field); }
+    template <class U, class F> static auto insertion_style(const U& ui, const F& field, unsigned first, unsigned last) { return ui.insertion_style(field, first, last); }
+    template <class U> static const WordBreaker& dictionary(const U& ui) { return ui.dictionary(); }
+    static Result select_option(UiState& ui, const Id& id, OptionValue value) { return ui.select_option(id, std::move(value)); }
+    static Result select_dropdown(UiState& ui, const Id& id, OptionValue value) { return ui.select_dropdown(id, std::move(value)); }
+    static double slider_display_ratio(const UiState& ui, std::string_view id) { return ui.slider_display_ratio(id); }
+    static void slider_started_moving(UiState& ui, const Id& id, double from, int value_before) { ui.slider_started_moving(id, from, value_before); }
+    static Result edit_key(UiState& ui, KeyPress key) { return ui.edit_key(key); }
+    static Result delete_selection(UiState& ui, std::string_view id) { return ui.delete_selection(id); }
+};
 Palette ComponentPaint::palette() const { return ui.effective_palette(appearance); }
 ComponentPresentation ComponentPaint::presentation() const { return appearance.component_presentation(ui.presentation().density); }
 ComponentPresentation ComponentLayout::presentation() const { return appearance.component_presentation(ui.presentation().density); }
@@ -430,7 +454,7 @@ public:
         if (command == menu_cut) return ui.cut(target);
         if (command == menu_copy) return ui.copy(target);
         if (command == menu_paste) return ui.paste_clipboard(target);
-        if (command == menu_delete) return ui.delete_selection(target);
+        if (command == menu_delete) return UiState::Internals::delete_selection(ui, target);
         if (command == menu_bold) return ui.toggle_style(target, StyleAttribute::bold);
         if (command == menu_italic) return ui.toggle_style(target, StyleAttribute::italic);
         if (command == menu_underline) return ui.toggle_style(target, StyleAttribute::underline);
@@ -790,7 +814,7 @@ public:
             (key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end || key.key == Key::backspace || key.key == Key::del ||
              (multi && (key.key == Key::enter || key.key == Key::up || key.key == Key::down || key.key == Key::page_up || key.key == Key::page_down)));
     }
-    Result key_down(UiState& ui, KeyPress key) const override { return ui.edit_key(key); }
+    Result key_down(UiState& ui, KeyPress key) const override { return UiState::Internals::edit_key(ui, key); }
 };
 // Legacy toggle/navigation use the button presentation, but have no button activation behavior.
 class Command : public ComponentType {
@@ -1038,14 +1062,14 @@ public:
         int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
         for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
         for (int i = index + direction; i >= 0 && i < n; i += direction)
-            if (field.options[i].enabled) return ui.select_option(ui.focused(), field.options[i].value);
+            if (field.options[i].enabled) return UiState::Internals::select_option(ui, ui.focused(), field.options[i].value);
         return {};
     }
     void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
     Result pointer_up(UiState& ui, const PointerRelease& release) const override {
         auto& field = UiState::Internals::radios(ui).at(release.id);
         if (!release.pressed_option || release.pressed_option != release.option || *release.option >= field.options.size()) return {};
-        return ui.select_option(release.id, field.options[*release.option].value);
+        return UiState::Internals::select_option(ui, release.id, field.options[*release.option].value);
     }
 };
 class List final : public ComponentType {
@@ -1300,7 +1324,7 @@ public:
         if (key.key == Key::enter || key.key == Key::space) {
             if (key.repeat) return {};
             if (!ui.popup_open(focus)) return std::get<DropdownHandle>(ui.layout_handle(focus)).open();
-            auto candidate = f.candidate; ui.close_popup(); return candidate ? ui.select_dropdown(focus, *candidate) : Result{};
+            auto candidate = f.candidate; ui.close_popup(); return candidate ? UiState::Internals::select_dropdown(ui, focus, *candidate) : Result{};
         }
         if (!ui.popup_open(focus)) return {};
         int direction = key.key == Key::down || key.key == Key::right ? 1 : key.key == Key::up || key.key == Key::left ? -1 : 0;
@@ -1321,7 +1345,7 @@ public:
         const auto& f = UiState::Internals::dropdowns(ui).at(release.id);
         if (release.pressed_value) {
             if (!ui.popup_open(release.id) || !release.option || *release.option >= f.options.size() || f.options[*release.option].value != *release.pressed_value) return {};
-            ui.close_popup(); return ui.select_dropdown(release.id, *release.pressed_value);
+            ui.close_popup(); return UiState::Internals::select_dropdown(ui, release.id, *release.pressed_value);
         }
         if (release.pressed_option || release.option) return {};
         return std::get<DropdownHandle>(ui.layout_handle(release.id)).open();
@@ -1428,9 +1452,9 @@ public:
             break;
         default: return {};
         }
-        const double from = ui.slider_display_ratio(id);
+        const double from = UiState::Internals::slider_display_ratio(ui, id);
         auto result = ui.slider_set_value(id, static_cast<int>(target));
-        ui.slider_started_moving(id, from, static_cast<int>(value));
+        UiState::Internals::slider_started_moving(ui, id, from, static_cast<int>(value));
         return result;
     }
     void pointer_down(UiState& ui, const Control& c, std::optional<std::size_t> option) const override { ui.arm_pointer(c.id, option); }
