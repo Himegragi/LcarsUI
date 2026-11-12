@@ -79,7 +79,7 @@ new：Web：`選取列外圍 3 DIP focus 色圓角環（半徑 6 DIP，內側 se
 ### 調色盤角色 `focus`（規格 2 的調色盤／#78 段）
 
 - 角色名單加 `focus`（顏色）；內建兩套外觀的值等於各自的 `accent`。
-- 語意：`Ui::effective_palette` 在覆寫清單沒有單獨換掉 `focus` 時，讓 `focus` 跟著（被換過的）`accent`；清單換 `focus` 時只換外框色。自訂外觀（非內建）的 `Palette::focus` 預設等於它的 `accent`。
+- 語意：`Palette::focus` 是 `std::optional<Color>`，空的（預設）就等於當下的 `accent`（`Palette::focus_color()`）。因此「沒被單獨換掉的 `focus` 跟著 `accent`」對所有外觀都成立：內建外觀被 `accent` 覆寫換色時外框跟著變；自訂外觀在建構之後才指定 `accent` 也一樣。清單換 `focus` 時只換外框色；自訂外觀自己設了 `focus` 就釘在那個色。`Ui::effective_palette` 回傳的 `focus` 一律已決定（有值）。
 - `set_palette_overrides` 檢查加三條：`focus/surface`、`focus/background`、`focus/panel` 各 ≥ 3:1（WCAG 1.4.11），不過整筆回 `invalid_value`，原清單不變；每一套內建調色盤（兩外觀 × 淺／深）都通過。
 
 ## 規格 3（`v1-semantic-layer-and-uia.md` 或規格 3 的對比規則段，#86 outline／#74 hover）

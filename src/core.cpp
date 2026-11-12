@@ -205,21 +205,17 @@ bool is_builtin_appearance(const Appearance& appearance) {
     return std::find(list.begin(), list.end(), &appearance) != list.end();
 }
 Palette apply_overrides(Palette palette, const std::vector<PaletteOverride>& overrides, std::string_view appearance, const ThemeVariant& variant) {
-    bool focus_replaced = false;
     for (const auto& entry : overrides)
-        if (entry.appearance == appearance && entry.variant == variant) {
-            set_palette_value(palette, entry.role, entry.value);
-            focus_replaced = focus_replaced || entry.role == "focus";
-        }
-    if (!focus_replaced) palette.focus = palette.accent;  // the ring follows the accent unless it was replaced itself
+        if (entry.appearance == appearance && entry.variant == variant) set_palette_value(palette, entry.role, entry.value);
     return palette;
 }
 std::u16string ascii16(const std::string& text) { return std::u16string(text.begin(), text.end()); }
 }
 Palette detail::UiState::effective_palette(const Appearance& appearance, const ThemeVariant& variant) const {
     auto palette = appearance.palette(variant);
-    if (palette_overrides_.empty() || !is_builtin_appearance(appearance)) return palette;
-    return apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+    if (!palette_overrides_.empty() && is_builtin_appearance(appearance)) palette = apply_overrides(palette, palette_overrides_, appearance.name(), variant);
+    palette.focus = palette.focus_color();  // settled here for every appearance: the ring is the accent unless the palette or an override pinned it
+    return palette;
 }
 Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overrides) {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};

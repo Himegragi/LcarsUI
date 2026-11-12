@@ -12,13 +12,14 @@ constexpr std::array color_roles{
     ColorRole{"text", &Palette::text}, ColorRole{"muted", &Palette::muted}, ColorRole{"border", &Palette::border}, ColorRole{"outline", &Palette::outline},
     ColorRole{"accent", &Palette::accent}, ColorRole{"on_accent", &Palette::on_accent}, ColorRole{"selection", &Palette::selection},
     ColorRole{"error", &Palette::error}, ColorRole{"scrim", &Palette::scrim}, ColorRole{"hover", &Palette::hover},
-    ColorRole{"focus", &Palette::focus},
 };
+// "focus" is a role too, but its field is optional (empty = follows the accent), so it is handled by name beside this list.
+constexpr std::string_view focus_role = "focus";
 struct AlphaRole { std::string_view name; unsigned char Palette::* member; };
 constexpr std::array alpha_roles{
     AlphaRole{"scrim_alpha", &Palette::scrim_alpha}, AlphaRole{"hover_alpha", &Palette::hover_alpha},
 };
-static_assert(sizeof(Palette) == color_roles.size() * sizeof(Color) + alpha_roles.size() * sizeof(unsigned char),
+static_assert(sizeof(Palette) == color_roles.size() * sizeof(Color) + alpha_roles.size() * sizeof(unsigned char) + sizeof(std::optional<Color>),
               "Palette gained a field that palette_roles() does not list; add it to color_roles or alpha_roles in palette.cpp");
 
 double linear(unsigned char channel) {
@@ -35,6 +36,7 @@ Color hovered(const Palette& p, Color under) {
 std::vector<std::string_view> palette_roles() {
     std::vector<std::string_view> names;
     for (const auto& role : color_roles) names.push_back(role.name);
+    names.push_back(focus_role);
     for (const auto& role : alpha_roles) names.push_back(role.name);
     return names;
 }
@@ -43,6 +45,7 @@ std::optional<PaletteValue> palette_value(const Palette& palette, std::string_vi
         if (entry.name == role) return PaletteValue{static_cast<int>(palette.*entry.member)};
     for (const auto& entry : color_roles)
         if (entry.name == role) return PaletteValue{palette.*entry.member};
+    if (role == focus_role) return PaletteValue{palette.focus_color()};
     return std::nullopt;
 }
 bool set_palette_value(Palette& palette, std::string_view role, const PaletteValue& value) {
@@ -57,6 +60,7 @@ bool set_palette_value(Palette& palette, std::string_view role, const PaletteVal
     if (!color) return false;
     for (const auto& entry : color_roles)
         if (entry.name == role) { palette.*entry.member = *color; return true; }
+    if (role == focus_role) { palette.focus = *color; return true; }
     return false;
 }
 double contrast_ratio(Color a, Color b) {
@@ -72,7 +76,7 @@ std::vector<ContrastFailure> check_palette_contrast(const Palette& p) {
         {"muted/surface", p.muted, p.surface, 4.5}, {"error/surface", p.error, p.surface, 4.5},
         {"on_accent/accent", p.on_accent, p.accent, 4.5}, {"accent/surface", p.accent, p.surface, 3.0},
         // The focus ring is drawn on the page, on panels and on surfaces (WCAG 1.4.11).
-        {"focus/surface", p.focus, p.surface, 3.0}, {"focus/background", p.focus, p.background, 3.0}, {"focus/panel", p.focus, p.panel, 3.0},
+        {"focus/surface", p.focus_color(), p.surface, 3.0}, {"focus/background", p.focus_color(), p.background, 3.0}, {"focus/panel", p.focus_color(), p.panel, 3.0},
         {"outline/surface", p.outline, p.surface, 3.0}, {"outline/background", p.outline, p.background, 3.0}, {"outline/panel", p.outline, p.panel, 3.0},
         // Hover must not take an outline below 3:1 against the surface it is drawn on (WCAG 1.4.11).
         {"outline/hovered surface", p.outline, hovered(p, p.surface), 3.0}, {"outline/hovered background", p.outline, hovered(p, p.background), 3.0},

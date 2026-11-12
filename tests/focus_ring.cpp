@@ -26,6 +26,8 @@ namespace {
 const Appearance* const builtins[] = {&web_appearance(), &material_appearance()};
 const ThemeVariant variants[] = {ThemeVariant::light(), ThemeVariant::dark()};
 std::string name_of(const Appearance& a) { return std::string(a.name()); }
+// Ui::effective_palette settles an empty `focus` to the accent; a palette straight from an appearance has not been settled yet.
+Palette settled(Palette p) { p.focus = p.focus_color(); return p; }
 
 // ---- presentation settings -------------------------------------------------------------------
 
@@ -62,7 +64,7 @@ void focus_is_a_palette_role_equal_to_accent_by_default() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants) {
             auto p = appearance->palette(variant);
-            check(p.focus == p.accent, (name_of(*appearance) + " " + variant.name + ": focus defaults to accent").c_str());
+            check(!p.focus && p.focus_color() == p.accent, (name_of(*appearance) + " " + variant.name + ": focus defaults to accent").c_str());
         }
     Palette p = web_appearance().palette();
     check(set_palette_value(p, "focus", Color{1, 2, 3}) && p.focus == Color{1, 2, 3}, "focus is settable by name");
@@ -81,7 +83,7 @@ void replacing_accent_moves_focus_unless_focus_is_replaced_too() {
             auto p = *only_accent.effective_palette(*appearance, variant);
             check(p.accent == nudged && p.focus == nudged, (label + ": focus follows the replaced accent").c_str());
             Ui only_focus;
-            Color own{static_cast<unsigned char>(base.focus.r == 255 ? 254 : base.focus.r + 1), base.focus.g, base.focus.b};
+            Color own{static_cast<unsigned char>(base.accent.r == 255 ? 253 : base.accent.r + 2), base.accent.g, base.accent.b};
             check(bool(only_focus.set_palette_overrides({{std::string(appearance->name()), variant, "focus", own}})), (label + ": focus override accepted").c_str());
             p = *only_focus.effective_palette(*appearance, variant);
             check(p.focus == own && p.accent == base.accent, (label + ": replacing focus alone leaves accent alone").c_str());
@@ -92,13 +94,46 @@ void replacing_accent_moves_focus_unless_focus_is_replaced_too() {
         }
 }
 
+// Review item 2: "focus not set => follows accent" holds for every appearance, not only inside one brace initializer.
+struct AccentAfterwards final : Appearance {
+    // A custom appearance that starts from the Web palette and then assigns its own accent (and maybe focus).
+    explicit AccentAfterwards(std::optional<Color> own_focus = std::nullopt) : own_focus_(own_focus) {}
+    static constexpr Color accent{10, 80, 160};
+    std::string_view name() const override { return "Accent afterwards"; }
+    Palette palette() const override {
+        Palette p = web_appearance().palette(); p.accent = accent; p.on_accent = {255, 255, 255};
+        if (own_focus_) p.focus = *own_focus_;
+        return p;
+    }
+    FieldParts field(Rect b, int s) const override { return web_appearance().field(b, s); }
+    int radius() const override { return 6; }
+    FieldLayout arrange_field(int w, const FieldText& t, float s) const override { return web_appearance().arrange_field(w, t, s); }
+    int button_height(int l, float s) const override { return web_appearance().button_height(l, s); }
+    int button_padding(float s) const override { return web_appearance().button_padding(s); }
+    std::optional<Color> own_focus_;
+};
+void a_custom_appearance_that_assigns_accent_afterwards_keeps_the_ring_on_its_accent() {
+    Ui ui;
+    AccentAfterwards custom;
+    auto p = ui.effective_palette(custom, ThemeVariant::light());
+    check(p && p->accent == AccentAfterwards::accent && p->focus == AccentAfterwards::accent, "focus left out follows the accent the custom appearance assigned later");
+    Ui overridden;
+    check(bool(overridden.set_palette_overrides({{"Minimal Web", ThemeVariant::light(), "accent", Color{20, 110, 50}}})), "an accent override on a built-in is accepted");
+    p = overridden.effective_palette(custom, ThemeVariant::light());
+    check(p && p->focus == AccentAfterwards::accent, "overrides never touch a custom appearance, its ring still follows its own accent");
+    const Color own{120, 40, 160};
+    AccentAfterwards explicit_focus{own};
+    p = ui.effective_palette(explicit_focus, ThemeVariant::light());
+    check(p && p->accent == AccentAfterwards::accent && p->focus == own, "a custom appearance that sets focus itself keeps it");
+}
+
 void focus_needs_three_to_one_on_every_surface() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants) {
             auto p = appearance->palette(variant);
             const auto label = name_of(*appearance) + " " + variant.name;
             for (auto surface : {p.background, p.panel, p.surface})
-                check(contrast_ratio(p.focus, surface) >= 3.0, (label + ": the built-in ring color is 3:1 on every surface").c_str());
+                check(contrast_ratio(p.focus_color(), surface) >= 3.0, (label + ": the built-in ring color is 3:1 on every surface").c_str());
             check(check_palette_contrast(p).empty(), (label + ": the built-in palette passes every rule").c_str());
         }
     // The just-passing / just-failing literals per surface live with the other contrast rules (tests/palette_override.cpp).
@@ -263,7 +298,7 @@ void every_component_draws_one_closed_rounded_ring() {
             check(ring->inner.x - ring->outer.x == w && ring->inner.y - ring->outer.y == w &&
                   ring->outer.x + ring->outer.w - (ring->inner.x + ring->inner.w) == w && ring->outer.y + ring->outer.h - (ring->inner.y + ring->inner.h) == w,
                   (label + ": the frame is the same thickness on all four sides").c_str());
-            check(ring->color == page.state().effective_palette(r.appearance).focus && ring->color != ring->base, (label + ": the ring is drawn in the focus color").c_str());
+            check(ring->color == page.state().effective_palette(r.appearance).focus_color() && ring->color != ring->base, (label + ": the ring is drawn in the focus color").c_str());
             check(ring->outer == expected_outer(item, s, w), (label + ": the ring frames what ticket item 1 says").c_str());
             const int own = s.kind == Kind::navigation_list && r.appearance.name() == "Material-inspired" ? ring->outer.h / 2 : scaled(r.scale, r.appearance.radius());
             const int capped = std::min(own, std::min(ring->outer.w, ring->outer.h) / 2);
@@ -379,7 +414,7 @@ void the_ring_follows_the_focus_color_and_turns_error_colored_when_invalid() {
                 const auto label = base + " " + variant.name;
                 const auto palette = r.appearance.palette(variant);
                 const auto ring = find_ring(probe.cmds);
-                check(ring && ring->color == palette.focus && palette.focus == palette.accent, (label + ": the ring is drawn in the palette's focus color").c_str());
+                check(ring && ring->color == palette.focus_color() && palette.focus_color() == palette.accent, (label + ": the ring is drawn in the palette's focus color").c_str());
                 auto invalid = s; invalid.invalid = true;
                 Probe again(page.state(), item, invalid, r.appearance, r.scale, true);
                 detail::component_type(s.kind).paint(again);
@@ -428,16 +463,16 @@ void replacing_focus_or_accent_recolors_the_ring_as_the_ticket_says() {
         };
         auto [plain_ring, plain_thumb] = ring_and_thumb({});
         check(plain_ring == base.accent && plain_thumb == base.accent, (name + ": by default the ring and the thumb are the accent").c_str());
-        auto [own_ring, own_thumb] = ring_and_thumb({{name, ThemeVariant::light(), "focus", nudge(base.focus)}});
-        check(own_ring == nudge(base.focus) && own_thumb == base.accent, (name + ": replacing focus recolors only the ring").c_str());
+        auto [own_ring, own_thumb] = ring_and_thumb({{name, ThemeVariant::light(), "focus", nudge(base.focus_color())}});
+        check(own_ring == nudge(base.focus_color()) && own_thumb == base.accent, (name + ": replacing focus recolors only the ring").c_str());
         auto [moved_ring, moved_thumb] = ring_and_thumb({{name, ThemeVariant::light(), "accent", nudge(base.accent)}});
         check(moved_ring == nudge(base.accent) && moved_thumb == nudge(base.accent), (name + ": replacing accent moves the ring along").c_str());
-        auto [both_ring, both_thumb] = ring_and_thumb({{name, ThemeVariant::light(), "accent", nudge(base.accent)}, {name, ThemeVariant::light(), "focus", nudge(nudge(base.focus))}});
-        check(both_ring == nudge(nudge(base.focus)) && both_thumb == nudge(base.accent), (name + ": an explicit focus is not dragged along by accent").c_str());
+        auto [both_ring, both_thumb] = ring_and_thumb({{name, ThemeVariant::light(), "accent", nudge(base.accent)}, {name, ThemeVariant::light(), "focus", nudge(nudge(base.focus_color()))}});
+        check(both_ring == nudge(nudge(base.focus_color())) && both_thumb == nudge(base.accent), (name + ": an explicit focus is not dragged along by accent").c_str());
         Ui ui;
         auto refused = ui.set_palette_overrides({{name, ThemeVariant::light(), "focus", Color{base.background.r, base.background.g, base.background.b}}});
         check(refused.status == Status::invalid_value, (name + ": a ring color without 3:1 on the page is refused").c_str());
-        check(ui.palette_overrides().empty() && *ui.effective_palette(*appearance, ThemeVariant::light()) == base, (name + ": a refused list changes nothing").c_str());
+        check(ui.palette_overrides().empty() && *ui.effective_palette(*appearance, ThemeVariant::light()) == settled(base), (name + ": a refused list changes nothing").c_str());
     }
 }
 
@@ -505,6 +540,7 @@ int main() {
     static const test::Case cases[] = {
         {"ring_width_and_radius_accept_their_bounds_and_refuse_the_rest", ring_width_and_radius_accept_their_bounds_and_refuse_the_rest},
         {"focus_is_a_palette_role_equal_to_accent_by_default", focus_is_a_palette_role_equal_to_accent_by_default},
+        {"a_custom_appearance_that_assigns_accent_afterwards_keeps_the_ring_on_its_accent", a_custom_appearance_that_assigns_accent_afterwards_keeps_the_ring_on_its_accent},
         {"replacing_accent_moves_focus_unless_focus_is_replaced_too", replacing_accent_moves_focus_unless_focus_is_replaced_too},
         {"focus_needs_three_to_one_on_every_surface", focus_needs_three_to_one_on_every_surface},
         {"every_component_draws_one_closed_rounded_ring", every_component_draws_one_closed_rounded_ring},

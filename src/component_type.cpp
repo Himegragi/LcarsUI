@@ -986,7 +986,7 @@ ComponentPaint::RingShape ComponentPaint::focus_ring(Rect outer, int own_radius,
     const auto shape = ring_shape(outer, ring_radius(own_radius), ring_width());
     const auto marks = invalid ? PaintRole::focus_indicator | PaintRole::error_indicator : PaintRole::focus_indicator;
     marked(*this, marks, [&] {
-        rounded(outer, shape.outer_radius, invalid ? palette().error : palette().focus);
+        rounded(outer, shape.outer_radius, invalid ? palette().error : palette().focus_color());
         rounded(shape.inner, shape.inner_radius, fill);
     });
     return shape;

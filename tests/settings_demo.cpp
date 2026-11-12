@@ -206,7 +206,8 @@ void accent_choices_pass_contrast_everywhere() {
             for (const auto& variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
                 auto palette = demo.ui.effective_palette(*appearance, variant);
                 test::check(palette && check_palette_contrast(*palette).empty(), (std::string("accent ") + id + " passes contrast for " + std::string(appearance->name()) + " " + variant.name).c_str());
-                bool unchanged = palette && *palette == appearance->palette(variant);
+                auto built_in = appearance->palette(variant); built_in.focus = built_in.focus_color();  // the effective palette has its ring color settled
+                bool unchanged = palette && *palette == built_in;
                 test::check(unchanged == (std::string(id) == "default"), "default leaves built-in colors, other choices change them");
             }
     }
@@ -327,8 +328,8 @@ void ring_colors_pass_three_to_one_everywhere_and_follow_the_accent_by_default()
                 const std::string where = std::string(id) + " " + std::string(appearance->name()) + " " + variant.name;
                 test::check(palette && check_palette_contrast(*palette).empty(), (where + " passes every contrast rule").c_str());
                 for (auto surface : {palette->background, palette->panel, palette->surface})
-                    test::check(contrast_ratio(palette->focus, surface) >= 3.0, (where + " ring is 3:1 on every surface").c_str());
-                test::check((palette->focus == appearance->palette(variant).focus) == (std::string(id) == "default"), (where + ": default leaves the ring on the accent, the others change it").c_str());
+                    test::check(contrast_ratio(palette->focus_color(), surface) >= 3.0, (where + " ring is 3:1 on every surface").c_str());
+                test::check((palette->focus_color() == appearance->palette(variant).focus_color()) == (std::string(id) == "default"), (where + ": default leaves the ring on the accent, the others change it").c_str());
             }
     }
     settings_demo::Demo demo;
@@ -356,7 +357,7 @@ void ring_colors_paint_the_focus_indicator() {
         auto semantic = state.describe("appearance.reset");
         DarkProbe paint(state, *placed, *semantic, *appearance, 1.f, true);
         detail::component_type(semantic->kind).paint(paint);
-        const auto orange = demo.ui.effective_palette(*appearance, demo.ui.presentation().variant)->focus;
+        const auto orange = demo.ui.effective_palette(*appearance, demo.ui.presentation().variant)->focus_color();
         test::check(paint.has(orange, detail::PaintRole::focus_indicator) && orange != appearance->palette(ThemeVariant::light()).accent, "the ring is painted in the chosen color");
     }
 }

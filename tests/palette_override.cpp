@@ -16,6 +16,8 @@ namespace {
 const Appearance* const builtins[] = {&web_appearance(), &material_appearance()};
 const ThemeVariant variants[] = {ThemeVariant::light(), ThemeVariant::dark()};
 std::string name_of(const Appearance& a) { return std::string(a.name()); }
+// Ui::effective_palette settles an empty `focus` to the accent; a palette straight from an appearance has not been settled yet.
+Palette settled(Palette p) { p.focus = p.focus_color(); return p; }
 Color gray(unsigned char v) { return {v, v, v}; }
 PaletteOverride entry(const Appearance& a, ThemeVariant v, std::string role, PaletteValue value) {
     return {name_of(a), std::move(v), std::move(role), std::move(value)};
@@ -87,7 +89,7 @@ void without_overrides_every_palette_is_the_builtin_value() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants) {
             auto effective = ui.effective_palette(*appearance, variant);
-            check(effective && *effective == appearance->palette(variant), "effective palette equals the built-in palette");
+            check(effective && *effective == settled(appearance->palette(variant)), "effective palette equals the built-in palette");
         }
 }
 
@@ -97,9 +99,9 @@ void overriding_web_light_accent_changes_only_that_combination() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants) {
             auto expected = appearance->palette(variant);
-            if (appearance == &web_appearance() && variant == ThemeVariant::light()) expected.accent = expected.focus = green;  // the ring follows a replaced accent
+            if (appearance == &web_appearance() && variant == ThemeVariant::light()) expected.accent = green;
             auto effective = ui.effective_palette(*appearance, variant);
-            check(effective && *effective == expected, (name_of(*appearance) + " " + variant.name + " effective palette").c_str());
+            check(effective && *effective == settled(expected), (name_of(*appearance) + " " + variant.name + " effective palette").c_str());
         }
     check(ui.palette_overrides().size() == 1 && ui.palette_overrides()[0].role == "accent", "override list is readable");
 }
@@ -132,7 +134,7 @@ void every_palette_role_is_overridable_and_isolated() {
                 for (const auto* other_appearance : builtins)
                     for (const auto& other_variant : variants)
                         if (other_appearance != appearance || !(other_variant == variant))
-                            check(*ui.effective_palette(*other_appearance, other_variant) == other_appearance->palette(other_variant), (label + " leaves others untouched").c_str());
+                            check(*ui.effective_palette(*other_appearance, other_variant) == settled(other_appearance->palette(other_variant)), (label + " leaves others untouched").c_str());
             }
 }
 
@@ -248,7 +250,7 @@ void replacing_and_clearing_the_list_takes_effect_immediately() {
     check(bool(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "accent", orange)})) && invalidations == 2, "replacing requests a repaint");
     check(ui.effective_palette(web_appearance(), ThemeVariant::light())->accent == orange, "whole list is replaced, not merged");
     check(bool(ui.set_palette_overrides({})) && invalidations == 3, "clearing requests a repaint");
-    check(ui.palette_overrides().empty() && *ui.effective_palette(web_appearance(), ThemeVariant::light()) == web_appearance().palette(), "cleared list restores built-in values");
+    check(ui.palette_overrides().empty() && *ui.effective_palette(web_appearance(), ThemeVariant::light()) == settled(web_appearance().palette()), "cleared list restores built-in values");
     check(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "glow", green)}).status == Status::invalid_value && invalidations == 3, "a rejected list does not repaint");
 }
 
@@ -271,7 +273,7 @@ void a_custom_appearance_is_never_overridden() {
     Ui ui;
     check(bool(ui.set_palette_overrides({entry(web_appearance(), ThemeVariant::light(), "accent", green)})), "override accepted");
     auto effective = ui.effective_palette(custom, ThemeVariant::light());
-    check(effective && *effective == custom.palette(), "a custom appearance keeps its own palette even when it reuses a built-in name");
+    check(effective && *effective == settled(custom.palette()), "a custom appearance keeps its own palette even when it reuses a built-in name");
 }
 
 void painting_uses_the_overridden_colors_for_the_current_combination() {
@@ -346,7 +348,7 @@ void the_semantic_layer_reads_the_effective_palette_read_only() {
     auto dark = ui.semantics().effective_palette();
     check(dark && *dark == *ui.effective_palette(web_appearance(), ThemeVariant::dark()) && dark->accent == (Color{250, 200, 100}), "semantic palette follows the variant");
     ui.bind_appearance(&material_appearance());
-    check(*ui.semantics().effective_palette() == material_appearance().palette(ThemeVariant::dark()), "semantic palette follows the bound appearance");
+    check(*ui.semantics().effective_palette() == settled(material_appearance().palette(ThemeVariant::dark())), "semantic palette follows the bound appearance");
     ui.bind_appearance(nullptr);
     check(ui.semantics().effective_palette().status == Status::not_found, "unbound again");
     Status status = Status::ok;
