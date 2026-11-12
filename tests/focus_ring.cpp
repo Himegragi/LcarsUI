@@ -14,6 +14,7 @@
 #include "component_type.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
+#include "focus_marks.hpp"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -264,26 +265,21 @@ void for_each_focused(const Run& r, const std::function<void(PresentationSetting
 }
 int ring_px(const Page& page, float scale) { return scaled(scale, page.ui.presentation().focus_ring_width.value_or(3)); }
 
-// What each component frames (ticket item 1). Returns the rectangle the ring must have.
-Rect expected_outer(const Placement& item, const Semantics& s, int width_px) {
+// What each component frames (ticket item 1), worked out from the page fixture and the placement's own rectangles, never from the
+// rules production uses to choose a row or to size the ring. Returns the rectangle the ring must have; an empty result for the
+// slider, whose ring has no single rectangle in the placement (see the slider check in the driver).
+std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const Semantics& s) {
     auto offset = [](Rect r, Rect origin) { return Rect{r.x + origin.x, r.y + origin.y, r.w, r.h}; };
+    // The row of one option, found by its value in the semantic option list.
+    auto row = [&](const char* value) { for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
     if (s.kind == Kind::text) return offset(item.field.surface, item.bounds);
-    if (s.kind == Kind::radio_group) {
-        std::size_t row = 0;
-        bool found = false;
-        for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].selected) { row = i; found = true; break; }
-        if (!found) for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].enabled) { row = i; break; }
-        return item.options[row];
-    }
-    if (s.kind == Kind::list || s.kind == Kind::tabs) {
-        for (std::size_t i = 0; i < s.options.size(); ++i) if (s.candidate && s.options[i].value == *s.candidate) return item.options[i];
-        return {};
-    }
-    if (s.kind == Kind::navigation_list) {
-        for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].selected) return item.options[i];
-        return {};
-    }
-    if (s.kind == Kind::slider) return {item.bounds.x, item.bounds.y, item.bounds.w, item.slider_track.y + item.slider_track.h + width_px - item.bounds.y};
+    // radio_none has nothing selected and its first option "a" is disabled: the ring is on "b", the first one that can be chosen.
+    // radio_sel has "b" selected. A list and tabs frame their candidate row, navigation its selected row: both are state the
+    // semantic layer reports, not a rule of the painter.
+    if (id == "radio_none" || id == "radio_sel") return row("b");
+    if (s.kind == Kind::list || s.kind == Kind::tabs) return s.candidate ? row(s.candidate->id.c_str()) : Rect{};
+    if (s.kind == Kind::navigation_list) { for (const auto& option : s.options) if (option.selected) return row(option.value.id.c_str()); return Rect{}; }
+    if (s.kind == Kind::slider) return std::nullopt;
     if (s.kind == Kind::label) return item.clip;
     return item.bounds;  // button, checkbox, dropdown
 }
@@ -294,20 +290,30 @@ void every_component_draws_one_closed_rounded_ring() {
             const auto ring = find_ring(probe.cmds);
             check(ring.has_value(), (label + ": the focus indicator is a rounded outer + inner pair").c_str());
             if (!ring) return;
-            check(probe.count(PaintRole::focus_indicator) == 2, (label + ": and nothing else is marked as focus indicator (no strip, bar, underline or dot)").c_str());
+            check(focus_marks::is_one_ring(probe.count(PaintRole::focus_indicator)), (label + ": and nothing else is marked as focus indicator (no strip, bar, underline or dot)").c_str());
             const int w = ring_px(page, r.scale);
             check(ring->outer.w >= 2 * w + 1 && ring->outer.h >= 2 * w + 1, (label + ": the ring has room for its frame").c_str());
             check(ring->inner.x - ring->outer.x == w && ring->inner.y - ring->outer.y == w &&
                   ring->outer.x + ring->outer.w - (ring->inner.x + ring->inner.w) == w && ring->outer.y + ring->outer.h - (ring->inner.y + ring->inner.h) == w,
                   (label + ": the frame is the same thickness on all four sides").c_str());
             check(ring->color == page.state().effective_palette(r.appearance).focus_color() && ring->color != ring->base, (label + ": the ring is drawn in the focus color").c_str());
-            check(ring->outer == expected_outer(item, s, w), (label + ": the ring frames what ticket item 1 says").c_str());
+            if (const auto wanted = expected_outer(s.id, item, s)) check(ring->outer == *wanted, (label + ": the ring frames what ticket item 1 says").c_str());
+            else {
+                // The slider: the ring encloses the title line and the track, stays inside the component, and the thumb is not under its band.
+                bool texts_inside = true; int texts = 0;
+                for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::text) { ++texts; texts_inside = texts_inside && inside(c.rect, ring->inner); }
+                check(texts > 0 && texts_inside && inside(item.slider_track, ring->inner) && inside(ring->outer, item.bounds), (label + ": the slider's ring encloses its title and its track and stays inside the slider").c_str());
+            }
             const int own = s.kind == Kind::navigation_list && r.appearance.name() == "Material-inspired" ? ring->outer.h / 2 : scaled(r.scale, r.appearance.radius());
             const int capped = std::min(own, std::min(ring->outer.w, ring->outer.h) / 2);
             check(ring->outer_radius == capped, (label + ": the default radius is the component's own, a capsule when it is taller").c_str());
             check(ring->inner_radius == std::max(0, ring->outer_radius - w), (label + ": the inner edge is the outer radius minus the thickness").c_str());
             check(s.kind == Kind::label || inside(ring->outer, intersect(item.bounds, item.clip)),
                   (label + ": the ring is drawn inside the component, so a scroll area does not clip it").c_str());
+            if (s.kind == Kind::slider) {
+                int size = 0; for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::rounded && focus_marks::is_thumb(c.rect)) size = c.rect.w;
+                check(size == focus_marks::enlarged_thumb(r.appearance, r.scale), (label + ": the thumb is enlarged while the ring shows").c_str());
+            }
         });
 }
 
@@ -475,7 +481,7 @@ void replacing_focus_or_accent_recolors_the_ring_as_the_ticket_says() {
             detail::component_type(Kind::slider).paint(probe);
             auto ring = find_ring(probe.cmds);
             check(ring.has_value(), "slider ring present");
-            const auto thumb = std::find_if(probe.cmds.begin(), probe.cmds.end(), [&](const Cmd& c) { return c.kind == Cmd::Kind::rounded && c.role == PaintRole::content && c.rect.w == c.rect.h && c.rect.w > 8; });
+            const auto thumb = std::find_if(probe.cmds.begin(), probe.cmds.end(), [&](const Cmd& c) { return c.kind == Cmd::Kind::rounded && c.role == PaintRole::content && focus_marks::is_thumb(c.rect); });
             return std::pair<Color, Color>{ring->color, thumb == probe.cmds.end() ? Color{0, 0, 0} : thumb->color};
         };
         auto [plain_ring, plain_thumb] = ring_and_thumb({});
@@ -504,12 +510,9 @@ void never_draws_no_focus_indicator_on_any_component() {
             check(!page.ui.focus_indicator_visible(), (label + ": the public query says hidden").c_str());
             if (s.kind == Kind::text) check(probe.count(PaintRole::caret) == 1, (label + ": the caret still draws, editable fields included").c_str());
             if (s.kind == Kind::slider) {
-                // the thumb stays its plain size: the same as an unfocused slider's
-                auto unfocused = s; unfocused.focused = false;
-                Probe plain(page.state(), item, unfocused, r.appearance, r.scale, true);
-                detail::component_type(Kind::slider).paint(plain);
-                auto size = [](const Probe& p) { for (const auto& c : p.cmds) if (c.kind == Cmd::Kind::rounded && c.rect.w == c.rect.h && c.rect.w > 8) return c.rect.w; return 0; };
-                check(size(probe) > 0 && size(probe) == size(plain), (label + ": the slider thumb does not grow").c_str());
+                // the thumb stays its plain size
+                int size = 0; for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::rounded && focus_marks::is_thumb(c.rect)) size = c.rect.w;
+                check(size == focus_marks::plain_thumb(r.appearance, r.scale), (label + ": the slider thumb does not grow").c_str());
             }
         });
 }
