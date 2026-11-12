@@ -16,6 +16,9 @@ struct SettingsDocument {
     std::string focus_color = "default";  // "default" (the ring follows the accent), "green" or "orange": overrides the palette's `focus` role
     bool operator==(const SettingsDocument&) const = default;
 };
+// The one spelling of FocusIndicatorMode in the focus-mode dropdown and in the settings file; unknown ids have no mode.
+const char* focus_mode_id(lcars::FocusIndicatorMode mode);
+std::optional<lcars::FocusIndicatorMode> focus_mode_from_id(std::string_view id);
 struct AboutLicense { lcars::OptionValue id; std::u16string name, text; };
 struct AboutInfo {
     bool diagnostics = false;

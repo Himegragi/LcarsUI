@@ -18,6 +18,13 @@ std::u16string fold_ascii(std::u16string value) {
     return value;
 }
 }
+const char* focus_mode_id(FocusIndicatorMode mode) {
+    return mode == FocusIndicatorMode::never ? "never" : mode == FocusIndicatorMode::always ? "always" : "automatic";
+}
+std::optional<FocusIndicatorMode> focus_mode_from_id(std::string_view id) {
+    for (auto mode : {FocusIndicatorMode::automatic, FocusIndicatorMode::always, FocusIndicatorMode::never}) if (id == focus_mode_id(mode)) return mode;
+    return std::nullopt;
+}
 Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
@@ -71,12 +78,11 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     focus_color = ui.add_dropdown({.id="appearance.focus_color",.kind=Kind::dropdown,.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     for (ComponentHandle member : {ComponentHandle{focus_mode}, ComponentHandle{focus_width}, ComponentHandle{focus_radius_same}, ComponentHandle{focus_radius}, ComponentHandle{focus_color}}) nav.add_member({"appearance"}, member);
     focus_mode.connect_source({[this]() -> std::optional<OptionValue> {
-        const auto mode = ui.presentation().focus_indicator;
-        return OptionValue{mode == FocusIndicatorMode::never ? "never" : mode == FocusIndicatorMode::always ? "always" : "automatic"};
+        return OptionValue{focus_mode_id(ui.presentation().focus_indicator)};
     }, subscribe_to(focus_mode_changed_)});
     focus_mode.connect_immediate([this](const DropdownChange& c) {
-        auto settings = ui.presentation(); const std::string id = c.value ? c.value->id : "automatic";
-        settings.focus_indicator = id == "never" ? FocusIndicatorMode::never : id == "always" ? FocusIndicatorMode::always : FocusIndicatorMode::automatic;
+        auto settings = ui.presentation();
+        settings.focus_indicator = (c.value ? focus_mode_from_id(c.value->id) : std::nullopt).value_or(FocusIndicatorMode::automatic);
         return set_presentation(settings);
     });
     // 3 DIP is the appearances' own ring thickness (ComponentPresentation::focus): what the slider shows while the setting is empty.
@@ -376,27 +382,23 @@ const AccentRow accent_rows[] = {
     {"Material-inspired", "dark", {{150,220,160}, {10,50,20}, {40,95,55}}, {{255,184,120}, {70,30,0}, {110,62,20}}},
 };
 }
-std::vector<PaletteOverride> Demo::focus_color_overrides(const std::string& id) {
+namespace {
+// One entry per role for every linked built-in appearance and variant: the colors of the chosen row ("green" or "orange"), none for "default".
+std::vector<PaletteOverride> row_overrides(const std::string& id, std::vector<std::pair<const char*, Color>> (*roles)(const AccentColors&)) {
     std::vector<PaletteOverride> list;
     if (id != "green" && id != "orange") return list;
     for (const auto& row : accent_rows) {
         if (!builtin_appearance(row.appearance)) continue;
-        list.push_back({row.appearance, ThemeVariant{row.variant}, "focus", (id == "green" ? row.green : row.orange).accent});
+        for (const auto& [role, color] : roles(id == "green" ? row.green : row.orange)) list.push_back({row.appearance, ThemeVariant{row.variant}, role, color});
     }
     return list;
 }
+}
+std::vector<PaletteOverride> Demo::focus_color_overrides(const std::string& id) {
+    return row_overrides(id, [](const AccentColors& c) { return std::vector<std::pair<const char*, Color>>{{"focus", c.accent}}; });
+}
 std::vector<PaletteOverride> Demo::accent_overrides(const std::string& id) {
-    std::vector<PaletteOverride> list;
-    if (id != "green" && id != "orange") return list;
-    for (const auto& row : accent_rows) {
-        if (!builtin_appearance(row.appearance)) continue;
-        const auto& c = id == "green" ? row.green : row.orange;
-        ThemeVariant variant{row.variant};
-        list.push_back({row.appearance, variant, "accent", c.accent});
-        list.push_back({row.appearance, variant, "on_accent", c.on_accent});
-        list.push_back({row.appearance, variant, "selection", c.selection});
-    }
-    return list;
+    return row_overrides(id, [](const AccentColors& c) { return std::vector<std::pair<const char*, Color>>{{"accent", c.accent}, {"on_accent", c.on_accent}, {"selection", c.selection}}; });
 }
 Result Demo::apply_palette(const std::string& accent_id, const std::string& focus_id) {
     auto list = accent_overrides(accent_id), focus = focus_color_overrides(focus_id);
