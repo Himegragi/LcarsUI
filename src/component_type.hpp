@@ -1,6 +1,15 @@
 #pragma once
 // Internal dispatch for the component types implemented by this slice. Applications continue
 // to use the typed handles in the public headers; this is not a public plug-in API.
+//
+// Everything that differs between component types is asked of the type here, never decided from Kind elsewhere: Kind is the
+// key of the registry (and public data), nothing more. A new type is one class in component_type.cpp, registered in types(),
+// that overrides what it needs: arrange and paint; name and role; the keys it takes (handles_key, key_down) and its press and
+// release (pointer_down, pointer_up); its part of the semantic tree (describe, describe_operations, describe_node, verbs,
+// perform); and the host, layout and menu questions at the end of ComponentType. The defaults describe a type with nothing
+// special. A typed handle, its Ui::add_x and its field state in UiState are only needed when applications are to configure
+// it from code; a type that is created as data (UiState::seed_test_controls) needs none of them. ScopedComponentType
+// registers a test-only type the same way.
 #include "lcars/core.hpp"
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"

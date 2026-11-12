@@ -277,6 +277,16 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     check(stepper.presses == 1 && stepper.releases == 1 && host.focused() == "sink", "an ignored press neither focuses nor arms");
 }
 
+// Debug names come from the registry, not from the order of the Kind enumeration: each built-in type names itself.
+void built_in_types_name_themselves() {
+    struct Expected { Kind kind; const char* name; };
+    const Expected expected[] = {{Kind::text, "text"}, {Kind::button, "button"}, {Kind::label, "label"}, {Kind::checkbox, "checkbox"},
+        {Kind::radio_group, "radio_group"}, {Kind::slider, "slider"}, {Kind::dropdown, "dropdown"}, {Kind::list, "list"}, {Kind::tabs, "tabs"},
+        {Kind::progress, "progress"}, {Kind::navigation_list, "navigation_list"}};
+    for (const auto& item : expected) check(detail::component_type(item.kind).name() == item.name, item.name);
+    check(detail::find_component_type(static_cast<Kind>(99)) == nullptr, "a Kind without a type is not invented");
+}
+
 #ifndef NDEBUG
 // The diagnostic that names an existing component's type when its ID is taken again.
 void debug_names_in_diagnostics() {
@@ -299,6 +309,7 @@ int main(int argc, char** argv) {
         {"key policy of every built-in type", key_policy_of_every_built_in_type},
         {"semantics of every built-in type", semantics_of_every_built_in_type},
         {"confirm verb of every built-in type", confirm_verb_of_every_built_in_type},
+        {"built-in types name themselves", built_in_types_name_themselves},
         {"a registered type takes part in keys, pointer and semantics", a_registered_type_takes_part_in_keys_pointer_and_semantics},
 #ifndef NDEBUG
         {"debug names in diagnostics", debug_names_in_diagnostics},
