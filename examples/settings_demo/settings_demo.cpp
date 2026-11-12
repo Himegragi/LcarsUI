@@ -300,19 +300,20 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (undo_history_.empty()) return Result{Status::empty_history, {}};
         redo_history_.push_back(snapshot());
         auto previous = undo_history_.back(); undo_history_.pop_back();
-        apply(previous); return Result{};
+        return apply(previous);
     });
     redo_.bind([this] {
         if (redo_history_.empty()) return Result{Status::empty_history, {}};
         undo_history_.push_back(snapshot());
         auto next = redo_history_.back(); redo_history_.pop_back();
-        apply(next); return Result{};
+        return apply(next);
     });
     save_.bind([this] { return save_document(); });
     revert_.bind([this] {
         name.reset_to_source();
-        if (saved_ && snapshot() != *saved_) { auto target=*saved_; auto before=snapshot(); apply(target); current_=before; dirty(); }
-        update_history_controls(); return Result{};
+        Result applied;
+        if (saved_ && snapshot() != *saved_) { auto target=*saved_; auto before=snapshot(); applied=apply(target); current_=before; dirty(); }
+        update_history_controls(); return applied;
     });
     ui.on_change([this] { update_history_controls(); });
     nav.focus();
@@ -422,20 +423,23 @@ Result Demo::set_focus_color(const std::string& id) {
     if (result) dirty();
     return result;
 }
-void Demo::presentation_changed() {
+Result Demo::presentation_changed() {
     refresh_fonts();
     for (auto* slot : {&font_changed_, &text_size_changed_, &dark_changed_, &compact_changed_, &justify_left_changed_,
                        &focus_mode_changed_, &focus_width_changed_, &focus_radius_same_changed_, &focus_radius_changed_})
         if (*slot) (*slot)();
-    refresh_focus_controls();
+    return refresh_focus_controls();
 }
-void Demo::refresh_focus_controls() {
+Result Demo::refresh_focus_controls() {
     // The indicator off leaves nothing to style: the three controls are disabled but keep their values for when it comes back.
     const bool styling = ui.presentation().focus_indicator != FocusIndicatorMode::never;
-    for (auto result : {focus_width.enable(styling), focus_radius_same.enable(styling), focus_radius.enable(styling), focus_color.enable(styling)}) (void)result;
+    for (auto result : {focus_width.enable(styling), focus_radius_same.enable(styling), focus_radius.enable(styling), focus_color.enable(styling)})
+        if (!result) return result;
+    return {};
 }
 Result Demo::set_presentation(const PresentationSettings& settings, bool coalesce) {
-    auto result=ui.set_presentation(settings); if (result) { presentation_changed(); dirty(coalesce); } return result;
+    auto result=ui.set_presentation(settings); if (!result) return result;
+    auto refreshed = presentation_changed(); dirty(coalesce); return refreshed;
 }
 void Demo::on_dirty_changed(std::function<void(bool)> callback) { dirty_changed_ = std::move(callback); if (dirty_changed_) dirty_changed_(dirty_state_); }
 SettingsDocument Demo::snapshot() const {
@@ -460,21 +464,28 @@ void Demo::dirty(bool coalesce) {
     }
     current_ = std::move(now); update_history_controls();
 }
-void Demo::apply(const SettingsDocument& value) {
+Result Demo::apply(const SettingsDocument& value) {
+    Result outcome;  // the first part that could not be applied; the others are still applied
+    auto note = [&outcome](Result result) { if (!result && outcome) outcome = std::move(result); };
     drag_group_.clear();
     name_value_=value.name; notices_value_=value.notices; mode_value_=value.mode; region_value_=value.region;
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_(); if (region_changed_) region_changed_(); if (volume_changed_) volume_changed_();
-    if (apply_palette(value.accent, value.focus_color)) {
+    auto palette = apply_palette(value.accent, value.focus_color);
+    if (palette) {
         accent_value_=value.accent; focus_color_value_=value.focus_color;
         if (accent_changed_) accent_changed_(); if (focus_color_changed_) focus_color_changed_();
     }
-    ui.set_presentation(value.presentation); if (value.presentation.focus_ring_radius) focus_radius_memory_=*value.presentation.focus_ring_radius;
-    presentation_changed(); refresh_items(); current_=value; update_history_controls();
+    note(std::move(palette));
+    note(ui.set_presentation(value.presentation)); if (value.presentation.focus_ring_radius) focus_radius_memory_=*value.presentation.focus_ring_radius;
+    note(presentation_changed()); note(refresh_items()); current_=value; update_history_controls();
+    return outcome;
 }
-void Demo::load_document(const SettingsDocument& value) {
-    apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
+Result Demo::load_document(const SettingsDocument& value) {
+    auto result = apply(value); saved_=value; current_=value; saved_once_=true; undo_history_.clear(); redo_history_.clear(); update_history_controls();
+    if (!result) show_load_notice(u"設定檔沒有完全套用", u"有一部分設定無法套用：" + result.message);
+    return result;
 }
 void Demo::show_load_notice(std::u16string title, std::u16string message) {
     load_title_.connect_source([title] { return title; }); load_message_.connect_source([message] { return message; }); load_dialog_.open();

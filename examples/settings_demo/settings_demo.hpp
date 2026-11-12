@@ -65,7 +65,7 @@ private:
     lcars::Result refresh_items();
     lcars::Result save_document();
     SettingsDocument snapshot() const;
-    void apply(const SettingsDocument&);
+    lcars::Result apply(const SettingsDocument&);  // every part is applied; the first failure is returned
     void dirty(bool coalesce = false);
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
@@ -85,8 +85,8 @@ private:
     std::function<void()> focus_mode_changed_, focus_width_changed_, focus_radius_same_changed_, focus_radius_changed_;
     std::optional<int> focus_radius_memory_;  // the radius the user last chose (or loaded): what unchecking "same as the component" brings back
     int focus_radius_start() const;           // memory, else the bound appearance's own radius (Web 6 when none is bound): unchecking changes nothing drawn
-    void presentation_changed();   // every control that mirrors the presentation re-reads it
-    void refresh_focus_controls(); // with the indicator off, the ring's width, radius and color controls are disabled (values kept)
+    lcars::Result presentation_changed();   // every control that mirrors the presentation re-reads it; the first control that cannot be updated is reported
+    lcars::Result refresh_focus_controls(); // with the indicator off, the ring's width, radius and color controls are disabled (values kept)
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
     // A slider drag is one undo step: while a slider keeps the focus its changes join the first one. drag_group_ is the id of the
@@ -123,7 +123,7 @@ public:
     lcars::CheckboxHandle focus_radius_same;          // checked = focus_ring_radius left empty
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
-    void load_document(const SettingsDocument&);
+    lcars::Result load_document(const SettingsDocument&);  // a part that cannot be applied is also announced in the load notice
     void show_load_notice(std::u16string title, std::u16string message);
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
