@@ -69,7 +69,7 @@ private:
     void dirty(bool coalesce = false);
     std::optional<SettingsDocument> current_, saved_;
     std::vector<SettingsDocument> undo_history_, redo_history_;
-    bool saved_once_ = false, volume_group_ = false, text_size_group_ = false, dirty_state_ = false;
+    bool saved_once_ = false, dirty_state_ = false;
     std::function<void()> text_size_changed_, dark_changed_, compact_changed_, justify_left_changed_;
     lcars::LabelHandle preview_, font_status_;
     std::function<void()> font_changed_;
@@ -83,12 +83,15 @@ private:
     lcars::Result apply_focus_color(const std::string& id);
     // The focus ring controls (#90): the callbacks that tell each control's data source the presentation changed.
     std::function<void()> focus_mode_changed_, focus_width_changed_, focus_radius_same_changed_, focus_radius_changed_;
-    bool focus_width_group_ = false, focus_radius_group_ = false;  // a slider drag is one undo step
     int focus_radius_memory_ = 6;  // the radius the slider shows again after "same as the component" was unchecked
     void presentation_changed();   // every control that mirrors the presentation re-reads it
     void refresh_focus_controls(); // with the indicator off, the ring's width, radius and color controls are disabled (values kept)
     std::function<void(bool)> dirty_changed_;
     void update_history_controls();
+    // A slider drag is one undo step: while a slider keeps the focus its changes join the first one. drag_group_ is the id of the
+    // slider whose changes are joining (empty = none), so dirty(false) and apply() end every slider's group with one assignment.
+    std::string drag_group_;
+    void connect_slider(lcars::SliderHandle& slider, const char* id, std::function<lcars::Result(const lcars::NumericChange&, bool join)> change);
 public:
     lcars::Ui ui;
     lcars::ScrollState scroll;

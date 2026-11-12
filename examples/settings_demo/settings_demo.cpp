@@ -50,14 +50,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.add_member({"appearance"}, text_size);
     text_size.connect_source({[this] { return ui.presentation().text_size; }, subscribe_to(text_size_changed_)});
-    text_size.connect_immediate([this](const NumericChange& change) {
+    connect_slider(text_size, "appearance.text_size", [this](const NumericChange& change, bool join) {
         auto settings = ui.presentation(); settings.text_size = change.value;
-        bool focused = text_size.describe()->focused;
-        auto result = set_presentation(settings, focused && text_size_group_); if (!result) return result;
-        text_size_group_ = focused;
-        return Result{};
+        return set_presentation(settings, join);
     });
-    text_size.on_blur([this] { text_size_group_ = false; });
     dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
     compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
     // WCAG 1.4.8: the user can turn justified text off for the whole window.
@@ -84,14 +80,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     });
     // 3 DIP is the appearances' own ring thickness (ComponentPresentation::focus): what the slider shows while the setting is empty.
     focus_width.connect_source({[this] { return ui.presentation().focus_ring_width.value_or(3); }, subscribe_to(focus_width_changed_)});
-    focus_width.connect_immediate([this](const NumericChange& change) {
+    connect_slider(focus_width, "appearance.focus_width", [this](const NumericChange& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_width = change.value;
-        const bool focused = focus_width.describe()->focused;
-        auto result = set_presentation(settings, focused && focus_width_group_); if (!result) return result;
-        focus_width_group_ = focused;
-        return Result{};
+        return set_presentation(settings, join);
     });
-    focus_width.on_blur([this] { focus_width_group_ = false; });
     focus_radius_same.connect_source({[this] { return !ui.presentation().focus_ring_radius.has_value(); }, subscribe_to(focus_radius_same_changed_)});
     focus_radius_same.connect_immediate([this](const BoolChange& c) {
         auto settings = ui.presentation();
@@ -99,14 +91,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return set_presentation(settings);
     });
     focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_memory_); }, subscribe_to(focus_radius_changed_)});
-    focus_radius.connect_immediate([this](const NumericChange& change) {
+    connect_slider(focus_radius, "appearance.focus_radius", [this](const NumericChange& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_radius = change.value; focus_radius_memory_ = change.value;
-        const bool focused = focus_radius.describe()->focused;
-        auto result = set_presentation(settings, focused && focus_radius_group_); if (!result) return result;
-        focus_radius_group_ = focused;
-        return Result{};
+        return set_presentation(settings, join);
     });
-    focus_radius.on_blur([this] { focus_radius_group_ = false; });
     focus_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{focus_color_value_}; }, subscribe_to(focus_color_changed_)});
     focus_color.connect_immediate([this](const DropdownChange& c) { return set_focus_color(c.value ? c.value->id : "default"); });
     refresh_focus_controls();
@@ -190,8 +178,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     region.connect_source({[this] { return region_value_; }, subscribe_to(region_changed_)});
     region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
-    volume.connect_immediate([this](const NumericChange& c) { volume_value_=c.value; if (volume_changed_) volume_changed_(); bool focused = volume.describe()->focused; dirty(focused && volume_group_); volume_group_ = focused; return Result{}; });
-    volume.on_blur([this] { volume_group_ = false; });
+    connect_slider(volume, "general.volume", [this](const NumericChange& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
     item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
     item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
@@ -347,6 +334,15 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
+void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Result(const NumericChange&, bool join)> change) {
+    slider.connect_immediate([this, &slider, id, change = std::move(change)](const NumericChange& c) {
+        const bool focused = slider.describe()->focused;
+        auto result = change(c, focused && drag_group_ == id); if (!result) return result;
+        drag_group_ = focused ? id : "";
+        return Result{};
+    });
+    slider.on_blur([this, id] { if (drag_group_ == id) drag_group_.clear(); });
+}
 void Demo::refresh_fonts() {
     std::vector<RadioOption> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
     auto key = ui.presentation().font_family;
@@ -449,7 +445,7 @@ void Demo::update_history_controls() {
     status_.connect_source([changed, this] { return changed && save_failed_ ? u"有未儲存的修改（上次儲存失敗）" : changed ? u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539" : saved_once_ ? u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58" : u"\u4f7f\u7528\u9810\u8a2d\u503c\uff0c\u5c1a\u672a\u5efa\u7acb\u8a2d\u5b9a\u6a94"; });
 }
 void Demo::dirty(bool coalesce) {
-    if (!coalesce) { volume_group_=false; text_size_group_=false; }
+    if (!coalesce) drag_group_.clear();
     auto now = snapshot();
     if (current_ && *current_ != now) {
         if (!coalesce) undo_history_.push_back(*current_);
@@ -459,7 +455,7 @@ void Demo::dirty(bool coalesce) {
     current_ = std::move(now); update_history_controls();
 }
 void Demo::apply(const SettingsDocument& value) {
-    volume_group_=false; text_size_group_=false;
+    drag_group_.clear();
     name_value_=value.name; notices_value_=value.notices; mode_value_=value.mode; region_value_=value.region;
     volume_value_=value.volume; items_=value.items; next_item_id_=value.next_item_id;
     if (name_changed_) name_changed_(); if (notices_changed_) notices_changed_();
