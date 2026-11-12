@@ -144,7 +144,8 @@ std::string describe(const Placement& p) {
 // Every subject in every state in one column, arranged under each appearance x density x scale.
 std::map<std::string, std::string> record() {
     std::map<std::string, std::string> all;
-    for (const auto& run : runs()) {
+    // 240: lines wrap to several rows. 40: nearly every word is wider than the column. 0: a column with no width at all.
+    for (const auto& run : runs()) for (int width : {240, 40, 0}) {
         Ui ui; ScrollState scroll; test::FakeMeasure measure;
         std::vector<layout::Node> nodes; std::vector<std::string> ids;
         for (const auto& subject : subjects)
@@ -158,11 +159,11 @@ std::map<std::string, std::string> record() {
             }
         auto settings = ui.presentation(); settings.density = run.density;
         check(bool(ui.set_presentation(settings)), "presentation accepted");
-        auto frame = arrange(layout::column(nodes), ui, run.appearance, measure, 240, 8000, run.scale, scroll);
+        auto frame = arrange(layout::column(nodes), ui, run.appearance, measure, width, 8000, run.scale, scroll);
         for (const auto& id : ids) {
             auto found = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
             check(found != frame.items.end(), ("arranged: " + id).c_str());
-            all[std::string(run.appearance_name) + " " + run.density_name + " " + run.scale_name + " " + id] = describe(*found);
+            all[std::string(run.appearance_name) + " " + run.density_name + " " + run.scale_name + " w" + std::to_string(width) + " " + id] = describe(*found);
         }
     }
     return all;
