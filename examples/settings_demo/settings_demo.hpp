@@ -83,7 +83,8 @@ private:
     lcars::Result apply_focus_color(const std::string& id);
     // The focus ring controls (#90): the callbacks that tell each control's data source the presentation changed.
     std::function<void()> focus_mode_changed_, focus_width_changed_, focus_radius_same_changed_, focus_radius_changed_;
-    int focus_radius_memory_ = 6;  // the radius the slider shows again after "same as the component" was unchecked
+    std::optional<int> focus_radius_memory_;  // the radius the user last chose (or loaded): what unchecking "same as the component" brings back
+    int focus_radius_start() const;           // memory, else the bound appearance's own radius (Web 6 when none is bound): unchecking changes nothing drawn
     void presentation_changed();   // every control that mirrors the presentation re-reads it
     void refresh_focus_controls(); // with the indicator off, the ring's width, radius and color controls are disabled (values kept)
     std::function<void(bool)> dirty_changed_;

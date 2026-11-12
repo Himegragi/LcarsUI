@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include "utf.hpp"
+#include "core_internal.hpp"
 using namespace lcars;
 namespace settings_demo {
 namespace {
@@ -87,10 +88,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     focus_radius_same.connect_source({[this] { return !ui.presentation().focus_ring_radius.has_value(); }, subscribe_to(focus_radius_same_changed_)});
     focus_radius_same.connect_immediate([this](const BoolChange& c) {
         auto settings = ui.presentation();
-        settings.focus_ring_radius = c.value ? std::nullopt : std::optional<int>{focus_radius_memory_};
+        settings.focus_ring_radius = c.value ? std::nullopt : std::optional<int>{focus_radius_start()};
         return set_presentation(settings);
     });
-    focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_memory_); }, subscribe_to(focus_radius_changed_)});
+    focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_start()); }, subscribe_to(focus_radius_changed_)});
     connect_slider(focus_radius, "appearance.focus_radius", [this](const NumericChange& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_radius = change.value; focus_radius_memory_ = change.value;
         return set_presentation(settings, join);
@@ -342,6 +343,11 @@ void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Re
         return Result{};
     });
     slider.on_blur([this, id] { if (drag_group_ == id) drag_group_.clear(); });
+}
+int Demo::focus_radius_start() const {
+    if (focus_radius_memory_) return *focus_radius_memory_;
+    const auto* appearance = lcars::detail::access(ui).bound_appearance();
+    return appearance ? appearance->radius() : 6;
 }
 void Demo::refresh_fonts() {
     std::vector<RadioOption> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};

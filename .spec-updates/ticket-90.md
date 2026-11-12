@@ -100,7 +100,7 @@ new：Web：`選取列外圍 3 DIP focus 色圓角環（半徑 6 DIP，內側 se
 | --- | --- | --- |
 | `appearance.focus_mode` | C06「焦點標示」 | 項目 `automatic`「自動」、`always`「一律顯示」、`never`「關閉」；對應 `PresentationSettings::focus_indicator`。 |
 | `appearance.focus_width` | C07 滑桿「焦點外框粗細」 | 2–6 DIP，步進 1；顯示 `focus_ring_width`，空時顯示 3。 |
-| `appearance.focus_radius_same` | C03 核取方塊「焦點外框圓角跟元件一樣」 | 勾選 = `focus_ring_radius` 留空；取消勾選 = 設為最後一次的值（初始 6）。 |
+| `appearance.focus_radius_same` | C03 核取方塊「焦點外框圓角跟元件一樣」 | 勾選 = `focus_ring_radius` 留空；取消勾選 = 設為最後一次選的值；還沒選過時從目前外觀自己的圓角開始（Web 6、Material 16），所以取消勾選不改變畫面上畫的東西。 |
 | `appearance.focus_radius` | C07 滑桿「焦點外框圓角」 | 0–32 DIP；只在上面核取方塊取消勾選時出現在頁面。 |
 | `appearance.focus_color` | C06「焦點外框顏色」 | 項目 `default`「預設」（`focus` 不覆寫，跟著強調色）、`green`「綠色」、`orange`「橘色」（覆寫 `focus`，每套外觀淺／深各一個值，沿用強調色綠／橘的顏色，通過 3:1 檢查）。 |
 
