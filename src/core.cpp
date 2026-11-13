@@ -536,7 +536,7 @@ Result ListHandle::focus(OptionValue value) const {
         if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
         if (ui_->invalidate_) ui_->invalidate_();
         return {};
-    }, u"");
+    }, detail::UiState::gone_without_text);
 }
 Result ListHandle::set_items(std::vector<RadioOption> items) const {
     return detail::operate(*this, [&]() -> Result {

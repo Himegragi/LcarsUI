@@ -35,9 +35,11 @@ public:
         UiState* state_;
     };
     // The not_found texts of a handle whose lifetime has ended. Each operation keeps the text it has always given (#94
-    // decision 7): component handles, context menus and most others say component_gone, dialogs and tooltips ui_gone.
+    // decision 7): component handles, context menus and most others say component_gone, dialogs and tooltips ui_gone,
+    // and ListHandle::focus(OptionValue) answers without text (gone_without_text).
     static constexpr std::u16string_view component_gone = u"Component no longer exists";
     static constexpr std::u16string_view ui_gone = u"UI no longer exists";
+    static constexpr std::u16string_view gone_without_text = u"";
     // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
     // handle whose lifetime has ended (its Ui is gone, its button removed, a tooltip's source removed) runs nothing and
     // answers not_found with `gone`. R is the operation's own return type (Result or a Query).
