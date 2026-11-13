@@ -268,7 +268,7 @@ int ring_px(const Page& page, float scale) { return scaled(scale, page.ui.presen
 // What each component frames (ticket item 1), worked out from the page fixture and the placement's own rectangles, never from the
 // rules production uses to choose a row or to size the ring. Returns the rectangle the ring must have; an empty result for the
 // slider, whose ring has no single rectangle in the placement (see the slider check in the driver).
-std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const Semantics& s) {
+std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const ComponentSnapshot& s) {
     auto offset = [](Rect r, Rect origin) { return Rect{r.x + origin.x, r.y + origin.y, r.w, r.h}; };
     // The row of one option, found by its value in the semantic option list.
     auto row = [&](const char* value) { for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
@@ -286,7 +286,7 @@ std::optional<Rect> expected_outer(const std::string& id, const Placement& item,
 
 void every_component_draws_one_closed_rounded_ring() {
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings&) {}, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+        for_each_focused(r, [](PresentationSettings&) {}, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             const auto ring = find_ring(probe.cmds);
             check(ring.has_value(), (label + ": the focus indicator is a rounded outer + inner pair").c_str());
             if (!ring) return;
@@ -322,7 +322,7 @@ void every_component_draws_one_closed_rounded_ring() {
 void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() {
     int single = 0, multi = 0, rich = 0, underline = 0, boxed = 0;
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+        for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             if (s.kind != ComponentKind::text) return;
             check(find_ring(probe.cmds).has_value(), (label + ": a text field draws its ring").c_str());
             (s.rich ? rich : s.multiline ? multi : single) += 1;
@@ -335,7 +335,7 @@ void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() 
 void the_ring_never_covers_content_and_never_erases_it() {
     for (const auto& r : runs)
         for (int width : {2, 3, 6})
-            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_width = width; }, [&](Page&, const Frame&, const Placement&, const Semantics& s, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_width = width; }, [&](Page&, const Frame&, const Placement&, const ComponentSnapshot& s, Probe& probe, const std::string& base) {
                 const auto label = base + " width " + std::to_string(width);
                 const auto ring = find_ring(probe.cmds);
                 check(ring.has_value(), (label + ": ring present").c_str());
@@ -417,7 +417,7 @@ void a_new_thickness_changes_the_next_frames_ring_and_padding() {
 void a_set_radius_replaces_each_components_own_and_a_large_one_makes_a_capsule() {
     for (const auto& r : runs)
         for (int radius : {0, 10, 32})
-            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_radius = radius; }, [&](Page& page, const Frame&, const Placement&, const Semantics&, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_radius = radius; }, [&](Page& page, const Frame&, const Placement&, const ComponentSnapshot&, Probe& probe, const std::string& base) {
                 const auto label = base + " radius " + std::to_string(radius);
                 const auto ring = find_ring(probe.cmds);
                 check(ring.has_value(), (label + ": ring present").c_str());
@@ -433,7 +433,7 @@ void the_ring_follows_the_focus_color_and_turns_error_colored_when_invalid() {
     for (const auto& variant : variants)
         for (const auto& r : runs) {
             if (r.density != Density::standard || r.scale != 1.f) continue;
-            for_each_focused(r, [&](PresentationSettings& s) { s.variant = variant; }, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.variant = variant; }, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& base) {
                 const auto label = base + " " + variant.name;
                 const auto palette = r.appearance.palette(variant);
                 const auto ring = find_ring(probe.cmds);
@@ -503,7 +503,7 @@ void replacing_focus_or_accent_recolors_the_ring_as_the_ticket_says() {
 
 void never_draws_no_focus_indicator_on_any_component() {
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings& s) { s.focus_indicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+        for_each_focused(r, [](PresentationSettings& s) { s.focus_indicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             check(probe.count(PaintRole::focus_indicator) == 0, (label + ": never draws no focus indicator").c_str());
             check(!find_ring(probe.cmds), (label + ": no ring").c_str());
             check(s.focused && page.state().focused() == s.id, (label + ": focus itself is untouched").c_str());

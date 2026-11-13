@@ -100,7 +100,7 @@ std::u16string EditSession::visible() const {
 }
 namespace {
 // A handle query that reads one member of the handle's own description: the description's failure, or the member.
-template <class Value> Query<Value> semantic_property(const Query<Semantics>& semantics, Value Semantics::*member) {
+template <class Value> Query<Value> semantic_property(const Query<ComponentSnapshot>& semantics, Value ComponentSnapshot::*member) {
     if (!semantics) return {semantics.status, semantics.message, std::nullopt};
     return {Status::ok, {}, (*semantics).*member};
 }
@@ -310,7 +310,7 @@ detail::UiState::UiState(std::vector<Component> controls) : controls_(std::move(
         if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
-bool detail::UiState::draws_focus_indicator(const Semantics& semantics) const {
+bool detail::UiState::draws_focus_indicator(const ComponentSnapshot& semantics) const {
     if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
     return semantics.focused && (focus_indicator_visible() || component_type(semantics.kind).focus_always_visible(semantics));
 }
@@ -347,8 +347,8 @@ Result ProgressHandle::connect_source(Source<int> source) const {
         return {};
     });
 }
-Query<Semantics> ProgressHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> ProgressHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 TextHandle detail::UiState::add_text(Component control) {
     OperationScope operation(this);
@@ -458,8 +458,8 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     Change<CheckboxHandle> change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
-Query<Semantics> CheckboxHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> CheckboxHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<bool> CheckboxHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<bool> {
@@ -577,8 +577,8 @@ Result ListHandle::enable(bool enabled) const {
         if (auto r = ui_->configuration_access(id_); !r) return r; ui_->enable(id_, enabled); return {};
     });
 }
-Query<Semantics> ListHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> ListHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Result RadioGroupHandle::use_latest() const {
     return detail::UiState::operate(*this, [&]() -> Result {
@@ -661,8 +661,8 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     Change<RadioGroupHandle> change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
-Query<Semantics> RadioGroupHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> RadioGroupHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -803,8 +803,8 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     Change<DropdownHandle> change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
-Query<Semantics> DropdownHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> DropdownHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -1045,8 +1045,8 @@ Query<bool> detail::UiState::animating() const {
     if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
     return {Status::ok, {}, animation_running()};
 }
-Query<Semantics> SliderHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> SliderHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<int> SliderHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<int> {
@@ -1520,8 +1520,8 @@ Result TabsHandle::enable_page(OptionValue page, bool enabled) const {
 Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
-Query<Semantics> TabsHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> TabsHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> TabsHandle::active() const {
     return detail::UiState::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
@@ -1541,8 +1541,8 @@ Result NavigationListHandle::enable_page(OptionValue page, bool enabled) const {
 Result NavigationListHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
-Query<Semantics> NavigationListHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> NavigationListHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> NavigationListHandle::selected() const {
     return detail::UiState::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
@@ -1682,7 +1682,7 @@ Result detail::UiState::reset_to_source(const Id& id) {
 Result ButtonHandle::invoke() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->invoke(id_); });
 }
-Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &Semantics::executing); }
+Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &ComponentSnapshot::executing); }
 Result TextHandle::paste(std::u16string_view text) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->paste(id_, text); });
 }
@@ -1880,7 +1880,7 @@ void detail::UiState::source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &Semantics::source_conflict); }
+Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &ComponentSnapshot::source_conflict); }
 Result TextHandle::use_latest() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->use_latest(id_); });
 }
@@ -1932,8 +1932,8 @@ Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
 Query<std::vector<NamedColor>> TextHandle::colors() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::vector<NamedColor>> { return ui_->colors(id_); });
 }
-Query<Semantics> TextHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> TextHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Result TextHandle::set_visible_lines(unsigned lines) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_visible_lines(id_, lines); });
@@ -2052,35 +2052,35 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
 Result TextHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
-Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
 Result TextHandle::set_justify_method(JustifyMethod method) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
 }
-Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
 Result TextHandle::set_line_spacing(double multiple) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
 }
-Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
 Result TextHandle::set_paragraph_spacing(int dip) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
 }
-Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
+Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
 Result LabelHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
-Query<TextAlign> LabelHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Query<TextAlign> LabelHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
 Result LabelHandle::set_justify_method(JustifyMethod method) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
 }
-Query<JustifyMethod> LabelHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Query<JustifyMethod> LabelHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
 Result LabelHandle::set_line_spacing(double multiple) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
 }
-Query<double> LabelHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Query<double> LabelHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
 Result LabelHandle::set_paragraph_spacing(int dip) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
 }
-Query<int> LabelHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
+Query<int> LabelHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
 Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
@@ -2098,22 +2098,22 @@ Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
     const auto& m = edits_.find(id)->second.multi;
     return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
-Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &Semantics::value); }
-Query<Semantics> ButtonHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &ComponentSnapshot::value); }
+Query<ComponentSnapshot> ButtonHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
-Query<Semantics> LabelHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> LabelHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 // What every component handle's describe() answers once its lifetime has been checked.
-Query<Semantics> detail::UiState::handle_describe(std::string_view id) const {
+Query<ComponentSnapshot> detail::UiState::handle_describe(std::string_view id) const {
     if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, describe(id)};
 }
-std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
+std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return std::nullopt;
-    Semantics s;
+    ComponentSnapshot s;
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.label_kind = control->label_kind;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
@@ -3403,7 +3403,7 @@ std::string detail::UiState::semantic_page(std::string_view id) const {
     if (it == page_members_.end()) return "shared";
     return tabs_.at(it->second.first).pages[it->second.second].value.id;
 }
-Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
+Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
@@ -3412,7 +3412,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (!c) {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
-        SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
+        NodeSnapshot n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
         auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
         if (inserted) instance->second = ++u.next_semantic_instance_;
         n.instance = instance->second;
@@ -3431,7 +3431,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
-    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = detail::component_type(c->kind).role();
+    auto s = *u.describe(ref.id); NodeSnapshot n; n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
@@ -3534,8 +3534,8 @@ Query<std::u16string> SemanticTree::text(std::string_view id) const {
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
     return {Status::ok, {}, n->value};
 }
-std::vector<SemanticNode> detail::UiState::semantic_snapshot() {
-    SemanticTree tree(*this); std::vector<SemanticNode> nodes;
+std::vector<NodeSnapshot> detail::UiState::semantic_snapshot() {
+    SemanticTree tree(*this); std::vector<NodeSnapshot> nodes;
     auto visit = [&](auto&& self, const NodeRef& parent) -> void {
         auto children = tree.children(parent); if (!children) return;
         for (const auto& ref : *children) {
@@ -3553,7 +3553,7 @@ void detail::UiState::semantic_diff() {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
         if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
     };
-    auto find = [](const auto& nodes, const NodeRef& ref) -> const SemanticNode* {
+    auto find = [](const auto& nodes, const NodeRef& ref) -> const NodeSnapshot* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
         return i == nodes.end() ? nullptr : &*i;
     };

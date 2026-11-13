@@ -49,12 +49,12 @@ constexpr PaintRole operator|(PaintRole a, PaintRole b) {
 }
 class ComponentPaint {
 public:
-    ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
+    ComponentPaint(UiState& state, const Placement& item, const ComponentSnapshot& semantic,
                    const Appearance& look, float render_scale, bool active_window);
     virtual ~ComponentPaint() = default;
     UiState& ui;
     const Placement& placement;
-    const Semantics& semantics;
+    const ComponentSnapshot& semantics;
     const Appearance& appearance;
     float scale;
     bool window_focused;
@@ -121,8 +121,8 @@ struct PointerRelease {
 struct VerbContext {
     const UiState& ui;
     const Component& control;
-    const Semantics& semantics;
-    const SemanticNode& node;
+    const ComponentSnapshot& semantics;
+    const NodeSnapshot& node;
     bool item;                                             // the node is one item of the control
     bool admits(Operation operation) const;                // semantics.operations holds it
 };
@@ -132,7 +132,7 @@ struct PerformContext {
     const NodeRef& ref;
     Verb verb;
     const Argument& argument;
-    const SemanticNode& node;
+    const NodeSnapshot& node;
     std::function<Result()> invalid_argument;
 };
 class ComponentType {
@@ -168,14 +168,14 @@ public:
     virtual void pointer_down(UiState&, const Component&, std::optional<std::size_t> /*option*/) const {}
     // The release over the armed component; the default invokes the component's action.
     virtual Result pointer_up(UiState&, const PointerRelease&) const;
-    // ---- Semantics.
+    // ---- ComponentSnapshot.
     // Fills the type's part of the control's description (values, options, conflicts) and, afterwards, the operations it admits.
-    virtual void describe(const UiState&, const Component&, Semantics&) const {}
-    virtual void describe_operations(const UiState&, const Component&, Semantics&) const {}
+    virtual void describe(const UiState&, const Component&, ComponentSnapshot&) const {}
+    virtual void describe_operations(const UiState&, const Component&, ComponentSnapshot&) const {}
     // The text the control shows when it is not the control's own value (nullopt: control.value).
     virtual std::optional<std::u16string> display_text(const UiState&, const Component&) const { return std::nullopt; }
     // The type's own node properties (accelerators, selection, writing mode, text selection...).
-    virtual void describe_node(const UiState&, const Component&, const Semantics&, const NodeRef&, SemanticNode&) const {}
+    virtual void describe_node(const UiState&, const Component&, const ComponentSnapshot&, const NodeRef&, NodeSnapshot&) const {}
     // The verbs of the node, in order. The default offers focus and the context menu where the control admits them.
     virtual void verbs(const VerbContext&, std::vector<Verb>&) const;
     // A verb arriving at the control or one of its items; nullopt: not this type's verb.
@@ -195,7 +195,7 @@ public:
     // Associated labels (name, description, error) are drawn inside the placement and share its semantic bounds.
     virtual bool labels_in_placement() const { return false; }
     // The type's focus indicator shows while the control is focused even without keyboard cues (an editable text field).
-    virtual bool focus_always_visible(const Semantics&) const { return false; }
+    virtual bool focus_always_visible(const ComponentSnapshot&) const { return false; }
     // Where a keyboard-opened context menu hangs; nullopt: from the component's visible box.
     virtual std::optional<Rect> keyboard_anchor(UiState&, const Placement&, const std::optional<OptionValue>&, int /*row_inset*/) const { return std::nullopt; }
     // A pointer press starts a value drag (a slider); true when it did.

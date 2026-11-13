@@ -80,7 +80,7 @@ public:
     Result enable_page(const Id& id, const OptionValue& page, bool enabled);
     Result on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
     Query<OptionValue> active_page(const Id& id) const;
-    Query<Semantics> handle_describe(std::string_view id) const;
+    Query<ComponentSnapshot> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
     ListHandle add_list(Component control, std::vector<RadioOption> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
@@ -187,7 +187,7 @@ public:
     std::map<Id, std::string, std::less<>> overlay_ids_;
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
-    std::optional<Semantics> describe(std::string_view id) const;
+    std::optional<ComponentSnapshot> describe(std::string_view id) const;
     void semantic_frame(const Frame& frame);
     std::string semantic_page(std::string_view id) const;
     bool confirmation_group_contains(std::string_view button, std::string_view field) const {
@@ -217,7 +217,7 @@ public:
     // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
     bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
-    bool draws_focus_indicator(const Semantics& semantics) const;
+    bool draws_focus_indicator(const ComponentSnapshot& semantics) const;
     // A pointer press anywhere in the client area, including empty space and inert components.
     void pointer_pressed();
     // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
@@ -377,7 +377,7 @@ public:
     bool has_menu(const Component& control) const;
     bool menu_open() const { return menu_.has_value(); }
     Query<bool> menu_open_query() const;
-    Query<MenuInfo> menu_info() const;
+    Query<MenuSnapshot> menu_info() const;
     Query<ContextMenuHandle> attach_menu(const Id& target, std::vector<MenuItem> items, MenuMode mode);
     std::optional<MenuView> menu_view() const;
     ScrollState* menu_scroll() { return menu_ ? &menu_->scroll : nullptr; }
@@ -395,7 +395,7 @@ public:
     Result menu_key_down(KeyPress key);
     Result menu_text(std::u16string_view text);
     void menu_frame(const Frame& frame);
-    std::optional<Query<SemanticNode>> menu_node(const NodeRef& ref);
+    std::optional<Query<NodeSnapshot>> menu_node(const NodeRef& ref);
     std::optional<std::vector<NodeRef>> menu_children(const NodeRef& parent) const;
 private:
     friend class ::lcars::ContextMenuHandle;
@@ -624,12 +624,12 @@ private:
     std::map<std::size_t, std::function<void(const SemanticEvent&)>> semantic_subscribers_;
     std::size_t next_semantic_subscriber_ = 0;
     std::vector<SemanticEvent> semantic_pending_;
-    std::vector<SemanticNode> semantic_before_;
+    std::vector<NodeSnapshot> semantic_before_;
     bool semantic_dispatching_ = false;
     bool semantic_inspecting_ = false;
     std::function<void()> semantic_schedule_;
     std::function<void(const Id&)> reveal_requested_;
-    std::vector<SemanticNode> semantic_snapshot();
+    std::vector<NodeSnapshot> semantic_snapshot();
     void semantic_diff();
     bool committing_removals_ = false;
     void commit_removals();

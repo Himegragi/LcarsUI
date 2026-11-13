@@ -339,7 +339,7 @@ void a_click_between_rows_belongs_to_the_row_above() {
     check(laid.frame.text_offset(handle, 12, top + 24 + 8 + 2) == 3 && laid.frame.text_offset(handle, 12, top + 2 * 32 + 4) == 6, "The next rows");
 }
 
-bool has_verb(const SemanticNode& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+bool has_verb(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
 
 void the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles() {
     Ui ui;

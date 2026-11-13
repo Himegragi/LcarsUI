@@ -577,7 +577,7 @@ void semantic_showcase_states_and_identity() {
     form.handles.dialog_open.invoke(); draw();
     auto background = tree.get({form.handles.progress_half.describe()->id});
     check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
-    std::optional<SemanticNode> dialog;
+    std::optional<NodeSnapshot> dialog;
     auto roots = tree.children({}); check(bool(roots), "SEM02 root children are readable with a dialog open");
     for (const auto& ref : *roots) { auto n = tree.get(ref); if (n && n->role == Role::dialog && !n->hidden) dialog = *n; }
     check(bool(dialog), "SEM02 open dialog is a visible root child");
@@ -1723,8 +1723,8 @@ struct ClippedPaintProbe : detail::ComponentPaint {
     Rect current;
     const std::vector<Line>* associated;
     bool visible = false;
-    ClippedPaintProbe(detail::UiState& state, const Placement& item, const Semantics& owner,
-                      const Appearance& look, float scale, TextMeasure& metrics, const Semantics& target)
+    ClippedPaintProbe(detail::UiState& state, const Placement& item, const ComponentSnapshot& owner,
+                      const Appearance& look, float scale, TextMeasure& metrics, const ComponentSnapshot& target)
         : ComponentPaint(state, item, owner, look, scale, true), measure(metrics), current(item.clip), associated(nullptr) {
         if (!target.target.empty()) {
             if (target.label_kind == LabelKind::name) associated = &item.label_lines;
@@ -2875,7 +2875,7 @@ void x04_name_read_only_size_scale() {
 }
 
 void both_appearances_give_same_results() {
-    std::vector<std::vector<Semantics>> runs;
+    std::vector<std::vector<ComponentSnapshot>> runs;
     std::vector<std::vector<int>> outcomes;
     for (const auto* each : {&web_appearance(), &material_appearance()}) {
         edit_form::Form form(ids);
@@ -2900,14 +2900,14 @@ void both_appearances_give_same_results() {
         auto field = frame.find(form.handles.name);
         check(field && !field->error_lines.empty() && field->label_lines.front().text == u"顯示名稱",
               "Each appearance carries the name label and error with the field");
-        std::vector<Semantics> snapshot;
+        std::vector<ComponentSnapshot> snapshot;
         const auto& h = form.handles;
         for (auto label : {h.title, h.intro, h.name_label, h.name_help, h.name_error, h.state, h.draft, h.result, h.count})
             snapshot.push_back(*label.describe());
         snapshot.push_back(*h.name.describe());
         for (auto button : {h.normal, h.read_only, h.disabled, h.error, h.long_text, h.reset, h.apply, h.latest})
             snapshot.push_back(*button.describe());
-        Semantics applied;
+        ComponentSnapshot applied;
         applied.id = "applied";
         applied.value = form.applied() + u"/" + std::u16string(1, char16_t(u'0' + form.applies()));
         snapshot.push_back(applied);

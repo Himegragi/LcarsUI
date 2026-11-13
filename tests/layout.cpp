@@ -564,7 +564,7 @@ void long_dropdown_viewport() {
             int x=row.x+2, y=row.y+row.h/2;
             if (!popup.clip.contains(x,y)) continue;
             auto logical=frame.option_at(popup,x,y);
-            auto semantic=logical ? ui.semantics().get({"long",OptionValue{std::to_string(*logical)}}) : Query<SemanticNode>{};
+            auto semantic=logical ? ui.semantics().get({"long",OptionValue{std::to_string(*logical)}}) : Query<NodeSnapshot>{};
             test::check(semantic && semantic->name==popup.lines[i].text, "each visible row hit matches its painted label");
         }
         test::check(frame.wheel(ui,popup.bounds.x+2,popup.bounds.y+2,-100), "wheel scrolls popup");

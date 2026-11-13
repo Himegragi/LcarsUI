@@ -393,7 +393,7 @@ void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
 }
 
 // ---- The semantic layer answers like the typed handle --------------------------------------------------
-bool has(const SemanticNode& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+bool has(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
 
 void the_semantic_layer_reads_selects_and_queries_like_the_typed_handle() {
     Field f(mixed, false, WordSegmentation::dictionary);

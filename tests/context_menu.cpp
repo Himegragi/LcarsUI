@@ -36,12 +36,12 @@ Field add_field(Ui& ui, std::string id, std::u16string value, bool read_only = f
 detail::UiState& core(Ui& ui) { return detail::access(ui); }
 Result press(Ui& ui, Key key, bool shift = false) { return core(ui).key_down({.key = key, .shift = shift}); }
 Result type(Ui& ui, char16_t ch) { return core(ui).text_input(std::u16string(1, ch)); }
-std::vector<std::string> ids_of(const MenuInfo& menu) {
+std::vector<std::string> ids_of(const MenuSnapshot& menu) {
     std::vector<std::string> ids;
     for (const auto& item : menu.items) ids.push_back(item.separator ? "-" : item.id);
     return ids;
 }
-const MenuItemInfo* find_item(const MenuInfo& menu, std::string_view id) {
+const MenuItemSnapshot* find_item(const MenuSnapshot& menu, std::string_view id) {
     auto it = std::find_if(menu.items.begin(), menu.items.end(), [&](const auto& item) { return item.id == id; });
     return it == menu.items.end() ? nullptr : &*it;
 }

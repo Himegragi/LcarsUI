@@ -881,7 +881,7 @@ void unconnected_selection_controls_do_not_advertise_writes() {
     Ui ui;
     auto box = ui.add_checkbox({.id = "box"}).value.value();
     auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
-    auto has = [](const Semantics& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
+    auto has = [](const ComponentSnapshot& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
     check(!has(*box.describe(), Operation::activate) && !has(*radio.describe(), Operation::select),
           "Unconnected controls do not advertise unavailable modifications");
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});

@@ -132,9 +132,9 @@ enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, re
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
-struct OptionSemantics { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
+struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
-struct Semantics {
+struct ComponentSnapshot {
     std::string id;
     ComponentKind kind = ComponentKind::label;
     std::u16string name, value, description, error;
@@ -149,7 +149,7 @@ struct Semantics {
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
-    std::vector<OptionSemantics> options;
+    std::vector<OptionSnapshot> options;
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox
@@ -396,7 +396,7 @@ public:
     Result confirm() const;
     Query<bool> source_conflict() const;
     Result use_latest() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Query<std::u16string> draft() const;
     bool operator==(const TextHandle& other) const = default;
 private:
@@ -414,7 +414,7 @@ public:
     // Owner configuration: permanently remove this button; existing handles become invalid.
     Result remove() const;
     Query<bool> executing() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ButtonHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -439,7 +439,7 @@ public:
     Query<WritingMode> writing_mode() const;
     Result set_vertical_digits(int digits) const;
     Query<int> vertical_digits() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const LabelHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -458,7 +458,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<CheckboxHandle>&)> write) const;
     Result confirm() const;
     Query<bool> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const CheckboxHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -478,7 +478,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<RadioGroupHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const RadioGroupHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -498,7 +498,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<SliderHandle>&)> write) const;
     Result confirm() const;
     Query<int> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const SliderHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -510,7 +510,7 @@ class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
     ProgressHandle() = default;
     Result connect_source(Source<int> source) const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ProgressHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -532,7 +532,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<DropdownHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const DropdownHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -552,7 +552,7 @@ public:
     Result add_member(OptionValue page, ComponentHandle member) const;
     Result focus() const;
     Query<OptionValue> active() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
     bool operator==(const TabsHandle& other) const = default;
 private:
@@ -569,7 +569,7 @@ public:
     Result add_member(OptionValue page, ComponentHandle member) const;
     Result focus() const;
     Query<OptionValue> selected() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
     bool operator==(const NavigationListHandle& other) const = default;
 private:
@@ -587,7 +587,7 @@ public:
     Result enable(bool enabled) const;
     Result connect_source(Source<std::optional<OptionValue>> source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ListHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -647,14 +647,14 @@ struct MenuContext { ComponentHandle target; std::optional<OptionValue> item; };
 // How an attached menu relates to a component's built-in items (only text fields have any).
 enum class MenuMode { append, replace, off };
 struct MenuPosition { int x = 0, y = 0; };  // window client pixels, as in Frame
-struct MenuItemInfo {
+struct MenuItemSnapshot {
     std::string id;
     std::u16string label;
     bool enabled = true, separator = false, highlighted = false;
     char16_t access_key = 0;
     std::u16string shortcut_hint;
 };
-struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
+struct MenuSnapshot { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemSnapshot> items; };
 // Built-in text field items, by id. A rich text field (ComponentConfig::rich) adds bold, italic and underline, which run
 // the same function as Ctrl+B / Ctrl+I / Ctrl+U.
 inline constexpr const char* menu_undo = "lcars.undo";
@@ -677,7 +677,7 @@ public:
     Result remove_item(std::string id) const;
     Result update_item(MenuItem item) const;  // replaces the item with the same id
     Result enable_item(std::string id, bool enabled) const;
-    Query<std::vector<MenuItemInfo>> items() const;
+    Query<std::vector<MenuItemSnapshot>> items() const;
     bool operator==(const ContextMenuHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -721,7 +721,7 @@ public:
     Result open_context_menu(ComponentHandle target, std::optional<MenuPosition> at = {}, std::optional<OptionValue> item = {});
     Result close_context_menu();
     Query<bool> context_menu_open() const;
-    Query<MenuInfo> context_menu() const;  // hidden while no menu is open
+    Query<MenuSnapshot> context_menu() const;  // hidden while no menu is open
     Result invoke_menu_item(std::string id);
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);

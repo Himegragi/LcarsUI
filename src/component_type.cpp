@@ -64,7 +64,7 @@ TextAlign drawn_text_align(TextAlign align, const PresentationSettings& settings
     return stretched && settings.justify_as_left ? TextAlign::left : align;
 }
 TextAlign drawn_text_align(const Component& control, const PresentationSettings& settings) { return drawn_text_align(control.text_align, settings); }
-ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const Semantics& semantic,
+ComponentPaint::ComponentPaint(UiState& state, const Placement& item, const ComponentSnapshot& semantic,
                                const Appearance& look, float render_scale, bool active_window)
     : ui(state), placement(item), semantics(semantic), appearance(look), scale(render_scale), window_focused(active_window),
       focus_visible(state.draws_focus_indicator(semantic)) {}
@@ -160,7 +160,7 @@ int conflict_lines(ComponentLayout& c, int y, bool conflict, int inset = 0) {
 // The error message under a component, when it is invalid. Text set in from the edges keeps at least one pixel of width;
 // text across the whole width takes the width as given, even none. (A text field does not use this: its appearance decides the
 // rectangle of its error text, so arrange_field wraps the message to that rectangle and anchors it there.)
-int error_lines(ComponentLayout& c, int y, const Semantics& semantics, int inset = 0) {
+int error_lines(ComponentLayout& c, int y, const ComponentSnapshot& semantics, int inset = 0) {
     if (!semantics.invalid) return y;
     return stack_lines(c, c.placement.error_lines, semantics.error, y, inset, inset > 0 ? std::max(1, c.width - 2 * inset) : c.width);
 }
@@ -244,7 +244,7 @@ std::optional<Result> flow_perform(const PerformContext& c) {
     return c.invalid_argument();
 }
 // Tabs and navigation lists share their pages: the candidate, the options with their error marks, the selected page's label.
-void describe_pages(const UiState& ui, const Component& c, Semantics& s) {
+void describe_pages(const UiState& ui, const Component& c, ComponentSnapshot& s) {
     auto& all = UiState::Internals::tabs(ui);
     auto it = all.find(c.id);
     if (it == all.end()) return;
@@ -285,7 +285,7 @@ public:
         return std::nullopt;
     }
     bool accepts_text_provider() const override { return true; }
-    void describe_node(const UiState&, const Component&, const Semantics& s, const NodeRef&, SemanticNode& n) const override {
+    void describe_node(const UiState&, const Component&, const ComponentSnapshot& s, const NodeRef&, NodeSnapshot& n) const override {
         n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits;
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
@@ -411,7 +411,7 @@ public:
         auto& field = UiState::Internals::edits(ui)[c.id];
         field.session.text = c.value; field.rich = c.rich;
     }
-    bool focus_always_visible(const Semantics& s) const override { return !s.read_only && s.enabled; }
+    bool focus_always_visible(const ComponentSnapshot& s) const override { return !s.read_only && s.enabled; }
     bool labels_in_placement() const override { return true; }
     // The caret's own line, also in a multi-line field.
     std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>&, int) const override {
@@ -469,7 +469,7 @@ public:
         if (auto it = edits.find(c.id); it != edits.end()) return it->second.session.text;
         return std::nullopt;
     }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         s.multiline = c.multiline; s.visible_lines = c.multiline ? c.visible_lines : 0;
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
@@ -483,7 +483,7 @@ public:
         s.source_conflict = field.connected && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
         s.rich = field.rich;
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
@@ -497,7 +497,7 @@ public:
             if (!field.future.empty()) s.operations.push_back(Operation::redo);
         }
     }
-    void describe_node(const UiState& ui, const Component& c, const Semantics& s, const NodeRef& ref, SemanticNode& n) const override {
+    void describe_node(const UiState& ui, const Component& c, const ComponentSnapshot& s, const NodeRef& ref, NodeSnapshot& n) const override {
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
@@ -856,8 +856,8 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
-    void describe_operations(const UiState&, const Component&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
-    void describe_node(const UiState& ui, const Component& c, const Semantics&, const NodeRef& ref, SemanticNode& n) const override {
+    void describe_operations(const UiState&, const Component&, ComponentSnapshot& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_node(const UiState& ui, const Component& c, const ComponentSnapshot&, const NodeRef& ref, NodeSnapshot& n) const override {
         if (ref.item) return;
         for (const auto& binding : UiState::Internals::shortcuts(ui)) {
             if (binding.target != c.id) continue;
@@ -907,14 +907,14 @@ public:
         if (auto it = bools.find(c.id); it != bools.end()) return std::u16string(it->second.value ? u"true" : u"false");
         return std::nullopt;
     }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& bools = UiState::Internals::bools(ui);
         if (auto it = bools.find(c.id); it != bools.end()) {
             s.checked = it->second.value;
             s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& bools = UiState::Internals::bools(ui);
         auto it = bools.find(c.id);
         if (!s.executing && (it == bools.end() || it->second.writable())) s.operations.push_back(Operation::activate);
@@ -966,7 +966,7 @@ protected:
 class RadioGroup final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& radios = UiState::Internals::radios(ui);
         auto it = radios.find(c.id);
         if (it == radios.end()) return;
@@ -977,7 +977,7 @@ public:
             if (selected) s.value = option.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& radios = UiState::Internals::radios(ui);
         auto it = radios.find(c.id);
         if (it == radios.end()) return;
@@ -1104,7 +1104,7 @@ public:
         if (!items[option].enabled) return Query<OptionValue>{Status::disabled, u"項目已停用", std::nullopt};
         return Query<OptionValue>{Status::ok, {}, items[option].value};
     }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& lists = UiState::Internals::lists(ui);
         auto it = lists.find(c.id);
         if (it == lists.end()) return;
@@ -1116,7 +1116,7 @@ public:
             if (selected) s.value = item.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& lists = UiState::Internals::lists(ui);
         auto it = lists.find(c.id);
         if (it == lists.end()) return;
@@ -1221,7 +1221,7 @@ class Dropdown final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
     bool opens_popup() const override { return true; }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
         if (it == dropdowns.end()) return;
@@ -1234,7 +1234,7 @@ public:
             if (selected) s.value = option.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
         if (it != dropdowns.end() && it->second.writable()) s.operations.push_back(Operation::select);
@@ -1355,14 +1355,14 @@ public:
         if (auto it = numerics.find(c.id); it != numerics.end()) return number_text(it->second.value);
         return std::nullopt;
     }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& numerics = UiState::Internals::numerics(ui);
         auto it = numerics.find(c.id);
         if (it == numerics.end()) return;
         s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
         s.slider_range = it->second.range; s.numeric_value = it->second.value;
     }
-    void describe_operations(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& numerics = UiState::Internals::numerics(ui);
         auto it = numerics.find(c.id);
         if (it != numerics.end() && !c.read_only && it->second.writable()) s.operations.push_back(Operation::edit);
@@ -1459,7 +1459,7 @@ public:
 class Progress final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override {
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& progresses = UiState::Internals::progresses(ui);
         auto it = progresses.find(c.id);
         if (it == progresses.end()) return;
@@ -1500,9 +1500,9 @@ public:
 class Tabs final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate, S::error}); }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override { describe_pages(ui, c, s); }
-    void describe_operations(const UiState&, const Component&, Semantics& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
-    void describe_node(const UiState&, const Component&, const Semantics&, const NodeRef&, SemanticNode& n) const override { n.selection_required = true; }
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override { describe_pages(ui, c, s); }
+    void describe_operations(const UiState&, const Component&, ComponentSnapshot& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_node(const UiState&, const Component&, const ComponentSnapshot&, const NodeRef&, NodeSnapshot& n) const override { n.selection_required = true; }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
         if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);
@@ -1588,8 +1588,8 @@ public:
 class NavigationList final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected}); }
-    void describe(const UiState& ui, const Component& c, Semantics& s) const override { describe_pages(ui, c, s); }
-    void describe_node(const UiState&, const Component&, const Semantics&, const NodeRef&, SemanticNode& n) const override { n.selection_required = true; }
+    void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override { describe_pages(ui, c, s); }
+    void describe_node(const UiState&, const Component&, const ComponentSnapshot&, const NodeRef&, NodeSnapshot& n) const override { n.selection_required = true; }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
         if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);

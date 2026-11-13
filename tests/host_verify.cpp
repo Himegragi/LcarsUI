@@ -3325,7 +3325,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         contains_color(pixels, intersect(item->options[2], item->clip), appearance.palette().selection);
     report.check("X04-v02-raster", selected, "T003 is semantically selected and its visible real-host row contains the selection color");
     f.host.paint();
-    auto painted_name = [&](const Semantics& s) {
+    auto painted_name = [&](const ComponentSnapshot& s) {
         return std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
             return event.owner == s.id && event.visible && event.text.find(s.name) != std::u16string::npos;
         });

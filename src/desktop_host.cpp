@@ -577,7 +577,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         Target& canvas;
         Text& renderer;
         std::vector<PaintObservation>* observations;
-        PaintAdapter(UiState& ui, const Placement& item, const Semantics& semantics, const Appearance& appearance,
+        PaintAdapter(UiState& ui, const Placement& item, const ComponentSnapshot& semantics, const Appearance& appearance,
                      float scale, bool window_focused, Target& target, Text& text, std::vector<PaintObservation>* events)
             : ComponentPaint(ui, item, semantics, appearance, scale, window_focused), canvas(target), renderer(text), observations(events) {}
         void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.current_role=value; }

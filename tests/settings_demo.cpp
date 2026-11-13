@@ -71,7 +71,7 @@ void dark_new_component_sweep() {
                 if (!semantic || !semantic->visible) continue;
                 visited.push_back(item.id);
                 const auto& type = detail::component_type(semantic->kind);
-                auto probe = [&](const Semantics& value) {
+                auto probe = [&](const ComponentSnapshot& value) {
                     DarkProbe paint(state, item, value, *appearance, 1.f, true);
                     type.paint(paint); return paint;
                 };

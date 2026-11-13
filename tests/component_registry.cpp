@@ -110,7 +110,7 @@ std::string name_of(Operation op) {
         {Operation::scroll, "scroll"}, {Operation::style, "style"}};
     return name_in(names, op);
 }
-std::string describe_node(const SemanticNode& node, const Semantics* semantics) {
+std::string describe_node(const NodeSnapshot& node, const ComponentSnapshot* semantics) {
     std::ostringstream out;
     out << name_of(node.role) << (node.selection_required ? " selection_required" : "") << " verbs=";
     for (auto verb : node.verbs) out << name_of(verb) << ',';
@@ -245,8 +245,8 @@ public:
     Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
         ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};
     }
-    void describe(const detail::UiState&, const detail::Component&, Semantics& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
-    void describe_operations(const detail::UiState&, const detail::Component&, Semantics& s) const override { s.operations.push_back(Operation::edit); }
+    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
+    void describe_operations(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.operations.push_back(Operation::edit); }
     void verbs(const detail::VerbContext& context, std::vector<Verb>& out) const override {
         if (!context.item && context.admits(Operation::edit)) out.push_back(Verb::set_value);
     }
@@ -264,7 +264,7 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     Ui ui; auto& host = detail::access(ui);
     host.seed_test_controls({{stepper_kind, {.id = "stepper", .label = u"Stepper"}}});
     check(detail::component_type(stepper_kind).name() == "stepper", "the type names itself");
-    // Semantics: its role, its description, its operations and the verbs it offers.
+    // ComponentSnapshot: its role, its description, its operations and the verbs it offers.
     auto node = ui.semantics().get({"stepper"});
     check(node && node->role == Role::slider && node->numeric_value == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
     check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::set_value) != node->verbs.end(), "the type's verb is offered");

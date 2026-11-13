@@ -39,7 +39,7 @@ struct Subject {
     std::string id;
     bool outlined;         // true: the edge is `outline` when enabled, `border` when disabled
     bool border_enabled;   // true: `border` is expected to be painted while enabled
-    bool disableable;      // the Semantics copy can be disabled (the component paints a disabled look)
+    bool disableable;      // the ComponentSnapshot copy can be disabled (the component paints a disabled look)
     int thumbs = 0;        // scrollbar thumbs the component draws: each is outline when enabled (focus and error only recolor the box edge)
 };
 const std::vector<Subject> subjects{
@@ -82,7 +82,7 @@ struct Page {
         return arrange(layout::column(nodes), ui, appearance, measure, 640, 2000, 1.f, scroll);
     }
 };
-RoleProbe paint(Page& page, const Appearance& appearance, const Placement& item, const Semantics& semantics) {
+RoleProbe paint(Page& page, const Appearance& appearance, const Placement& item, const ComponentSnapshot& semantics) {
     RoleProbe probe(detail::access(page.ui), item, semantics, appearance, 1.f, true);
     probe.focus_visible = semantics.focused;  // the indicator shows for a focused component (keyboard modality is #72's concern)
     detail::component_type(semantics.kind).paint(probe);
@@ -111,7 +111,7 @@ void sweep(Check&& per_subject) {
 }
 
 void enabled_controls_draw_outline_where_the_edge_identifies_them() {
-    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
+    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         auto probe = paint(page, a, item, sem);
         check(probe.has(p.outline) == s.outlined, (label + ": enabled outline").c_str());
         if (!s.outlined) check(!probe.has(p.outline), (label + ": decorative edge keeps border").c_str());
@@ -122,7 +122,7 @@ void enabled_controls_draw_outline_where_the_edge_identifies_them() {
 }
 
 void disabled_controls_draw_the_light_border_instead_of_the_outline() {
-    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
+    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         if (!s.disableable) return;
         auto value = sem; value.enabled = false; value.focused = false;
         auto probe = paint(page, a, item, value);
@@ -135,7 +135,7 @@ void disabled_controls_draw_the_light_border_instead_of_the_outline() {
 }
 
 void focus_and_error_edges_keep_their_colors() {
-    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
+    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         if (s.id != "text" && s.id != "dropdown" && s.id != "note" && s.id.rfind("text_", 0) != 0 && s.id.rfind("note_", 0) != 0) return;
         auto focused = sem; focused.enabled = true; focused.focused = true; focused.invalid = false;
         auto on_focus = paint(page, a, item, focused);
@@ -147,7 +147,7 @@ void focus_and_error_edges_keep_their_colors() {
 }
 
 void focused_checkbox_radio_and_slider_keep_the_outline() {
-    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
+    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         if (s.id != "box" && s.id != "radio" && s.id != "slider") return;
         auto focused = sem; focused.enabled = true; focused.focused = true;
         check(paint(page, a, item, focused).has(p.outline), (label + ": focused keeps outline").c_str());
@@ -167,7 +167,7 @@ void aligned_fields_follow_the_focus_indicator_rule() {
             auto item = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& i) { return i.id == id; });
             auto sem = state.describe(id);
             check(item != frame.items.end() && sem, "aligned field arranged");
-            auto probe = [&](Semantics s) { RoleProbe r(state, *item, s, *a, 1.f, true); detail::component_type(s.kind).paint(r); return r; };
+            auto probe = [&](ComponentSnapshot s) { RoleProbe r(state, *item, s, *a, 1.f, true); detail::component_type(s.kind).paint(r); return r; };
             auto focused = *sem; focused.enabled = true; focused.read_only = false; focused.focused = true; focused.invalid = false;
             auto editable = probe(focused);
             check(editable.has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": editable focused field shows the focus edge without keyboard input").c_str());
@@ -184,7 +184,7 @@ void aligned_fields_follow_the_focus_indicator_rule() {
 }
 
 void radio_with_every_option_disabled_draws_the_light_border() {
-    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const Semantics& sem, const std::string& label) {
+    sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         if (s.id != "radio") return;
         auto value = sem; value.enabled = true;
         for (auto& o : value.options) o.enabled = false;

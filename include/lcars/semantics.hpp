@@ -10,7 +10,7 @@ enum class Role { text, button, label, checkbox, radio_group, radio_option, slid
 // context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
 // hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
-// typed Ui::simulate_hover would be, and is never listed in SemanticNode::verbs (hover is not an operation of the node).
+// typed Ui::simulate_hover would be, and is never listed in NodeSnapshot::verbs (hover is not an operation of the node).
 // select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
 // set_word_segmentation takes a WordSegmentation. All are text fields only.
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
@@ -48,7 +48,7 @@ private:
 };
 // Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
 struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextScroll&) const = default; };
-struct SemanticNode {
+struct NodeSnapshot {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
     std::u16string name, value, description, error, accelerator_key, access_key;
@@ -77,7 +77,7 @@ struct SemanticNode {
 // UI-thread-only live queries; the tree does not own its Ui.
 class SemanticTree {
 public:
-    Query<SemanticNode> get(const NodeRef& ref) const;
+    Query<NodeSnapshot> get(const NodeRef& ref) const;
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
     // Same answer and admission as Ui::animating: is any on-screen transition still running?

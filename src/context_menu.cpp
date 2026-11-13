@@ -280,10 +280,10 @@ Result detail::UiState::delete_selection(std::string_view id) {
     if (field->session.begin() == field->session.end()) return {};
     return replace_selection(id, *field, u"");
 }
-Query<MenuInfo> detail::UiState::menu_info() const {
+Query<MenuSnapshot> detail::UiState::menu_info() const {
     if (!menu_) return {Status::hidden, u"選單沒有開啟", std::nullopt};
     if (auto r = configuration_access(menu_->target, true); !r) return {r.status, r.message, std::nullopt};
-    MenuInfo info;
+    MenuSnapshot info;
     info.target = const_cast<UiState*>(this)->layout_handle(menu_->target);
     info.item = menu_->item;
     for (auto& entry : menu_entries(menu_->target))
@@ -302,11 +302,11 @@ void detail::UiState::menu_frame(const Frame& frame) {
         if (visible.w > 0 && visible.h > 0) semantic_menu_rows_[row.id] = visible;
     }
 }
-std::optional<Query<SemanticNode>> detail::UiState::menu_node(const NodeRef& ref) {
+std::optional<Query<NodeSnapshot>> detail::UiState::menu_node(const NodeRef& ref) {
     if (!menu_) return std::nullopt;
     const auto menu_id = menu_node_id(menu_->target);
     if (ref.id != menu_id) return std::nullopt;
-    SemanticNode node;
+    NodeSnapshot node;
     node.ref = ref;
     auto [instance, inserted] = semantic_instances_.try_emplace(menu_id, 0);
     if (inserted) instance->second = ++next_semantic_instance_;
@@ -316,11 +316,11 @@ std::optional<Query<SemanticNode>> detail::UiState::menu_node(const NodeRef& ref
         if (auto bounds = semantic_bounds_.find(menu_id); bounds != semantic_bounds_.end()) node.bounds = bounds->second;
         node.visible = node.bounds.has_value();
         if (!renderer_failed_) node.verbs.push_back(Verb::cancel);
-        return Query<SemanticNode>{Status::ok, {}, std::move(node)};
+        return Query<NodeSnapshot>{Status::ok, {}, std::move(node)};
     }
     auto entries = menu_entries(menu_->target);
     auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& e) { return e.id == ref.item->id; });
-    if (entry == entries.end()) return Query<SemanticNode>{Status::not_found, {}, std::nullopt};
+    if (entry == entries.end()) return Query<NodeSnapshot>{Status::not_found, {}, std::nullopt};
     node.role = entry->separator ? Role::menu_separator : Role::menu_item;
     node.name = entry->label; node.accelerator_key = entry->hint;
     if (entry->access_key) node.access_key = std::u16string(1, entry->access_key);
@@ -333,7 +333,7 @@ std::optional<Query<SemanticNode>> detail::UiState::menu_node(const NodeRef& ref
         node.verbs.push_back(Verb::focus);
         if (entry->enabled) node.verbs.push_back(Verb::invoke);
     }
-    return Query<SemanticNode>{Status::ok, {}, std::move(node)};
+    return Query<NodeSnapshot>{Status::ok, {}, std::move(node)};
 }
 std::optional<std::vector<NodeRef>> detail::UiState::menu_children(const NodeRef& parent) const {
     if (!menu_ || parent.item || parent.id != menu_node_id(menu_->target)) return std::nullopt;
@@ -424,11 +424,11 @@ Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
         return {};
     });
 }
-Query<std::vector<MenuItemInfo>> ContextMenuHandle::items() const {
-    return detail::UiState::operate(*this, [&]() -> Query<std::vector<MenuItemInfo>> {
+Query<std::vector<MenuItemSnapshot>> ContextMenuHandle::items() const {
+    return detail::UiState::operate(*this, [&]() -> Query<std::vector<MenuItemSnapshot>> {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu, true); !r) return {r.status, r.message, std::nullopt};
-        std::vector<MenuItemInfo> items;
+        std::vector<MenuItemSnapshot> items;
         for (const auto& item : menu->items)
             items.push_back({item.id, item.label, item.enabled, item.separator, false, item.access_key, item.shortcut_hint});
         return {Status::ok, {}, std::move(items)};
@@ -458,7 +458,7 @@ Query<bool> detail::UiState::menu_open_query() const {
     return {Status::ok, {}, menu_.has_value()};
 }
 Query<bool> Ui::context_menu_open() const { return state_->menu_open_query(); }
-Query<MenuInfo> Ui::context_menu() const { return state_->menu_info(); }
+Query<MenuSnapshot> Ui::context_menu() const { return state_->menu_info(); }
 Result Ui::invoke_menu_item(std::string id) {
     detail::UiState::OperationScope operation(state_.get());
     if (auto r = state_->creation_access(); !r) return r;
