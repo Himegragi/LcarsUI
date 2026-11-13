@@ -1315,8 +1315,8 @@ void* Desktop::native_window() const { return impl_->host->window(); }
 Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
 bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
 RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
-RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options) {
-    auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(options));
+RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig config) {
+    auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(config));
     if (!creation.desktop) return {creation.status,{},creation.failure};
     return creation.desktop->run();
 }

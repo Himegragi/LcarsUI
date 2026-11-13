@@ -3246,13 +3246,13 @@ Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig config) {
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<OptionItem> options) {
+Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<OptionItem> items) {
     detail::Component control(ComponentKind::radio_group, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
+    try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<SliderHandle> Ui::add_slider(ComponentConfig config, SliderRange range) {
@@ -3292,13 +3292,13 @@ Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig config, std:
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<OptionItem> options) {
+Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<OptionItem> items) {
     detail::Component control(ComponentKind::dropdown, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
     if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
+    try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(items))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
 Query<ListHandle> Ui::add_list(ComponentConfig config, std::vector<OptionItem> items) {
