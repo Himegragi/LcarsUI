@@ -49,18 +49,18 @@ std::vector<std::unique_ptr<Source>>& sources() { static std::vector<std::unique
 Source& new_source() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
 
 const std::vector<RadioOption> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}, {{"c"}, u"Gamma"}};
-ComponentConfig control(const std::string& id, ComponentKind kind, const char16_t* label) { ComponentConfig c; c.id = id; c.kind = kind; c.label = label; return c; }
+ComponentConfig control(const std::string& id, const char16_t* label) { ComponentConfig c; c.id = id; c.label = label; return c; }
 
 void put_error(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).set_error(id, long_error)), "an error is set"); }
 
 const Subject subjects[] = {
     {"text", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto field = ui.add_text(control(id, ComponentKind::text, u"Name")).value.value();
+        auto field = ui.add_text(control(id, u"Name")).value.value();
         auto& source = new_source(); auto model = std::make_shared<std::u16string>(u"original");
         if (conflict) {
             field.connect_source({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
-            auto confirm = ui.add_button(control(id + ".apply", ComponentKind::button, u"Apply")).value.value();
+            auto confirm = ui.add_button(control(id + ".apply", u"Apply")).value.value();
             check(bool(ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; })), "the text field is confirmed");
             field.set_value(u"draft"); *model = u"newest"; source.notify();
             check(field.describe()->source_conflict, "the text field reports a conflict");
@@ -69,12 +69,12 @@ const Subject subjects[] = {
         return layout::control(field);
     }},
     {"checkbox", false, [](Ui& ui, const std::string& id, bool, bool error) -> layout::Node {
-        auto checkbox = ui.add_checkbox(control(id, ComponentKind::checkbox, u"Remember me")).value.value();
+        auto checkbox = ui.add_checkbox(control(id, u"Remember me")).value.value();
         put_error(ui, id, error);
         return layout::control(checkbox);
     }},
     {"radio", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto group = ui.add_radio_group(control(id, ComponentKind::radio_group, u"Mode"), options).value.value();
+        auto group = ui.add_radio_group(control(id, u"Mode"), options).value.value();
         auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             group.connect_source({[model] { return *model; }, source.subscribe()});
@@ -86,7 +86,7 @@ const Subject subjects[] = {
         return layout::control(group);
     }},
     {"dropdown", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto box = ui.add_dropdown(control(id, ComponentKind::dropdown, u"Region"), options).value.value();
+        auto box = ui.add_dropdown(control(id, u"Region"), options).value.value();
         auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             box.connect_source({[model] { return *model; }, source.subscribe()});
@@ -98,7 +98,7 @@ const Subject subjects[] = {
         return layout::control(box);
     }},
     {"slider", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto slider = ui.add_slider(control(id, ComponentKind::slider, u"Volume"), {0, 100, 5}).value.value();
+        auto slider = ui.add_slider(control(id, u"Volume"), {0, 100, 5}).value.value();
         auto& source = new_source(); auto model = std::make_shared<int>(0);
         if (conflict) {
             slider.connect_source({[model] { return *model; }, source.subscribe()});

@@ -188,39 +188,39 @@ struct Page {
     std::vector<std::string> ids;
     Page() {
         auto add = [&](std::string id, layout::Node node) { ids.push_back(std::move(id)); nodes.push_back(std::move(node)); };
-        auto text = ui.add_text({.id = "text", .kind = ComponentKind::text, .label = u"Name", .value = u"abc"}).value.value();
+        auto text = ui.add_text({.id = "text", .label = u"Name", .value = u"abc"}).value.value();
         add("text", layout::control(text));
-        auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
+        auto note = ui.add_text({.id = "note", .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
         add("note", layout::control(note));
-        auto rich = ui.add_text({.id = "rich", .kind = ComponentKind::text, .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        auto rich = ui.add_text({.id = "rich", .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         add("rich", layout::control(rich));
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = ComponentKind::dropdown, .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
+        auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
         add("dropdown", layout::control(dropdown));
-        auto box = ui.add_checkbox({.id = "box", .kind = ComponentKind::checkbox, .label = u"Remember me"}).value.value();
+        auto box = ui.add_checkbox({.id = "box", .label = u"Remember me"}).value.value();
         add("box", layout::control(box));
-        auto button = ui.add_button({.id = "button", .kind = ComponentKind::button, .label = u"Go"}).value.value();
+        auto button = ui.add_button({.id = "button", .label = u"Go"}).value.value();
         add("button", layout::control(button));
-        auto radio_none = ui.add_radio_group({.id = "radio_none", .kind = ComponentKind::radio_group, .label = u"Mode"}, {{{"a"}, u"A", false}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+        auto radio_none = ui.add_radio_group({.id = "radio_none", .label = u"Mode"}, {{{"a"}, u"A", false}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
         add("radio_none", layout::control(radio_none));
-        auto radio_sel = ui.add_radio_group({.id = "radio_sel", .kind = ComponentKind::radio_group, .label = u"Size"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+        auto radio_sel = ui.add_radio_group({.id = "radio_sel", .label = u"Size"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
         radio_sel.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         radio_sel.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
         check(bool(radio_sel.select({"b"})), "a radio option is selected");
         add("radio_sel", layout::control(radio_sel));
-        auto slider = ui.add_slider({.id = "slider", .kind = ComponentKind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
+        auto slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
         add("slider", layout::control(slider));
-        auto list = ui.add_list({.id = "list", .kind = ComponentKind::list, .label = u"Items"}, {{{"i1"}, u"One"}, {{"i2"}, u"Two"}, {{"i3"}, u"Three"}}).value.value();
+        auto list = ui.add_list({.id = "list", .label = u"Items"}, {{{"i1"}, u"One"}, {{"i2"}, u"Two"}, {{"i3"}, u"Three"}}).value.value();
         list.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         list.connect_immediate([](std::optional<OptionValue>) { return Result{}; });
         check(bool(list.select({"i2"})), "a list row is selected");
         add("list", layout::control(list));
-        auto tabs = ui.add_tabs({.id = "tabs", .kind = ComponentKind::tabs, .label = u"Pages"}, {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}}).value.value();
+        auto tabs = ui.add_tabs({.id = "tabs", .label = u"Pages"}, {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}}).value.value();
         add("tabs", layout::control(tabs));
-        auto nav = ui.add_navigation_list({.id = "nav", .kind = ComponentKind::navigation_list}, {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}}, {"n1"}).value.value();
+        auto nav = ui.add_navigation_list({.id = "nav"}, {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}}, {"n1"}).value.value();
         add("nav", layout::control(nav));
-        auto scrolled = ui.add_label({.id = "scroll_text", .kind = ComponentKind::label, .value = std::u16string(1200, u'x')}).value.value();
+        auto scrolled = ui.add_label({.id = "scroll_text", .value = std::u16string(1200, u'x')}).value.value();
         add("scroll_text", layout::scroll_text(scrolled, label_scroll, 60));
-        auto vertical = ui.add_label({.id = "vertical", .kind = ComponentKind::label, .value = std::u16string(900, u'字'), .writing_mode = WritingMode::vertical}).value.value();
+        auto vertical = ui.add_label({.id = "vertical", .value = std::u16string(900, u'字'), .writing_mode = WritingMode::vertical}).value.value();
         add("vertical", layout::vertical_text(vertical, 120));
     }
     detail::UiState& state() { return detail::access(ui); }
@@ -537,8 +537,8 @@ void never_wins_over_keyboard_cues_and_keys_and_editable_text() {
 
 void never_leaves_the_semantic_layer_and_the_focus_tooltip_alone() {
     Ui ui;
-    auto first = ui.add_button({.id = "first", .kind = ComponentKind::button, .label = u"First"}).value.value();
-    auto second = ui.add_button({.id = "second", .kind = ComponentKind::button, .label = u"Second"}).value.value();
+    auto first = ui.add_button({.id = "first", .label = u"First"}).value.value();
+    auto second = ui.add_button({.id = "second", .label = u"Second"}).value.value();
     auto tip = ui.add_tooltip("second.tip", second, u"Help", 100).value.value();
     auto settings = ui.presentation(); settings.focus_indicator = FocusIndicatorMode::never;
     check(bool(ui.set_presentation(settings)), "never accepted");

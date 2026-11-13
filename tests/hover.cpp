@@ -31,36 +31,36 @@ struct Page {
     bool list_first = false;  // lets a scroll test reach the list rows inside a short window
     Page() {
         auto& s = detail::access(ui);
-        save = ui.add_button({.id = "save", .kind = ComponentKind::button, .label = u"Save"}).value.value();
-        off = ui.add_button({.id = "off", .kind = ComponentKind::button, .label = u"Off", .enabled = false}).value.value();
-        ok = ui.add_button({.id = "ok", .kind = ComponentKind::button, .label = u"OK"}).value.value();
-        box = ui.add_checkbox({.id = "box", .kind = ComponentKind::checkbox, .label = u"Box"}).value.value();
-        radio = ui.add_radio_group({.id = "radio", .kind = ComponentKind::radio_group, .label = u"Radio"},
+        save = ui.add_button({.id = "save", .label = u"Save"}).value.value();
+        off = ui.add_button({.id = "off", .label = u"Off", .enabled = false}).value.value();
+        ok = ui.add_button({.id = "ok", .label = u"OK"}).value.value();
+        box = ui.add_checkbox({.id = "box", .label = u"Box"}).value.value();
+        radio = ui.add_radio_group({.id = "radio", .label = u"Radio"},
             {{{"a"}, u"A"}, {{"b"}, u"B", false}, {{"c"}, u"C"}}).value.value();
-        drop = ui.add_dropdown({.id = "drop", .kind = ComponentKind::dropdown, .label = u"Drop"},
+        drop = ui.add_dropdown({.id = "drop", .label = u"Drop"},
             {{{"d1"}, u"One"}, {{"d2"}, u"Two"}, {{"d3"}, u"Three", false}}).value.value();
         drop.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         drop.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
         std::vector<RadioOption> items;
         for (int i = 1; i <= 40; ++i) items.push_back({{"l" + std::to_string(i)}, u"Item " + std::u16string(1, char16_t(u'0' + i % 10)), i != 3});
-        list = ui.add_list({.id = "list", .kind = ComponentKind::list, .label = u"List"}, items).value.value();
-        tabs = ui.add_tabs({.id = "tabs", .kind = ComponentKind::tabs, .label = u"Tabs"},
+        list = ui.add_list({.id = "list", .label = u"List"}, items).value.value();
+        tabs = ui.add_tabs({.id = "tabs", .label = u"Tabs"},
             {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}, {{"t3"}, u"Three", false, {}}}).value.value();
-        nav = ui.add_navigation_list({.id = "nav", .kind = ComponentKind::navigation_list, .label = u"Nav"},
+        nav = ui.add_navigation_list({.id = "nav", .label = u"Nav"},
             {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}, {{"n3"}, u"Locked", false, {}}}, {"n1"}).value.value();
-        slider = ui.add_slider({.id = "slider", .kind = ComponentKind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
+        slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[] { return 50; }, [](auto) { return [] {}; }});
         slider.connect_immediate([](const Change<SliderHandle>&) { return Result{}; });
-        field = ui.add_text({.id = "field", .kind = ComponentKind::text, .label = u"Name", .value = u"abc"}).value.value();
-        notes = ui.add_text({.id = "notes", .kind = ComponentKind::text, .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
-        aligned = ui.add_text({.id = "aligned", .kind = ComponentKind::text, .label = u"Right", .value = u"abc"}).value.value();
+        field = ui.add_text({.id = "field", .label = u"Name", .value = u"abc"}).value.value();
+        notes = ui.add_text({.id = "notes", .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
+        aligned = ui.add_text({.id = "aligned", .label = u"Right", .value = u"abc"}).value.value();
         check(bool(aligned.set_text_align(TextAlign::right)), "a single-line field takes an alignment");
-        aligned_notes = ui.add_text({.id = "aligned_notes", .kind = ComponentKind::text, .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visible_lines = 3}).value.value();
+        aligned_notes = ui.add_text({.id = "aligned_notes", .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visible_lines = 3}).value.value();
         check(bool(aligned_notes.set_text_align(TextAlign::center)) && bool(aligned_notes.set_line_spacing(1.5)) && bool(aligned_notes.set_paragraph_spacing(8)),
               "a multi-line field takes alignment, line spacing and paragraph spacing");
-        progress = ui.add_progress({.id = "progress", .kind = ComponentKind::progress, .label = u"Progress"}).value.value();
-        label = ui.add_label({.id = "label", .kind = ComponentKind::label, .value = u"Hello"}).value.value();
-        vertical = ui.add_label({.id = "vertical", .kind = ComponentKind::label, .value = u"Vertical"}).value.value();
+        progress = ui.add_progress({.id = "progress", .label = u"Progress"}).value.value();
+        label = ui.add_label({.id = "label", .value = u"Hello"}).value.value();
+        vertical = ui.add_label({.id = "vertical", .value = u"Vertical"}).value.value();
         check(bool(vertical.set_writing_mode(WritingMode::vertical)), "a label can be written vertically (#82)");
         dialog = ui.add_dialog("dlg", {ok}, ok, save, [](bool) {}).value.value();
         tip = ui.add_tooltip("save.tip", save, u"Save it", 100).value.value();
@@ -264,7 +264,7 @@ void simulation_is_admitted_like_the_typed_operations() {
     check(page.ui.simulate_hover(ComponentHandle{}).status == Status::not_found, "an empty handle answers not_found");
     check(!target_of(page), "refusals leave no hover");
     ButtonHandle stale;
-    { Ui other; stale = other.add_button({.id = "x", .kind = ComponentKind::button}).value.value(); }
+    { Ui other; stale = other.add_button({.id = "x"}).value.value(); }
     check(page.ui.simulate_hover(stale).status == Status::not_found, "a handle of a dead Ui answers not_found");
     check(page.ui.simulate_hover(page.tabs, OptionValue{"t2"}).status == Status::ok, "tab items can be simulated");
 }

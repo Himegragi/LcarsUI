@@ -56,18 +56,18 @@ bool admits_text_align(ComponentKind kind, TextAlign align) {
     const auto* type = detail::find_component_type(kind);
     return align != TextAlign::distribute || (type && type->admits_distribute());
 }
-bool valid_text_flow(const ComponentConfig& control) {
+bool valid_text_flow(const detail::Component& control) {
     if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
     if (!admits_text_align(control.kind, control.text_align)) return false;
     return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
 // A rich field is a multi-line text field; the option exists for no other control.
-bool valid_rich_option(const ComponentConfig& control) {
+bool valid_rich_option(const detail::Component& control) {
     const auto* type = detail::find_component_type(control.kind);
     return !control.rich || (type && type->supports_rich_text() && control.multiline);
 }
 }
-bool detail::valid_text_control(const ComponentConfig& control) {
+bool detail::valid_text_control(const Component& control) {
     return valid_value(control, control.value) && valid_visible_lines(control) && valid_rich_option(control);
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
@@ -189,7 +189,7 @@ void detail::UiState::commit_removals() {
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
         blur_callbacks_.erase(id); providers_.erase(id);
-        std::erase_if(controls_, [&](const ComponentConfig& control) { return control.id == id; });
+        std::erase_if(controls_, [&](const Component& control) { return control.id == id; });
         semantic_instances_.erase(id);
         button_lifetimes_.erase(id);
         retiring_.clear();
@@ -294,7 +294,7 @@ Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overr
     if (invalidate_) invalidate_();
     return {};
 }
-detail::UiState::UiState(std::vector<ComponentConfig> controls) : controls_(std::move(controls)) {
+detail::UiState::UiState(std::vector<Component> controls) : controls_(std::move(controls)) {
     OperationScope operation(this);
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
@@ -325,7 +325,7 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
 }
-ProgressHandle detail::UiState::add_progress(ComponentConfig control) {
+ProgressHandle detail::UiState::add_progress(Component control) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::progress || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid progress component");
@@ -350,7 +350,7 @@ Result ProgressHandle::connect_source(Source<int> source) const {
 Query<Semantics> ProgressHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
-TextHandle detail::UiState::add_text(ComponentConfig control) {
+TextHandle detail::UiState::add_text(Component control) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::text || control.id.empty() || find(control.id) || !detail::valid_text_control(control))
         throw std::invalid_argument("Invalid text component");
@@ -361,7 +361,7 @@ TextHandle detail::UiState::add_text(ComponentConfig control) {
     edits_.emplace(id, std::move(field));
     return TextHandle(this, lifetime_, std::move(id));
 }
-ButtonHandle detail::UiState::add_button(ComponentConfig control) {
+ButtonHandle detail::UiState::add_button(Component control) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::button || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid button component");
@@ -371,7 +371,7 @@ ButtonHandle detail::UiState::add_button(ComponentConfig control) {
     button_lifetimes_.emplace(id, token);
     return ButtonHandle(this, token, std::move(id));
 }
-LabelHandle detail::UiState::add_label(ComponentConfig control) {
+LabelHandle detail::UiState::add_label(Component control) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::label || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid label component");
@@ -379,7 +379,7 @@ LabelHandle detail::UiState::add_label(ComponentConfig control) {
     controls_.push_back(std::move(control));
     return LabelHandle(this, lifetime_, std::move(id));
 }
-CheckboxHandle detail::UiState::add_checkbox(ComponentConfig control) {
+CheckboxHandle detail::UiState::add_checkbox(Component control) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::checkbox || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid checkbox component");
@@ -467,7 +467,7 @@ Query<bool> CheckboxHandle::draft() const {
         return {Status::ok, {}, ui_->bools_.at(id_).value};
     });
 }
-RadioGroupHandle detail::UiState::add_radio_group(ComponentConfig control, std::vector<RadioOption> options) {
+RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector<RadioOption> options) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::radio_group || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid radio group");
@@ -479,7 +479,7 @@ RadioGroupHandle detail::UiState::add_radio_group(ComponentConfig control, std::
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
-ListHandle detail::UiState::add_list(ComponentConfig control, std::vector<RadioOption> items) {
+ListHandle detail::UiState::add_list(Component control, std::vector<RadioOption> items) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
     std::set<std::string> ids;
@@ -670,7 +670,7 @@ Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
         return {Status::ok, {}, ui_->radios_.at(id_).value};
     });
 }
-DropdownHandle detail::UiState::add_dropdown(ComponentConfig control, std::vector<RadioOption> options) {
+DropdownHandle detail::UiState::add_dropdown(Component control, std::vector<RadioOption> options) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
     std::set<std::string> ids;
@@ -821,7 +821,7 @@ int snap_slider(SliderRange range, int input) {
     return static_cast<int>(value - lower < upper - value ? lower : upper);
 }
 }
-SliderHandle detail::UiState::add_slider(ComponentConfig control, SliderRange range) {
+SliderHandle detail::UiState::add_slider(Component control, SliderRange range) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::slider || control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
         throw std::invalid_argument("Invalid slider component or range");
@@ -1072,7 +1072,7 @@ bool detail::UiState::retired_button(const ComponentHandle& handle) const {
     const auto* button = std::get_if<ButtonHandle>(&handle);
     return button && button->ui_ == this && button->lifetime_.expired();
 }
-TabsHandle detail::UiState::add_tabs(ComponentConfig control, std::vector<TabPage> pages) {
+TabsHandle detail::UiState::add_tabs(Component control, std::vector<TabPage> pages) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::tabs || control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
         throw std::invalid_argument("Invalid tabs component");
@@ -1094,7 +1094,7 @@ TabsHandle detail::UiState::add_tabs(ComponentConfig control, std::vector<TabPag
     bind(id, [this, id] { auto& t = tabs_.at(id); return activate_tab(id, t.pages[t.candidate].value); });
     return TabsHandle(this, lifetime_, std::move(id));
 }
-NavigationListHandle detail::UiState::add_navigation_list(ComponentConfig control, std::vector<NavigationPage> pages, OptionValue initial) {
+NavigationListHandle detail::UiState::add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::navigation_list || control.id.empty() || find(control.id) || pages.empty())
         throw std::invalid_argument("Invalid navigation list");
@@ -1358,7 +1358,7 @@ DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHa
     dialog.members.assign(unique.begin(), unique.end());
     dialog.initial = *first; dialog.fallback = *backup; dialog.result = std::move(result); dialog.configured = true;
     if (name_id) dialog.name_label = *name_id;
-    for (const auto& member : dialog.members) const_cast<ComponentConfig*>(find(member))->page = "dialog";
+    for (const auto& member : dialog.members) const_cast<Component*>(find(member))->page = "dialog";
     dialogs_.emplace(id, std::move(dialog));
     return DialogHandle(this, lifetime_, std::move(id));
 }
@@ -1555,7 +1555,7 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
         return {};
     });
 }
-Result detail::UiState::writing_support(const ComponentConfig& control) {
+Result detail::UiState::writing_support(const Component& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
         return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
     if (!detail::component_type(control.kind).supports_vertical_writing() && control.writing_mode == WritingMode::vertical)
@@ -1592,7 +1592,7 @@ Query<int> LabelHandle::vertical_digits() const {
 }
 void detail::UiState::set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits) {
     OperationScope operation(this);
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     bool changed = (mode && *mode != control->writing_mode) || (digits && *digits != control->vertical_digits);
     if (mode) control->writing_mode = *mode;
@@ -1988,7 +1988,7 @@ Result TextHandle::triple_click(unsigned offset) const {
 Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control->multiline) return {Status::not_supported, u"Not a multi-line field"};
     if (lines < 1 || lines > max_visible_lines) return {Status::invalid_value, u"A multi-line field shows at least one line"};
     control->visible_lines = lines;
@@ -2005,7 +2005,7 @@ Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
 Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields align their text"};
     if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
     if (!admits_text_align(control->kind, align)) return {Status::invalid_value, u"Only a label can distribute its text"};
@@ -2017,7 +2017,7 @@ Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
 Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod method) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields justify their text"};
     if (!valid_justify_method(method)) return {Status::invalid_value, u"Unknown justification method"};
     control->justify_method = method;
@@ -2028,7 +2028,7 @@ Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod me
 Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have line spacing"};
     if (!valid_line_spacing(multiple)) return {Status::invalid_value, u"Line spacing is 1.0 to 3.0 times the line height"};
     control->line_spacing = multiple;
@@ -2039,7 +2039,7 @@ Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
 Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have paragraph spacing"};
     if (!valid_paragraph_spacing(dip)) return {Status::invalid_value, u"Paragraph spacing is 0 to 48 DIP"};
     control->paragraph_spacing = dip;
@@ -2155,7 +2155,7 @@ void detail::UiState::bind_text(std::string_view id, std::function<std::u16strin
     if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
     providers_.insert_or_assign(control->id, std::move(provider));
 }
-const ComponentConfig* detail::UiState::find(std::string_view id) const {
+const detail::Component* detail::UiState::find(std::string_view id) const {
     auto it = std::find_if(controls_.begin(), controls_.end(), [&](const auto& control) { return control.id == id; });
     return it == controls_.end() ? nullptr : &*it;
 }
@@ -2746,7 +2746,7 @@ void detail::UiState::bind(Id id, Action action) {
     if (!find(id) || !action) throw std::invalid_argument("Action requires a known ID and a callback");
     actions_.insert_or_assign(std::move(id), std::move(action));
 }
-Result detail::UiState::focusable(const ComponentConfig& control) const {
+Result detail::UiState::focusable(const Component& control) const {
     if (auto result = available(control.id); !result) return result;
     auto scroll = text_scrolls_.find(control.id);
     if (!component_type(control.kind).can_focus() && (scroll == text_scrolls_.end() || scroll->second.maximum <= 0)) return {Status::not_supported, u"標籤不能取得焦點"};
@@ -3120,7 +3120,7 @@ Result detail::UiState::set_error(std::string_view id, std::u16string message) {
 }
 void detail::UiState::enable(std::string_view id, bool enabled) {
     OperationScope operation(this);
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     control->enabled = enabled;
     if (!enabled && menu_ && menu_->target == id) close_menu();
@@ -3130,18 +3130,18 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
 }
 void detail::UiState::set_read_only(std::string_view id, bool read_only) {
     OperationScope operation(this);
-    if (auto* control = const_cast<ComponentConfig*>(find(id))) control->read_only = read_only;
+    if (auto* control = const_cast<Component*>(find(id))) control->read_only = read_only;
 }
 void detail::UiState::check(std::string_view id, bool checked) {
     OperationScope operation(this);
-    if (auto* control = const_cast<ComponentConfig*>(find(id))) control->checked = checked;
+    if (auto* control = const_cast<Component*>(find(id))) control->checked = checked;
 }
 void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     replace_rich(id, RichText{std::move(value), {}});
 }
 void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     OperationScope operation(this);
-    auto* control = const_cast<ComponentConfig*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     auto it = edits_.find(id);
     if (!control || it == edits_.end() || !valid_value(*control, rich.text)) throw std::invalid_argument("Invalid owner refresh");
     if (composing_ == control->id) composition_cancel();
@@ -3155,11 +3155,11 @@ void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
     field.multi.first = field.multi.anchor = 0; field.multi.caret = ~0u; field.multi.pending_first.reset();  // show the caret afresh
 }
-Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<ComponentConfig>{})), semantics_(new SemanticTree(*state_)) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<detail::Component>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 // Controls supplied as data after construction: registered exactly as the constructor registers them.
-void detail::UiState::seed_test_controls(std::vector<ComponentConfig> controls) {
+void detail::UiState::seed_test_controls(std::vector<Component> controls) {
     OperationScope operation(this);
     for (auto& control : controls) {
         const auto& type = detail::component_type(control.kind);
@@ -3189,7 +3189,8 @@ Result detail::UiState::creation_access() const {
     return {};
 }
 const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnostics_; }
-Query<TextHandle> Ui::add_text(ComponentConfig control) {
+Query<TextHandle> Ui::add_text(ComponentConfig config) {
+    detail::Component control(ComponentKind::text, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3197,7 +3198,8 @@ Query<TextHandle> Ui::add_text(ComponentConfig control) {
     try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<ButtonHandle> Ui::add_button(ComponentConfig control) {
+Query<ButtonHandle> Ui::add_button(ComponentConfig config) {
+    detail::Component control(ComponentKind::button, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3205,7 +3207,8 @@ Query<ButtonHandle> Ui::add_button(ComponentConfig control) {
     try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<LabelHandle> Ui::add_label(ComponentConfig control) {
+Query<LabelHandle> Ui::add_label(ComponentConfig config) {
+    detail::Component control(ComponentKind::label, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3213,7 +3216,8 @@ Query<LabelHandle> Ui::add_label(ComponentConfig control) {
     try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig control) {
+Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig config) {
+    detail::Component control(ComponentKind::checkbox, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3221,7 +3225,8 @@ Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig control) {
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig control, std::vector<RadioOption> options) {
+Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<RadioOption> options) {
+    detail::Component control(ComponentKind::radio_group, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3229,7 +3234,8 @@ Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig control, std::vector
     try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<SliderHandle> Ui::add_slider(ComponentConfig control, SliderRange range) {
+Query<SliderHandle> Ui::add_slider(ComponentConfig config, SliderRange range) {
+    detail::Component control(ComponentKind::slider, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3238,7 +3244,8 @@ Query<SliderHandle> Ui::add_slider(ComponentConfig control, SliderRange range) {
     try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<ProgressHandle> Ui::add_progress(ComponentConfig control) {
+Query<ProgressHandle> Ui::add_progress(ComponentConfig config) {
+    detail::Component control(ComponentKind::progress, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3246,7 +3253,8 @@ Query<ProgressHandle> Ui::add_progress(ComponentConfig control) {
     try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<TabsHandle> Ui::add_tabs(ComponentConfig control, std::vector<TabPage> pages) {
+Query<TabsHandle> Ui::add_tabs(ComponentConfig config, std::vector<TabPage> pages) {
+    detail::Component control(ComponentKind::tabs, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3254,7 +3262,8 @@ Query<TabsHandle> Ui::add_tabs(ComponentConfig control, std::vector<TabPage> pag
     try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig control, std::vector<NavigationPage> pages, OptionValue initial) {
+Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial) {
+    detail::Component control(ComponentKind::navigation_list, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3262,7 +3271,8 @@ Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig control, std
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<DropdownHandle> Ui::add_dropdown(ComponentConfig control, std::vector<RadioOption> options) {
+Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<RadioOption> options) {
+    detail::Component control(ComponentKind::dropdown, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
@@ -3270,7 +3280,8 @@ Query<DropdownHandle> Ui::add_dropdown(ComponentConfig control, std::vector<Radi
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<ListHandle> Ui::add_list(ComponentConfig control, std::vector<RadioOption> items) {
+Query<ListHandle> Ui::add_list(ComponentConfig config, std::vector<RadioOption> items) {
+    detail::Component control(ComponentKind::list, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
     if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};

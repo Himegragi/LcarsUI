@@ -32,7 +32,7 @@ namespace lcars::detail {
 class UiState;
 struct ComponentLayout {
     UiState& ui;
-    const ComponentConfig& control;
+    const Component& control;
     const Appearance& appearance;
     TextMeasure& measure;
     Placement& placement;
@@ -120,7 +120,7 @@ struct PointerRelease {
 // What a type needs to say which verbs one semantic node offers; the node is enabled, visible and not behind a modal.
 struct VerbContext {
     const UiState& ui;
-    const ComponentConfig& control;
+    const Component& control;
     const Semantics& semantics;
     const SemanticNode& node;
     bool item;                                             // the node is one item of the control
@@ -139,7 +139,7 @@ class ComponentType {
 public:
     virtual ~ComponentType() = default;
     virtual bool supports_state(ComponentState state) const { return state == ComponentState::normal; }
-    virtual ComponentHandle handle(UiState&, const ComponentConfig&) const = 0;
+    virtual ComponentHandle handle(UiState&, const Component&) const = 0;
     // ---- Identity and creation rules. The defaults are what a type with nothing special says.
     // The name diagnostics use ("custom" for a type that does not name itself).
     virtual std::string_view name() const { return "custom"; }
@@ -151,7 +151,7 @@ public:
     // Alignment, justification and spacing; distribute is for labels only (a field respread at every key would be unusable).
     virtual bool supports_text_flow() const { return false; }
     virtual bool admits_distribute() const { return false; }
-    // ComponentConfig::rich is for multi-line fields of such a type, ComponentConfig::writing_mode vertical for labels.
+    // Component::rich is for multi-line fields of such a type, Component::writing_mode vertical for labels.
     virtual bool supports_rich_text() const { return false; }
     virtual bool supports_vertical_writing() const { return false; }
     // Ui::set_error is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
@@ -161,31 +161,31 @@ public:
     virtual bool needs_name() const { return true; }
     // ---- Input.
     // Whether the focused control takes this key itself (key_down runs) or leaves it to the application's shortcuts.
-    virtual bool handles_key(const UiState&, const ComponentConfig&, KeyPress key) const { return !key.ctrl || !key.letter; }
+    virtual bool handles_key(const UiState&, const Component&, KeyPress key) const { return !key.ctrl || !key.letter; }
     virtual Result key_down(UiState&, KeyPress) const { return {}; }
     // A press on this row of the control is ignored altogether (no focus change either).
-    virtual bool ignores_press(const UiState&, const ComponentConfig&, std::optional<std::size_t> /*option*/) const { return false; }
-    virtual void pointer_down(UiState&, const ComponentConfig&, std::optional<std::size_t> /*option*/) const {}
+    virtual bool ignores_press(const UiState&, const Component&, std::optional<std::size_t> /*option*/) const { return false; }
+    virtual void pointer_down(UiState&, const Component&, std::optional<std::size_t> /*option*/) const {}
     // The release over the armed component; the default invokes the component's action.
     virtual Result pointer_up(UiState&, const PointerRelease&) const;
     // ---- Semantics.
     // Fills the type's part of the control's description (values, options, conflicts) and, afterwards, the operations it admits.
-    virtual void describe(const UiState&, const ComponentConfig&, Semantics&) const {}
-    virtual void describe_operations(const UiState&, const ComponentConfig&, Semantics&) const {}
+    virtual void describe(const UiState&, const Component&, Semantics&) const {}
+    virtual void describe_operations(const UiState&, const Component&, Semantics&) const {}
     // The text the control shows when it is not the control's own value (nullopt: control.value).
-    virtual std::optional<std::u16string> display_text(const UiState&, const ComponentConfig&) const { return std::nullopt; }
+    virtual std::optional<std::u16string> display_text(const UiState&, const Component&) const { return std::nullopt; }
     // The type's own node properties (accelerators, selection, writing mode, text selection...).
-    virtual void describe_node(const UiState&, const ComponentConfig&, const Semantics&, const NodeRef&, SemanticNode&) const {}
+    virtual void describe_node(const UiState&, const Component&, const Semantics&, const NodeRef&, SemanticNode&) const {}
     // The verbs of the node, in order. The default offers focus and the context menu where the control admits them.
     virtual void verbs(const VerbContext&, std::vector<Verb>&) const;
     // A verb arriving at the control or one of its items; nullopt: not this type's verb.
     virtual std::optional<Result> perform(const PerformContext&) const { return std::nullopt; }
     // The control has a confirmed write waiting for its confirm verb: the node lists Verb::confirm and performs it through the
     // typed handle's confirm(); a type does not handle the verb itself.
-    virtual bool confirm_pending(const UiState&, const ComponentConfig&) const { return false; }
+    virtual bool confirm_pending(const UiState&, const Component&) const { return false; }
     // ---- What the layout, the host and the context menu ask a type.
     // A control supplied as data (the UiState constructor, the test seam) is registered with the state that goes with it.
-    virtual void adopt(UiState&, const ComponentConfig&) const {}
+    virtual void adopt(UiState&, const Component&) const {}
     // The type opens a popup that holds its items (a dropdown): the popup owns the wheel and a press outside it closes it, its
     // items show no bounds while it is closed and start no tooltip.
     virtual bool opens_popup() const { return false; }
@@ -202,12 +202,12 @@ public:
     virtual bool begin_value_drag(UiState&, const Placement&, int /*x*/, float /*scale*/) const { return false; }
     // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
     virtual bool has_builtin_menu() const { return false; }
-    virtual void builtin_menu_entries(const UiState&, const ComponentConfig&, bool /*clipboard_text*/, std::vector<UiState::MenuEntry>&) const {}
+    virtual void builtin_menu_entries(const UiState&, const Component&, bool /*clipboard_text*/, std::vector<UiState::MenuEntry>&) const {}
     virtual Result run_builtin_menu(UiState&, const std::string&, std::string_view) const { return {Status::not_found, u"沒有這個選單項目"}; }
-    virtual std::optional<OptionValue> menu_cursor(const UiState&, const ComponentConfig&) const { return std::nullopt; }
-    virtual Result check_menu_item(const UiState&, const ComponentConfig&, const OptionValue&) const { return {Status::invalid_value, u"只有清單可以指定項目"}; }
+    virtual std::optional<OptionValue> menu_cursor(const UiState&, const Component&) const { return std::nullopt; }
+    virtual Result check_menu_item(const UiState&, const Component&, const OptionValue&) const { return {Status::invalid_value, u"只有清單可以指定項目"}; }
     virtual void menu_row_chosen(UiState&, const std::string&, const OptionValue&) const {}
-    virtual std::optional<Query<OptionValue>> menu_row(const UiState&, const ComponentConfig&, std::size_t /*option*/) const { return std::nullopt; }
+    virtual std::optional<Query<OptionValue>> menu_row(const UiState&, const Component&, std::size_t /*option*/) const { return std::nullopt; }
     virtual void arrange(ComponentLayout&) const = 0;
     virtual void paint(ComponentPaint&) const = 0;
     // A negative width means the component shares its row's remaining space.
@@ -238,7 +238,7 @@ int text_row(int line_height, double line_spacing);
 int paragraph_gap(const ComponentConfig& control, float scale);
 // The alignment to draw now (#84): the control's own, except that the user's "justified text as left"
 // setting turns justify and distribute into left. Reads of the property itself stay unchanged.
-TextAlign drawn_text_align(const ComponentConfig& control, const PresentationSettings& settings);
+TextAlign drawn_text_align(const Component& control, const PresentationSettings& settings);
 // The same rule for an alignment value alone (what UIA reports from a semantic node): the one place that knows it.
 TextAlign drawn_text_align(TextAlign align, const PresentationSettings& settings);
 

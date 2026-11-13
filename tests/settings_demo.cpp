@@ -465,9 +465,9 @@ void exercise() {
         test::check(node && node->role == Role::list_item && node->selected == (page.item->id == "general"),
                     "semantic page items identify the selected page");
     }
-    auto items_probe = demo.ui.add_label({.id="probe.items", .kind=ComponentKind::label}).value.value();
-    auto appearance_probe = demo.ui.add_label({.id="probe.appearance", .kind=ComponentKind::label}).value.value();
-    auto about_probe = demo.ui.add_label({.id="probe.about", .kind=ComponentKind::label}).value.value();
+    auto items_probe = demo.ui.add_label({.id="probe.items"}).value.value();
+    auto appearance_probe = demo.ui.add_label({.id="probe.appearance"}).value.value();
+    auto about_probe = demo.ui.add_label({.id="probe.about"}).value.value();
     test::check(bool(demo.nav.add_member({"items"}, items_probe)) && bool(demo.nav.add_member({"appearance"}, appearance_probe)) &&
                 bool(demo.nav.add_member({"about"}, about_probe)), "attach page-specific semantic probes");
     for (const char* page : {"general", "items", "appearance", "about"}) {
@@ -1365,7 +1365,7 @@ void slider_drag_is_one_write_per_value_and_one_undo() {
     settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
     paint_slider(demo, web_appearance(), demo.volume, track);
     int writes = 0; std::vector<int> values;
-    Ui ui; auto bare = ui.add_slider({.id = "v", .kind = ComponentKind::slider, .label = u"V"}, {0, 100, 5}).value.value();
+    Ui ui; auto bare = ui.add_slider({.id = "v", .label = u"V"}, {0, 100, 5}).value.value();
     int model = 40; bare.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     bare.connect_immediate([&](const Change<SliderHandle>& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
     auto& bare_state = detail::access(ui); const Rect bare_track{100, 0, 200, 20};

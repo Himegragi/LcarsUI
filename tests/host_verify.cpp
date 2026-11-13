@@ -733,7 +733,7 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
 
 void font_diagnostic_reaches_application(const Appearance& appearance, Report& report) {
     Ui ui;
-    auto label=ui.add_label({.id="missing-font-glyph",.kind=ComponentKind::label,.value=u"\U0010ffff"});
+    auto label=ui.add_label({.id="missing-font-glyph",.value=u"\U0010ffff"});
     std::vector<RenderDiagnostic> events;
     DesktopHost* active=nullptr; int depth=0, maximum_depth=0;
     auto initial=ui.presentation(); initial.font_family=u"LcarsUI definitely absent";
@@ -771,7 +771,7 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     constexpr auto test_kind = static_cast<ComponentKind>(100);
     TestComponent component;
     detail::ScopedComponentType registration(test_kind, component);
-    Ui ui; detail::access(ui).seed_test_controls({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
+    Ui ui; detail::access(ui).seed_test_controls({{test_kind, {.id = "probe", .value = u"Test component"}}});
     auto& state = detail::access(ui);
     int activations = 0;
     state.bind("probe", [&] { ++activations; return Result{}; });
@@ -804,8 +804,8 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     std::optional<OptionValue> value=OptionValue{"0"}; std::function<void()> changed; bool invoked=false;
     Ui ui; ScrollState scroll; std::vector<RadioOption> options;
     for (int i=0; i<150; ++i) { auto id=std::to_string(i); options.push_back({{id},std::u16string(id.begin(),id.end())}); }
-    auto dropdown=ui.add_dropdown({.id="native.dropdown",.kind=ComponentKind::dropdown,.label=u"Font"},std::move(options)).value.value();
-    auto other=ui.add_button({.id="native.other",.kind=ComponentKind::button,.label=u"Other"}).value.value();
+    auto dropdown=ui.add_dropdown({.id="native.dropdown",.label=u"Font"},std::move(options)).value.value();
+    auto other=ui.add_button({.id="native.other",.label=u"Other"}).value.value();
     dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
     dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
@@ -1205,7 +1205,7 @@ void context_menu_native(const Appearance& appearance, Report& report) {
 // (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
 void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
-    auto note = ui.add_label({.id = "note", .kind = ComponentKind::label, .value = std::u16string(300, u'字'),
+    auto note = ui.add_label({.id = "note", .value = std::u16string(300, u'字'),
                               .writing_mode = WritingMode::vertical}).value.value();
     DesktopOptions options; options.title = u"LcarsUI vertical label verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
@@ -1278,7 +1278,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
 void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>();
-    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
+    auto note = ui.add_text({.id = "note", .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI multi-line verification";
@@ -1371,7 +1371,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     Ui ui; ScrollState scroll;
     auto make = [&](const char* id, std::u16string value) {
         auto model = std::make_shared<RichText>(RichText{value, {}});
-        auto field = ui.add_text({.id = id, .kind = ComponentKind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        auto field = ui.add_text({.id = id, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
         field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; });
         return field;
@@ -1460,11 +1460,11 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
 void word_select_native(const Appearance& appearance, Report& report) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
-    auto field_handle = ui.add_text({.id = "line", .kind = ComponentKind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    auto field_handle = ui.add_text({.id = "line", .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
     field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     field_handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
-    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
+    auto note = ui.add_text({.id = "note", .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
     note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     field_handle.set_word_segmentation(WordSegmentation::per_character);
@@ -1549,8 +1549,8 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
         u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(text);
-    auto sample = ui.add_label({.id = "sample", .kind = ComponentKind::label, .value = text, .text_align = TextAlign::justify}).value.value();
-    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
+    auto sample = ui.add_label({.id = "sample", .value = text, .text_align = TextAlign::justify}).value.value();
+    auto note = ui.add_text({.id = "note", .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI justified text verification";

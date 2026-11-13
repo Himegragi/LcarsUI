@@ -28,7 +28,7 @@ struct Field {
 };
 Field add_field(Ui& ui, std::string id, std::u16string value, bool read_only = false) {
     auto model = std::make_shared<std::u16string>(value);
-    auto handle = ui.add_text({.id = id, .kind = ComponentKind::text, .label = u"欄位", .value = value, .read_only = read_only}).value.value();
+    auto handle = ui.add_text({.id = id, .label = u"欄位", .value = value, .read_only = read_only}).value.value();
     check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect field source");
     check(bool(handle.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
     return {handle, model};
@@ -158,7 +158,7 @@ struct RichField {
 };
 RichField add_rich_field(Ui& ui, std::string id, std::u16string value, bool read_only = false) {
     auto model = std::make_shared<RichText>(RichText{value, {}});
-    auto handle = ui.add_text({.id = id, .kind = ComponentKind::text, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
+    auto handle = ui.add_text({.id = id, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect rich source");
     check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
     return {handle, model};
@@ -300,7 +300,7 @@ void quick_keys_run_unique_and_cycle_shared_letters() {
     check(bool(type(ui, u'c')) && !*ui.context_menu_open() && clipboard.content == std::u16string(u"hello"), "a unique quick key runs its item at once (lower case)");
     press(ui, Key::menu);
     check(bool(type(ui, u'A')) && !*ui.context_menu_open(), "upper case works the same");
-    auto button = ui.add_button({.id = "b", .kind = ComponentKind::button, .label = u"B"}).value.value();
+    auto button = ui.add_button({.id = "b", .label = u"B"}).value.value();
     int runs = 0;
     auto menu = ui.add_context_menu(button, {
         {.id = "underline", .label = u"底線(U)", .access_key = u'U', .action = [&](const MenuContext&) { ++runs; return Result{}; }},
@@ -361,7 +361,7 @@ void attach_modes_append_replace_and_off() {
 
 void other_components_have_no_menu_until_one_is_attached() {
     Ui ui;
-    auto button = ui.add_button({.id = "b", .kind = ComponentKind::button, .label = u"按鈕"}).value.value();
+    auto button = ui.add_button({.id = "b", .label = u"按鈕"}).value.value();
     check(ui.open_context_menu(button).status == Status::not_supported, "a button has no menu by default");
     check(!has_verb(ui, "b", Verb::context_menu), "and the semantic layer does not offer one");
     check(core(ui).menu_pointer_open("b", std::nullopt, std::nullopt, {5, 5}).status == Status::not_supported && !*ui.context_menu_open(), "right button on it does nothing");
@@ -372,7 +372,7 @@ void other_components_have_no_menu_until_one_is_attached() {
     check(bool(ui.open_context_menu(button)) && ids_of(*ui.context_menu()) == std::vector<std::string>({"go"}), "the button opens it");
     check(bool(type(ui, u'g')) && runs == 1 && !*ui.context_menu_open(), "its quick key runs the application's code");
     check(core(ui).focused() == "b", "the button was focused by opening its menu");
-    auto bad = ui.add_button({.id = "c", .kind = ComponentKind::button}).value.value();
+    auto bad = ui.add_button({.id = "c"}).value.value();
     check(ui.add_context_menu(bad, {command("x", u"x", 0), command("x", u"y", 0)}).status == Status::invalid_value, "duplicate ids are refused");
     check(ui.add_context_menu(bad, {command("", u"x", 0)}).status == Status::invalid_value, "an item needs an id");
     check(ui.add_context_menu(bad, {command("lcars.cut", u"x", 0)}).status == Status::invalid_value, "the lcars. prefix is reserved");
@@ -445,7 +445,7 @@ void every_way_of_closing_announces_menu_closed() {
 // Removing the component a menu hangs from closes the menu, and that is announced too.
 void removing_the_component_announces_menu_closed() {
     Ui ui;
-    auto button = ui.add_button({.id = "b", .kind = ComponentKind::button}).value.value();
+    auto button = ui.add_button({.id = "b"}).value.value();
     ui.add_context_menu(button, {command("go", u"執行(G)", u'G')});
     std::vector<SemanticEventKind> kinds;
     auto subscription = ui.semantics().subscribe([&](const SemanticEvent& e) { kinds.push_back(e.kind); });
@@ -467,14 +467,14 @@ void menu_cannot_open_or_survive_when_the_component_cannot_act() {
     field.handle.enable(false);
     check(!*ui.context_menu_open(), "disabling the component closes its open menu at once");
     field.handle.enable(true);
-    auto button = ui.add_button({.id = "b", .kind = ComponentKind::button}).value.value();
+    auto button = ui.add_button({.id = "b"}).value.value();
     ui.add_context_menu(button, {command("go", u"執行(G)", u'G')});
     ui.open_context_menu(button);
     check(bool(button.remove()) && !*ui.context_menu_open(), "removing the component closes its open menu");
     check(ui.open_context_menu(button).status == Status::not_found, "a removed component cannot open one");
     // A modal dialog blocks the background.
-    auto cancel = ui.add_button({.id = "cancel", .kind = ComponentKind::button}).value.value();
-    auto fallback = ui.add_button({.id = "fallback", .kind = ComponentKind::button}).value.value();
+    auto cancel = ui.add_button({.id = "cancel"}).value.value();
+    auto fallback = ui.add_button({.id = "fallback"}).value.value();
     auto inner = add_field(ui, "inner", u"x");
     auto dialog = ui.add_dialog("d", {inner.handle, cancel}, inner.handle, fallback, [](bool) {}).value.value();
     ui.open_context_menu(field.handle);
@@ -491,7 +491,7 @@ void menu_cannot_open_or_survive_when_the_component_cannot_act() {
 void list_menu_selects_the_row_and_hands_it_to_the_application() {
     Ui ui;
     auto selected = std::make_shared<std::optional<OptionValue>>();
-    auto list = ui.add_list({.id = "items", .kind = ComponentKind::list, .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙", false}}).value.value();
+    auto list = ui.add_list({.id = "items", .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙", false}}).value.value();
     check(bool(list.connect_source({[selected] { return *selected; }, [](std::function<void()>) { return [] {}; }})), "connect list source");
     check(bool(list.connect_immediate([selected](std::optional<OptionValue> value) { *selected = value; return Result{}; })), "connect list write");
     std::optional<OptionValue> got; int runs = 0;
@@ -617,7 +617,7 @@ void menu_panel_sits_beside_the_pointer_flips_and_scrolls() {
 void keyboard_position_follows_the_caret_and_the_current_row() {
     Ui ui;
     auto field = add_field(ui, "note", u"hello world");
-    auto list = ui.add_list({.id = "items", .kind = ComponentKind::list, .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙"}}).value.value();
+    auto list = ui.add_list({.id = "items", .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙"}}).value.value();
     list.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     ScrollState scroll;
     field.handle.select(5, 5); field.handle.focus();
@@ -653,7 +653,7 @@ void keyboard_position_follows_the_caret_and_the_current_row() {
 void multi_line_field_menu_hangs_from_the_caret_line() {
     Ui ui; MemoryClipboard clipboard; core(ui).set_clipboard(&clipboard); clipboard.content = u"x\ny";
     auto model = std::make_shared<std::u16string>(u"first\nsecond\nthird");
-    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
+    auto note = ui.add_text({.id = "note", .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
     check(bool(note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) &&
           bool(note.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
     ScrollState scroll;

@@ -23,7 +23,7 @@ struct Laid {
     }
 };
 ComponentConfig label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
-    return {.id = std::move(id), .kind = ComponentKind::label, .value = std::move(value), .text_align = align, .justify_method = method};
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .justify_method = method};
 }
 // What a drawn line looks like: where its pieces start and end. A line that is not justified is one piece.
 struct Edges { float left = 0, right = 0; std::size_t pieces = 0; };
@@ -286,10 +286,10 @@ TextHandle field_of(Ui& ui, ComponentConfig control) {
     return field;
 }
 ComponentConfig multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
-    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .text_align = align, .justify_method = method};
+    return {.id = std::move(id), .value = std::move(value), .multiline = true, .visible_lines = lines, .text_align = align, .justify_method = method};
 }
 ComponentConfig single(std::string id, std::u16string value, TextAlign align) {
-    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .text_align = align};
+    return {.id = std::move(id), .value = std::move(value), .text_align = align};
 }
 // What a component painted: every text call and every selection fill.
 struct TextProbe : detail::ComponentPaint {
@@ -392,8 +392,8 @@ void a_field_refuses_distribute_and_a_label_accepts_it() {
     Ui ui;
     check(ui.add_text(single("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "A single-line field is not created distributed");
     check(ui.add_text(multi("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "Nor a multi-line one");
-    check(ui.add_button({.id = "b", .kind = ComponentKind::button, .text_align = TextAlign::justify}).status == Status::invalid_value, "A button has no alignment at all");
-    check(ui.add_button({.id = "b2", .kind = ComponentKind::button, .justify_method = JustifyMethod::spaces}).status == Status::invalid_value, "Nor a justification method");
+    check(ui.add_button({.id = "b", .text_align = TextAlign::justify}).status == Status::invalid_value, "A button has no alignment at all");
+    check(ui.add_button({.id = "b2", .justify_method = JustifyMethod::spaces}).status == Status::invalid_value, "Nor a justification method");
     check(ui.add_label(label("bad", u"x", TextAlign::left, static_cast<JustifyMethod>(9))).status == Status::invalid_value, "An unknown method is invalid at creation");
     auto field = field_of(ui, multi("t", u"abc", TextAlign::center, JustifyMethod::spaces));
     auto name = *ui.add_label(label("l", u"abc", TextAlign::distribute));
@@ -409,7 +409,7 @@ void the_justification_method_is_readable_and_settable_everywhere() {
     Ui ui;
     auto name = *ui.add_label(label("l", u"一二三", TextAlign::justify));
     auto field = field_of(ui, multi("t", u"abc", TextAlign::justify, JustifyMethod::spaces));
-    auto button = *ui.add_button({.id = "b", .kind = ComponentKind::button});
+    auto button = *ui.add_button({.id = "b"});
     check(*name.justify_method() == JustifyMethod::automatic && *field.justify_method() == JustifyMethod::spaces, "Defaults and creation values");
     for (auto method : {JustifyMethod::per_character, JustifyMethod::spaces, JustifyMethod::automatic}) {
         check(bool(name.set_justify_method(method)) && *name.justify_method() == method, "A label takes every method");
@@ -609,8 +609,8 @@ void a_vertical_label_with_justify_or_distribute_reads_from_the_top() {
     const std::u16string text = u"縱書標籤的第一段落，文字夠長而折成數欄。\n第二段";
     for (auto align : {TextAlign::justify, TextAlign::distribute}) {
         Ui ui, plain_ui;
-        auto spread = *ui.add_label({.id = "v", .kind = ComponentKind::label, .value = text, .text_align = align, .justify_method = JustifyMethod::per_character, .writing_mode = WritingMode::vertical});
-        auto left = *plain_ui.add_label({.id = "v", .kind = ComponentKind::label, .value = text, .text_align = TextAlign::left, .writing_mode = WritingMode::vertical});
+        auto spread = *ui.add_label({.id = "v", .value = text, .text_align = align, .justify_method = JustifyMethod::per_character, .writing_mode = WritingMode::vertical});
+        auto left = *plain_ui.add_label({.id = "v", .value = text, .text_align = TextAlign::left, .writing_mode = WritingMode::vertical});
         Laid a(ui, spread, 200), b(plain_ui, left, 200);
         const auto* got = a.frame.find(spread);
         const auto* want = b.frame.find(left);

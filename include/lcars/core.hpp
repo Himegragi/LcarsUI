@@ -58,7 +58,6 @@ enum class WritingMode { horizontal, vertical };
 inline constexpr int max_vertical_digits = 3;
 struct ComponentConfig {
     std::string id;
-    ComponentKind kind;
     std::u16string label = {};  // fallback accessible name when no name label targets this control
     std::string page = {};
     std::u16string value = {};  // text field content, or label display text

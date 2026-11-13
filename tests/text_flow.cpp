@@ -23,7 +23,7 @@ struct Laid {
     }
 };
 ComponentConfig label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
-    return {.id = std::move(id), .kind = ComponentKind::label, .value = std::move(value), .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
 
 void a_label_aligns_each_line_inside_its_own_width() {
@@ -95,14 +95,14 @@ void out_of_range_values_are_invalid_and_change_nothing() {
         check(ui.add_label(label("bad", u"x", TextAlign::left, bad)).status == Status::invalid_value, "A label is not created with a bad line spacing");
     for (int bad : {-1, 49})
         check(ui.add_label(label("bad", u"x", TextAlign::left, 1.0, bad)).status == Status::invalid_value, "A label is not created with a bad paragraph spacing");
-    check(ui.add_text({.id = "bad", .kind = ComponentKind::text, .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
-    check(ui.add_button({.id = "b", .kind = ComponentKind::button, .text_align = TextAlign::center}).status == Status::invalid_value, "A button has no alignment");
-    check(ui.add_checkbox({.id = "c", .kind = ComponentKind::checkbox, .line_spacing = 1.5}).status == Status::invalid_value, "A checkbox has no line spacing");
-    check(ui.add_progress({.id = "p", .kind = ComponentKind::progress, .paragraph_spacing = 8}).status == Status::invalid_value, "A progress bar has no paragraph spacing");
-    check(bool(ui.add_button({.id = "ok", .kind = ComponentKind::button})), "Defaults are fine everywhere");
+    check(ui.add_text({.id = "bad", .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
+    check(ui.add_button({.id = "b", .text_align = TextAlign::center}).status == Status::invalid_value, "A button has no alignment");
+    check(ui.add_checkbox({.id = "c", .line_spacing = 1.5}).status == Status::invalid_value, "A checkbox has no line spacing");
+    check(ui.add_progress({.id = "p", .paragraph_spacing = 8}).status == Status::invalid_value, "A progress bar has no paragraph spacing");
+    check(bool(ui.add_button({.id = "ok"})), "Defaults are fine everywhere");
 
     auto label_handle = *ui.add_label(label("l", u"x"));
-    auto field = *ui.add_text({.id = "t", .kind = ComponentKind::text});
+    auto field = *ui.add_text({.id = "t"});
     auto exercise = [](auto& h, const char* what) {
         check(*h.text_align() == TextAlign::left && *h.line_spacing() == 1.0 && *h.paragraph_spacing() == 0, what);
         check(h.set_line_spacing(0.9).status == Status::invalid_value && h.set_line_spacing(3.1).status == Status::invalid_value, what);
@@ -145,7 +145,7 @@ TextHandle field_of(Ui& ui, ComponentConfig control) {
     return field;
 }
 ComponentConfig single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
-    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .text_align = align, .line_spacing = spacing};
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .line_spacing = spacing};
 }
 
 // The web appearance puts the editor 12 px in and 176 px wide in a 200 px field; the caret keeps 2 px
@@ -208,7 +208,7 @@ void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
 }
 
 ComponentConfig multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
-    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines,
+    return {.id = std::move(id), .value = std::move(value), .multiline = true, .visible_lines = lines,
             .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
 // A 200 px multi-line field: 176 px editor at x = 12, 14 px scrollbar reserve, so the text area is 162 px
@@ -345,7 +345,7 @@ void the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles()
     Ui ui;
     auto handle = *ui.add_label(label("l", u"x", TextAlign::center, 1.4, 8));
     auto field = field_of(ui, multi("t", u"x", 3, TextAlign::right, 2.0, 16));
-    auto button = *ui.add_button({.id = "b", .kind = ComponentKind::button});
+    auto button = *ui.add_button({.id = "b"});
     auto& tree = ui.semantics();
     auto node = tree.get({"l"});
     check(node && node->text_align == TextAlign::center && node->line_spacing == 1.4 && node->paragraph_spacing == 8, "A label reports its properties");

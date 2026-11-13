@@ -206,7 +206,7 @@ int main() {
     without_fonts.shape(u"測試使用者", 18);
     if (std::count(events.begin(), events.end(), "text.glyph_missing") != 5) return 9;
     lcars::Ui ui;
-    auto field=ui.add_text({.id="font-test",.kind=lcars::ComponentKind::text,.value=u"測試使用者"});
+    auto field=ui.add_text({.id="font-test",.value=u"測試使用者"});
     if(!field) return 31;
     if(!field->connect_source({[]{return std::u16string(u"測試使用者");}, [](std::function<void()>) { return std::function<void()>([]{}); }}) ||
        !field->connect_confirmed([](const lcars::Change<lcars::TextHandle>&) {return lcars::Result{};})) return 31;

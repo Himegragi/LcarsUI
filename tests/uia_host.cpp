@@ -142,17 +142,17 @@ int wmain(int argc, wchar_t** argv) {
         });
         for (int i = 0; i <= static_cast<int>(lcars::Status::renderer_failed); ++i) {
             auto id = "fixture.status." + std::to_string(i);
-            auto button = form.ui.add_button({.id = id, .kind = lcars::ComponentKind::button, .label = u"Status fixture"}).value.value();
+            auto button = form.ui.add_button({.id = id, .label = u"Status fixture"}).value.value();
             button.bind([i] { return lcars::Result{static_cast<lcars::Status>(i), {}}; });
         }
-        auto disabled = form.ui.add_button({.id = "fixture.real_disabled", .kind = lcars::ComponentKind::button, .label = u"Disabled"}).value.value();
+        auto disabled = form.ui.add_button({.id = "fixture.real_disabled", .label = u"Disabled"}).value.value();
         disabled.enable(false);
-        auto write = form.ui.add_button({.id = "fixture.name_write", .kind = lcars::ComponentKind::button, .label = u"Write name"}).value.value();
+        auto write = form.ui.add_button({.id = "fixture.name_write", .label = u"Write name"}).value.value();
         write.bind([&form] { return form.handles.name.set_value(u"UIA test"); });
-        auto invalid = form.ui.add_button({.id = "fixture.name_invalid", .kind = lcars::ComponentKind::button, .label = u"Invalid name"}).value.value();
+        auto invalid = form.ui.add_button({.id = "fixture.name_invalid", .label = u"Invalid name"}).value.value();
         invalid.bind([&form] { return form.handles.name.set_value(std::u16string(lcars::default_max_text_length + 1, u'x')); });
         if (probe_unobserved) {
-            auto label = form.ui.add_label({.id = "fixture.unrelated_label", .kind = lcars::ComponentKind::label}).value.value();
+            auto label = form.ui.add_label({.id = "fixture.unrelated_label"}).value.value();
             auto connected = label.connect_source([&] { ++unrelated_reads; return std::u16string(u"Unrelated label"); });
             auto described = label.describe();
             source_bound = connected && described && unrelated_reads > 0;

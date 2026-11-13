@@ -12,7 +12,7 @@ char16_t fold(char16_t ch) { return ch >= u'a' && ch <= u'z' ? static_cast<char1
 bool reserved_id(std::string_view id) { return id.starts_with("lcars."); }
 }
 
-bool detail::UiState::has_menu(const ComponentConfig& control) const {
+bool detail::UiState::has_menu(const Component& control) const {
     const bool builtin = component_type(control.kind).has_builtin_menu();
     auto attachment = menu_attachments_.find(control.id);
     if (attachment == menu_attachments_.end()) return builtin;
