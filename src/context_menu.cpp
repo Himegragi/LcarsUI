@@ -342,96 +342,97 @@ std::optional<std::vector<NodeRef>> detail::UiState::menu_children(const NodeRef
     return children;
 }
 
+Result detail::UiState::menu_attachment(std::string_view target, MenuAttachment*& attachment, bool read_only) {
+    if (auto r = configuration_access(target, read_only); !r) return r;
+    auto it = menu_attachments_.find(target);
+    if (it == menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
+    attachment = &it->second;
+    return {};
+}
+
 // ---- public API
 Result ContextMenuHandle::set_mode(MenuMode mode) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    it->second.mode = mode;
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        menu->mode = mode;
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Result ContextMenuHandle::set_items(std::vector<MenuItem> items) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    if (auto r = ui_->validate_menu_items(items); !r) return r;
-    it->second.items = std::move(items);
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        if (auto r = ui_->validate_menu_items(items); !r) return r;
+        menu->items = std::move(items);
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Result ContextMenuHandle::add_item(MenuItem item, std::string before) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    auto items = it->second.items;
-    auto position = items.end();
-    if (!before.empty()) {
-        position = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == before; });
-        if (position == items.end()) return {Status::not_found, u"沒有這個選單項目"};
-    }
-    items.insert(position, std::move(item));
-    if (auto r = ui_->validate_menu_items(items); !r) return r;
-    it->second.items = std::move(items);
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto items = menu->items;
+        auto position = items.end();
+        if (!before.empty()) {
+            position = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == before; });
+            if (position == items.end()) return {Status::not_found, u"沒有這個選單項目"};
+        }
+        items.insert(position, std::move(item));
+        if (auto r = ui_->validate_menu_items(items); !r) return r;
+        menu->items = std::move(items);
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Result ContextMenuHandle::remove_item(std::string id) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    auto& items = it->second.items;
-    auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
-    if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
-    items.erase(found);
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto& items = menu->items;
+        auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
+        if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
+        items.erase(found);
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Result ContextMenuHandle::update_item(MenuItem item) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    if (item.separator) return {Status::invalid_value, u"分隔線沒有識別碼，不能更新"};
-    auto& items = it->second.items;
-    auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == item.id; });
-    if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
-    *found = std::move(item);
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        if (item.separator) return {Status::invalid_value, u"分隔線沒有識別碼，不能更新"};
+        auto& items = menu->items;
+        auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == item.id; });
+        if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
+        *found = std::move(item);
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-    auto& items = it->second.items;
-    auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
-    if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
-    found->enabled = enabled;
-    ui_->menu_items_changed(id_);
-    return {};
+    return detail::UiState::operate(*this, [&]() -> Result {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto& items = menu->items;
+        auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
+        if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
+        found->enabled = enabled;
+        ui_->menu_items_changed(id_);
+        return {};
+    });
 }
 Query<std::vector<MenuItemInfo>> ContextMenuHandle::items() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    auto it = ui_->menu_attachments_.find(id_);
-    if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists", std::nullopt};
-    std::vector<MenuItemInfo> items;
-    for (const auto& item : it->second.items)
-        items.push_back({item.id, item.label, item.enabled, item.separator, false, item.access_key, item.shortcut_hint});
-    return {Status::ok, {}, std::move(items)};
+    return detail::UiState::operate(*this, [&]() -> Query<std::vector<MenuItemInfo>> {
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu, true); !r) return {r.status, r.message, std::nullopt};
+        std::vector<MenuItemInfo> items;
+        for (const auto& item : menu->items)
+            items.push_back({item.id, item.label, item.enabled, item.separator, false, item.access_key, item.shortcut_hint});
+        return {Status::ok, {}, std::move(items)};
+    });
 }
 
 Query<ContextMenuHandle> Ui::add_context_menu(ComponentHandle target, std::vector<MenuItem> items, MenuMode mode) {

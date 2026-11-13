@@ -3,10 +3,12 @@
 #include "lcars/layout.hpp"
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
+#include "handle_kinds.hpp"
 static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
 static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 2 && LCARS_VERSION_PATCH == 0);
 static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 2 && lcars::framework_version_patch == 0);
 static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
+#include <concepts>
 #include <cstdio>
 #include <string>
 #include <type_traits>
@@ -16,6 +18,12 @@ static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
+// Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
+static_assert(handle_kinds::equality_holds);
+static_assert(handle_kinds::construction_holds);
+static_assert(std::tuple_size_v<handle_kinds::All> == 14);
+static_assert(std::equality_comparable<lcars::ComponentHandle> && std::equality_comparable<lcars::ConfirmField>);
+static_assert(!std::equality_comparable_with<lcars::TextHandle, lcars::CheckboxHandle>);  // one case of the list's rule, spelled out
 // Applications use typed handles; string operations belong to the semantic layer, not Ui.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);

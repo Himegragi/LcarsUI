@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 namespace lcars {
@@ -33,6 +34,28 @@ public:
     private:
         UiState* state_;
     };
+    // The not_found texts of a handle whose lifetime has ended. Each operation keeps the text it has always given (#94
+    // decision 7): component handles, context menus and most others say component_gone, dialogs and tooltips ui_gone,
+    // and ListHandle::focus(OptionValue) answers without text (gone_without_text).
+    static constexpr std::u16string_view component_gone = u"Component no longer exists";
+    static constexpr std::u16string_view ui_gone = u"UI no longer exists";
+    static constexpr std::u16string_view gone_without_text = u"";
+    // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
+    // handle whose lifetime has ended (its Ui is gone, its button removed, a tooltip's source removed) runs nothing and
+    // answers not_found with `gone`. R is the operation's own return type (Result or a Query). A typed handle operation
+    // is written as `return detail::UiState::operate(*this, [&]() -> Result { ... });`.
+    template <class Handle, class Body, class R = std::invoke_result_t<Body&>>
+    static R operate(const Handle& handle, Body&& body, std::u16string_view gone = component_gone) {
+        const bool alive = !handle.lifetime_.expired();
+        OperationScope operation(alive ? handle.ui_ : nullptr);
+        if (!alive) {
+            R answer;
+            answer.status = Status::not_found;
+            answer.message = std::u16string(gone);
+            return answer;
+        }
+        return body();
+    }
     explicit UiState(std::vector<Control> controls);
     ~UiState();
     TextHandle add_text(Control control);
@@ -47,6 +70,10 @@ public:
     NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
+    Result enable_page(const Id& id, const OptionValue& page, bool enabled);
+    Result on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
+    Query<OptionValue> active_page(const Id& id) const;
+    Query<Semantics> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
@@ -394,7 +421,28 @@ private:
     std::map<Id, std::uint64_t, std::less<>> semantic_instances_;
     std::uint64_t next_semantic_instance_ = 0;
     struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
-    struct Field {
+    // The data connection of every field that writes back to the application (#94): text field, checkbox, radio group,
+    // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, use_latest and
+    // draft keep their names and parameters. Change is the field's public change type (TextChange, BoolChange, ...).
+    template <class ChangeType> struct FieldConnection {
+        using Change = ChangeType;
+        bool connected = false;            // the source has delivered a valid value
+        bool submitting = false;           // a write of this field is running
+        bool confirmation_member = false;  // a confirmation group's button writes it
+        std::function<Result(const Change&)> immediate, confirmed;
+        std::function<void()> disconnect;
+        // How the value gets written: an immediate or a confirmed write, or a confirmation group.
+        bool has_write_timing() const { return confirmation_member || immediate || confirmed; }
+        // What every change of the value needs (the "can be written" rule): a source and a write timing.
+        bool writable() const { return connected && has_write_timing(); }
+        // Whether a write of this timing may be connected: a source, no group, and not the other timing.
+        bool accepts_write(bool immediate_timing) const {
+            return connected && !confirmation_member && !(immediate_timing ? bool(confirmed) : bool(immediate));
+        }
+        // Whether the field may join a confirmation group: a source and no write timing yet.
+        bool joinable() const { return connected && !has_write_timing(); }
+    };
+    struct Field : FieldConnection<TextChange> {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
@@ -420,43 +468,30 @@ private:
         struct UnitDrag { enum class Unit { character, word, paragraph } unit = Unit::character; TextSpan origin; Selection last; } drag;
         TextSource source;
         std::u16string source_value, origin;
-        bool has_source_value = false;
-        bool submitting = false;
-        bool confirmation_member = false;
-        std::function<Result(const TextChange&)> immediate, confirmed;
         bool rich = false;                     // Control::rich
         std::vector<StyleSpan> spans, source_spans, origin_spans;  // committed styles, last source value, last written value
         std::function<RichText()> rich_read;   // the rich source (the TextSource subscribe half is shared)
         std::optional<TextStyle> typing;       // the temporary typing style, valid while the selection has not moved
         std::uint64_t typing_moves = 0;
         std::vector<NamedColor> colors;
-        std::function<void()> disconnect;
     };
     std::map<Id, Field, std::less<>> edits_;
-    struct BoolField {
+    struct BoolField : FieldConnection<BoolChange> {
         BoolSource source;
-        bool value = false, source_value = false, origin = false, connected = false, submitting = false, confirmation_member = false;
-        std::function<Result(const BoolChange&)> immediate, confirmed;
-        std::function<void()> disconnect;
+        bool value = false, source_value = false, origin = false;
     };
     std::map<Id, BoolField, std::less<>> bools_;
-    struct RadioField {
+    struct RadioField : FieldConnection<OptionChange> {
         OptionSource source;
         std::vector<RadioOption> options;
         std::optional<OptionValue> value, source_value, origin;
-        bool connected = false, submitting = false, confirmation_member = false;
-        std::function<Result(const OptionChange&)> immediate, confirmed;
-        std::function<void()> disconnect;
     };
     std::map<Id, RadioField, std::less<>> radios_;
-    struct DropdownField {
+    struct DropdownField : FieldConnection<DropdownChange> {
         OptionSource source;
         std::vector<RadioOption> options;
         std::optional<OptionValue> value, source_value, origin, candidate;
-        bool connected = false, submitting = false, confirmation_member = false;
         ScrollState scroll; bool reveal = true;
-        std::function<Result(const DropdownChange&)> immediate, confirmed;
-        std::function<void()> disconnect;
     };
     std::map<Id, DropdownField, std::less<>> dropdowns_;
     struct TabsState {
@@ -484,6 +519,9 @@ private:
     };
     struct MenuAttachment { MenuMode mode = MenuMode::append; std::vector<MenuItem> items; };
     std::map<Id, MenuAttachment, std::less<>> menu_attachments_;
+    // The opening every ContextMenuHandle operation shares: the configuration check (read_only for a query), then the
+    // attachment on this target, not_found "Menu no longer exists" without one. On ok, `attachment` points at it.
+    Result menu_attachment(std::string_view target, MenuAttachment*& attachment, bool read_only = false);
     struct OpenMenu {
         Id target;
         std::optional<OptionValue> item;
@@ -535,17 +573,33 @@ private:
     bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
-    struct NumericField {
+    struct NumericField : FieldConnection<NumericChange> {
         SliderRange range;
         NumericSource source;
         bool source_invalid = false;
         std::u16string error_before_source;
         int value, source_value, origin;
-        bool connected = false, submitting = false, confirmation_member = false;
-        std::function<Result(const NumericChange&)> immediate, confirmed;
-        std::function<void()> disconnect;
     };
     std::map<Id, NumericField, std::less<>> numerics_;
+    // The field state behind a confirmable handle, by handle kind (the one place that pairs a kind with its map).
+    template <class Handle> auto& fields_of() {
+        if constexpr (std::is_same_v<Handle, TextHandle>) return edits_;
+        else if constexpr (std::is_same_v<Handle, CheckboxHandle>) return bools_;
+        else if constexpr (std::is_same_v<Handle, RadioGroupHandle>) return radios_;
+        else if constexpr (std::is_same_v<Handle, DropdownHandle>) return dropdowns_;
+        else { static_assert(std::is_same_v<Handle, SliderHandle>); return numerics_; }
+    }
+    // Runs f on the connection of the field with this id, whichever confirmable kind (a ConfirmField alternative) it is.
+    template <class F> void with_connection(std::string_view id, F&& f) {
+        [&]<class... Handle>(std::variant<Handle...>*) {
+            auto visit = [&](auto& fields) { if (auto it = fields.find(id); it != fields.end()) f(it->second); };
+            (visit(fields_of<Handle>()), ...);
+        }(static_cast<ConfirmField*>(nullptr));
+    }
+    // The write paths the checkbox, radio group, dropdown and slider share (a text field adds history and composition).
+    template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
+    template <class Handle> Result confirm_field(const Handle& handle);
+    template <class FieldType> Result write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change);
     struct ProgressField { NumericSource source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
