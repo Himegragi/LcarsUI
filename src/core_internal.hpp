@@ -697,7 +697,9 @@ private:
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
-    // A bound label's read, and the cancellation of its source's subscription (empty for a read function alone).
+    // A bound label's read, and the cancellation of its source's subscription (empty for a read function alone). A label
+    // cannot be removed (only ButtonHandle::remove schedules a removal): a subscription ends when its source is replaced
+    // or with ~UiState.
     struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
     std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;

@@ -189,11 +189,6 @@ void detail::UiState::commit_removals() {
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
         blur_callbacks_.erase(id);
-        if (auto bound = providers_.find(id); bound != providers_.end()) {
-            auto disconnect = std::move(bound->second.disconnect);
-            providers_.erase(bound);
-            if (disconnect) disconnect();
-        }
         std::erase_if(controls_, [&](const Component& control) { return control.id == id; });
         semantic_instances_.erase(id);
         button_lifetimes_.erase(id);
