@@ -1887,7 +1887,9 @@ Result TextHandle::connect_rich_source(RichTextSource source) const {
         if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
         auto read = source.read;
-        return ui_->connect_source(id_, TextSource{[read] { return read().text; }, std::move(source.subscribe)}, std::move(read));
+        // Built before the call: argument order is unspecified, so the lambda must copy `read` before it is moved.
+        TextSource text{[read] { return read().text; }, std::move(source.subscribe)};
+        return ui_->connect_source(id_, std::move(text), std::move(read));
     });
 }
 Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
