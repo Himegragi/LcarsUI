@@ -102,23 +102,23 @@ void a_digit_group_takes_one_cell() {
 
 // ---- properties: construction, typed handle, semantic layer ----
 LabelHandle vertical_label(Ui& ui, std::string id = "vertical", std::u16string text = u"設定", WritingMode mode = WritingMode::vertical) {
-    return ui.add_label({.id = id, .kind = Kind::label, .value = text, .writing_mode = mode}).value.value();
+    return ui.add_label({.id = id, .value = text, .writing_mode = mode}).value.value();
 }
 void a_label_is_horizontal_unless_told_otherwise() {
     Ui ui;
-    auto plain = ui.add_label({.id = "plain", .kind = Kind::label, .value = u"abc"}).value.value();
+    auto plain = ui.add_label({.id = "plain", .value = u"abc"}).value.value();
     check(*plain.writing_mode() == WritingMode::horizontal && *plain.vertical_digits() == 3, "Defaults keep the current behavior: horizontal, 3 digits");
     auto vertical = vertical_label(ui);
     check(*vertical.writing_mode() == WritingMode::vertical, "A label can be created vertical");
 }
 void creation_rejects_a_bad_digit_limit_and_other_components() {
     Ui ui;
-    check(ui.add_label({.id = "four", .kind = Kind::label, .vertical_digits = 4}).status == Status::invalid_value, "A limit of 4 is invalid");
-    check(ui.add_label({.id = "negative", .kind = Kind::label, .vertical_digits = -1}).status == Status::invalid_value, "A negative limit is invalid");
-    check(bool(ui.add_label({.id = "zero", .kind = Kind::label, .vertical_digits = 0})), "A limit of 0 turns combining off");
-    check(ui.add_text({.id = "field", .kind = Kind::text, .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Text fields do not support vertical writing");
-    check(ui.add_button({.id = "button", .kind = Kind::button, .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Only labels support vertical writing");
-    check(bool(ui.add_label({.id = "four", .kind = Kind::label})), "A rejected label does not reserve its identifier");
+    check(ui.add_label({.id = "four", .vertical_digits = 4}).status == Status::invalid_value, "A limit of 4 is invalid");
+    check(ui.add_label({.id = "negative", .vertical_digits = -1}).status == Status::invalid_value, "A negative limit is invalid");
+    check(bool(ui.add_label({.id = "zero", .vertical_digits = 0})), "A limit of 0 turns combining off");
+    check(ui.add_text({.id = "field", .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Text fields do not support vertical writing");
+    check(ui.add_button({.id = "button", .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Only labels support vertical writing");
+    check(bool(ui.add_label({.id = "four"})), "A rejected label does not reserve its identifier");
 }
 void the_typed_handle_reads_and_writes_both_properties() {
     Ui ui;
@@ -129,7 +129,7 @@ void the_typed_handle_reads_and_writes_both_properties() {
     check(label.set_vertical_digits(-1).status == Status::invalid_value, "A negative limit is rejected");
     check(bool(label.set_vertical_digits(0)) && *label.vertical_digits() == 0, "0 is accepted");
     LabelHandle expired;
-    { Ui other; expired = other.add_label({.id = "gone", .kind = Kind::label}).value.value(); }
+    { Ui other; expired = other.add_label({.id = "gone"}).value.value(); }
     check(expired.set_writing_mode(WritingMode::vertical).status == Status::not_found && expired.writing_mode().status == Status::not_found, "An expired handle reports not_found");
 }
 void the_semantic_layer_matches_the_typed_handle() {
@@ -145,7 +145,7 @@ void the_semantic_layer_matches_the_typed_handle() {
     check(tree.perform({"label"}, Verb::set_vertical_digits, 4).status == label.set_vertical_digits(4).status, "Both entries give the same Status for a bad limit");
     check(tree.perform({"label"}, Verb::set_vertical_digits, std::u16string(u"x")).status == Status::invalid_value, "A wrong argument type is invalid_value");
     check(tree.perform({"label"}, Verb::set_vertical_digits, 0) && tree.get({"label"})->vertical_digits == 0, "0 through the semantic layer");
-    auto field = ui.add_text({.id = "field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "field"}).value.value();
     check(!tree.get({"field"})->writing_mode && tree.perform({"field"}, Verb::set_writing_mode, WritingMode::vertical).status == Status::not_supported, "Other components have neither property");
 }
 void a_property_change_is_announced() {
@@ -282,9 +282,9 @@ void the_digit_limit_and_the_mode_change_the_next_arrangement_from_either_entry(
 }
 void the_page_can_reveal_a_vertical_label_like_any_control() {
     Ui ui; test::FakeMeasure measure; ScrollState outer;
-    auto tall = ui.add_label({.id = "tall", .kind = Kind::label, .value = std::u16string(300, u'x')}).value.value();
+    auto tall = ui.add_label({.id = "tall", .value = std::u16string(300, u'x')}).value.value();
     auto label = vertical_label(ui, "label", cjk(25));
-    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(label, 200)}));
     auto frame = arrange(page, ui, look, measure, 300, 150, 1.f, outer);
     const auto* item = frame.find(label);
     check(item->bounds.y + item->bounds.h > 150, "The label starts below the fold");
@@ -292,7 +292,7 @@ void the_page_can_reveal_a_vertical_label_like_any_control() {
     item = frame.find(label);
     check(outer.offset > 0 && item->bounds.y == 0, "Revealing a control taller than the window aligns its top, as for any control");
     auto short_label = vertical_label(ui, "short", cjk(8));
-    auto short_page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(short_label, 100)}));
+    auto short_page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(short_label, 100)}));
     ScrollState second;
     frame = arrange(short_page, ui, look, measure, 300, 150, 1.f, second, "short");
     item = frame.find(short_label);
@@ -314,9 +314,9 @@ void shift_wheel_reaches_only_the_sideways_label() {
 }
 void a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page() {
     Ui ui; test::FakeMeasure measure; ScrollState outer;
-    auto tall = ui.add_label({.id = "tall", .kind = Kind::label, .value = std::u16string(20, u'x')}).value.value();
+    auto tall = ui.add_label({.id = "tall", .value = std::u16string(20, u'x')}).value.value();
     auto label = vertical_label(ui, "label", cjk(25));
-    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(label, 200)}));
     auto frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
     check(frame.regions.size() == 2 && !frame.regions[0].horizontal && frame.regions[1].horizontal, "The page region comes first, the label's region last");
     check(frame.maximum > 0 && frame.viewport == frame.regions[0].viewport, "The frame's page fields describe the page, not the label");
@@ -349,7 +349,7 @@ void text_size_and_scale_change_the_columns() {
 // ---- #80: alignment, line spacing and paragraph spacing of vertical labels ----
 void the_text_flow_properties_map_onto_columns() {
     using Align = detail::VerticalParams::Align;
-    Control control{.id = "l", .kind = Kind::label};
+    ComponentConfig control{.id = "l"};
     auto params = detail::vertical_params(control);
     check(params.align == Align::top && params.line_spacing == 1.0 && params.paragraph_spacing == 0, "The defaults are top, 1.0 and 0");
     control.text_align = TextAlign::center; control.line_spacing = 1.5; control.paragraph_spacing = 8;

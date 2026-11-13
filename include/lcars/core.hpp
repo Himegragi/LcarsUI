@@ -14,10 +14,10 @@
 #include <variant>
 
 namespace lcars {
-// Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
-enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
+// Labels may span lines and describe another component; an overflowing scroll_text label is focusable.
+enum class ComponentKind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
-enum class TextRole { plain, name, description, error };
+enum class LabelKind { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
 struct Result {
     Status status = Status::ok;
@@ -56,17 +56,16 @@ inline bool valid_paragraph_spacing(int value) { return value >= 0 && value <= m
 enum class WritingMode { horizontal, vertical };
 // Longest run of half-width digits that vertical text sets side by side in one cell (0 turns it off).
 inline constexpr int max_vertical_digits = 3;
-struct Control {
+struct ComponentConfig {
     std::string id;
-    Kind kind;
-    std::u16string label = {};  // fallback accessible name when no name label targets this control
+    std::u16string label = {};  // fallback accessible name when no name label targets this component
     std::string page = {};
     std::u16string value = {};  // text field content, or label display text
     bool enabled = true;
     bool read_only = false;
     bool checked = false;
-    std::string target = {};         // labels: the control this text names, describes or reports errors for
-    TextRole role = TextRole::plain;
+    std::string target = {};         // labels: the component this text names, describes or reports errors for
+    LabelKind label_kind = LabelKind::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
     // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
     // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
@@ -81,7 +80,7 @@ struct Control {
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
     WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
     int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
-    // Multi-line text fields only (invalid_value on any other control); fixed when the field is created.
+    // Multi-line text fields only (invalid_value on any other component); fixed when the field is created.
     // A rich field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
     bool rich = false;
 };
@@ -128,21 +127,22 @@ struct NamedColor {
     Color light, dark;
     bool operator==(const NamedColor&) const = default;
 };
-// Public operations a control currently admits; restricted ones are omitted, not just flagged.
+// Public operations a component currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
-struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
+// One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
+struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
-struct OptionSemantics { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
+struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
-struct Semantics {
+struct ComponentSnapshot {
     std::string id;
-    Kind kind = Kind::label;
+    ComponentKind kind = ComponentKind::label;
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame
     bool multiline = false;     // text fields: created multi-line
-    bool rich = false;          // text fields: created with Control::rich
+    bool rich = false;          // text fields: created with ComponentConfig::rich
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
     unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
@@ -150,15 +150,15 @@ struct Semantics {
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
-    std::vector<OptionSemantics> options;
+    std::vector<OptionSnapshot> items;  // every option of a radio group, dropdown or list, every page of tabs or a navigation list, in order
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox
     bool expanded = false;
     std::optional<OptionValue> candidate;
     std::string target;
-    TextRole role = TextRole::plain;
-    std::vector<std::string> labels;  // labels whose target is this control, in declaration order
+    LabelKind label_kind = LabelKind::plain;
+    std::vector<std::string> labels;  // labels whose target is this component, in declaration order
     std::vector<Operation> operations;
     WritingMode writing_mode = WritingMode::horizontal;  // labels only
     int vertical_digits = max_vertical_digits;           // labels only
@@ -232,7 +232,7 @@ bool valid_multi_line(std::u16string_view text, std::size_t max_length = default
 // hears that it changed. The application owns the model. Notifications run on the UI thread; the source outlives the
 // connection. Its subscription returns a disconnection function. One template told apart by value type (#95), so a
 // source of one value type never converts to another: Source<std::u16string> (text fields), Source<RichText> (text
-// fields created with Control::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
+// fields created with ComponentConfig::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
 // Source<std::optional<OptionValue>> (radio groups, dropdowns, lists). Write one as `{read, subscribe}`.
 // Integer sources (Source<int>) also feed read-only progress displays, which accept values outside 0-100.
 // Integer slider values are the minimum plus whole steps, with the maximum also valid.
@@ -368,9 +368,9 @@ public:
     Result connect_source(Source<std::u16string> source) const;
     Result connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const;
     Result connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const;
-    // Rich fields (Control::rich) connect with the rich value type; the plain connect_* calls above answer
+    // Rich fields (ComponentConfig::rich) connect with the rich value type; the plain connect_* calls above answer
     // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
-    // groups take rich fields through Ui::connect_mixed_confirmation (a Change<TextHandle, RichText> per rich field).
+    // groups take rich fields through Ui::connect_confirmation (a Change<TextHandle, RichText> per rich field).
     Result connect_rich_source(Source<RichText> source) const;
     Result connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
     Result connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
@@ -401,7 +401,7 @@ public:
     Result confirm() const;
     Query<bool> source_conflict() const;
     Result use_latest() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Query<std::u16string> draft() const;
     bool operator==(const TextHandle& other) const = default;
 private:
@@ -419,7 +419,7 @@ public:
     // Owner configuration: permanently remove this button; existing handles become invalid.
     Result remove() const;
     Query<bool> executing() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ButtonHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -453,7 +453,7 @@ public:
     Query<WritingMode> writing_mode() const;
     Result set_vertical_digits(int digits) const;
     Query<int> vertical_digits() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const LabelHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -472,7 +472,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<CheckboxHandle>&)> write) const;
     Result confirm() const;
     Query<bool> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const CheckboxHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -492,7 +492,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<RadioGroupHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const RadioGroupHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -512,7 +512,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<SliderHandle>&)> write) const;
     Result confirm() const;
     Query<int> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const SliderHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -524,7 +524,7 @@ class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
     ProgressHandle() = default;
     Result connect_source(Source<int> source) const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ProgressHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -537,7 +537,7 @@ public:
     Result open() const;
     Result cancel() const;
     Result select(OptionValue value) const;
-    Result set_options(std::vector<RadioOption> options) const;
+    Result set_items(std::vector<OptionItem> items) const;
     Result use_latest() const;
     Result focus() const;
     Result enable(bool enabled) const;
@@ -546,7 +546,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<DropdownHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const DropdownHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -566,7 +566,7 @@ public:
     Result add_member(OptionValue page, ComponentHandle member) const;
     Result focus() const;
     Query<OptionValue> active() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
     bool operator==(const TabsHandle& other) const = default;
 private:
@@ -583,7 +583,7 @@ public:
     Result add_member(OptionValue page, ComponentHandle member) const;
     Result focus() const;
     Query<OptionValue> selected() const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
     bool operator==(const NavigationListHandle& other) const = default;
 private:
@@ -595,7 +595,7 @@ class ListHandle : private detail::HandleBase<ListHandle> {
 public:
     ListHandle() = default;
     Result select(OptionValue value) const;
-    Result set_items(std::vector<RadioOption> items) const;
+    Result set_items(std::vector<OptionItem> items) const;
     Result focus() const;
     Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
@@ -605,7 +605,7 @@ public:
     // Selecting the selected item writes nothing; a rejected write leaves the selection and returns the result as is.
     // Connect the source first. A list has no confirmed write: it keeps no draft (#99).
     Result connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const;
-    Query<Semantics> describe() const;
+    Query<ComponentSnapshot> describe() const;
     bool operator==(const ListHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -643,8 +643,8 @@ using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, 
 // One change record per field of a confirmation group; a rich text field's is Change<TextHandle, RichText>.
 using FieldChange = std::variant<Change<TextHandle>, Change<CheckboxHandle>, Change<RadioGroupHandle>, Change<SliderHandle>,
                                  Change<DropdownHandle>, Change<TextHandle, RichText>>;
-struct MixedFieldError { ConfirmField field; std::u16string message; };
-struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
+struct FieldError { ConfirmField field; std::u16string message; };
+struct ConfirmationResult { Result result; std::vector<FieldError> errors; };
 // ---- Context menu. A short list of commands opened beside a component.
 struct MenuContext;
 // A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
@@ -665,15 +665,15 @@ struct MenuContext { ComponentHandle target; std::optional<OptionValue> item; };
 // How an attached menu relates to a component's built-in items (only text fields have any).
 enum class MenuMode { append, replace, off };
 struct MenuPosition { int x = 0, y = 0; };  // window client pixels, as in Frame
-struct MenuItemInfo {
+struct MenuItemSnapshot {
     std::string id;
     std::u16string label;
     bool enabled = true, separator = false, highlighted = false;
     char16_t access_key = 0;
     std::u16string shortcut_hint;
 };
-struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
-// Built-in text field items, by id. A rich text field (Control::rich) adds bold, italic and underline, which run
+struct MenuSnapshot { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemSnapshot> items; };
+// Built-in text field items, by id. A rich text field (ComponentConfig::rich) adds bold, italic and underline, which run
 // the same function as Ctrl+B / Ctrl+I / Ctrl+U.
 inline constexpr const char* menu_undo = "lcars.undo";
 inline constexpr const char* menu_redo = "lcars.redo";
@@ -695,7 +695,7 @@ public:
     Result remove_item(std::string id) const;
     Result update_item(MenuItem item) const;  // replaces the item with the same id
     Result enable_item(std::string id, bool enabled) const;
-    Query<std::vector<MenuItemInfo>> items() const;
+    Query<std::vector<MenuItemSnapshot>> items() const;
     bool operator==(const ContextMenuHandle& other) const = default;
 private:
     friend class detail::UiState;
@@ -710,25 +710,25 @@ public:
     ~Ui();
     Ui(const Ui&) = delete;
     Ui& operator=(const Ui&) = delete;
-    Query<TextHandle> add_text(Control control);
-    Query<ButtonHandle> add_button(Control control);
-    Query<LabelHandle> add_label(Control control);
-    Query<CheckboxHandle> add_checkbox(Control control);
-    Query<RadioGroupHandle> add_radio_group(Control control, std::vector<RadioOption> options);
+    Query<TextHandle> add_text(ComponentConfig config);
+    Query<ButtonHandle> add_button(ComponentConfig config);
+    Query<LabelHandle> add_label(ComponentConfig config);
+    Query<CheckboxHandle> add_checkbox(ComponentConfig config);
+    Query<RadioGroupHandle> add_radio_group(ComponentConfig config, std::vector<OptionItem> items);
     // Invalid ranges and steps return invalid_value without creating a component.
-    Query<SliderHandle> add_slider(Control control, SliderRange range);
-    Query<ProgressHandle> add_progress(Control control);
-    Query<DropdownHandle> add_dropdown(Control control, std::vector<RadioOption> options);
-    Query<TabsHandle> add_tabs(Control control, std::vector<TabPage> pages);
-    Query<NavigationListHandle> add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
-    Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
+    Query<SliderHandle> add_slider(ComponentConfig config, SliderRange range);
+    Query<ProgressHandle> add_progress(ComponentConfig config);
+    Query<DropdownHandle> add_dropdown(ComponentConfig config, std::vector<OptionItem> items);
+    Query<TabsHandle> add_tabs(ComponentConfig config, std::vector<TabPage> pages);
+    Query<NavigationListHandle> add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);
+    Query<ListHandle> add_list(ComponentConfig config, std::vector<OptionItem> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
     Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
-    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
     // Attach the application's menu to any component. Text fields have built-in items; with
     // MenuMode::append (the default) the application's items follow them after a separator.
     // Other components have no menu until one is attached. A component carries one attachment.
@@ -739,7 +739,7 @@ public:
     Result open_context_menu(ComponentHandle target, std::optional<MenuPosition> at = {}, std::optional<OptionValue> item = {});
     Result close_context_menu();
     Query<bool> context_menu_open() const;
-    Query<MenuInfo> context_menu() const;  // hidden while no menu is open
+    Query<MenuSnapshot> context_menu() const;  // hidden while no menu is open
     Result invoke_menu_item(std::string id);
     void on_change(std::function<void()> callback);
     Result set_presentation(const PresentationSettings& settings);

@@ -38,7 +38,7 @@ private:
     Mode mode_ = Mode::normal;
     bool long_intro_ = false;
     bool reject_notices_conflict_ = false;
-    std::optional<lcars::MixedFieldError> next_field_error_;
+    std::optional<lcars::FieldError> next_field_error_;
     std::string clip_padding_id_;
     std::u16string clip_padding_text_;
     std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
@@ -108,12 +108,12 @@ public:
     void reject_next_apply_with_notices_source_change() { reject_notices_conflict_ = true; }
     // Fixture: reject one otherwise valid apply with an application-supplied field error.
     void reject_next_apply_for(lcars::ConfirmField field, std::u16string message) {
-        next_field_error_ = lcars::MixedFieldError{std::move(field), std::move(message)};
+        next_field_error_ = lcars::FieldError{std::move(field), std::move(message)};
     }
 private:
     lcars::Result bind_action(lcars::ButtonHandle button, std::function<lcars::Result()> action);
     bool validate();
-    lcars::MixedConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);
+    lcars::ConfirmationResult apply(const std::vector<lcars::FieldChange>& changes);
     void refresh_conflict();
     void set_mode(Mode mode);
     lcars::Result reset();

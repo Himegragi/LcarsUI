@@ -19,11 +19,11 @@ namespace {
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     template<class Handle> Laid(Ui& ui, const Handle& handle, int width = 100, float scale = 1.f, const Appearance& appearance = web_appearance()) {
-        frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
+        frame = arrange(layout::component(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
-Control label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
-    return {.id = std::move(id), .kind = Kind::label, .value = std::move(value), .text_align = align, .justify_method = method};
+ComponentConfig label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .justify_method = method};
 }
 // What a drawn line looks like: where its pieces start and end. A line that is not justified is one piece.
 struct Edges { float left = 0, right = 0; std::size_t pieces = 0; };
@@ -215,12 +215,12 @@ void the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_n
     auto per_character = *ui.add_label(label("p", u"office is open now", TextAlign::justify, JustifyMethod::per_character));
     auto automatic = *ui.add_label(label("a", u"office is open now", TextAlign::justify, JustifyMethod::automatic));
     LigatureMeasure measure; ScrollState scroll;
-    auto first = arrange(layout::control(per_character), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    auto first = arrange(layout::component(per_character), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
     const auto& line = first.find(per_character)->lines[0];
     check(line.text == u"office is " && std::count_if(line.segments.begin(), line.segments.end(), [&](const TextSegment& s) { return s.end - s.begin == 1; }) >= 8,
           "Every letter is a piece of its own, though the shaper clusters ffi");
     for (const auto& s : line.segments) check(line.text.substr(s.begin, s.end - s.begin).find(u"fi") == std::u16string::npos, "No piece can form the ligature");
-    auto second = arrange(layout::control(automatic), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    auto second = arrange(layout::component(automatic), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
     const auto& plain = second.find(automatic)->lines[0];
     check(!plain.segments.empty() && plain.segments[0].end == 7, "The automatic method keeps the word, ligature and all, in one piece");
 }
@@ -278,18 +278,18 @@ std::size_t laid_segments(Ui& ui, const LabelHandle& handle) {
 }
 
 // ---- Text fields ----------------------------------------------------------------------------------
-TextHandle field_of(Ui& ui, Control control) {
+TextHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
     check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
-Control multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .text_align = align, .justify_method = method};
+ComponentConfig multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
+    return {.id = std::move(id), .value = std::move(value), .multiline = true, .visible_lines = lines, .text_align = align, .justify_method = method};
 }
-Control single(std::string id, std::u16string value, TextAlign align) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .text_align = align};
+ComponentConfig single(std::string id, std::u16string value, TextAlign align) {
+    return {.id = std::move(id), .value = std::move(value), .text_align = align};
 }
 // What a component painted: every text call and every selection fill.
 struct TextProbe : detail::ComponentPaint {
@@ -392,8 +392,8 @@ void a_field_refuses_distribute_and_a_label_accepts_it() {
     Ui ui;
     check(ui.add_text(single("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "A single-line field is not created distributed");
     check(ui.add_text(multi("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "Nor a multi-line one");
-    check(ui.add_button({.id = "b", .kind = Kind::button, .text_align = TextAlign::justify}).status == Status::invalid_value, "A button has no alignment at all");
-    check(ui.add_button({.id = "b2", .kind = Kind::button, .justify_method = JustifyMethod::spaces}).status == Status::invalid_value, "Nor a justification method");
+    check(ui.add_button({.id = "b", .text_align = TextAlign::justify}).status == Status::invalid_value, "A button has no alignment at all");
+    check(ui.add_button({.id = "b2", .justify_method = JustifyMethod::spaces}).status == Status::invalid_value, "Nor a justification method");
     check(ui.add_label(label("bad", u"x", TextAlign::left, static_cast<JustifyMethod>(9))).status == Status::invalid_value, "An unknown method is invalid at creation");
     auto field = field_of(ui, multi("t", u"abc", TextAlign::center, JustifyMethod::spaces));
     auto name = *ui.add_label(label("l", u"abc", TextAlign::distribute));
@@ -409,7 +409,7 @@ void the_justification_method_is_readable_and_settable_everywhere() {
     Ui ui;
     auto name = *ui.add_label(label("l", u"一二三", TextAlign::justify));
     auto field = field_of(ui, multi("t", u"abc", TextAlign::justify, JustifyMethod::spaces));
-    auto button = *ui.add_button({.id = "b", .kind = Kind::button});
+    auto button = *ui.add_button({.id = "b"});
     check(*name.justify_method() == JustifyMethod::automatic && *field.justify_method() == JustifyMethod::spaces, "Defaults and creation values");
     for (auto method : {JustifyMethod::per_character, JustifyMethod::spaces, JustifyMethod::automatic}) {
         check(bool(name.set_justify_method(method)) && *name.justify_method() == method, "A label takes every method");
@@ -474,7 +474,7 @@ void the_user_setting_draws_stretched_text_left_but_keeps_the_properties() {
 // spans below "bb cc" is bold and underlined (10 + 10 + 10 + 10 + 10 = 50 px) and the space after it is plain.
 const std::u16string words = u"aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp";
 const std::vector<StyleSpan> rich_spans = {{.start = 3, .length = 5, .bold = true, .underline = true, .color = {}}, {.start = 27, .length = 5, .italic = true, .color = {}}};
-TextHandle rich_field_of(Ui& ui, Control control, std::vector<StyleSpan> spans = rich_spans) {
+TextHandle rich_field_of(Ui& ui, ComponentConfig control, std::vector<StyleSpan> spans = rich_spans) {
     control.rich = true;
     auto model = std::make_shared<RichText>(RichText{control.value, std::move(spans)});
     auto field = *ui.add_text(std::move(control));
@@ -538,7 +538,7 @@ void a_justified_rich_line_keeps_caret_selection_hits_glyphs_and_underline_toget
         // Drawn glyphs: every call starts at the caret stop of its first character, in the face of its run.
         auto semantics = *detail::access(ui).describe("t");
         StyledProbe probe(detail::access(ui), *p, semantics, web_appearance(), 1.f, true);
-        detail::component_type(Kind::text).paint(probe);
+        detail::component_type(ComponentKind::text).paint(probe);
         unsigned offset = 0;
         bool drawn_where_stops_are = !probe.draws.empty(), faces_right = true;
         for (const auto& draw : probe.draws) {
@@ -609,8 +609,8 @@ void a_vertical_label_with_justify_or_distribute_reads_from_the_top() {
     const std::u16string text = u"縱書標籤的第一段落，文字夠長而折成數欄。\n第二段";
     for (auto align : {TextAlign::justify, TextAlign::distribute}) {
         Ui ui, plain_ui;
-        auto spread = *ui.add_label({.id = "v", .kind = Kind::label, .value = text, .text_align = align, .justify_method = JustifyMethod::per_character, .writing_mode = WritingMode::vertical});
-        auto left = *plain_ui.add_label({.id = "v", .kind = Kind::label, .value = text, .text_align = TextAlign::left, .writing_mode = WritingMode::vertical});
+        auto spread = *ui.add_label({.id = "v", .value = text, .text_align = align, .justify_method = JustifyMethod::per_character, .writing_mode = WritingMode::vertical});
+        auto left = *plain_ui.add_label({.id = "v", .value = text, .text_align = TextAlign::left, .writing_mode = WritingMode::vertical});
         Laid a(ui, spread, 200), b(plain_ui, left, 200);
         const auto* got = a.frame.find(spread);
         const auto* want = b.frame.find(left);
@@ -754,7 +754,7 @@ float content_right(const std::u16string& line, const std::vector<TextSegment>& 
 }
 Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, bool scrollable, const Appearance& look) {
     FakeMeasure measure; ScrollState outer, inner;
-    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::control(handle);
+    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::component(handle);
     auto frame = arrange(node, ui, look, measure, 300, 400, 1.f, outer);
     const auto* p = frame.find(handle);
     Rows out; out.area = static_cast<float>(p->bounds.w);
@@ -771,7 +771,7 @@ Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, b
 }
 Rows field_rows(Ui& ui, const TextHandle& handle, const std::u16string& text, const Appearance& look) {
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(handle), ui, look, measure, 300, 400, 1.f, scroll);
+    auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Rows out;
     if (!p->multiline) {  // one line, the end of its paragraph

@@ -137,7 +137,7 @@ struct Text::Impl {
     std::function<void(const RenderDiagnostic&)> receiver;
     void report(std::string_view code,std::string message={},std::int64_t native=0) {
         RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.native_code=native;
-        event.native_message=std::move(message); event.category=DiagnosticCategory::resource;
+        event.native_message=std::move(message); event.kind=DiagnosticKind::resource;
         event.severity=code=="text.glyph_missing"?DiagnosticSeverity::info:DiagnosticSeverity::warning;
         receiver(event);
     }

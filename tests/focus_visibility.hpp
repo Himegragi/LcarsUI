@@ -19,20 +19,20 @@ struct Fixture {
     ScrollState scroll;
     test::FakeMeasure measure;
     Fixture() {
-        first = ui.add_button({.id = "first", .kind = Kind::button, .label = u"First"}).value.value();
-        second = ui.add_button({.id = "second", .kind = Kind::button, .label = u"Second"}).value.value();
-        edit = ui.add_text({.id = "edit", .kind = Kind::text, .value = u"abc"}).value.value();
-        readonly = ui.add_text({.id = "readonly", .kind = Kind::text, .value = u"abc", .read_only = true}).value.value();
-        note = ui.add_text({.id = "note", .kind = Kind::text, .value = u"a\nb\nc", .multiline = true, .visible_lines = 3}).value.value();
-        note_readonly = ui.add_text({.id = "note_readonly", .kind = Kind::text, .value = u"a\nb\nc", .read_only = true, .multiline = true, .visible_lines = 3}).value.value();
-        slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, SliderRange{0, 100, 1}).value.value();
+        first = ui.add_button({.id = "first", .label = u"First"}).value.value();
+        second = ui.add_button({.id = "second", .label = u"Second"}).value.value();
+        edit = ui.add_text({.id = "edit", .value = u"abc"}).value.value();
+        readonly = ui.add_text({.id = "readonly", .value = u"abc", .read_only = true}).value.value();
+        note = ui.add_text({.id = "note", .value = u"a\nb\nc", .multiline = true, .visible_lines = 3}).value.value();
+        note_readonly = ui.add_text({.id = "note_readonly", .value = u"a\nb\nc", .read_only = true, .multiline = true, .visible_lines = 3}).value.value();
+        slider = ui.add_slider({.id = "volume", .label = u"Volume"}, SliderRange{0, 100, 1}).value.value();
         detail::access(ui).window_active(true);
     }
     detail::UiState& state() { return detail::access(ui); }
     Frame frame() {
-        auto root = layout::column({layout::control(first), layout::control(second), layout::control(edit),
-                                    layout::control(readonly), layout::control(note), layout::control(note_readonly),
-                                    layout::control(slider)}, 0, 8);
+        auto root = layout::column({layout::component(first), layout::component(second), layout::component(edit),
+                                    layout::component(readonly), layout::component(note), layout::component(note_readonly),
+                                    layout::component(slider)}, 0, 8);
         return arrange(root, ui, *appearance, measure, 640, 480, 1.f, scroll);
     }
     const Placement* place(const Frame& laid, std::string_view id) {
@@ -178,7 +178,7 @@ void always_mode_forces_display_and_reverts_live() {
 }
 void tooltip_waits_for_keyboard_after_a_click() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto source = ui.add_button({.id = "source", .label = u"Source"}).value.value();
     auto tip = ui.add_tooltip("source.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);

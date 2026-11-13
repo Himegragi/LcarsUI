@@ -97,7 +97,7 @@ std::vector<VerticalSegment> segment_vertical(std::u16string_view text, int max_
     }
     return result;
 }
-VerticalParams vertical_params(const Control& control, float scale) {
+VerticalParams vertical_params(const ComponentConfig& control, float scale) {
     VerticalParams params;
     // Anything else (left; #84's justify/distribute are meaningless for vertical text) reads from the top.
     if (control.text_align == TextAlign::center) params.align = VerticalParams::Align::center;

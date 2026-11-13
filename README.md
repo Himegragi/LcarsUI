@@ -17,22 +17,22 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
-Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
+Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. Each `Ui::add_x` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.add_button({.id = "profile.save"})`. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
 ```cpp
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
 lcars::Ui ui;
-auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text}).value.value();
-auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button}).value.value();
+auto name = ui.add_text({.id = "profile.name"}).value.value();
+auto save = ui.add_button({.id = "profile.save"}).value.value();
 name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
 }});
-ui.connect_mixed_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
+ui.connect_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
     model = std::get<lcars::Change<lcars::TextHandle>>(changes[0]).value;
     if (notify_source) notify_source();
-    return lcars::MixedConfirmationResult{};
+    return lcars::ConfirmationResult{};
 });
 auto changed = name.set_value(u"Station");
 auto saved = save.invoke();
@@ -66,7 +66,7 @@ Every handle kind (`TextHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHa
 A text field is single-line unless it is created with `multiline`. The choice is fixed at creation; everything else about the field (data connections, confirmation groups, history, semantic role `text`) is unchanged, and a single-line field behaves exactly as before.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .max_length = 200,
+auto note = ui.add_text({.id = "item.note", .max_length = 200,
                          .multiline = true, .visible_lines = 3}).value.value();
 note.set_visible_lines(5);                         // reflows at once
 note.set_scroll_line(2);                           // first visible display line
@@ -74,7 +74,7 @@ auto first = note.scroll_line();                   // Query<unsigned>
 ui.semantics().perform({"item.note"}, lcars::Verb::scroll, 4);  // the same operation, same Status values
 ```
 
-- **Value.** A line break is one LF (`\n`) and counts as one character toward `max_length`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `set_value`, semantic `set_value`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut write CRLF to the clipboard. Single-line fields still turn pasted breaks into spaces. Semantics and UI Automation report the value with its LF characters.
+- **Value.** A line break is one LF (`\n`) and counts as one character toward `max_length`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `set_value`, semantic `set_value`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut write CRLF to the clipboard. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
 - **Keys.** Enter and Shift+Enter insert a line break (one undo entry each) and never reach Enter shortcuts; Ctrl+Enter does, so an application can make it "OK". Tab still moves focus. Enter while an input method is composing belongs to the input method. Up/Down move by display line (a wrapped piece counts) and keep their column; Home/End go to the line's start/end, Ctrl+Home/Ctrl+End to the text's; PageUp/PageDown move `visible_lines` lines. Shift extends the selection.
 - **Layout.** The height is exactly `visible_lines` lines. Long lines wrap at the field's edge like labels; there is no horizontal scrolling. The scrollbar's width is always reserved, so the first lines never re-wrap when the scrollbar appears; the thumb shows only when the text overflows.
 - **Scrolling.** The scroll position is the index of the first visible display line, so it keeps its meaning across text size and density changes (the same text stays on top). It follows the caret when the caret moves, never moves the caret, and never snaps back after the wheel or the thumb scrolled it. The wheel scrolls the field first and passes to the page at the ends. Inside an open dialog the dialog's own scrollable content (this field included) takes the wheel and the thumb; the page behind still does not. A position past the last page is `Status::invalid_value` for both entry points.
@@ -107,7 +107,7 @@ ui.semantics().perform({"item.note"}, lcars::Verb::select_paragraph, 12);  // th
 A multi-line field created with `rich = true` holds **plain text plus style spans** (`lcars::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalid_value` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+auto note = ui.add_text({.id = "item.note", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
 note.set_colors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
 note.connect_rich_source({[&] { return model; }, subscribe});        // Source<RichText>: read() -> RichText
 note.connect_rich_confirmed([&](const lcars::Change<lcars::TextHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
@@ -123,17 +123,17 @@ auto value = note.rich_value();                                      // Query<Ri
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typing_style()` / `set_typing_style()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
 - **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
-- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_mixed_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
-- **Semantic layer and UI Automation.** `SemanticNode::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
+- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
+- **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
 
 ## Justified text
 
-Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::distribute`. Both are set at creation (`Control::text_align`) or at run time (`set_text_align`, semantic verb `set_text_align`).
+Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::distribute`. Both are set at creation (`ComponentConfig::text_align`) or at run time (`set_text_align`, semantic verb `set_text_align`).
 
 - **justify** stretches every display line to the full width except the last line of a paragraph (the line before an LF, or the end of the text), which stays left-aligned. A single-line text field therefore looks left-aligned. **distribute** also stretches the last line and a one-line text (a form label such as `姓　名`); a text field refuses it with `Status::invalid_value` and stays unchanged.
-- **Where the extra width goes** is `JustifyMethod` (`Control::justify_method`, `set_justify_method`, semantic verb `set_justify_method`, read back with `justify_method()`; only used while the alignment is justify or distribute). `automatic` (default): around every CJK character and full-width punctuation mark and after every ASCII space or ideographic space (U+3000, which stays with the character before it); punctuation is never compressed and a Latin word is never widened inside. `spaces`: only after ASCII spaces, so a Chinese-only line stays left-aligned. `per_character`: between any two characters, Latin letters included; such a line is drawn piece by piece, so ligatures such as `fi` do not form.
+- **Where the extra width goes** is `JustifyMethod` (`ComponentConfig::justify_method`, `set_justify_method`, semantic verb `set_justify_method`, read back with `justify_method()`; only used while the alignment is justify or distribute). `automatic` (default): around every CJK character and full-width punctuation mark and after every ASCII space or ideographic space (U+3000, which stays with the character before it); punctuation is never compressed and a Latin word is never widened inside. `spaces`: only after ASCII spaces, so a Chinese-only line stays left-aligned. `per_character`: between any two characters, Latin letters included; such a line is drawn piece by piece, so ligatures such as `fi` do not form.
 - **Shared rules.** Width is added only between whole characters (a base with its variation selector, or an emoji sequence, is never split; the unit is the shaping cluster). Trailing spaces neither count toward the width nor receive any. A line with nowhere to stretch is left-aligned. The added width sits on top of the font's own spacing and kerning.
 - **Caret, selection and pointer.** All of them use the stretched, drawn positions: `FieldLine::run` stops include the added width, `FieldLine::segments` / `Line::segments` list the drawn pieces (each starts at its own x). Typing re-spreads the line being typed in, which is expected. A caret at a gap is drawn at the start of the next character.
 - **Rich text.** A justified line of a rich field is also cut at every style boundary (no width is added there), so each drawn piece lies inside one run and keeps its face and color; a run's underline spans the gaps added inside it. Caret, selection, hits and drawn glyphs read the same positions as in plain text.
@@ -157,7 +157,7 @@ Out of scope here: submenus, check marks and icons, menus outside the applicatio
 A label can be set vertically: text runs top to bottom, columns from right to left, laid out by the Taiwan Ministry of Education rules. Editable vertical text and read-only text fields are not covered.
 
 ```cpp
-auto note = ui.add_label({.id = "about.note", .kind = lcars::Kind::label, .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
+auto note = ui.add_label({.id = "about.note", .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
                           .writing_mode = lcars::WritingMode::vertical}).value.value();
 auto page = lcars::layout::column({lcars::layout::vertical_text(note, 200)});  // the height is yours, in DIP
 note.set_writing_mode(lcars::WritingMode::horizontal);     // changes at run time; the next arrangement follows
@@ -308,6 +308,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 | #94 shared handle base and handle equality | `lcars_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
 | #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
+| #96 public names follow the glossary; `add_x` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `add_x` at run time, and `demo_render_compare` stays byte-identical |
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the

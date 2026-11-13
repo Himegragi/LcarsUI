@@ -37,7 +37,7 @@ struct ColorProbe : detail::ComponentPaint {
 // Paints every placement of a checked checkbox page with the appearance and the Ui's current variant.
 std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const CheckboxHandle& box) {
     test::FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::column({layout::control(box)}), ui, appearance, measure, 400, 300, 1.f, scroll);
+    auto frame = arrange(layout::column({layout::component(box)}), ui, appearance, measure, 400, 300, 1.f, scroll);
     auto& state = detail::access(ui);
     std::vector<Color> all;
     for (const auto& item : frame.items) {
@@ -278,7 +278,7 @@ void a_custom_appearance_is_never_overridden() {
 
 void painting_uses_the_overridden_colors_for_the_current_combination() {
     Ui ui;
-    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox, .label = u"Box"}).value.value();
+    auto box = ui.add_checkbox({.id = "box", .label = u"Box"}).value.value();
     box.connect_source({[] { return true; }, [](std::function<void()>) { return [] {}; }});  // a checked box
     auto web_accent = web_appearance().palette().accent, web_dark_accent = web_appearance().palette(ThemeVariant::dark()).accent;
     auto material_accent = material_appearance().palette().accent;
@@ -311,13 +311,13 @@ struct RectProbe : detail::ComponentPaint {
 
 void a_multiline_field_paints_with_the_overridden_palette() {
     Ui ui;
-    auto field = ui.add_text({.id = "note", .kind = Kind::text, .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visible_lines = 2}).value.value();
+    auto field = ui.add_text({.id = "note", .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visible_lines = 2}).value.value();
     detail::access(ui).focus("note");
     const auto& web = web_appearance();
     const Color track{245, 240, 250}, thumb{200, 30, 120};
     auto paint = [&] {
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(field), ui, web, measure, 400, 300, 1.f, scroll);
+        auto frame = arrange(layout::component(field), ui, web, measure, 400, 300, 1.f, scroll);
         auto& state = detail::access(ui);
         const auto& item = frame.items.front();
         auto semantics = state.describe(item.id);

@@ -9,24 +9,24 @@ using test::check;
 
 namespace {
 // Application-owned source fixtures give legacy host input tests explicit write timing.
-void populate(Ui& ui, std::vector<Control> controls) {
+void populate(Ui& ui, std::vector<detail::Component> controls) {
     for (auto& control : controls) {
-        if (control.kind == Kind::text) {
+        if (control.kind == ComponentKind::text) {
             auto model = std::make_shared<std::u16string>(control.value);
             auto field = ui.add_text(std::move(control)).value.value();
             check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect fixture source");
             check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect fixture write");
-        } else if (control.kind == Kind::button) ui.add_button(std::move(control)).value.value();
+        } else if (control.kind == ComponentKind::button) ui.add_button(std::move(control)).value.value();
         else ui.add_label(std::move(control)).value.value();
     }
 }
-std::vector<Control> name_form() {
+std::vector<detail::Component> name_form() {
     return {
-        {.id = "name.label", .kind = Kind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
-        {.id = "name", .kind = Kind::text, .value = u"測試使用者"},
-        {.id = "name.help", .kind = Kind::label, .value = u"單行文字", .target = "name", .role = TextRole::description},
-        {.id = "name.error", .kind = Kind::label, .target = "name", .role = TextRole::error},
-        {.id = "note", .kind = Kind::label, .value = u"第一行\n第二行"},
+        {ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
+        {ComponentKind::text, {.id = "name", .value = u"測試使用者"}},
+        {ComponentKind::label, {.id = "name.help", .value = u"單行文字", .target = "name", .label_kind = LabelKind::description}},
+        {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
+        {ComponentKind::label, {.id = "note", .value = u"第一行\n第二行"}},
     };
 }
 
@@ -38,7 +38,7 @@ void labels_associate_by_target_id() {
     check(field->labels == std::vector<Id>{"name.label", "name.help", "name.error"}, "Field lists every associated label");
     check(!field->invalid && field->error.empty(), "No error initially");
     auto error = detail::access(ui).describe("name.error");
-    check(error && error->target == "name" && error->role == TextRole::error, "Error label points at its field");
+    check(error && error->target == "name" && error->label_kind == LabelKind::error, "Error label points at its field");
     check(detail::access(ui).describe("note")->value == u"第一行\n第二行", "Plain labels keep multi-line display text");
 }
 
@@ -54,10 +54,10 @@ void field_error_has_one_source() {
           "Empty message clears the error and its label");
 }
 
-std::vector<Control> form_with_buttons() {
+std::vector<detail::Component> form_with_buttons() {
     auto controls = name_form();
-    controls.push_back({.id = "apply", .kind = Kind::button, .label = u"套用"});
-    controls.push_back({.id = "reset", .kind = Kind::button, .label = u"重設"});
+    controls.push_back({ComponentKind::button, {.id = "apply", .label = u"套用"}});
+    controls.push_back({ComponentKind::button, {.id = "reset", .label = u"重設"}});
     return controls;
 }
 KeyPress press(Key key, bool shift = false) { return {.key = key, .shift = shift}; }
@@ -120,9 +120,9 @@ void button_activates_once_per_press() {
 }
 
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
-std::vector<Control> two_fields() {
+std::vector<detail::Component> two_fields() {
     auto controls = form_with_buttons();
-    controls.push_back({.id = "alias", .kind = Kind::text, .value = u"別名"});
+    controls.push_back({ComponentKind::text, {.id = "alias", .value = u"別名"}});
     return controls;
 }
 
@@ -157,7 +157,7 @@ bool at(Ui& ui, unsigned anchor, unsigned caret) {
 
 void caret_moves_by_code_point_and_extends_with_shift() {
     // "A", U+20000 (two UTF-16 units), "B", "中": UTF-16 length 5.
-    Ui ui; populate(ui, {{.id = "t", .kind = Kind::text, .value = u"A\U00020000B中"}});
+    Ui ui; populate(ui, {{ComponentKind::text, {.id = "t", .value = u"A\U00020000B中"}}});
     detail::access(ui).focus("t");
     detail::access(ui).key_down(press(Key::home));
     check(at(ui, 0, 0), "Home puts the caret at the start");
@@ -320,7 +320,7 @@ void composition_commits_once_and_never_applies() {
 
 void composition_page_switch_pointer() {
     Ui ui; populate(ui, form_with_buttons());
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+    auto tabs = ui.add_tabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     auto& host = detail::access(ui);
     host.focus("name"); host.select("name", 5, 5);
@@ -373,8 +373,8 @@ void keyboard_editing_obeys_the_same_admission() {
 }
 
 void over_limit_edit_is_rejected_whole() {
-    Ui ui; populate(ui, {{.id = "code", .kind = Kind::text, .value = u"AB", .max_length = 4}});
-    check(Control{.id = "x", .kind = Kind::text}.max_length == default_max_text_length && default_max_text_length == 4096,
+    Ui ui; populate(ui, {{ComponentKind::text, {.id = "code", .value = u"AB", .max_length = 4}}});
+    check(ComponentConfig{.id = "x"}.max_length == default_max_text_length && default_max_text_length == 4096,
           "The default limit is public");
     detail::access(ui).focus("code");
     detail::access(ui).select("code", 2, 2);
@@ -385,7 +385,7 @@ void over_limit_edit_is_rejected_whole() {
     check(detail::access(ui).text("code") == u"ABCD" && detail::access(ui).undo("code") && detail::access(ui).text("code") == u"AB" && !detail::access(ui).undo("code"),
           "Rejected edits keep text and history");
     bool refused = false;
-    refused = ui.add_text({.id = "x", .kind = Kind::text, .value = u"toolong", .max_length = 3}).status == Status::invalid_value;
+    refused = ui.add_text({.id = "x", .value = u"toolong", .max_length = 3}).status == Status::invalid_value;
     check(refused, "Initial text must respect the field limit");
 }
 
@@ -425,8 +425,8 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
 
 void confirmed_field_respects_shared_command_guard() {
     Ui ui;
-    auto field = ui.add_text({.id = "guard.field", .kind = Kind::text}).value.value();
-    auto button = ui.add_button({.id = "guard.button", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "guard.field"}).value.value();
+    auto button = ui.add_button({.id = "guard.button"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int writes = 0;
     Status nested = Status::ok;
@@ -441,7 +441,7 @@ void confirmed_field_respects_shared_command_guard() {
 
 void public_text_operations_obey_restrictions() {
     Ui ui; MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
-    auto field = ui.add_text({.id = "public.text", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "public.text"}).value.value();
     field.connect_source({[] { return std::u16string(u"alpha"); }, [](std::function<void()>) { return [] {}; }});
     field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     check(bool(field.select(0, 5)) && bool(field.copy()) && clipboard.content == u"alpha", "Public selection and copy");
@@ -456,10 +456,10 @@ void handle_queries_report_expiry() {
     TextHandle field; ButtonHandle button; LabelHandle label;
     {
         Ui ui;
-        field = ui.add_text({.id = "query.field", .kind = Kind::text}).value.value();
-        button = ui.add_button({.id = "query.button", .kind = Kind::button}).value.value();
-        label = ui.add_label({.id = "query.label", .kind = Kind::label}).value.value();
-        check(button.describe()->kind == Kind::button && label.describe()->kind == Kind::label,
+        field = ui.add_text({.id = "query.field"}).value.value();
+        button = ui.add_button({.id = "query.button"}).value.value();
+        label = ui.add_label({.id = "query.label"}).value.value();
+        check(button.describe()->kind == ComponentKind::button && label.describe()->kind == ComponentKind::label,
               "Button and label expose semantic snapshots");
     }
     check(field.describe().status == Status::not_found && field.source_conflict().status == Status::not_found &&
@@ -469,8 +469,8 @@ void handle_queries_report_expiry() {
 
 void configuration_requires_ui_thread() {
     Ui ui;
-    auto field = ui.add_text({.id = "thread.field", .kind = Kind::text}).value.value();
-    auto label = ui.add_label({.id = "thread.label", .kind = Kind::label}).value.value();
+    auto field = ui.add_text({.id = "thread.field"}).value.value();
+    auto label = ui.add_label({.id = "thread.label"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     Status reset = Status::ok, connect = Status::ok;
     std::thread worker([&] {
@@ -479,7 +479,7 @@ void configuration_requires_ui_thread() {
     });
     worker.join();
     check(reset == Status::wrong_thread && connect == Status::wrong_thread, "Configuration rejects another thread");
-    auto fault = ui.add_button({.id = "thread.fault", .kind = Kind::button}).value.value();
+    auto fault = ui.add_button({.id = "thread.fault"}).value.value();
     fault.bind([]() -> Result { throw std::runtime_error("failure"); });
     check(fault.invoke().status == Status::failed && field.reset_to_source().status == Status::failed &&
           label.connect_source([] { return std::u16string(u"late"); }).status == Status::failed,
@@ -488,11 +488,11 @@ void configuration_requires_ui_thread() {
 
 void group_action_cannot_be_replaced() {
     Ui ui;
-    auto field = ui.add_text({.id = "group.field", .kind = Kind::text}).value.value();
-    auto button = ui.add_button({.id = "group.button", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "group.field"}).value.value();
+    auto button = ui.add_button({.id = "group.button"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int submitted = 0, replacement = 0;
-    check(bool(ui.connect_mixed_confirmation(button, {field}, [&](const auto&) { ++submitted; return MixedConfirmationResult{}; })), "Group connects");
+    check(bool(ui.connect_confirmation(button, {field}, [&](const auto&) { ++submitted; return ConfirmationResult{}; })), "Group connects");
     auto rebind = button.bind([&] { ++replacement; return Result{}; });
     check(rebind.status == Status::invalid_value, "Rebinding a confirmation button returns an error");
     check(bool(button.invoke()) && submitted == 1 && replacement == 0, "The original confirmation still runs");
@@ -500,7 +500,7 @@ void group_action_cannot_be_replaced() {
 
 void unconnected_text_rejects_edits() {
     Ui ui;
-    auto field = ui.add_text({.id = "unconnected", .kind = Kind::text, .value = u"initial"}).value.value();
+    auto field = ui.add_text({.id = "unconnected", .value = u"initial"}).value.value();
     auto snapshot = field.describe();
     check(field.set_value(u"changed").status == Status::invalid_value && snapshot->value == u"initial" &&
           !has(snapshot->operations, Operation::edit), "An unconnected field rejects edits and does not advertise editing");
@@ -510,7 +510,7 @@ void handles_expire_with_their_component_tree() {
     TextHandle field;
     {
         Ui ui;
-        field = ui.add_text({.id = "handle.field", .kind = Kind::text, .value = u"initial"}).value.value();
+        field = ui.add_text({.id = "handle.field", .value = u"initial"}).value.value();
         field.connect_source({[] { return std::u16string(u"initial"); }, [](std::function<void()>) { return [] {}; }});
         field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
         check(bool(field.set_value(u"edited")) && field.describe()->value == u"edited",
@@ -528,7 +528,7 @@ void source_updates_follow_the_component_lifetime() {
     TextHandle field;
     {
         Ui ui;
-        field = ui.add_text({.id = "source.field", .kind = Kind::text}).value.value();
+        field = ui.add_text({.id = "source.field"}).value.value();
         field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
             changed = std::move(callback);
             return [&] { changed = {}; };
@@ -545,12 +545,12 @@ void source_conflict_keeps_draft_until_cancelled() {
     std::u16string model = u"original";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "conflict.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "conflict.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
-    auto confirm = ui.add_button({.id = "conflict.apply", .kind = Kind::button}).value.value();
-    ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
+    auto confirm = ui.add_button({.id = "conflict.apply"}).value.value();
+    ui.connect_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
     field.set_value(u"draft");
     model = u"newest";
     changed();
@@ -567,17 +567,17 @@ void confirmation_submits_draft_and_origin_and_keeps_history() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "confirm.field", .kind = Kind::text}).value.value();
-    auto apply = ui.add_button({.id = "confirm.apply", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "confirm.field"}).value.value();
+    auto apply = ui.add_button({.id = "confirm.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     std::u16string received_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         received_origin = std::get<Change<TextHandle>>(changes.at(0)).origin;
         model = std::get<Change<TextHandle>>(changes.at(0)).value;
         changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"draft");
     check(bool(apply.invoke()) && model == u"draft" && received_origin == u"before",
@@ -590,15 +590,15 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
     std::u16string a = u"one", b = u"two";
     std::function<void()> changed_a, changed_b;
     Ui ui;
-    auto first = ui.add_text({.id = "reject.first", .kind = Kind::text}).value.value();
-    auto second = ui.add_text({.id = "reject.second", .kind = Kind::text}).value.value();
-    auto apply = ui.add_button({.id = "reject.apply", .kind = Kind::button}).value.value();
+    auto first = ui.add_text({.id = "reject.first"}).value.value();
+    auto second = ui.add_text({.id = "reject.second"}).value.value();
+    auto apply = ui.add_button({.id = "reject.apply"}).value.value();
     first.connect_source({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
     second.connect_source({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
         check(changes.size() == 2 && std::get<Change<TextHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextHandle>>(changes[1]).value == u"bad two",
               "Both drafts arrive together");
-        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
     });
     first.set_value(u"bad one");
     second.set_value(u"bad two");
@@ -612,12 +612,12 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     std::u16string model = u"start";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "busy.field", .kind = Kind::text}).value.value();
-    auto apply = ui.add_button({.id = "busy.apply", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "busy.field"}).value.value();
+    auto apply = ui.add_button({.id = "busy.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int calls = 0;
     std::u16string second_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         if (calls == 1) {
             check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
@@ -625,7 +625,7 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
         } else second_origin = std::get<Change<TextHandle>>(changes[0]).origin;
         model = std::get<Change<TextHandle>>(changes[0]).value;
         changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"sent");
     auto accepted = apply.invoke();
@@ -641,7 +641,7 @@ void connected_text_requires_explicit_write_timing() {
     std::u16string model = u"source";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "timing.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "timing.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     check(field.set_value(u"draft").status == Status::invalid_value && field.describe()->value == u"source",
           "A connected editable field without explicit write timing rejects editing");
@@ -651,10 +651,10 @@ void source_update_during_composition_keeps_preedit() {
     std::u16string model = u"one";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "ime.source", .kind = Kind::text}).value.value();
-    auto apply = ui.add_button({.id = "ime.apply", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "ime.source"}).value.value();
+    auto apply = ui.add_button({.id = "ime.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
+    ui.connect_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
     field.focus();
     detail::access(ui).composition_update(u"preedit", 7);
     model = u"external";
@@ -670,13 +670,13 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     std::u16string model = u"old";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "origin.field", .kind = Kind::text}).value.value();
-    auto apply = ui.add_button({.id = "origin.apply", .kind = Kind::button}).value.value();
+    auto field = ui.add_text({.id = "origin.field"}).value.value();
+    auto apply = ui.add_button({.id = "origin.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     std::u16string sent_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         sent_origin = std::get<Change<TextHandle>>(changes[0]).origin;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"draft");
     model = u"latest"; changed();
@@ -690,7 +690,7 @@ void explicit_immediate_write_keeps_a_rejected_draft() {
     std::u16string model = u"initial";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "immediate.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "immediate.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     field.connect_immediate([&](const Change<TextHandle>& change) {
         if (change.value == u"bad") return Result{Status::invalid_value, u"Rejected"};
@@ -708,7 +708,7 @@ void cancelling_a_rejected_draft_clears_its_error_without_writing() {
     std::u16string model = u"saved";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "cancel.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "cancel.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int writes = 0;
     field.connect_immediate([&](const Change<TextHandle>&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
@@ -721,7 +721,7 @@ void source_notifications_request_a_repaint() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "paint.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "paint.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int invalidations = 0;
     detail::access(ui).on_invalidate([&] { ++invalidations; });
@@ -735,7 +735,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
     std::u16string model = u"before", origin;
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "single.field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "single.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     field.connect_confirmed([&](const Change<TextHandle>& change) {
         origin = change.origin;
@@ -750,7 +750,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
 void checkbox_toggles_a_connected_boolean() {
     bool model = true;
     Ui ui;
-    auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"}).value.value();
+    auto box = ui.add_checkbox({.id = "notice", .label = u"Notices"}).value.value();
     box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     box.connect_immediate([&](const Change<CheckboxHandle>& change) { model = change.value; return Result{}; });
     check(bool(box.toggle()) && !model && !*box.draft() && box.describe()->value == u"false",
@@ -760,7 +760,7 @@ void checkbox_toggles_a_connected_boolean() {
 void checkbox_input_and_disabled_state_agree() {
     bool model = false;
     Ui ui;
-    auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"}).value.value();
+    auto box = ui.add_checkbox({.id = "notice", .label = u"Notices"}).value.value();
     box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     box.connect_immediate([&](const Change<CheckboxHandle>& change) { model = change.value; return Result{}; });
     auto& host = detail::access(ui);
@@ -774,7 +774,7 @@ void checkbox_input_and_disabled_state_agree() {
 void radio_can_start_empty_and_skip_disabled_options() {
     std::optional<OptionValue> model;
     Ui ui;
-    auto group = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group, .label = u"Mode"},
+    auto group = ui.add_radio_group({.id = "mode", .label = u"Mode"},
         {{{"normal"}, u"Normal", false}, {{"focus"}, u"Focus", true}, {{"offline"}, u"Offline", false}}).value.value();
     group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     group.connect_immediate([&](const Change<RadioGroupHandle>& change) { model = change.value; return Result{}; });
@@ -792,20 +792,20 @@ void mixed_confirmation_submits_one_batch() {
     bool enabled = true;
     std::optional<OptionValue> mode = OptionValue{"normal"};
     Ui ui;
-    auto text = ui.add_text({.id = "name", .kind = Kind::text}).value.value();
-    auto box = ui.add_checkbox({.id = "enabled", .kind = Kind::checkbox}).value.value();
-    auto radio = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group}, {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}}).value.value();
-    auto apply = ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
+    auto text = ui.add_text({.id = "name"}).value.value();
+    auto box = ui.add_checkbox({.id = "enabled"}).value.value();
+    auto radio = ui.add_radio_group({.id = "mode"}, {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}}).value.value();
+    auto apply = ui.add_button({.id = "apply"}).value.value();
     text.connect_source({[&] { return name; }, [](std::function<void()>) { return [] {}; }});
     box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
     int calls = 0;
-    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         name = std::get<Change<TextHandle>>(changes[0]).value;
         enabled = std::get<Change<CheckboxHandle>>(changes[1]).value;
         mode = std::get<Change<RadioGroupHandle>>(changes[2]).value;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     text.set_value(u"after"); box.toggle(); radio.select({"focus"});
     check(name == u"before" && enabled && mode == OptionValue{"normal"}, "All three edits stay drafts before apply");
@@ -815,15 +815,15 @@ void mixed_confirmation_submits_one_batch() {
 
 void mixed_rejection_marks_each_field_and_focuses_first() {
     Ui ui;
-    auto text = ui.add_text({.id = "text", .kind = Kind::text}).value.value();
-    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox}).value.value();
-    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}}).value.value();
-    auto apply = ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
+    auto text = ui.add_text({.id = "text"}).value.value();
+    auto box = ui.add_checkbox({.id = "box"}).value.value();
+    auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
+    auto apply = ui.add_button({.id = "apply"}).value.value();
     text.connect_source({[] { return std::u16string(u"old"); }, [](std::function<void()>) { return [] {}; }});
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const auto&) {
-        return MixedConfirmationResult{{Status::invalid_value, u"Rejected"}, {{radio, u"Radio error"}, {box, u"Box error"}, {text, u"Text error"}}};
+    ui.connect_confirmation(apply, {text, box, radio}, [&](const auto&) {
+        return ConfirmationResult{{Status::invalid_value, u"Rejected"}, {{radio, u"Radio error"}, {box, u"Box error"}, {text, u"Text error"}}};
     });
     text.set_value(u"draft"); box.toggle(); radio.select({"a"});
     check(apply.invoke().status == Status::invalid_value && text.describe()->focused,
@@ -835,9 +835,9 @@ void mixed_rejection_marks_each_field_and_focuses_first() {
 
 void radio_all_disabled_remains_empty_and_tab_can_leave() {
     Ui ui;
-    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group},
+    auto radio = ui.add_radio_group({.id = "radio"},
         {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
-    auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
+    auto next = ui.add_button({.id = "next"}).value.value();
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     radio.focus();
@@ -852,10 +852,10 @@ void radio_source_conflict_can_be_resolved() {
     std::optional<OptionValue> model = OptionValue{"a"};
     std::function<void()> changed;
     Ui ui;
-    auto group = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
-    auto apply = ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
+    auto group = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+    auto apply = ui.add_button({.id = "apply"}).value.value();
     group.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {group}, [](const auto&) { return MixedConfirmationResult{}; });
+    ui.connect_confirmation(apply, {group}, [](const auto&) { return ConfirmationResult{}; });
     group.select({"b"}); model = OptionValue{"c"}; changed();
     check(*group.draft() == OptionValue{"b"} && group.describe()->source_conflict, "A new source does not overwrite the draft and is reported");
     check(bool(group.use_latest()) && *group.draft() == OptionValue{"c"} && !group.describe()->source_conflict,
@@ -866,8 +866,8 @@ void standalone_boolean_and_option_confirmation() {
     bool enabled = false;
     std::optional<OptionValue> mode = OptionValue{"a"};
     Ui ui;
-    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox}).value.value();
-    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    auto box = ui.add_checkbox({.id = "box"}).value.value();
+    auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
     box.connect_confirmed([&](const Change<CheckboxHandle>& c) { enabled = c.value; return Result{}; });
@@ -879,9 +879,9 @@ void standalone_boolean_and_option_confirmation() {
 
 void unconnected_selection_controls_do_not_advertise_writes() {
     Ui ui;
-    auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox}).value.value();
-    auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}}).value.value();
-    auto has = [](const Semantics& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
+    auto box = ui.add_checkbox({.id = "box"}).value.value();
+    auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
+    auto has = [](const ComponentSnapshot& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
     check(!has(*box.describe(), Operation::activate) && !has(*radio.describe(), Operation::select),
           "Unconnected controls do not advertise unavailable modifications");
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
@@ -895,12 +895,12 @@ void unconnected_selection_controls_do_not_advertise_writes() {
 void slider_connected_draft_is_confirmed_as_a_number() {
     int model = 40;
     Ui ui;
-    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
-    auto apply = ui.add_button({.id = "apply.slider", .kind = Kind::button}).value.value();
+    auto slider = ui.add_slider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
+    auto apply = ui.add_button({.id = "apply.slider"}).value.value();
     slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
         model = std::get<Change<SliderHandle>>(changes[0]).value;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     check(bool(slider.set_value(55)) && *slider.draft() == 55 && model == 40 && slider.describe()->value == u"55",
           "The numeric edit and semantic value are drafts until apply");
@@ -909,7 +909,7 @@ void slider_connected_draft_is_confirmed_as_a_number() {
 
 void slider_non_divisible_range_and_keyboard() {
     Ui ui;
-    auto slider = ui.add_slider({.id = "level", .kind = Kind::slider}, {-3, 8, 4}).value.value();
+    auto slider = ui.add_slider({.id = "level"}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
     slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
     check(slider.set_value(-4).status == Status::invalid_value && *slider.draft() == -3 &&
@@ -936,11 +936,11 @@ void slider_non_divisible_range_and_keyboard() {
 void slider_rejects_invalid_ranges() {
     Ui ui; int rejected = 0;
     for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}}) {
-        if (ui.add_slider({.id = "invalid", .kind = Kind::slider}, range).status == Status::invalid_value) ++rejected;
+        if (ui.add_slider({.id = "invalid"}, range).status == Status::invalid_value) ++rejected;
     }
     check(rejected == 4, "Empty or reversed ranges and non-positive steps are rejected");
     bool missing_range = false;
-    missing_range = ui.add_slider({.id = "missing", .kind = Kind::slider}, {0, 0, 1}).status == Status::invalid_value;
+    missing_range = ui.add_slider({.id = "missing"}, {0, 0, 1}).status == Status::invalid_value;
     check(missing_range, "A slider without a range cannot be created through the untyped constructor");
 }
 
@@ -950,7 +950,7 @@ void progress_source_is_read_only_and_disconnects() {
     ProgressHandle saved;
     {
         Ui ui;
-        saved = ui.add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}).value.value();
+        saved = ui.add_progress({.id = "progress", .label = u"Progress"}).value.value();
         check(saved.connect_source({{}, {}}).status == Status::invalid_value, "Incomplete sources are rejected");
         check(bool(saved.connect_source({[&] { return source; }, [&](std::function<void()> cb) {
             changed = std::move(cb); return [&] { changed = {}; };
@@ -969,12 +969,12 @@ void slider_source_conflict_and_invalid_updates() {
     SliderHandle saved;
     {
         Ui ui;
-        saved = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5}).value.value();
-        auto apply = ui.add_button({.id = "send", .kind = Kind::button}).value.value();
+        saved = ui.add_slider({.id = "volume"}, {0, 100, 5}).value.value();
+        auto apply = ui.add_button({.id = "send"}).value.value();
         saved.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
-        ui.connect_mixed_confirmation(apply, {saved}, [&](const auto& changes) {
+        ui.connect_confirmation(apply, {saved}, [&](const auto& changes) {
             origin = std::get<Change<SliderHandle>>(changes[0]).origin;
-            return MixedConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
+            return ConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
         });
         saved.set_value(55); model = 70; changed();
         check(*saved.draft() == 55 && saved.describe()->source_conflict, "External updates retain a conflicting numeric draft");
@@ -992,11 +992,11 @@ void slider_source_conflict_and_invalid_updates() {
 void slider_group_preserves_edits_during_submission() {
     int model = 40, submitted_origin = -1; std::function<void()> changed;
     Ui ui;
-    auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider}, {0, 100, 5}).value.value();
-    auto apply = ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
+    auto slider = ui.add_slider({.id = "volume"}, {0, 100, 5}).value.value();
+    auto apply = ui.add_button({.id = "apply"}).value.value();
     slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
     int calls = 0;
-    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
         const auto change = std::get<Change<SliderHandle>>(changes[0]);
         ++calls; submitted_origin = change.origin;
         if (calls == 1) {
@@ -1004,7 +1004,7 @@ void slider_group_preserves_edits_during_submission() {
             slider.set_value(65);
         }
         model = change.value; changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     slider.set_value(55); apply.invoke();
     check(model == 55 && *slider.draft() == 65, "An edit during submission survives as a new draft");
@@ -1015,7 +1015,7 @@ void slider_group_preserves_edits_during_submission() {
 void dropdown_candidate_is_not_a_draft_until_confirmed() {
     std::optional<OptionValue> model = OptionValue{"north"};
     Ui ui;
-    auto region = ui.add_dropdown({.id = "region", .kind = Kind::dropdown},
+    auto region = ui.add_dropdown({.id = "region"},
         {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
     check(bool(region.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }})), "Connect region source");
     check(bool(region.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })), "Connect confirmed write");
@@ -1031,9 +1031,9 @@ void dropdown_candidate_is_not_a_draft_until_confirmed() {
 
 void dropdown_leaving_and_replaced_options_are_safe() {
     Ui ui;
-    auto dropdown = ui.add_dropdown({.id = "region", .kind = Kind::dropdown},
+    auto dropdown = ui.add_dropdown({.id = "region"},
         {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-    auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
+    auto next = ui.add_button({.id = "next"}).value.value();
     int clicks = 0; next.bind([&] { ++clicks; return Result{}; });
     dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     dropdown.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
@@ -1043,12 +1043,12 @@ void dropdown_leaving_and_replaced_options_are_safe() {
     dropdown.open(); host.key_down({.key = Key::down}); host.pointer_down("next"); host.pointer_up("next");
     check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && clicks == 1 && next.describe()->focused, "Outside click cancels and preserves the clicked action");
     dropdown.open(); host.pointer_down("region", 1);
-    dropdown.set_options({{{"south"}, u"South"}, {{"north"}, u"North"}});
+    dropdown.set_items({{{"south"}, u"South"}, {{"north"}, u"North"}});
     host.pointer_up("region", 1);
     check(*dropdown.draft() == OptionValue{"north"}, "Reordered options cannot turn a press into a different selection");
-    dropdown.set_options({});
+    dropdown.set_items({});
     check(!*dropdown.draft() && !dropdown.describe()->candidate, "Empty options clear value and candidate");
-    dropdown.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    dropdown.set_items({{{"north"}, u"North"}, {{"south"}, u"South"}});
     check(!*dropdown.draft() && !dropdown.describe()->candidate, "Restoring options does not restore an invalidated value or candidate");
     dropdown.enable(false);
     check(dropdown.open().status == Status::disabled && dropdown.select({"north"}).status == Status::disabled, "Disabled dropdown refuses opening and selection");
@@ -1058,19 +1058,19 @@ void dropdown_leaving_and_replaced_options_are_safe() {
 
 void dropdown_option_changes_do_not_recurse_into_notifications() {
     Ui ui;
-    auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}}).value.value();
+    auto field = ui.add_dropdown({.id = "region"}, {{{"north"}, u"North"}}).value.value();
     field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int calls = 0; Status nested = Status::ok;
-    ui.on_change([&] { if (++calls == 1) nested = field.set_options({}).status; });
-    field.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
-    check(calls == 1 && nested == Status::busy && field.describe()->options.size() == 2,
+    ui.on_change([&] { if (++calls == 1) nested = field.set_items({}).status; });
+    field.set_items({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    check(calls == 1 && nested == Status::busy && field.describe()->items.size() == 2,
           "An option update during a notification is refused without recursion or mutation");
 }
 
 void dropdown_programmatic_edits_request_a_frame() {
     Ui ui;
-    auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
+    auto field = ui.add_dropdown({.id = "region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
     field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
@@ -1083,10 +1083,10 @@ void dropdown_programmatic_edits_request_a_frame() {
 void list_members_obey_page_scope() {
     Ui ui;
     std::optional<OptionValue> selected;
-    auto list = ui.add_list({.id = "list-scope", .kind = Kind::list}, {{{"T006"}, u"Shared"}}).value.value();
+    auto list = ui.add_list({.id = "list-scope"}, {{{"T006"}, u"Shared"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
-    auto tabs = ui.add_tabs({.id = "scope-tabs", .kind = Kind::tabs}, {
+    auto tabs = ui.add_tabs({.id = "scope-tabs"}, {
         {{"v01"}, u"One", true, {}}, {{"v02"}, u"Two", true, {list}}}).value.value();
     check(list.select({"T006"}).status == Status::hidden && !selected, "A hidden list refuses selection");
     tabs.activate({"v02"});
@@ -1097,11 +1097,11 @@ void list_members_obey_page_scope() {
 
 void tabs_require_explicit_activation_and_guard_hidden_pages() {
     Ui ui;
-    auto first = ui.add_button({.id = "first", .kind = Kind::button}).value.value();
-    auto second = ui.add_button({.id = "second", .kind = Kind::button}).value.value();
+    auto first = ui.add_button({.id = "first"}).value.value();
+    auto second = ui.add_button({.id = "second"}).value.value();
     int clicks = 0;
     second.bind([&] { ++clicks; return Result{}; });
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+    auto tabs = ui.add_tabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}},
         {{"two"}, u"Two", true, {second}}}).value.value();
     auto& host = detail::access(ui);
@@ -1116,7 +1116,7 @@ void tabs_require_explicit_activation_and_guard_hidden_pages() {
 
 void tab_change_notifications_do_not_recurse() {
     Ui ui;
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
+    auto tabs = ui.add_tabs({.id = "tabs"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     int calls = 0; Status nested = Status::ok;
     tabs.on_page_change([&](OptionValue, OptionValue) { if (++calls == 1) nested = tabs.activate({"one"}).status; });
     check(bool(tabs.activate({"two"})) && nested == Status::busy && calls == 1 && *tabs.active() == OptionValue{"two"},
@@ -1125,8 +1125,8 @@ void tab_change_notifications_do_not_recurse() {
 
 void tabs_respect_modal_and_disabled_pointer_targets() {
     Ui ui;
-    auto page = ui.add_button({.id = "page", .kind = Kind::button}).value.value();
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
+    auto page = ui.add_button({.id = "page"}).value.value();
+    auto tabs = ui.add_tabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {page}}, {{"disabled"}, u"Disabled", false, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     auto& host = detail::access(ui);
     host.pointer_down("tabs", 1);
@@ -1144,40 +1144,40 @@ void tabs_respect_modal_and_disabled_pointer_targets() {
 
 void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     Ui ui;
-    auto first = ui.add_text({.id = "first-field", .kind = Kind::text}).value.value();
-    auto second = ui.add_text({.id = "second-field", .kind = Kind::text}).value.value();
-    auto submit = ui.add_button({.id = "submit", .kind = Kind::button}).value.value();
+    auto first = ui.add_text({.id = "first-field"}).value.value();
+    auto second = ui.add_text({.id = "second-field"}).value.value();
+    auto submit = ui.add_button({.id = "submit"}).value.value();
     auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
     first.connect_source(source); second.connect_source(source);
-    auto tabs = ui.add_tabs({.id = "pages", .kind = Kind::tabs}, {
+    auto tabs = ui.add_tabs({.id = "pages"}, {
         {{"one"}, u"One", true, {first, submit}}, {{"two"}, u"Two", true, {second}}}).value.value();
-    ui.connect_mixed_confirmation(submit, {second, first}, [=](const auto&) {
-        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
+    ui.connect_confirmation(submit, {second, first}, [=](const auto&) {
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
     });
     check(submit.invoke().status == Status::invalid_value, "Application rejects the batch");
     check(*tabs.active() == OptionValue{"two"} && second.describe()->focused, "First invalid field's page opens and receives focus");
-    check(tabs.describe()->options[0].invalid && first.describe()->invalid && second.describe()->invalid,
+    check(tabs.describe()->items[0].invalid && first.describe()->invalid && second.describe()->invalid,
           "Errors on the other page remain discoverable from its tab");
 }
 
 void list_selection_uses_stable_identity() {
     std::optional<OptionValue> selected;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+    auto list = ui.add_list({.id = "list"},
         {{{"T005"}, u"Shared"}, {{"T006"}, u"Shared"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     check(bool(list.select({"T006"})) && selected == OptionValue{"T006"}, "Select the second item with a shared name");
     list.set_items({{{"T006"}, u"Shared"}, {{"T005"}, u"Shared"}});
-    check(list.describe()->options[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
+    check(list.describe()->items[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
 }
 
 void list_focus_and_keyboard_use_enabled_items() {
     std::optional<OptionValue> selected;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+    auto list = ui.add_list({.id = "list"},
         {{{"T007"}, u"Seven"}, {{"T008"}, u"Eight", false}, {{"T009"}, u"Nine"}}).value.value();
-    auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
+    auto next = ui.add_button({.id = "next"}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     list.focus();
@@ -1192,7 +1192,7 @@ void list_focus_and_keyboard_use_enabled_items() {
 void list_recovers_cursor_when_data_changes() {
     std::optional<OptionValue> selected;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list},
+    auto list = ui.add_list({.id = "list"},
         {{{"T008"}, u"Eight"}, {{"T009"}, u"Nine"}, {{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
@@ -1203,7 +1203,7 @@ void list_recovers_cursor_when_data_changes() {
 void list_write_cannot_reenter_itself() {
     std::optional<OptionValue> selected; Status nested = Status::ok;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) {
         if (!selected) { selected = change.value; nested = list.select({"b"}).status; }
@@ -1216,7 +1216,7 @@ void list_write_cannot_reenter_itself() {
 void list_user_selection_hands_a_change_record() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     list.focus(); detail::access(ui).key_down({.key = Key::down});
@@ -1233,7 +1233,7 @@ void list_user_selection_hands_a_change_record() {
 void list_items_that_drop_the_selection_hand_an_empty_change() {
     std::optional<OptionValue> selected{OptionValue{"b"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     check(bool(list.set_items({{{"a"}, u"A"}, {{"b"}, u"B"}, {{"d"}, u"D"}})) && changes.empty(), "Items that keep the selection write nothing");
@@ -1245,7 +1245,7 @@ void list_items_that_drop_the_selection_hand_an_empty_change() {
 void list_selecting_the_selected_item_writes_nothing() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { ++writes; selected = change.value; return Result{}; });
     check(bool(list.select({"a"})) && writes == 0 && selected == OptionValue{"a"}, "Selecting the selected item writes nothing");
@@ -1255,19 +1255,19 @@ void list_selecting_the_selected_item_writes_nothing() {
 void list_rejected_write_keeps_the_selection() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>&) { ++writes; return Result{Status::invalid_value, u"Not now"}; });
     auto result = list.select({"b"});
     check(writes == 1 && result.status == Status::invalid_value && result.message == u"Not now",
           "A rejected write returns the application's result as is");
     auto s = list.describe();
-    check(selected == OptionValue{"a"} && s->options[0].selected && !s->options[1].selected, "A rejected write leaves the selection unchanged");
+    check(selected == OptionValue{"a"} && s->items[0].selected && !s->items[1].selected, "A rejected write leaves the selection unchanged");
 }
 void list_write_requires_a_source_first() {
     std::optional<OptionValue> selected; int writes = 0;
     Ui ui;
-    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}}).value.value();
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}}).value.value();
     check(list.connect_immediate([&](const Change<ListHandle>&) { ++writes; return Result{}; }).status == Status::invalid_value,
           "A list without a read source refuses a write connection");
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
@@ -1277,7 +1277,7 @@ void list_write_requires_a_source_first() {
 void label_source_notification_repaints_the_new_text() {
     std::u16string clock = u"10:00"; std::function<void()> changed;
     Ui ui;
-    auto label = ui.add_label({.id = "clock", .kind = Kind::label}).value.value();
+    auto label = ui.add_label({.id = "clock"}).value.value();
     int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
     check(bool(label.connect_source({[&] { return clock; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
@@ -1288,7 +1288,7 @@ void label_source_notification_repaints_the_new_text() {
 void label_source_is_replaced_and_rejects_incomplete_sources() {
     std::function<void()> first, second;
     Ui ui;
-    auto label = ui.add_label({.id = "status", .kind = Kind::label}).value.value();
+    auto label = ui.add_label({.id = "status"}).value.value();
     auto subscribe_to = [](std::function<void()>& slot) {
         return [&slot](std::function<void()> callback) { slot = std::move(callback); return [&slot] { slot = {}; }; };
     };
@@ -1309,7 +1309,7 @@ void label_source_notifications_end_with_the_ui() {
     LabelHandle label;
     {
         Ui ui;
-        label = ui.add_label({.id = "progress-text", .kind = Kind::label}).value.value();
+        label = ui.add_label({.id = "progress-text"}).value.value();
         detail::access(ui).on_invalidate([&] { ++frames; });
         label.connect_source({[] { return std::u16string(u"busy"); }, [&](std::function<void()> callback) {
             changed = callback; kept = std::move(callback); return [&] { changed = {}; };
@@ -1323,7 +1323,7 @@ void label_source_notifications_end_with_the_ui() {
 void label_read_function_is_read_on_demand_and_replaced() {
     std::u16string first = u"first", second = u"second";
     Ui ui;
-    auto label = ui.add_label({.id = "label", .kind = Kind::label}).value.value();
+    auto label = ui.add_label({.id = "label"}).value.value();
     check(bool(label.connect_source([&] { return first; })) && label.describe()->value == u"first", "A label reads its text from the function");
     first = u"changed";
     check(label.describe()->value == u"changed", "The function is read again on every read");
@@ -1333,7 +1333,7 @@ void label_read_function_is_read_on_demand_and_replaced() {
 
 void pointer_dispatch_rechecks_a_removed_focus_target() {
     Ui ui;
-    auto button = ui.add_button({.id = "button", .kind = Kind::button}).value.value();
+    auto button = ui.add_button({.id = "button"}).value.value();
     auto& host = detail::access(ui);
     host.on_focus([&](const auto&, const auto& to) { if (to == "button") button.remove(); });
     check(host.pointer_down("button").status == Status::not_found, "A target removed by focus notification is rejected before pointer dispatch");
@@ -1342,28 +1342,28 @@ void pointer_dispatch_rechecks_a_removed_focus_target() {
 
 void removing_confirmation_button_releases_its_fields() {
     Ui ui;
-    auto field = ui.add_text({.id = "field", .kind = Kind::text}).value.value();
+    auto field = ui.add_text({.id = "field"}).value.value();
     field.connect_source({[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }});
-    auto owner = ui.add_button({.id = "owner", .kind = Kind::button}).value.value();
+    auto owner = ui.add_button({.id = "owner"}).value.value();
     auto capture = std::make_shared<int>(42);
     std::weak_ptr<int> released = capture;
-    check(bool(ui.connect_mixed_confirmation(owner, {field}, [capture](const auto&) { return MixedConfirmationResult{}; })), "Connect first group");
+    check(bool(ui.connect_confirmation(owner, {field}, [capture](const auto&) { return ConfirmationResult{}; })), "Connect first group");
     capture.reset();
     check(bool(owner.remove()) && released.expired(), "Removing owner releases confirmation callback");
-    auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
-    check(bool(ui.connect_mixed_confirmation(next, {field}, [](const auto&) { return MixedConfirmationResult{}; })),
+    auto next = ui.add_button({.id = "next"}).value.value();
+    check(bool(ui.connect_confirmation(next, {field}, [](const auto&) { return ConfirmationResult{}; })),
           "Removed group releases the field for another connection");
 }
 
 void repeated_removal_reclaims_component_storage() {
     Ui ui;
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"page"}, u"Page", true, {}}}).value.value();
+    auto tabs = ui.add_tabs({.id = "tabs"}, {{{"page"}, u"Page", true, {}}}).value.value();
     auto& host = detail::access(ui);
     const auto baseline = host.storage_counts();
     ButtonHandle stale;
     TooltipHandle old_tip;
     for (int i = 0; i < 1000; ++i) {
-        auto button = ui.add_button({.id = "temporary", .kind = Kind::button}).value.value();
+        auto button = ui.add_button({.id = "temporary"}).value.value();
         check(bool(tabs.add_member({"page"}, button)), "Attach replacement");
         auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", button, u"Tip").value.value();
         auto capture = std::make_shared<int>(42);
@@ -1381,10 +1381,10 @@ void repeated_removal_reclaims_component_storage() {
 
 void page_accepts_new_members_of_different_types() {
     Ui ui, other;
-    auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
-    auto label = ui.add_label({.id = "label", .kind = Kind::label, .value = u"Label"}).value.value();
-    auto button = ui.add_button({.id = "button", .kind = Kind::button}).value.value();
-    auto foreign = other.add_button({.id = "foreign", .kind = Kind::button}).value.value();
+    auto tabs = ui.add_tabs({.id = "tabs"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
+    auto label = ui.add_label({.id = "label", .value = u"Label"}).value.value();
+    auto button = ui.add_button({.id = "button"}).value.value();
+    auto foreign = other.add_button({.id = "foreign"}).value.value();
     check(bool(tabs.add_member({"two"}, label)) && bool(tabs.add_member({"two"}, button)), "A page accepts a label and a button");
     check(detail::access(ui).available("button").status == Status::hidden, "New members obey page visibility");
     check(tabs.add_member({"one"}, button).status == Status::invalid_value &&
@@ -1394,7 +1394,7 @@ void page_accepts_new_members_of_different_types() {
 
 void removal_waits_for_action_and_stale_handle_stays_invalid() {
     Ui ui;
-    auto button = ui.add_button({.id = "temporary", .kind = Kind::button}).value.value();
+    auto button = ui.add_button({.id = "temporary"}).value.value();
     auto& host = detail::access(ui);
     bool alive_in_callback = false, denied_in_callback = false;
     Status requested = Status::failed;
@@ -1407,7 +1407,7 @@ void removal_waits_for_action_and_stale_handle_stays_invalid() {
     check(bool(button.invoke()), "The action finishes normally");
     check(requested == Status::ok && alive_in_callback && denied_in_callback, "Removal is accepted, dispatch is denied, and storage survives the callback");
     check(!host.find("temporary") && button.invoke().status == Status::not_found, "Removal commits after dispatch");
-    auto replacement = ui.add_button({.id = "temporary", .kind = Kind::button}).value.value();
+    auto replacement = ui.add_button({.id = "temporary"}).value.value();
     check(bool(replacement.describe()) && button.describe().status == Status::not_found,
           "A stale handle cannot address a replacement with the same ID");
 }
@@ -1415,18 +1415,18 @@ void removal_waits_for_action_and_stale_handle_stays_invalid() {
 // Applicability belongs to the registered type, independently of a snapshot's current state.
 void component_type_reports_state_applicability() {
     using S = detail::ComponentState;
-    struct Row { Kind kind; std::vector<S> states; };
+    struct Row { ComponentKind kind; std::vector<S> states; };
     const Row rows[] = {
-        {Kind::label, {S::normal}},
-        {Kind::button, {S::normal, S::disabled, S::executing}},
-        {Kind::text, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
-        {Kind::checkbox, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
-        {Kind::radio_group, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
-        {Kind::dropdown, {S::normal, S::disabled, S::candidate, S::error, S::conflict}},
-        {Kind::slider, {S::normal, S::disabled, S::error, S::conflict}},
-        {Kind::list, {S::normal, S::disabled, S::selected, S::candidate}},
-        {Kind::tabs, {S::normal, S::disabled, S::selected, S::candidate, S::error}},
-        {Kind::progress, {S::normal}},
+        {ComponentKind::label, {S::normal}},
+        {ComponentKind::button, {S::normal, S::disabled, S::executing}},
+        {ComponentKind::text, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
+        {ComponentKind::checkbox, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
+        {ComponentKind::radio_group, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
+        {ComponentKind::dropdown, {S::normal, S::disabled, S::candidate, S::error, S::conflict}},
+        {ComponentKind::slider, {S::normal, S::disabled, S::error, S::conflict}},
+        {ComponentKind::list, {S::normal, S::disabled, S::selected, S::candidate}},
+        {ComponentKind::tabs, {S::normal, S::disabled, S::selected, S::candidate, S::error}},
+        {ComponentKind::progress, {S::normal}},
 
     };
     constexpr S all[] = {S::normal, S::disabled, S::read_only, S::selected, S::candidate, S::error, S::conflict, S::executing};

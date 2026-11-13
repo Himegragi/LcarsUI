@@ -43,7 +43,7 @@ struct Field {
     Ui ui; TextHandle handle;
     explicit Field(std::u16string value, bool multiline = false, WordSegmentation mode = WordSegmentation::dictionary,
                    std::shared_ptr<const detail::WordBreaker> breaker = std::make_shared<PairBreaker>()) {
-        Control control{.id = "t", .kind = Kind::text, .value = value, .multiline = multiline, .visible_lines = 4};
+        ComponentConfig control{.id = "t", .value = value, .multiline = multiline, .visible_lines = 4};
         auto model = std::make_shared<std::u16string>(std::move(value));
         auto query = ui.add_text(std::move(control));
         check(bool(query), "Create the text field");
@@ -274,7 +274,7 @@ constexpr int box = 200;
 struct Laid {
     test::FakeMeasure measure; ScrollState scroll; Frame frame; Field& field;
     explicit Laid(Field& f, int width = box) : field(f) { relayout(width); }
-    void relayout(int width = box) { frame = arrange(layout::control(field.handle), field.ui, web_appearance(), measure, width, 400, 1.f, scroll); }
+    void relayout(int width = box) { frame = arrange(layout::component(field.handle), field.ui, web_appearance(), measure, width, 400, 1.f, scroll); }
     const Placement& placed() const { return *frame.find(field.handle); }
     // The pointer position in the middle of the character starting at `offset`.
     int x_of(unsigned offset) const { return (placed().caret_x(offset) + placed().caret_x(offset + 1)) / 2; }
@@ -320,7 +320,7 @@ void a_selection_change_ends_the_unit_drag() {
 
 void clicks_count_by_time_distance_and_target() {
     Field f(u"aa bb cc");
-    auto second = *f.ui.add_text({.id = "u", .kind = Kind::text, .value = u"aa bb cc"});
+    auto second = *f.ui.add_text({.id = "u", .value = u"aa bb cc"});
     auto model = std::make_shared<std::u16string>(u"aa bb cc");
     second.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     second.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
@@ -393,7 +393,7 @@ void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
 }
 
 // ---- The semantic layer answers like the typed handle --------------------------------------------------
-bool has(const SemanticNode& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+bool has(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
 
 void the_semantic_layer_reads_selects_and_queries_like_the_typed_handle() {
     Field f(mixed, false, WordSegmentation::dictionary);
@@ -435,7 +435,7 @@ void the_semantic_layer_reports_a_dictionary_fallback_and_the_same_admission() {
     check(tree.perform({"t"}, Verb::select_word, 9).status == Status::disabled && f.handle.select_word(9).status == Status::disabled, "Both refuse with the same status");
     check(tree.perform({"t"}, Verb::triple_click, 9).status == Status::disabled && f.handle.triple_click(9).status == Status::disabled, "Also for triple click");
     check(bool(tree.text_unit("t", TextUnitKind::word, 9)) && bool(f.handle.word_at(9)), "Queries still work on a disabled field, as for the handle");
-    auto button = *f.ui.add_button({.id = "b", .kind = Kind::button, .label = u"OK"});
+    auto button = *f.ui.add_button({.id = "b", .label = u"OK"});
     (void)button;
     check(!has(*tree.get({"b"}), Verb::select_word) && tree.text_unit("b", TextUnitKind::word, 0).status == Status::not_supported && tree.word_stop("b", 0, true).status == Status::not_supported,
           "Other controls have no word verbs or queries");
@@ -508,11 +508,11 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
     for (const bool multiline : {true, false}) {
         Ui ui;
         auto model = std::make_shared<std::u16string>(multiline ? text : u"aa bb cc");
-        auto handle = *ui.add_text({.id = "c", .kind = Kind::text, .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
+        auto handle = *ui.add_text({.id = "c", .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
         check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect the field");
         check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         if (multiline) check(p.view.lines[0].shift > 0 && p.view.lines[0].shift != p.view.lines[1].shift, "The lines of a centered field start at different x");
         else check(p.shift > 0, "A short centered single line starts right of the left edge");
@@ -533,7 +533,7 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
 }
 
 TextHandle rich_field(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
-    auto handle = *ui.add_text({.id = "r", .kind = Kind::text, .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
+    auto handle = *ui.add_text({.id = "r", .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
     check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
     check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
@@ -550,7 +550,7 @@ void rich_text_words_select_through_the_styled_runs_and_keep_the_styles() {
         auto model = std::make_shared<RichText>(RichText{u"alpha bravo charlie", {bold_span(6, 5)}});
         auto handle = rich_field(ui, model, align);
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         check(p.view.lines[0].pieces.size() == 3, "The line has a plain, a bold and a plain piece");
         Pointer pointer;

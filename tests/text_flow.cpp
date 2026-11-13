@@ -19,11 +19,11 @@ namespace {
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     template<class Handle> Laid(Ui& ui, const Handle& handle, int width = 200, float scale = 1.f, const Appearance& appearance = web_appearance()) {
-        frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
+        frame = arrange(layout::component(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
-Control label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
-    return {.id = std::move(id), .kind = Kind::label, .value = std::move(value), .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
+ComponentConfig label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
 
 void a_label_aligns_each_line_inside_its_own_width() {
@@ -95,14 +95,14 @@ void out_of_range_values_are_invalid_and_change_nothing() {
         check(ui.add_label(label("bad", u"x", TextAlign::left, bad)).status == Status::invalid_value, "A label is not created with a bad line spacing");
     for (int bad : {-1, 49})
         check(ui.add_label(label("bad", u"x", TextAlign::left, 1.0, bad)).status == Status::invalid_value, "A label is not created with a bad paragraph spacing");
-    check(ui.add_text({.id = "bad", .kind = Kind::text, .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
-    check(ui.add_button({.id = "b", .kind = Kind::button, .text_align = TextAlign::center}).status == Status::invalid_value, "A button has no alignment");
-    check(ui.add_checkbox({.id = "c", .kind = Kind::checkbox, .line_spacing = 1.5}).status == Status::invalid_value, "A checkbox has no line spacing");
-    check(ui.add_progress({.id = "p", .kind = Kind::progress, .paragraph_spacing = 8}).status == Status::invalid_value, "A progress bar has no paragraph spacing");
-    check(bool(ui.add_button({.id = "ok", .kind = Kind::button})), "Defaults are fine everywhere");
+    check(ui.add_text({.id = "bad", .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
+    check(ui.add_button({.id = "b", .text_align = TextAlign::center}).status == Status::invalid_value, "A button has no alignment");
+    check(ui.add_checkbox({.id = "c", .line_spacing = 1.5}).status == Status::invalid_value, "A checkbox has no line spacing");
+    check(ui.add_progress({.id = "p", .paragraph_spacing = 8}).status == Status::invalid_value, "A progress bar has no paragraph spacing");
+    check(bool(ui.add_button({.id = "ok"})), "Defaults are fine everywhere");
 
     auto label_handle = *ui.add_label(label("l", u"x"));
-    auto field = *ui.add_text({.id = "t", .kind = Kind::text});
+    auto field = *ui.add_text({.id = "t"});
     auto exercise = [](auto& h, const char* what) {
         check(*h.text_align() == TextAlign::left && *h.line_spacing() == 1.0 && *h.paragraph_spacing() == 0, what);
         check(h.set_line_spacing(0.9).status == Status::invalid_value && h.set_line_spacing(3.1).status == Status::invalid_value, what);
@@ -137,15 +137,15 @@ void a_scrollable_label_steps_one_actual_row() {
 }
 
 // A text field, connected so it accepts edits like an application's would.
-TextHandle field_of(Ui& ui, Control control) {
+TextHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
     check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
-Control single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .text_align = align, .line_spacing = spacing};
+ComponentConfig single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
+    return {.id = std::move(id), .value = std::move(value), .text_align = align, .line_spacing = spacing};
 }
 
 // The web appearance puts the editor 12 px in and 176 px wide in a 200 px field; the caret keeps 2 px
@@ -207,8 +207,8 @@ void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
     check(pb->text_top == 6, "The glyphs sit in the middle of the row");
 }
 
-Control multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .multiline = true, .visible_lines = lines,
+ComponentConfig multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
+    return {.id = std::move(id), .value = std::move(value), .multiline = true, .visible_lines = lines,
             .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
 // A 200 px multi-line field: 176 px editor at x = 12, 14 px scrollbar reserve, so the text area is 162 px
@@ -339,13 +339,13 @@ void a_click_between_rows_belongs_to_the_row_above() {
     check(laid.frame.text_offset(handle, 12, top + 24 + 8 + 2) == 3 && laid.frame.text_offset(handle, 12, top + 2 * 32 + 4) == 6, "The next rows");
 }
 
-bool has_verb(const SemanticNode& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+bool has_verb(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
 
 void the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles() {
     Ui ui;
     auto handle = *ui.add_label(label("l", u"x", TextAlign::center, 1.4, 8));
     auto field = field_of(ui, multi("t", u"x", 3, TextAlign::right, 2.0, 16));
-    auto button = *ui.add_button({.id = "b", .kind = Kind::button});
+    auto button = *ui.add_button({.id = "b"});
     auto& tree = ui.semantics();
     auto node = tree.get({"l"});
     check(node && node->text_align == TextAlign::center && node->line_spacing == 1.4 && node->paragraph_spacing == 8, "A label reports its properties");
@@ -386,17 +386,17 @@ struct Subject {
 Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollable) {
     auto handle = *ui.add_label(label("subject", u"ab\ncde", align));
     FakeMeasure measure; ScrollState outer, inner;
-    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::control(handle);
+    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::component(handle);
     auto frame = arrange(node, ui, look, measure, 300, 400, 1.f, outer);
     const auto* p = frame.find(handle);
     Drawn out{{}, p->bounds.x, p->bounds.w, p->bounds.w, p->bounds};
     for (const auto& line : p->lines) out.starts.push_back(line.bounds.x);  // frame coordinates already
     return out;
 }
-Drawn drawn_field(Ui& ui, Control control, const Appearance& look) {
+Drawn drawn_field(Ui& ui, ComponentConfig control, const Appearance& look) {
     auto handle = field_of(ui, std::move(control));
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(handle), ui, look, measure, 300, 400, 1.f, scroll);
+    auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Drawn out;
     out.bounds = p->bounds;

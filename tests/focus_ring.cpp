@@ -188,39 +188,39 @@ struct Page {
     std::vector<std::string> ids;
     Page() {
         auto add = [&](std::string id, layout::Node node) { ids.push_back(std::move(id)); nodes.push_back(std::move(node)); };
-        auto text = ui.add_text({.id = "text", .kind = Kind::text, .label = u"Name", .value = u"abc"}).value.value();
-        add("text", layout::control(text));
-        auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
-        add("note", layout::control(note));
-        auto rich = ui.add_text({.id = "rich", .kind = Kind::text, .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
-        add("rich", layout::control(rich));
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-        add("dropdown", layout::control(dropdown));
-        auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox, .label = u"Remember me"}).value.value();
-        add("box", layout::control(box));
-        auto button = ui.add_button({.id = "button", .kind = Kind::button, .label = u"Go"}).value.value();
-        add("button", layout::control(button));
-        auto radio_none = ui.add_radio_group({.id = "radio_none", .kind = Kind::radio_group, .label = u"Mode"}, {{{"a"}, u"A", false}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
-        add("radio_none", layout::control(radio_none));
-        auto radio_sel = ui.add_radio_group({.id = "radio_sel", .kind = Kind::radio_group, .label = u"Size"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+        auto text = ui.add_text({.id = "text", .label = u"Name", .value = u"abc"}).value.value();
+        add("text", layout::component(text));
+        auto note = ui.add_text({.id = "note", .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
+        add("note", layout::component(note));
+        auto rich = ui.add_text({.id = "rich", .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        add("rich", layout::component(rich));
+        auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
+        add("dropdown", layout::component(dropdown));
+        auto box = ui.add_checkbox({.id = "box", .label = u"Remember me"}).value.value();
+        add("box", layout::component(box));
+        auto button = ui.add_button({.id = "button", .label = u"Go"}).value.value();
+        add("button", layout::component(button));
+        auto radio_none = ui.add_radio_group({.id = "radio_none", .label = u"Mode"}, {{{"a"}, u"A", false}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+        add("radio_none", layout::component(radio_none));
+        auto radio_sel = ui.add_radio_group({.id = "radio_sel", .label = u"Size"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
         radio_sel.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         radio_sel.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
         check(bool(radio_sel.select({"b"})), "a radio option is selected");
-        add("radio_sel", layout::control(radio_sel));
-        auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
-        add("slider", layout::control(slider));
-        auto list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"Items"}, {{{"i1"}, u"One"}, {{"i2"}, u"Two"}, {{"i3"}, u"Three"}}).value.value();
+        add("radio_sel", layout::component(radio_sel));
+        auto slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
+        add("slider", layout::component(slider));
+        auto list = ui.add_list({.id = "list", .label = u"Items"}, {{{"i1"}, u"One"}, {{"i2"}, u"Two"}, {{"i3"}, u"Three"}}).value.value();
         list.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         list.connect_immediate([](const Change<ListHandle>&) { return Result{}; });
         check(bool(list.select({"i2"})), "a list row is selected");
-        add("list", layout::control(list));
-        auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Pages"}, {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}}).value.value();
-        add("tabs", layout::control(tabs));
-        auto nav = ui.add_navigation_list({.id = "nav", .kind = Kind::navigation_list}, {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}}, {"n1"}).value.value();
-        add("nav", layout::control(nav));
-        auto scrolled = ui.add_label({.id = "scroll_text", .kind = Kind::label, .value = std::u16string(1200, u'x')}).value.value();
+        add("list", layout::component(list));
+        auto tabs = ui.add_tabs({.id = "tabs", .label = u"Pages"}, {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}}).value.value();
+        add("tabs", layout::component(tabs));
+        auto nav = ui.add_navigation_list({.id = "nav"}, {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}}, {"n1"}).value.value();
+        add("nav", layout::component(nav));
+        auto scrolled = ui.add_label({.id = "scroll_text", .value = std::u16string(1200, u'x')}).value.value();
         add("scroll_text", layout::scroll_text(scrolled, label_scroll, 60));
-        auto vertical = ui.add_label({.id = "vertical", .kind = Kind::label, .value = std::u16string(900, u'字'), .writing_mode = WritingMode::vertical}).value.value();
+        auto vertical = ui.add_label({.id = "vertical", .value = std::u16string(900, u'字'), .writing_mode = WritingMode::vertical}).value.value();
         add("vertical", layout::vertical_text(vertical, 120));
     }
     detail::UiState& state() { return detail::access(ui); }
@@ -268,25 +268,25 @@ int ring_px(const Page& page, float scale) { return scaled(scale, page.ui.presen
 // What each component frames (ticket item 1), worked out from the page fixture and the placement's own rectangles, never from the
 // rules production uses to choose a row or to size the ring. Returns the rectangle the ring must have; an empty result for the
 // slider, whose ring has no single rectangle in the placement (see the slider check in the driver).
-std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const Semantics& s) {
+std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const ComponentSnapshot& s) {
     auto offset = [](Rect r, Rect origin) { return Rect{r.x + origin.x, r.y + origin.y, r.w, r.h}; };
     // The row of one option, found by its value in the semantic option list.
-    auto row = [&](const char* value) { for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
-    if (s.kind == Kind::text) return offset(item.field.surface, item.bounds);
+    auto row = [&](const char* value) { for (std::size_t i = 0; i < s.items.size(); ++i) if (s.items[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
+    if (s.kind == ComponentKind::text) return offset(item.field.surface, item.bounds);
     // radio_none has nothing selected and its first option "a" is disabled: the ring is on "b", the first one that can be chosen.
     // radio_sel has "b" selected. A list and tabs frame their candidate row, navigation its selected row: both are state the
     // semantic layer reports, not a rule of the painter.
     if (id == "radio_none" || id == "radio_sel") return row("b");
-    if (s.kind == Kind::list || s.kind == Kind::tabs) return s.candidate ? row(s.candidate->id.c_str()) : Rect{};
-    if (s.kind == Kind::navigation_list) { for (const auto& option : s.options) if (option.selected) return row(option.value.id.c_str()); return Rect{}; }
-    if (s.kind == Kind::slider) return std::nullopt;
-    if (s.kind == Kind::label) return item.clip;
+    if (s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) return s.candidate ? row(s.candidate->id.c_str()) : Rect{};
+    if (s.kind == ComponentKind::navigation_list) { for (const auto& option : s.items) if (option.selected) return row(option.value.id.c_str()); return Rect{}; }
+    if (s.kind == ComponentKind::slider) return std::nullopt;
+    if (s.kind == ComponentKind::label) return item.clip;
     return item.bounds;  // button, checkbox, dropdown
 }
 
 void every_component_draws_one_closed_rounded_ring() {
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings&) {}, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+        for_each_focused(r, [](PresentationSettings&) {}, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             const auto ring = find_ring(probe.cmds);
             check(ring.has_value(), (label + ": the focus indicator is a rounded outer + inner pair").c_str());
             if (!ring) return;
@@ -304,13 +304,13 @@ void every_component_draws_one_closed_rounded_ring() {
                 for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::text) { ++texts; texts_inside = texts_inside && inside(c.rect, ring->inner); }
                 check(texts > 0 && texts_inside && inside(item.slider_track, ring->inner) && inside(ring->outer, item.bounds), (label + ": the slider's ring encloses its title and its track and stays inside the slider").c_str());
             }
-            const int own = s.kind == Kind::navigation_list && r.appearance.name() == "Material-inspired" ? ring->outer.h / 2 : scaled(r.scale, r.appearance.radius());
+            const int own = s.kind == ComponentKind::navigation_list && r.appearance.name() == "Material-inspired" ? ring->outer.h / 2 : scaled(r.scale, r.appearance.radius());
             const int capped = std::min(own, std::min(ring->outer.w, ring->outer.h) / 2);
             check(ring->outer_radius == capped, (label + ": the default radius is the component's own, a capsule when it is taller").c_str());
             check(ring->inner_radius == std::max(0, ring->outer_radius - w), (label + ": the inner edge is the outer radius minus the thickness").c_str());
-            check(s.kind == Kind::label || inside(ring->outer, intersect(item.bounds, item.clip)),
+            check(s.kind == ComponentKind::label || inside(ring->outer, intersect(item.bounds, item.clip)),
                   (label + ": the ring is drawn inside the component, so a scroll area does not clip it").c_str());
-            if (s.kind == Kind::slider) {
+            if (s.kind == ComponentKind::slider) {
                 int size = 0; for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::rounded && focus_marks::is_thumb(c.rect)) size = c.rect.w;
                 check(size == focus_marks::enlarged_thumb(r.appearance, r.scale), (label + ": the thumb is enlarged while the ring shows").c_str());
             }
@@ -322,8 +322,8 @@ void every_component_draws_one_closed_rounded_ring() {
 void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() {
     int single = 0, multi = 0, rich = 0, underline = 0, boxed = 0;
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
-            if (s.kind != Kind::text) return;
+        for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
+            if (s.kind != ComponentKind::text) return;
             check(find_ring(probe.cmds).has_value(), (label + ": a text field draws its ring").c_str());
             (s.rich ? rich : s.multiline ? multi : single) += 1;
             (item.field.underline ? underline : boxed) += 1;
@@ -335,7 +335,7 @@ void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() 
 void the_ring_never_covers_content_and_never_erases_it() {
     for (const auto& r : runs)
         for (int width : {2, 3, 6})
-            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_width = width; }, [&](Page&, const Frame&, const Placement&, const Semantics& s, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_width = width; }, [&](Page&, const Frame&, const Placement&, const ComponentSnapshot& s, Probe& probe, const std::string& base) {
                 const auto label = base + " width " + std::to_string(width);
                 const auto ring = find_ring(probe.cmds);
                 check(ring.has_value(), (label + ": ring present").c_str());
@@ -352,7 +352,7 @@ void the_ring_never_covers_content_and_never_erases_it() {
                     else {
                         check(disjoint(shown, ring->outer) || inside(shown, ring->inner), (label + ": nothing drawn after the ring touches its band").c_str());
                         // A vertical label starts at its right edge and scrolls toward the left, so only its right side must be clear.
-                        const bool starts_right = s.kind == Kind::label && s.writing_mode == WritingMode::vertical;
+                        const bool starts_right = s.kind == ComponentKind::label && s.writing_mode == WritingMode::vertical;
                         if (c.kind == Cmd::Kind::text && !disjoint(c.rect, ring->outer))
                             check((starts_right || c.rect.x >= ring->inner.x) && c.rect.x + c.rect.w <= ring->inner.x + ring->inner.w, (label + ": text inside the ring is not cut at its sides").c_str());
                     }
@@ -417,7 +417,7 @@ void a_new_thickness_changes_the_next_frames_ring_and_padding() {
 void a_set_radius_replaces_each_components_own_and_a_large_one_makes_a_capsule() {
     for (const auto& r : runs)
         for (int radius : {0, 10, 32})
-            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_radius = radius; }, [&](Page& page, const Frame&, const Placement&, const Semantics&, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.focus_ring_radius = radius; }, [&](Page& page, const Frame&, const Placement&, const ComponentSnapshot&, Probe& probe, const std::string& base) {
                 const auto label = base + " radius " + std::to_string(radius);
                 const auto ring = find_ring(probe.cmds);
                 check(ring.has_value(), (label + ": ring present").c_str());
@@ -433,7 +433,7 @@ void the_ring_follows_the_focus_color_and_turns_error_colored_when_invalid() {
     for (const auto& variant : variants)
         for (const auto& r : runs) {
             if (r.density != Density::standard || r.scale != 1.f) continue;
-            for_each_focused(r, [&](PresentationSettings& s) { s.variant = variant; }, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& base) {
+            for_each_focused(r, [&](PresentationSettings& s) { s.variant = variant; }, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& base) {
                 const auto label = base + " " + variant.name;
                 const auto palette = r.appearance.palette(variant);
                 const auto ring = find_ring(probe.cmds);
@@ -478,7 +478,7 @@ void replacing_focus_or_accent_recolors_the_ring_as_the_ticket_says() {
             check(bool(page.state().focus("slider")), "slider takes focus");
             auto semantics = *page.state().describe("slider");
             Probe probe(page.state(), *placed(frame, "slider"), semantics, *appearance, 1.f, true);
-            detail::component_type(Kind::slider).paint(probe);
+            detail::component_type(ComponentKind::slider).paint(probe);
             auto ring = find_ring(probe.cmds);
             check(ring.has_value(), "slider ring present");
             const auto thumb = std::find_if(probe.cmds.begin(), probe.cmds.end(), [&](const Cmd& c) { return c.kind == Cmd::Kind::rounded && c.role == PaintRole::content && focus_marks::is_thumb(c.rect); });
@@ -503,13 +503,13 @@ void replacing_focus_or_accent_recolors_the_ring_as_the_ticket_says() {
 
 void never_draws_no_focus_indicator_on_any_component() {
     for (const auto& r : runs)
-        for_each_focused(r, [](PresentationSettings& s) { s.focus_indicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement& item, const Semantics& s, Probe& probe, const std::string& label) {
+        for_each_focused(r, [](PresentationSettings& s) { s.focus_indicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             check(probe.count(PaintRole::focus_indicator) == 0, (label + ": never draws no focus indicator").c_str());
             check(!find_ring(probe.cmds), (label + ": no ring").c_str());
             check(s.focused && page.state().focused() == s.id, (label + ": focus itself is untouched").c_str());
             check(!page.ui.focus_indicator_visible(), (label + ": the public query says hidden").c_str());
-            if (s.kind == Kind::text) check(probe.count(PaintRole::caret) == 1, (label + ": the caret still draws, editable fields included").c_str());
-            if (s.kind == Kind::slider) {
+            if (s.kind == ComponentKind::text) check(probe.count(PaintRole::caret) == 1, (label + ": the caret still draws, editable fields included").c_str());
+            if (s.kind == ComponentKind::slider) {
                 // the thumb stays its plain size
                 int size = 0; for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::rounded && focus_marks::is_thumb(c.rect)) size = c.rect.w;
                 check(size == focus_marks::plain_thumb(r.appearance, r.scale), (label + ": the slider thumb does not grow").c_str());
@@ -537,8 +537,8 @@ void never_wins_over_keyboard_cues_and_keys_and_editable_text() {
 
 void never_leaves_the_semantic_layer_and_the_focus_tooltip_alone() {
     Ui ui;
-    auto first = ui.add_button({.id = "first", .kind = Kind::button, .label = u"First"}).value.value();
-    auto second = ui.add_button({.id = "second", .kind = Kind::button, .label = u"Second"}).value.value();
+    auto first = ui.add_button({.id = "first", .label = u"First"}).value.value();
+    auto second = ui.add_button({.id = "second", .label = u"Second"}).value.value();
     auto tip = ui.add_tooltip("second.tip", second, u"Help", 100).value.value();
     auto settings = ui.presentation(); settings.focus_indicator = FocusIndicatorMode::never;
     check(bool(ui.set_presentation(settings)), "never accepted");
