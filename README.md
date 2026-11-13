@@ -17,7 +17,7 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
-Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
+Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. Each `Ui::add_x` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.add_button({.id = "profile.save"})`. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
 ```cpp
 std::u16string model = u"Initial";
@@ -290,6 +290,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 | #94 shared handle base and handle equality | `lcars_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
 | #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
+| #96 public names follow the glossary; `add_x` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `add_x` at run time, and `demo_render_compare` stays byte-identical |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
