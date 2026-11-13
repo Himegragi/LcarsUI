@@ -5,19 +5,70 @@
 #include "lcars/version.hpp"
 #include "handle_kinds.hpp"
 static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
-static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 2 && LCARS_VERSION_PATCH == 0);
-static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 2 && lcars::framework_version_patch == 0);
+static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 3 && LCARS_VERSION_PATCH == 0);
+static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 3 && lcars::framework_version_patch == 0);
 static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
 #include <concepts>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <variant>
+#include <vector>
 
-static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::OptionSource>);
-static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
-static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
-static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
+// Read sources are one template told apart by value type (#95), and stay strongly typed (ADR 0004).
+static_assert(!std::is_convertible_v<lcars::Source<bool>, lcars::Source<int>>);
+static_assert(!std::is_convertible_v<lcars::Source<bool>, lcars::Source<std::optional<lcars::OptionValue>>>);
+static_assert(!std::is_convertible_v<lcars::Source<std::u16string>, lcars::Source<int>>);
+static_assert(!std::is_convertible_v<lcars::Source<std::u16string>, lcars::Source<bool>>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
+// Change records are told apart by field kind and value type: a radio group's and a dropdown's share a value type, a
+// text field's plain and rich records share a field kind, and none of them converts into another.
+static_assert(!std::is_convertible_v<lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::DropdownHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::RadioGroupHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle, lcars::RichText>, lcars::Change<lcars::TextHandle>>);
+// Each field kind's default value type, and the only combinations that can be spelled: the six the framework sends.
+template <class Field, class... Value> concept SpellsChange = requires { typename lcars::Change<Field, Value...>; };
+template <class Field, class Value> constexpr bool change_holds =
+    SpellsChange<Field> && std::same_as<decltype(lcars::Change<Field>::value), Value> && std::same_as<decltype(lcars::Change<Field>::origin), Value> &&
+    std::same_as<decltype(lcars::Change<Field>::field), Field> && std::same_as<lcars::Change<Field>, lcars::Change<Field, Value>>;
+static_assert(change_holds<lcars::TextHandle, std::u16string>);
+static_assert(change_holds<lcars::CheckboxHandle, bool>);
+static_assert(change_holds<lcars::RadioGroupHandle, std::optional<lcars::OptionValue>>);
+static_assert(change_holds<lcars::SliderHandle, int>);
+static_assert(change_holds<lcars::DropdownHandle, std::optional<lcars::OptionValue>>);
+static_assert(SpellsChange<lcars::TextHandle, lcars::RichText> && std::same_as<decltype(lcars::Change<lcars::TextHandle, lcars::RichText>::value), lcars::RichText>);
+static_assert(!SpellsChange<lcars::ButtonHandle>);
+static_assert(!SpellsChange<lcars::SliderHandle, bool>);
+static_assert(std::same_as<lcars::FieldChange, std::variant<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::CheckboxHandle>,
+    lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::SliderHandle>, lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>>);
+// The pre-0.3.0 names are gone without aliases (#95). Unqualified lookup inside a namespace nested in lcars finds lcars's
+// own declaration first and reaches these global stand-ins only when lcars has none, so a check fails while an old name exists.
+namespace removed_in_0_3 { struct Name {}; }
+using TextSource = removed_in_0_3::Name;
+using RichTextSource = removed_in_0_3::Name;
+using BoolSource = removed_in_0_3::Name;
+using NumericSource = removed_in_0_3::Name;
+using OptionSource = removed_in_0_3::Name;
+using TextChange = removed_in_0_3::Name;
+using RichTextChange = removed_in_0_3::Name;
+using BoolChange = removed_in_0_3::Name;
+using OptionChange = removed_in_0_3::Name;
+using NumericChange = removed_in_0_3::Name;
+using DropdownChange = removed_in_0_3::Name;
+namespace lcars::consumer_probe {
+template <class T> concept Removed = std::same_as<T, ::removed_in_0_3::Name>;
+static_assert(Removed<TextSource> && Removed<RichTextSource> && Removed<BoolSource> && Removed<NumericSource> && Removed<OptionSource>);
+static_assert(Removed<TextChange> && Removed<RichTextChange> && Removed<BoolChange> && Removed<OptionChange> && Removed<NumericChange> && Removed<DropdownChange>);
+}
+// The text-only confirmation group is gone; text fields join the confirmation group that takes every field kind. The
+// stand-in result converts to whatever the callback must return, so only the field list decides the check.
+struct AnyResult { template <class R> operator R() const { return R{}; } };
+template <class T> concept HasTextOnlyConfirmation = requires(T& ui, lcars::ButtonHandle button, std::vector<lcars::TextHandle> fields) {
+    ui.connect_confirmation(button, fields, [](const auto&) { return AnyResult{}; });
+};
+static_assert(!HasTextOnlyConfirmation<lcars::Ui>);
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
 static_assert(handle_kinds::equality_holds);
 static_assert(handle_kinds::construction_holds);
@@ -113,14 +164,15 @@ int main() {
         return [&] { changed = {}; };
     }});
     summary.connect_source([&] { return u"Saved " + profile.alias; });
-    ui.connect_confirmation(save, {alias}, [&](const std::vector<TextChange>& changes) {
-        if (changes[0].value.size() < 3) {
-            return ConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{changes[0].field, u"At least three characters"}}};
+    ui.connect_mixed_confirmation(save, {alias}, [&](const std::vector<FieldChange>& changes) {
+        const auto& change = std::get<Change<TextHandle>>(changes[0]);
+        if (change.value.size() < 3) {
+            return MixedConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{change.field, u"At least three characters"}}};
         }
-        profile.alias = changes[0].value;
+        profile.alias = change.value;
         ++profile.saves;
         if (changed) changed();
-        return ConfirmationResult{};
+        return MixedConfirmationResult{};
     });
 
     alias.focus();
