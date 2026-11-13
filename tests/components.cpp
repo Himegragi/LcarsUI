@@ -1273,6 +1273,52 @@ void list_write_requires_a_source_first() {
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     check(list.select({"a"}).status == Status::invalid_value && writes == 0, "The refused write was not kept");
 }
+// #99: a label also takes a full read source; a notification asks for a repaint and the text is read again when drawn.
+void label_source_notification_repaints_the_new_text() {
+    std::u16string clock = u"10:00"; std::function<void()> changed;
+    Ui ui;
+    auto label = ui.add_label({.id = "clock", .kind = Kind::label}).value.value();
+    int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
+    check(bool(label.connect_source({[&] { return clock; }, [&](std::function<void()> callback) {
+        changed = std::move(callback); return [&] { changed = {}; };
+    }})) && label.describe()->value == u"10:00", "A label reads its text from the source");
+    clock = u"10:01"; frames = 0; changed();
+    check(frames == 1 && label.describe()->value == u"10:01", "A notification asks for a repaint that shows the new text");
+}
+void label_source_is_replaced_and_rejects_incomplete_sources() {
+    std::function<void()> first, second;
+    Ui ui;
+    auto label = ui.add_label({.id = "status", .kind = Kind::label}).value.value();
+    auto subscribe_to = [](std::function<void()>& slot) {
+        return [&slot](std::function<void()> callback) { slot = std::move(callback); return [&slot] { slot = {}; }; };
+    };
+    label.connect_source({[] { return std::u16string(u"one"); }, subscribe_to(first)});
+    check(bool(label.connect_source({[] { return std::u16string(u"two"); }, subscribe_to(second)})) && !first && second &&
+          label.describe()->value == u"two", "Connecting again replaces the source and cancels the old subscription");
+    check(bool(label.connect_source([] { return std::u16string(u"three"); })) && !second && label.describe()->value == u"three",
+          "The short form also cancels the subscription it replaces");
+    label.connect_source({[] { return std::u16string(u"four"); }, subscribe_to(first)});
+    std::function<std::u16string()> read = [] { return std::u16string(u"five"); };
+    check(label.connect_source({{}, {}}).status == Status::invalid_value && label.connect_source({read, {}}).status == Status::invalid_value &&
+          label.connect_source({{}, subscribe_to(second)}).status == Status::invalid_value,
+          "A source without read or subscribe is refused");
+    check(first && !second && label.describe()->value == u"four", "A refused source keeps the current connection");
+}
+void label_source_notifications_end_with_the_ui() {
+    std::function<void()> changed, kept; int frames = 0;
+    LabelHandle label;
+    {
+        Ui ui;
+        label = ui.add_label({.id = "progress-text", .kind = Kind::label}).value.value();
+        detail::access(ui).on_invalidate([&] { ++frames; });
+        label.connect_source({[] { return std::u16string(u"busy"); }, [&](std::function<void()> callback) {
+            changed = callback; kept = std::move(callback); return [&] { changed = {}; };
+        }});
+    }
+    check(!changed, "Ending the Ui cancels the label's subscription");
+    frames = 0; kept();
+    check(frames == 0 && label.describe().status == Status::not_found, "A notification after the Ui is gone is ignored");
+}
 // #99 keeps the label's short form (a read function only) as it was.
 void label_read_function_is_read_on_demand_and_replaced() {
     std::u16string first = u"first", second = u"second";
@@ -1413,7 +1459,10 @@ int main() {
         {"#99 list reselection writes nothing",list_selecting_the_selected_item_writes_nothing},
         {"#99 list rejection keeps the selection", list_rejected_write_keeps_the_selection},
         {"#99 list write requires a source", list_write_requires_a_source_first},
-        {"#99 label read function", label_read_function_is_read_on_demand_and_replaced},
+        {"#99 label source repaints", label_source_notification_repaints_the_new_text},
+        {"#99 label source replaced and validated", label_source_is_replaced_and_rejects_incomplete_sources},
+        {"#99 label source ends with the Ui", label_source_notifications_end_with_the_ui},
+        {"#99 label read function",label_read_function_is_read_on_demand_and_replaced},
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
         {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
         {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},

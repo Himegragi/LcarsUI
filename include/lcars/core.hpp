@@ -429,6 +429,15 @@ private:
 class LabelHandle : private detail::HandleBase<LabelHandle> {
 public:
     LabelHandle() = default;
+    // The label's text, read again every time the label is drawn (it keeps no copy), so keep the read cheap. Two forms:
+    // a full read source, whose notifications ask for a repaint (text changed by background work: a clock, a download),
+    // or a read function alone, for text that only changes through what happens on screen (another field's draft).
+    // Connecting again, in either form, replaces the connection and cancels the previous subscription. A source without
+    // read or subscribe, or an empty function, is refused with invalid_value and keeps the current connection.
+    // A bare lambda, {read, subscribe}, {{}, {}} and a named Source each pick one form. Braces around a single lambda,
+    // connect_source({[] { ... }}), match both and do not compile (#99): drop the braces. (Braces around a variable that
+    // already is a std::function<std::u16string()> pick the read-function form, as the variable matches it exactly.)
+    Result connect_source(Source<std::u16string> source) const;
     Result connect_source(std::function<std::u16string()> read) const;
     // Owner configuration (#80); same rules as the text field's.
     Result set_text_align(TextAlign align) const;

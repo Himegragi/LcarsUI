@@ -241,8 +241,11 @@ public:
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // Native input methods must finalize before core changes the focused editing target.
     void before_focus(std::function<void()> callback) { before_focus_ = std::move(callback); }
-    // A label whose text is read from owner data on demand, so the label never holds a copy.
-    void bind_text(std::string_view id, std::function<std::u16string()> provider);
+    // A label whose text is read from owner data on demand, so the label never holds a copy. With `subscribe`, the
+    // owner's notifications ask for a repaint until the Ui ends or the label is bound again; binding again cancels the
+    // previous subscription first.
+    void bind_text(std::string_view id, std::function<std::u16string()> provider,
+                   decltype(Source<std::u16string>::subscribe) subscribe = {});
     // Focus. Declaration order is the Tab order; labels and unavailable controls are skipped.
     const Id& focused() const { return focus_; }
     Result focus(std::string_view id);
@@ -686,7 +689,9 @@ private:
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
-    std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
+    // A bound label's read, and the cancellation of its source's subscription (empty for a read function alone).
+    struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
+    std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);

@@ -60,7 +60,7 @@ template <class List> concept ListWritesChange = requires(const List& list) {
     list.connect_immediate([](const lcars::Change<lcars::ListHandle>&) { return lcars::Result{}; });
 };
 static_assert(!ListWritesBareValue<lcars::ListHandle> && ListWritesChange<lcars::ListHandle>);
-// A label takes either a read function or a full read source (#99). Braces around a single function match both and are
+// A label takes either a read function or a full read source (#99). Braces around a single lambda match both and are
 // ambiguous by design; every other spelling picks one.
 template <class Label> concept LabelTakesFunction = requires(const Label& label) { label.connect_source([] { return std::u16string(); }); };
 template <class Label> concept LabelTakesSource = requires(const Label& label, std::function<std::u16string()> read,
@@ -70,7 +70,7 @@ template <class Label> concept LabelTakesSource = requires(const Label& label, s
     label.connect_source({{}, {}});
     label.connect_source(source);
 };
-template <class Label> concept LabelTakesBracedFunction = requires(const Label& label, std::function<std::u16string()> read) { label.connect_source({read}); };
+template <class Label> concept LabelTakesBracedFunction = requires(const Label& label) { label.connect_source({[] { return std::u16string(); }}); };
 static_assert(LabelTakesFunction<lcars::LabelHandle> && LabelTakesSource<lcars::LabelHandle> && !LabelTakesBracedFunction<lcars::LabelHandle>);
 // The pre-0.3.0 names are gone without aliases (#95). Unqualified lookup inside a namespace nested in lcars finds lcars's
 // own declaration first and reaches these global stand-ins only when lcars has none, so a check fails while an old name exists.

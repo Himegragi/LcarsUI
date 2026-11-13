@@ -188,7 +188,12 @@ void detail::UiState::commit_removals() {
         }
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
-        blur_callbacks_.erase(id); providers_.erase(id);
+        blur_callbacks_.erase(id);
+        if (auto bound = providers_.find(id); bound != providers_.end()) {
+            auto disconnect = std::move(bound->second.disconnect);
+            providers_.erase(bound);
+            if (disconnect) disconnect();
+        }
         std::erase_if(controls_, [&](const Control& control) { return control.id == id; });
         semantic_instances_.erase(id);
         button_lifetimes_.erase(id);
@@ -324,6 +329,7 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : lists_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
+    for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
 ProgressHandle detail::UiState::add_progress(Control control) {
     OperationScope operation(this);
@@ -1556,6 +1562,14 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
         return {};
     });
 }
+Result LabelHandle::connect_source(Source<std::u16string> source) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A label source requires read and subscribe"};
+        ui_->bind_text(id_, std::move(source.read), std::move(source.subscribe));
+        return {};
+    });
+}
 Result detail::UiState::writing_support(const Control& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
         return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
@@ -2150,11 +2164,17 @@ std::u16string detail::UiState::text(std::string_view id) const {
     if (auto shown = component_type(control->kind).display_text(*this, *control)) return *shown;
     return control->value;
 }
-void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider) {
+void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider,
+                                decltype(Source<std::u16string>::subscribe) subscribe) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
-    providers_.insert_or_assign(control->id, std::move(provider));
+    auto& bound = providers_[control->id];
+    if (auto disconnect = std::exchange(bound.disconnect, {})) disconnect();
+    bound.read = std::move(provider);
+    if (!subscribe) return;
+    std::weak_ptr<void> weak = lifetime_; auto* state = this;
+    bound.disconnect = subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
 }
 const Control* detail::UiState::find(std::string_view id) const {
     auto it = std::find_if(controls_.begin(), controls_.end(), [&](const auto& control) { return control.id == id; });
