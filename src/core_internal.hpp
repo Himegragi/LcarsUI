@@ -588,13 +588,12 @@ private:
         else if constexpr (std::is_same_v<Handle, DropdownHandle>) return dropdowns_;
         else { static_assert(std::is_same_v<Handle, SliderHandle>); return numerics_; }
     }
-    // Runs f on the connection of the field with this id, whichever kind of field it is.
+    // Runs f on the connection of the field with this id, whichever confirmable kind (a ConfirmField alternative) it is.
     template <class F> void with_connection(std::string_view id, F&& f) {
-        if (auto it = edits_.find(id); it != edits_.end()) f(it->second);
-        if (auto it = bools_.find(id); it != bools_.end()) f(it->second);
-        if (auto it = radios_.find(id); it != radios_.end()) f(it->second);
-        if (auto it = dropdowns_.find(id); it != dropdowns_.end()) f(it->second);
-        if (auto it = numerics_.find(id); it != numerics_.end()) f(it->second);
+        [&]<class... Handle>(std::variant<Handle...>*) {
+            auto visit = [&](auto& fields) { if (auto it = fields.find(id); it != fields.end()) f(it->second); };
+            (visit(fields_of<Handle>()), ...);
+        }(static_cast<ConfirmField*>(nullptr));
     }
     // The write paths the checkbox, radio group, dropdown and slider share (a text field adds history and composition).
     template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
