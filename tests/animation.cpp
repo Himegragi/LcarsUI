@@ -40,7 +40,7 @@ struct Volume {
     Rect track{};
     int width = 400;  // the window the slider is arranged in; a test narrows it to move the track under the pointer
     explicit Volume(const Appearance& look = web_appearance()) : appearance(look) {
-        slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
+        slider = ui.add_slider({.id = "volume", .kind = ComponentKind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
         slider.connect_immediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
         detail::access(ui).animation_time([this] { return now; });
@@ -56,7 +56,7 @@ struct Volume {
         track = item->slider_track;
         auto semantic = state().describe(item->id);
         ThumbProbe probe(state(), *item, *semantic, appearance, 1.f, true);
-        detail::component_type(Kind::slider).paint(probe);
+        detail::component_type(ComponentKind::slider).paint(probe);
         return probe;
     }
     int tick(int value) const { return track.x + static_cast<int>(std::lround(track.w * value / 100.0)); }
@@ -354,7 +354,7 @@ void hidden_window_ends_and_prevents_slides() {
 }
 void without_a_time_source_changes_are_instant() {
     Ui ui;
-    auto slider = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
+    auto slider = ui.add_slider({.id = "v", .kind = ComponentKind::slider, .label = u"V"}, {0, 100, 5}).value.value();
     int model = 45; std::function<void()> changed;
     slider.connect_source({[&] { return model; }, [&](std::function<void()> n) { changed = std::move(n); return [] {}; }});
     slider.connect_immediate([&](const Change<SliderHandle>& c) { model = c.value; if (changed) changed(); return Result{}; });

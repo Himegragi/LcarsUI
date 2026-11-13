@@ -23,8 +23,8 @@ Applications retain the handles returned by `Ui::add_text`, `add_button` and `ad
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
 lcars::Ui ui;
-auto name = ui.add_text({.id = "profile.name", .kind = lcars::Kind::text}).value.value();
-auto save = ui.add_button({.id = "profile.save", .kind = lcars::Kind::button}).value.value();
+auto name = ui.add_text({.id = "profile.name", .kind = lcars::ComponentKind::text}).value.value();
+auto save = ui.add_button({.id = "profile.save", .kind = lcars::ComponentKind::button}).value.value();
 name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
@@ -48,7 +48,7 @@ Every handle kind (`TextHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHa
 A text field is single-line unless it is created with `multiline`. The choice is fixed at creation; everything else about the field (data connections, confirmation groups, history, semantic role `text`) is unchanged, and a single-line field behaves exactly as before.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .max_length = 200,
+auto note = ui.add_text({.id = "item.note", .kind = lcars::ComponentKind::text, .max_length = 200,
                          .multiline = true, .visible_lines = 3}).value.value();
 note.set_visible_lines(5);                         // reflows at once
 note.set_scroll_line(2);                           // first visible display line
@@ -89,7 +89,7 @@ ui.semantics().perform({"item.note"}, lcars::Verb::select_paragraph, 12);  // th
 A multi-line field created with `rich = true` holds **plain text plus style spans** (`lcars::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalid_value` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+auto note = ui.add_text({.id = "item.note", .kind = lcars::ComponentKind::text, .multiline = true, .visible_lines = 3, .rich = true}).value.value();
 note.set_colors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
 note.connect_rich_source({[&] { return model; }, subscribe});        // Source<RichText>: read() -> RichText
 note.connect_rich_confirmed([&](const lcars::Change<lcars::TextHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
@@ -139,7 +139,7 @@ Out of scope here: submenus, check marks and icons, menus outside the applicatio
 A label can be set vertically: text runs top to bottom, columns from right to left, laid out by the Taiwan Ministry of Education rules. Editable vertical text and read-only text fields are not covered.
 
 ```cpp
-auto note = ui.add_label({.id = "about.note", .kind = lcars::Kind::label, .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
+auto note = ui.add_label({.id = "about.note", .kind = lcars::ComponentKind::label, .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
                           .writing_mode = lcars::WritingMode::vertical}).value.value();
 auto page = lcars::layout::column({lcars::layout::vertical_text(note, 200)});  // the height is yours, in DIP
 note.set_writing_mode(lcars::WritingMode::horizontal);     // changes at run time; the next arrangement follows

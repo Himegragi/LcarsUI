@@ -224,7 +224,7 @@ static void frozen_overlays(const Appearance& appearance) {
     SendMessageW(wheel_host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
     check(dropdown_form.handles.region.describe()->expanded, "wheel preserves dropdown during failure");
     Ui pending_ui;
-    auto button = pending_ui.add_button({.id="pending", .kind=Kind::button, .label=u"Pending"}).value.value();
+    auto button = pending_ui.add_button({.id="pending", .kind=ComponentKind::button, .label=u"Pending"}).value.value();
     auto tip = pending_ui.add_tooltip("pending.tip", button, u"Help", 1000).value.value();
     ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
     DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);

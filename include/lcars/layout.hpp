@@ -171,7 +171,7 @@ struct VerticalLayout {
 };
 struct Placement {
     std::string id;
-    Kind kind = Kind::label;
+    ComponentKind kind = ComponentKind::label;
     Rect bounds, clip;            // physical pixels after scrolling; hits need bounds and clip
     bool clipped = false;         // clip has been assigned, including an empty intersection
     bool popup = false;           // an overlay belongs to its source, outside normal layout flow

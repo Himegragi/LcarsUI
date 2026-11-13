@@ -62,7 +62,7 @@ struct RichModel {
     RichText last_written, last_origin;
 };
 Control rich_control(std::string id, std::u16string value = {}, unsigned lines = 3) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .rich = true};
+    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .rich = true};
 }
 TextHandle connect_rich(Ui& ui, Control control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
     if (!model) model = std::make_shared<RichModel>();
@@ -80,7 +80,7 @@ std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui)
 void a_rich_field_is_a_multi_line_option_fixed_at_creation() {
     Ui ui;
     check(bool(ui.add_text(rich_control("rich"))), "A multi-line field can be rich");
-    check(ui.add_text({.id = "single", .kind = Kind::text, .rich = true}).status == Status::invalid_value, "A single-line field cannot be rich");
+    check(ui.add_text({.id = "single", .kind = ComponentKind::text, .rich = true}).status == Status::invalid_value, "A single-line field cannot be rich");
 }
 
 void rich_values_are_read_and_written_in_normal_form() {
@@ -97,7 +97,7 @@ void rich_values_are_read_and_written_in_normal_form() {
     check(bool(field.set_value(u"plain")) && field.rich_value()->text == u"plain" && field.rich_value()->spans.empty(),
           "set_value on a rich field replaces the text and leaves it unstyled");
     Ui other;
-    auto plain = *other.add_text({.id = "p", .kind = Kind::text, .multiline = true});
+    auto plain = *other.add_text({.id = "p", .kind = ComponentKind::text, .multiline = true});
     check(plain.rich_value().status == Status::not_supported && plain.set_rich_value({u"x", {}}).status == Status::not_supported &&
           plain.set_style(0, 0, {.bold = true}).status == Status::not_supported && plain.typing_style().status == Status::not_supported,
           "A field that is not rich answers not_supported");
@@ -261,8 +261,8 @@ void each_styled_insertion_is_one_undo_entry() {
 void the_field_takes_ctrl_b_before_an_application_shortcut() {
     Ui ui;
     auto rich = connect_rich(ui, rich_control("note", u"abc"));
-    auto plain = *ui.add_text({.id = "plain", .kind = Kind::text, .value = u"abc", .multiline = true});
-    auto button = *ui.add_button({.id = "bold", .kind = Kind::button, .label = u"Bold"});
+    auto plain = *ui.add_text({.id = "plain", .kind = ComponentKind::text, .value = u"abc", .multiline = true});
+    auto button = *ui.add_button({.id = "bold", .kind = ComponentKind::button, .label = u"Bold"});
     int pressed = 0;
     button.bind([&] { ++pressed; return Result{}; });
     check(bool(ui.add_shortcut({.key = Key::other, .letter = u'B', .ctrl = true}, button)), "An application shortcut on Ctrl+B");
@@ -306,7 +306,7 @@ void a_color_name_resolves_per_theme_and_unknown_names_keep_their_name() {
     check(repaints == 1 && host.named_color("note", "teal") == Color{64, 224, 208} && !host.named_color("note", "red").has_value(),
           "Replacing the list repaints at once and applies to existing text");
     Ui other;
-    auto plain = *other.add_text({.id = "p", .kind = Kind::text, .multiline = true});
+    auto plain = *other.add_text({.id = "p", .kind = ComponentKind::text, .multiline = true});
     check(plain.set_colors({}).status == Status::not_supported && plain.colors().status == Status::not_supported, "A field that is not rich has no color list");
 }
 
@@ -352,8 +352,8 @@ void a_confirmation_group_takes_a_rich_field_in_the_mixed_form() {
     auto note_model = std::make_shared<RichModel>();
     auto name_value = std::make_shared<std::u16string>(u"n");
     auto note = *ui.add_text(rich_control("note", u"abc"));
-    auto name = *ui.add_text({.id = "name", .kind = Kind::text, .value = u"n"});
-    auto button = *ui.add_button({.id = "ok", .kind = Kind::button, .label = u"OK"});
+    auto name = *ui.add_text({.id = "name", .kind = ComponentKind::text, .value = u"n"});
+    auto button = *ui.add_button({.id = "ok", .kind = ComponentKind::button, .label = u"OK"});
     note_model->value.text = u"abc";
     note.connect_rich_source({[note_model] { return note_model->value; }, [](std::function<void()>) { return [] {}; }});
     name.connect_source({[name_value] { return *name_value; }, [](std::function<void()>) { return [] {}; }});
@@ -470,8 +470,8 @@ void external_plain_text_takes_the_typing_style() {
 void other_fields_and_hosts_get_plain_text_only() {
     Ui ui;
     auto source = connect_rich(ui, rich_control("source", u"a\nb"));
-    auto multi = connect_plain(ui, {.id = "multi", .kind = Kind::text, .multiline = true, .visible_lines = 2});
-    auto single = connect_plain(ui, {.id = "single", .kind = Kind::text});
+    auto multi = connect_plain(ui, {.id = "multi", .kind = ComponentKind::text, .multiline = true, .visible_lines = 2});
+    auto single = connect_plain(ui, {.id = "single", .kind = ComponentKind::text});
     auto& host = detail::access(ui);
     MemoryClipboard clipboard; host.set_clipboard(&clipboard);
     source.set_style(0, 3, {.bold = true});
@@ -548,7 +548,7 @@ void the_semantic_layer_reads_and_writes_styles_like_the_typed_calls() {
     check(tree.perform({"note"}, Verb::set_style, StyleEdit{0, 1, {.bold = true}}).status == field.set_style(0, 1, {.bold = true}).status, "A read-only field gives the same status through both doors");
     check(!has(Verb::set_style) && !has(Verb::set_typing_style), "A read-only field does not offer the style verbs");
     Ui other;
-    auto plain = connect_plain(other, {.id = "p", .kind = Kind::text, .value = u"abc", .multiline = true});
+    auto plain = connect_plain(other, {.id = "p", .kind = ComponentKind::text, .value = u"abc", .multiline = true});
     check(!other.semantics().get({"p"})->rich && other.semantics().perform({"p"}, Verb::set_style, StyleEdit{0, 1, {.bold = true}}).status == Status::not_supported,
           "A plain field is not rich and refuses the style verbs");
 }
@@ -572,7 +572,7 @@ void style_changes_raise_a_property_event_and_colors_resolve_for_the_theme() {
     check(tree.text_color({"note"}, "red").value == std::optional<Color>(Color{255, 120, 120}), "After a theme change it resolves to the dark value");
     check(tree.text_color({"note"}, "").value == std::optional<Color>(web_appearance().palette(ThemeVariant::dark()).text), "...and the normal color to the dark text color");
     Ui other;
-    check(connect_plain(other, {.id = "p", .kind = Kind::text, .multiline = true}).describe().value->rich == false && other.semantics().text_color({"p"}, "").status == Status::not_supported,
+    check(connect_plain(other, {.id = "p", .kind = ComponentKind::text, .multiline = true}).describe().value->rich == false && other.semantics().text_color({"p"}, "").status == Status::not_supported,
           "Only rich fields resolve colors");
 }
 
@@ -643,7 +643,7 @@ struct Recorder final : detail::ComponentPaint {
 Recorder paint(Ui& ui, const Placement& field, std::string_view id) {
     auto semantics = *detail::access(ui).describe(id);
     Recorder recorder(detail::access(ui), field, semantics, web_appearance(), 1.f, true);
-    detail::component_type(Kind::text).paint(recorder);
+    detail::component_type(ComponentKind::text).paint(recorder);
     return recorder;
 }
 
@@ -739,7 +739,7 @@ void a_rich_field_without_styles_lays_out_like_a_plain_one() {
     Ui rich_ui, plain_ui;
     auto text = std::u16string(u"hello world again and more\n中文字\n") + std::u16string(45, u'x');
     auto rich = connect_rich(rich_ui, rich_control("note", text));
-    auto plain = connect_plain(plain_ui, {.id = "note", .kind = Kind::text, .value = text, .multiline = true});
+    auto plain = connect_plain(plain_ui, {.id = "note", .kind = ComponentKind::text, .value = text, .multiline = true});
     Laid a(rich_ui, rich), b(plain_ui, plain);
     check(lines_of(*a.field) == lines_of(*b.field) && a.field->bounds == b.field->bounds && a.field->view.thumb == b.field->view.thumb,
           "Wrapping, height and scrollbar match a plain multi-line field");

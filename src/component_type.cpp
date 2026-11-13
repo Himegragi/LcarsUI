@@ -1683,16 +1683,16 @@ Label label;
 Text text;
 Button button;
 Command command;
-const std::map<Kind, const ComponentType*>& types() {
-    static const std::map<Kind, const ComponentType*> registry{
-        {Kind::label, &label}, {Kind::text, &text}, {Kind::button, &button},
-        {Kind::checkbox, &checkbox}, {Kind::radio_group, &radio_group}, {Kind::slider, &slider}, {Kind::dropdown, &dropdown}, {Kind::list, &list}, {Kind::tabs, &tabs}, {Kind::progress, &progress}, {Kind::navigation_list, &navigation_list}};
+const std::map<ComponentKind, const ComponentType*>& types() {
+    static const std::map<ComponentKind, const ComponentType*> registry{
+        {ComponentKind::label, &label}, {ComponentKind::text, &text}, {ComponentKind::button, &button},
+        {ComponentKind::checkbox, &checkbox}, {ComponentKind::radio_group, &radio_group}, {ComponentKind::slider, &slider}, {ComponentKind::dropdown, &dropdown}, {ComponentKind::list, &list}, {ComponentKind::tabs, &tabs}, {ComponentKind::progress, &progress}, {ComponentKind::navigation_list, &navigation_list}};
     return registry;
 }
 // Test registrations belong to the thread owning their UI. Built-in lookups remain immutable
 // and can be used concurrently by independent UI environments.
-std::map<Kind, const ComponentType*>& test_types() {
-    thread_local std::map<Kind, const ComponentType*> registry;
+std::map<ComponentKind, const ComponentType*>& test_types() {
+    thread_local std::map<ComponentKind, const ComponentType*> registry;
     return registry;
 }
 }
@@ -1747,17 +1747,17 @@ void ComponentType::verbs(const VerbContext& c, std::vector<Verb>& out) const {
     if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
     if (c.admits(Operation::focus)) out.push_back(Verb::focus);
 }
-const ComponentType* find_component_type(Kind kind) {
+const ComponentType* find_component_type(ComponentKind kind) {
     auto test = test_types().find(kind);
     if (test != test_types().end()) return test->second;
     auto it = types().find(kind);
     return it == types().end() ? nullptr : it->second;
 }
-const ComponentType& component_type(Kind kind) {
+const ComponentType& component_type(ComponentKind kind) {
     if (const auto* type = find_component_type(kind)) return *type;
     throw std::invalid_argument("Unknown component type");
 }
-ScopedComponentType::ScopedComponentType(Kind kind, const ComponentType& type) : kind_(kind) {
+ScopedComponentType::ScopedComponentType(ComponentKind kind, const ComponentType& type) : kind_(kind) {
     if (types().contains(kind) || !test_types().emplace(kind, &type).second)
         throw std::invalid_argument("Component type already registered");
 }

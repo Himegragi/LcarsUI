@@ -41,39 +41,39 @@ struct Everything {
     std::vector<std::pair<const char*, ComponentHandle>> components;
     explicit Everything(bool confirmed) {
         auto accepted = [](const auto&) { return Result{}; };
-        auto text_field = ui.add_text({.id = "text", .kind = Kind::text, .label = u"Text"}).value.value();
+        auto text_field = ui.add_text({.id = "text", .kind = ComponentKind::text, .label = u"Text"}).value.value();
         text_field.connect_source(text_source(text));
         if (confirmed) text_field.connect_confirmed(accepted); else text_field.connect_immediate(accepted);
         components.push_back({"text", text_field});
-        auto button = ui.add_button({.id = "button", .kind = Kind::button, .label = u"Button"}).value.value();
+        auto button = ui.add_button({.id = "button", .kind = ComponentKind::button, .label = u"Button"}).value.value();
         button.bind([] { return Result{}; });
         components.push_back({"button", button});
-        components.push_back({"label", ui.add_label({.id = "label", .kind = Kind::label, .value = u"Label"}).value.value()});
-        auto checkbox = ui.add_checkbox({.id = "checkbox", .kind = Kind::checkbox, .label = u"Check"}).value.value();
+        components.push_back({"label", ui.add_label({.id = "label", .kind = ComponentKind::label, .value = u"Label"}).value.value()});
+        auto checkbox = ui.add_checkbox({.id = "checkbox", .kind = ComponentKind::checkbox, .label = u"Check"}).value.value();
         checkbox.connect_source(bool_source());
         if (confirmed) checkbox.connect_confirmed(accepted); else checkbox.connect_immediate(accepted);
         components.push_back({"checkbox", checkbox});
-        auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Radio"}, two_options()).value.value();
+        auto radio = ui.add_radio_group({.id = "radio", .kind = ComponentKind::radio_group, .label = u"Radio"}, two_options()).value.value();
         radio.connect_source(option_source());
         if (confirmed) radio.connect_confirmed(accepted); else radio.connect_immediate(accepted);
         components.push_back({"radio", radio});
-        auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider, .label = u"Slider"}, {0, 100, 10}).value.value();
+        auto slider = ui.add_slider({.id = "slider", .kind = ComponentKind::slider, .label = u"Slider"}, {0, 100, 10}).value.value();
         slider.connect_source(numeric_source());
         if (confirmed) slider.connect_confirmed(accepted); else slider.connect_immediate(accepted);
         components.push_back({"slider", slider});
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Drop"}, two_options()).value.value();
+        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = ComponentKind::dropdown, .label = u"Drop"}, two_options()).value.value();
         dropdown.connect_source(option_source());
         if (confirmed) dropdown.connect_confirmed(accepted); else dropdown.connect_immediate(accepted);
         components.push_back({"dropdown", dropdown});
-        auto list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()).value.value();
+        auto list = ui.add_list({.id = "list", .kind = ComponentKind::list, .label = u"List"}, two_options()).value.value();
         list.connect_source(option_source());
         list.connect_immediate([](std::optional<OptionValue>) { return Result{}; });
         components.push_back({"list", list});
-        components.push_back({"tabs", ui.add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Tabs"}, two_pages()).value.value()});
-        auto progress = ui.add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}).value.value();
+        components.push_back({"tabs", ui.add_tabs({.id = "tabs", .kind = ComponentKind::tabs, .label = u"Tabs"}, two_pages()).value.value()});
+        auto progress = ui.add_progress({.id = "progress", .kind = ComponentKind::progress, .label = u"Progress"}).value.value();
         progress.connect_source(numeric_source());
         components.push_back({"progress", progress});
-        components.push_back({"navigation_list", ui.add_navigation_list({.id = "navigation_list", .kind = Kind::navigation_list, .label = u"Nav"}, two_pages(), {"a"}).value.value()});
+        components.push_back({"navigation_list", ui.add_navigation_list({.id = "navigation_list", .kind = ComponentKind::navigation_list, .label = u"Nav"}, two_pages(), {"a"}).value.value()});
     }
 };
 
@@ -153,7 +153,7 @@ std::vector<std::string> key_table() {
             Everything all(false);
             ComponentHandle subject;
             for (const auto& [candidate, handle] : all.components) if (name == candidate) subject = handle;
-            auto sink = all.ui.add_button({.id = "sink", .kind = Kind::button, .label = u"Sink"}).value.value();
+            auto sink = all.ui.add_button({.id = "sink", .kind = ComponentKind::button, .label = u"Sink"}).value.value();
             int fired = 0;
             sink.bind([&] { ++fired; return Result{}; });
             Shortcut chord{.key = press.key.key, .letter = press.key.letter, .ctrl = press.key.ctrl};
@@ -256,7 +256,7 @@ public:
         return context.invalid_argument();
     }
 };
-constexpr auto stepper_kind = static_cast<Kind>(101);
+constexpr auto stepper_kind = static_cast<ComponentKind>(101);
 
 void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     Stepper stepper;
@@ -276,7 +276,7 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     check(ui.semantics().perform({"stepper"}, Verb::set_value, std::u16string(u"nine")).status == Status::invalid_value, "a wrong argument is the common answer");
     // Keys: it takes Up and Down, and leaves Left to the application's shortcut.
     int fired = 0;
-    auto sink = ui.add_button({.id = "sink", .kind = Kind::button, .label = u"Sink"}).value.value();
+    auto sink = ui.add_button({.id = "sink", .kind = ComponentKind::button, .label = u"Sink"}).value.value();
     sink.bind([&] { ++fired; return Result{}; });
     check(bool(ui.add_shortcut({.key = Key::left}, sink, host.layout_handle("stepper"))), "shortcut registered");
     check(bool(host.focus("stepper")), "the type can be focused");
@@ -293,18 +293,18 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     check(stepper.presses == 1 && stepper.releases == 1 && host.focused() == "sink", "an ignored press neither focuses nor arms");
 }
 
-// The one expectation of what each built-in type calls itself: the id of its component in Everything, its Kind and its name. The
+// The one expectation of what each built-in type calls itself: the id of its component in Everything, its ComponentKind and its name. The
 // registry table and the diagnostics (which name the type of an ID that is taken again) are both checked against it.
-struct BuiltIn { const char* component; Kind kind; const char* name; };
+struct BuiltIn { const char* component; ComponentKind kind; const char* name; };
 const BuiltIn built_in_types[] = {
-    {"text", Kind::text, "text"}, {"button", Kind::button, "button"}, {"label", Kind::label, "label"}, {"checkbox", Kind::checkbox, "checkbox"},
-    {"radio", Kind::radio_group, "radio_group"}, {"slider", Kind::slider, "slider"}, {"dropdown", Kind::dropdown, "dropdown"}, {"list", Kind::list, "list"},
-    {"tabs", Kind::tabs, "tabs"}, {"progress", Kind::progress, "progress"}, {"navigation_list", Kind::navigation_list, "navigation_list"}};
+    {"text", ComponentKind::text, "text"}, {"button", ComponentKind::button, "button"}, {"label", ComponentKind::label, "label"}, {"checkbox", ComponentKind::checkbox, "checkbox"},
+    {"radio", ComponentKind::radio_group, "radio_group"}, {"slider", ComponentKind::slider, "slider"}, {"dropdown", ComponentKind::dropdown, "dropdown"}, {"list", ComponentKind::list, "list"},
+    {"tabs", ComponentKind::tabs, "tabs"}, {"progress", ComponentKind::progress, "progress"}, {"navigation_list", ComponentKind::navigation_list, "navigation_list"}};
 
-// Debug names come from the registry, not from the order of the Kind enumeration: each built-in type names itself.
+// Debug names come from the registry, not from the order of the ComponentKind enumeration: each built-in type names itself.
 void built_in_types_name_themselves() {
     for (const auto& item : built_in_types) check(detail::component_type(item.kind).name() == item.name, item.name);
-    check(detail::find_component_type(static_cast<Kind>(99)) == nullptr, "a Kind without a type is not invented");
+    check(detail::find_component_type(static_cast<ComponentKind>(99)) == nullptr, "a Kind without a type is not invented");
 }
 
 #ifndef NDEBUG
@@ -317,7 +317,7 @@ void debug_names_in_diagnostics() {
         check(expected != std::end(built_in_types), name);
         if (expected == std::end(built_in_types)) continue;
         const auto before = all.ui.diagnostics().size();
-        check(all.ui.add_label({.id = name, .kind = Kind::label}).status == Status::invalid_value, "duplicate id is refused");
+        check(all.ui.add_label({.id = name, .kind = ComponentKind::label}).status == Status::invalid_value, "duplicate id is refused");
         check(all.ui.diagnostics().size() == before + 1, "refusal is diagnosed");
         const auto& message = all.ui.diagnostics().back();
         check(message.ends_with(std::string("existing component type: ") + expected->name), "diagnostic names the type");

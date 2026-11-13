@@ -763,7 +763,7 @@ void place_menu(Frame& frame, detail::UiState& state, const Appearance& appearan
     else if (space_above >= h) y = anchor.y - h;
     else y = std::clamp(below, 0, std::max(0, height - h));
     Placement popup;
-    popup.id = menu_node_id(view->target); popup.kind = target ? target->kind : Kind::label;
+    popup.id = menu_node_id(view->target); popup.kind = target ? target->kind : ComponentKind::label;
     popup.menu = popup.popup = true;
     popup.text_size = pixels; popup.menu_pad = pad_x;
     popup.bounds = {x, y, w, h}; popup.clip = {0, 0, width, height}; popup.clipped = true;

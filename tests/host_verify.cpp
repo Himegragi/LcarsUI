@@ -733,7 +733,7 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
 
 void font_diagnostic_reaches_application(const Appearance& appearance, Report& report) {
     Ui ui;
-    auto label=ui.add_label({.id="missing-font-glyph",.kind=Kind::label,.value=u"\U0010ffff"});
+    auto label=ui.add_label({.id="missing-font-glyph",.kind=ComponentKind::label,.value=u"\U0010ffff"});
     std::vector<RenderDiagnostic> events;
     DesktopHost* active=nullptr; int depth=0, maximum_depth=0;
     auto initial=ui.presentation(); initial.font_family=u"LcarsUI definitely absent";
@@ -768,7 +768,7 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
 }
 
 void registered_component_uses_native_host(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
-    constexpr auto test_kind = static_cast<Kind>(100);
+    constexpr auto test_kind = static_cast<ComponentKind>(100);
     TestComponent component;
     detail::ScopedComponentType registration(test_kind, component);
     Ui ui; detail::access(ui).seed_test_controls({{.id = "probe", .kind = test_kind, .value = u"Test component"}});
@@ -804,8 +804,8 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     std::optional<OptionValue> value=OptionValue{"0"}; std::function<void()> changed; bool invoked=false;
     Ui ui; ScrollState scroll; std::vector<RadioOption> options;
     for (int i=0; i<150; ++i) { auto id=std::to_string(i); options.push_back({{id},std::u16string(id.begin(),id.end())}); }
-    auto dropdown=ui.add_dropdown({.id="native.dropdown",.kind=Kind::dropdown,.label=u"Font"},std::move(options)).value.value();
-    auto other=ui.add_button({.id="native.other",.kind=Kind::button,.label=u"Other"}).value.value();
+    auto dropdown=ui.add_dropdown({.id="native.dropdown",.kind=ComponentKind::dropdown,.label=u"Font"},std::move(options)).value.value();
+    auto other=ui.add_button({.id="native.other",.kind=ComponentKind::button,.label=u"Other"}).value.value();
     dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
     dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
@@ -1158,7 +1158,7 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     std::string button; POINT button_at{};
     for (const auto& item : f.host.frame().items) {
         auto visible = intersect(item.bounds, item.clip);
-        if (item.kind == Kind::button && visible.w > 0 && visible.h > 0 && panel() && !panel()->bounds.contains(visible.x + visible.w / 2, visible.y + visible.h / 2)) {
+        if (item.kind == ComponentKind::button && visible.w > 0 && visible.h > 0 && panel() && !panel()->bounds.contains(visible.x + visible.w / 2, visible.y + visible.h / 2)) {
             button = item.id; button_at = {visible.x + visible.w / 2, visible.y + visible.h / 2}; break;
         }
     }
@@ -1205,7 +1205,7 @@ void context_menu_native(const Appearance& appearance, Report& report) {
 // (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
 void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
-    auto note = ui.add_label({.id = "note", .kind = Kind::label, .value = std::u16string(300, u'字'),
+    auto note = ui.add_label({.id = "note", .kind = ComponentKind::label, .value = std::u16string(300, u'字'),
                               .writing_mode = WritingMode::vertical}).value.value();
     DesktopOptions options; options.title = u"LcarsUI vertical label verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
@@ -1278,7 +1278,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
 void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>();
-    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
+    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI multi-line verification";
@@ -1371,7 +1371,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     Ui ui; ScrollState scroll;
     auto make = [&](const char* id, std::u16string value) {
         auto model = std::make_shared<RichText>(RichText{value, {}});
-        auto field = ui.add_text({.id = id, .kind = Kind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        auto field = ui.add_text({.id = id, .kind = ComponentKind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
         field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; });
         return field;
@@ -1460,11 +1460,11 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
 void word_select_native(const Appearance& appearance, Report& report) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
-    auto field_handle = ui.add_text({.id = "line", .kind = Kind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    auto field_handle = ui.add_text({.id = "line", .kind = ComponentKind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
     field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     field_handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
-    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
+    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
     note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     field_handle.set_word_segmentation(WordSegmentation::per_character);
@@ -1549,8 +1549,8 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
         u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(text);
-    auto sample = ui.add_label({.id = "sample", .kind = Kind::label, .value = text, .text_align = TextAlign::justify}).value.value();
-    auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
+    auto sample = ui.add_label({.id = "sample", .kind = ComponentKind::label, .value = text, .text_align = TextAlign::justify}).value.value();
+    auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI justified text verification";
@@ -1912,7 +1912,7 @@ void tab_walk_and_visible_focus(const Appearance& appearance, Report& report, co
     const Placement* other = nullptr;
     for (const auto& item : frame.items) {
         auto visible = intersect(item.bounds, item.clip);
-        if (item.kind == Kind::button && item.id != f.ids.apply && visible.w > 2 && visible.h == item.bounds.h &&
+        if (item.kind == ComponentKind::button && item.id != f.ids.apply && visible.w > 2 && visible.h == item.bounds.h &&
             item.bounds.x >= 0 && item.bounds.y >= 0 && item.bounds.y + item.bounds.h <= pixels.height) { other = &item; break; }
     }
     bool distinct = false;
@@ -2058,7 +2058,7 @@ void page_size_scale_matrix(const Appearance& appearance, Report& report) {
                 if (!item) continue;
                 auto area = intersect(item->bounds, item->clip);
                 auto* hit = area.w && area.h ? revealed.hit(area.x + area.w / 2, area.y + area.h / 2) : nullptr;
-                if ((area == item->bounds || item->kind == Kind::list) && hit && hit->id == id) ++reached;
+                if ((area == item->bounds || item->kind == ComponentKind::list) && hit && hit->id == id) ++reached;
                 else missing += id + " ";
             }
             bool expected = std::string_view(page) == "v01" ? frame.find(h.name) != nullptr :
@@ -2655,7 +2655,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
                 const auto palette = appearance.palette(f.form.ui.presentation().variant);
-                auto cue = semantic->kind == Kind::checkbox || semantic->kind == Kind::radio_group
+                auto cue = semantic->kind == ComponentKind::checkbox || semantic->kind == ComponentKind::radio_group
                     ? palette.accent : palette.selection;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
@@ -2664,7 +2664,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                     if (draw.color.r == cue.r && draw.color.g == cue.g && draw.color.b == cue.b &&
                         draw.type != detail::PaintObservation::Type::text) cue_visible = true;
                 }
-                auto expected = semantic->kind == Kind::checkbox ? semantic->name : semantic->value;
+                auto expected = semantic->kind == ComponentKind::checkbox ? semantic->name : semantic->value;
                 bool compared = semantic->visible && x04::placement(f.host.frame(), entry.handle) &&
                     x04::selected_semantics(*semantic) && !expected.empty() && ink.find(expected) != std::u16string::npos && cue_visible;
                 bool restored = x04::restore_selected(f.form, entry, *before, presentation) && f.form.ui.presentation() == presentation && x04::same_model(baseline_model, x04::snapshot(f.form));
@@ -2795,7 +2795,7 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
                     if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
                     if (draw.color.r == error_color.r && draw.color.g == error_color.g && draw.color.b == error_color.b) color = true;
                 }
-                bool cue = semantic->kind == Kind::tabs ? ink.find(appearance.component_presentation().invalid_tab_marker) != std::u16string::npos :
+                bool cue = semantic->kind == ComponentKind::tabs ? ink.find(appearance.component_presentation().invalid_tab_marker) != std::u16string::npos :
                     ink.find(x04::error_message) != std::u16string::npos && color;
                 bool semantic_state = x04::error_semantics(f.form, *semantic);
                 bool compared = item && semantic->visible && semantic_state && cue;
@@ -2822,21 +2822,21 @@ void x04_candidate_matrix(const Appearance& appearance, Report& report) {
                 bool prepared = baseline && x04::prepare_candidate(f.form, entry);
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, before->id); f.host.paint();
                 bool opened = x04::open_candidate(entry);
-                auto vk = before->kind == Kind::tabs ? VK_RIGHT : VK_DOWN;
+                auto vk = before->kind == ComponentKind::tabs ? VK_RIGHT : VK_DOWN;
                 SendMessageW(f.host.window(), WM_KEYDOWN, vk, key_lparam(vk, false, false));
                 SendMessageW(f.host.window(), WM_KEYUP, vk, key_lparam(vk, false, true));
                 f.host.paint(); auto semantic = x04::describe(entry.handle);
                 auto* item = x04::candidate_placement(f.host.frame(), *semantic); auto label = x04::candidate_label(*semantic);
-                auto cue = semantic->kind == Kind::dropdown ? appearance.palette().selection : appearance.palette().accent;
+                auto cue = semantic->kind == ComponentKind::dropdown ? appearance.palette().selection : appearance.palette().accent;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
                     if (draw.owner != semantic->id || !draw.visible || draw.tooltip ||
-                        (semantic->kind == Kind::dropdown) != draw.popup) continue;
+                        (semantic->kind == ComponentKind::dropdown) != draw.popup) continue;
                     if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
                     else if (draw.color.r == cue.r && draw.color.g == cue.g && draw.color.b == cue.b) cue_visible = true;
                 }
                 bool compared = item && semantic->visible && label && ink.find(*label) != std::u16string::npos && cue_visible;
-                if (semantic->kind == Kind::tabs || semantic->kind == Kind::dropdown) compared = compared && semantic->value == before->value;
+                if (semantic->kind == ComponentKind::tabs || semantic->kind == ComponentKind::dropdown) compared = compared && semantic->value == before->value;
                 bool restored = x04::restore_candidate(f.form, entry) && x04::same_model(baseline_model, x04::snapshot(f.form));
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                     std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -2959,16 +2959,16 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                     auto target = state.describe(semantic->target);
                     compared = compared && target && std::find(target->labels.begin(), target->labels.end(), semantic->id) != target->labels.end();
                 }
-                if (!semantic->visible && semantic->kind == Kind::label && semantic->value.empty()) {
+                if (!semantic->visible && semantic->kind == ComponentKind::label && semantic->value.empty()) {
                     compared = compared && (semantic->target.empty() ? !visible_owner_ink :
                         semantic->role == TextRole::error && state.describe(semantic->target)->error.empty());
                 } else {
                     compared = compared && item && semantic->visible;
                     for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
-                    if (semantic->kind == Kind::checkbox && semantic->checked == true) compared = compared && accent;
-                    if (semantic->kind == Kind::radio_group && !semantic->value.empty()) compared = compared && accent;
-                    if ((semantic->kind == Kind::list || semantic->kind == Kind::tabs) && !semantic->value.empty()) compared = compared && selected;
-                    if (semantic->kind == Kind::progress && item && semantic->numeric_value)
+                    if (semantic->kind == ComponentKind::checkbox && semantic->checked == true) compared = compared && accent;
+                    if (semantic->kind == ComponentKind::radio_group && !semantic->value.empty()) compared = compared && accent;
+                    if ((semantic->kind == ComponentKind::list || semantic->kind == ComponentKind::tabs) && !semantic->value.empty()) compared = compared && selected;
+                    if (semantic->kind == ComponentKind::progress && item && semantic->numeric_value)
                         compared = compared && item->progress_fill.w == item->progress_track.w * *semantic->numeric_value / 100 &&
                             (*semantic->numeric_value == 0 || accent);
                 }
@@ -3000,7 +3000,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + initial->id;
-                if (initial->kind == Kind::tabs) {
+                if (initial->kind == ComponentKind::tabs) {
                     auto tabs = std::get<TabsHandle>(entry.handle);
                     bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus());
                     f.host.paint(); auto sem = tabs.describe(); auto* placed = f.host.frame().find(tabs);
@@ -3058,7 +3058,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(f.form.ui, entry.handle) &&
                     x04::set_enabled(entry.handle, initial->enabled);
                 bool option_checks = true;
-                if (sem->kind == Kind::radio_group && initial->enabled) {
+                if (sem->kind == ComponentKind::radio_group && initial->enabled) {
                     auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
                     bool option = previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus());
                     reveal(sem->id); auto option_semantic = radio.describe(); auto* option_item = f.host.frame().find(radio);
@@ -3085,14 +3085,14 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     recovered = recovered && option_checks;
                 }
                 if (entry.page == "modal") recovered = bool(f.form.handles.dialog.settle(false)) && bool(f.form.handles.reset_v03.invoke()) && recovered;
-                if (sem->kind == Kind::list) recovered = x04::baseline_context(f.form) && bool(f.form.handles.tabs.activate({"v02"})) &&
+                if (sem->kind == ComponentKind::list) recovered = x04::baseline_context(f.form) && bool(f.form.handles.tabs.activate({"v02"})) &&
                     bool(f.form.list->handles.zero.invoke()) && bool(f.form.list->handles.twenty.invoke()) && recovered;
                 recovered = x04::baseline_context(f.form) && x04::same_model(baseline_model, x04::snapshot(f.form)) && recovered;
                 report.check("X04-disabled-member", driven && cue && rejected && pointer && unchanged && recovered,
                     sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
                     ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
                     ", unchanged=" + std::to_string(unchanged) + ", recovered=" + std::to_string(recovered) +
-                    (sem->kind == Kind::radio_group ? ", option checks=" + std::to_string(option_checks) : ""));
+                    (sem->kind == ComponentKind::radio_group ? ", option checks=" + std::to_string(option_checks) : ""));
             }
         }
 }
@@ -3123,7 +3123,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 }
                 bool field = semantic->visible && semantic->source_conflict && ink.find(semantic->name) != std::u16string::npos &&
                     ink.find(appearance.component_presentation().conflict_suffix) != std::u16string::npos &&
-                    (semantic->kind == Kind::checkbox ? semantic->checked == true && checked_cue :
+                    (semantic->kind == ComponentKind::checkbox ? semantic->checked == true && checked_cue :
                         semantic->value.empty() || ink.find(semantic->value) != std::u16string::npos);
                 auto latest = x04::latest_for(f.form, entry); auto action = latest.describe();
                 bool enabled = action->enabled; reveal(action->id); action = latest.describe();

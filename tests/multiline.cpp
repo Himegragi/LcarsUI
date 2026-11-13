@@ -33,7 +33,7 @@ TextHandle connect(Ui& ui, Control control) {
     return field;
 }
 Control multi(std::string id, std::u16string value = {}, unsigned lines = 3) {
-    return {.id = std::move(id), .kind = Kind::text, .value = std::move(value), .multiline = true, .visible_lines = lines};
+    return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines};
 }
 std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }
 
@@ -42,7 +42,7 @@ void multiline_values_allow_line_feed_and_reject_carriage_return() {
     check(bool(ui.add_text(multi("ok", u"a\nb"))), "A multi-line field may start with a line feed");
     check(ui.add_text(multi("cr", u"a\rb")).status == Status::invalid_value, "A carriage return is an invalid initial value");
     check(ui.add_text(multi("tab", u"a\tb")).status == Status::invalid_value, "Other control characters stay invalid");
-    check(ui.add_text({.id = "single", .kind = Kind::text, .value = u"a\nb"}).status == Status::invalid_value,
+    check(ui.add_text({.id = "single", .kind = ComponentKind::text, .value = u"a\nb"}).status == Status::invalid_value,
           "A single-line field still rejects a line feed");
     check(ui.add_text(multi("zero", u"", 0)).status == Status::invalid_value, "A multi-line field needs at least one visible line");
     check(valid_multi_line(u"a\nb") && !valid_multi_line(u"a\r\nb") && !valid_multi_line(u"a\tb") && !valid_multi_line(u"ab", 1),
@@ -89,7 +89,7 @@ void paste_normalizes_every_line_break_to_one_line_feed() {
 
 void single_line_paste_still_turns_breaks_into_spaces() {
     Ui ui;
-    auto field = connect(ui, {.id = "name", .kind = Kind::text, .value = u"x"});
+    auto field = connect(ui, {.id = "name", .kind = ComponentKind::text, .value = u"x"});
     MemoryClipboard clipboard;
     auto& host = detail::access(ui);
     host.set_clipboard(&clipboard); host.focus("name");
@@ -104,7 +104,7 @@ void single_line_paste_still_turns_breaks_into_spaces() {
 
 void a_line_feed_counts_as_one_toward_max_length() {
     Ui ui;
-    auto field = connect(ui, {.id = "note", .kind = Kind::text, .max_length = 5, .multiline = true, .visible_lines = 2});
+    auto field = connect(ui, {.id = "note", .kind = ComponentKind::text, .max_length = 5, .multiline = true, .visible_lines = 2});
     check(bool(field.set_value(u"ab\ncd")), "Five characters including a line feed fit a limit of five");
     check(field.set_value(u"ab\ncde").status == Status::invalid_value && value_of(ui, "note") == u"ab\ncd", "Six characters are rejected whole");
     auto& host = detail::access(ui);
@@ -136,10 +136,10 @@ struct Form {
     int plain = 0, with_ctrl = 0, scoped = 0;
     Form() {
         note = connect(ui, multi("note"));
-        name = connect(ui, {.id = "name", .kind = Kind::text, .value = u"x"});
-        plain_enter = *ui.add_button({.id = "plain", .kind = Kind::button, .label = u"OK"});
-        ctrl_enter = *ui.add_button({.id = "ctrl", .kind = Kind::button, .label = u"Apply"});
-        scoped_enter = *ui.add_button({.id = "scoped", .kind = Kind::button, .label = u"Edit"});
+        name = connect(ui, {.id = "name", .kind = ComponentKind::text, .value = u"x"});
+        plain_enter = *ui.add_button({.id = "plain", .kind = ComponentKind::button, .label = u"OK"});
+        ctrl_enter = *ui.add_button({.id = "ctrl", .kind = ComponentKind::button, .label = u"Apply"});
+        scoped_enter = *ui.add_button({.id = "scoped", .kind = ComponentKind::button, .label = u"Edit"});
         check(bool(plain_enter.bind([this] { ++plain; return Result{}; })), "Bind the global Enter action");
         check(bool(ctrl_enter.bind([this] { ++with_ctrl; return Result{}; })), "Bind the Ctrl+Enter action");
         check(bool(scoped_enter.bind([this] { ++scoped; return Result{}; })), "Bind the scoped Enter action");
@@ -468,7 +468,7 @@ void scrolling_alone_does_not_move_the_caret_or_snap_back() {
 void the_wheel_scrolls_the_field_then_the_page() {
     Ui ui;
     auto field = connect(ui, multi("note", numbered_lines(10), 3));
-    auto tall = *ui.add_label({.id = "tall", .kind = Kind::label, .value = numbered_lines(30)});
+    auto tall = *ui.add_label({.id = "tall", .kind = ComponentKind::label, .value = numbered_lines(30)});
     FakeMeasure measure; ScrollState page, outer;
     auto node = layout::scroll(layout::column({layout::control(field), layout::control(tall)}, 8), outer, 200);
     auto frame = arrange(node, ui, web_appearance(), measure, 300, 400, 1.f, page);
@@ -487,9 +487,9 @@ void the_wheel_scrolls_the_field_then_the_page() {
 
 void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
     Ui ui;
-    auto background = *ui.add_label({.id = "background", .kind = Kind::label, .value = numbered_lines(40)});
-    auto backup = *ui.add_button({.id = "backup", .kind = Kind::button, .label = u"Back"});
-    auto cancel = *ui.add_button({.id = "cancel", .kind = Kind::button, .label = u"Cancel"});
+    auto background = *ui.add_label({.id = "background", .kind = ComponentKind::label, .value = numbered_lines(40)});
+    auto backup = *ui.add_button({.id = "backup", .kind = ComponentKind::button, .label = u"Back"});
+    auto cancel = *ui.add_button({.id = "cancel", .kind = ComponentKind::button, .label = u"Cancel"});
     auto note = connect(ui, multi("note", numbered_lines(10), 3));
     auto dialog = *ui.add_dialog("dlg", {note, cancel}, note, backup, [](bool) {});
     FakeMeasure measure; ScrollState page, outer;
@@ -563,7 +563,7 @@ void the_visible_line_count_can_change_at_run_time() {
     check(e.field.set_visible_lines(0).status == Status::invalid_value && e.field.visible_lines().value.value() == 2, "At least one line");
     check(bool(e.field.set_visible_lines(20)) && scroll_line_of(e.field) == 0, "More lines than the text has leaves nothing to scroll");
     Ui single;
-    auto name = connect(single, {.id = "name", .kind = Kind::text});
+    auto name = connect(single, {.id = "name", .kind = ComponentKind::text});
     check(name.set_visible_lines(2).status == Status::not_supported && name.set_scroll_line(0).status == Status::not_supported &&
           name.scroll_line().status == Status::not_supported && name.visible_lines().status == Status::not_supported,
           "A single-line field has neither");

@@ -15,7 +15,7 @@
 
 namespace lcars {
 // Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
-enum class Kind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
+enum class ComponentKind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class TextRole { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
@@ -58,7 +58,7 @@ enum class WritingMode { horizontal, vertical };
 inline constexpr int max_vertical_digits = 3;
 struct Control {
     std::string id;
-    Kind kind;
+    ComponentKind kind;
     std::u16string label = {};  // fallback accessible name when no name label targets this control
     std::string page = {};
     std::u16string value = {};  // text field content, or label display text
@@ -137,7 +137,7 @@ struct OptionSemantics { OptionValue value; std::u16string label; bool enabled =
 // Semantic snapshot from a handle or a host-side adapter.
 struct Semantics {
     std::string id;
-    Kind kind = Kind::label;
+    ComponentKind kind = ComponentKind::label;
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame

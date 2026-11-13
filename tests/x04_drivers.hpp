@@ -101,9 +101,9 @@ inline bool hidden_retry(const lcars::ComponentHandle& value) {
     }, value);
 }
 inline bool normal_semantics(const lcars::Semantics& s) {
-    using lcars::Kind;
-    if (s.kind == Kind::checkbox) return s.checked && s.value == (*s.checked ? u"true" : u"false");
-    if (s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::list || s.kind == Kind::tabs) {
+    using lcars::ComponentKind;
+    if (s.kind == ComponentKind::checkbox) return s.checked && s.value == (*s.checked ? u"true" : u"false");
+    if (s.kind == ComponentKind::radio_group || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) {
         auto count = std::count_if(s.options.begin(), s.options.end(), [](const auto& option) { return option.selected; });
         if (count > 1) return false;
         if (count == 1) return std::any_of(s.options.begin(), s.options.end(), [&](const auto& o) { return o.selected && o.label == s.value; });
@@ -112,17 +112,17 @@ inline bool normal_semantics(const lcars::Semantics& s) {
     return true;
 }
 inline std::vector<std::u16string> normal_text(const lcars::Semantics& s) {
-    using lcars::Kind;
+    using lcars::ComponentKind;
     std::vector<std::u16string> result;
     auto add = [&](std::u16string text) {
         text.erase(std::remove(text.begin(), text.end(), u'\n'), text.end());
         if (!text.empty()) result.push_back(std::move(text));
     };
-    if (s.kind == Kind::label) add(s.value);
+    if (s.kind == ComponentKind::label) add(s.value);
     else {
         add(s.name);
-        if (s.kind != Kind::button && s.kind != Kind::checkbox) add(s.value);
-        if (s.kind == Kind::text) add(s.description);
+        if (s.kind != ComponentKind::button && s.kind != ComponentKind::checkbox) add(s.value);
+        if (s.kind == ComponentKind::text) add(s.description);
     }
     return result;
 }
@@ -174,7 +174,7 @@ inline bool drive_selected(const Entry& entry) {
 }
 inline bool selected_semantics(const lcars::Semantics& semantic) {
     using namespace lcars;
-    if (semantic.kind == Kind::checkbox) return semantic.checked == true;
+    if (semantic.kind == ComponentKind::checkbox) return semantic.checked == true;
     return !semantic.value.empty() && std::count_if(semantic.options.begin(), semantic.options.end(),
         [&](const auto& option) { return option.selected && option.label == semantic.value; }) == 1;
 }
@@ -219,12 +219,12 @@ inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entr
     auto field = std::get_if<lcars::TextHandle>(&entry.handle);
     if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
     auto semantic = describe(entry.handle);
-    return semantic && (semantic->kind == lcars::Kind::slider || semantic->kind == lcars::Kind::checkbox) &&
+    return semantic && (semantic->kind == lcars::ComponentKind::slider || semantic->kind == lcars::ComponentKind::checkbox) &&
         !lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, semantic->id);
 }
 inline bool group_conflict_supported(edit_form::Form& form, const lcars::Semantics& s) {
-    using lcars::Kind;
-    bool type_supported = s.kind == Kind::checkbox || s.kind == Kind::radio_group || s.kind == Kind::dropdown || s.kind == Kind::slider;
+    using lcars::ComponentKind;
+    bool type_supported = s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider;
     return type_supported && lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, s.id);
 }
 inline bool drive_group_conflict(edit_form::Form& form, const Entry& entry) {
@@ -259,7 +259,7 @@ inline lcars::ButtonHandle latest_for(edit_form::Form& form, const Entry& entry)
 }
 inline bool execution_supported(edit_form::Form&, const lcars::ButtonHandle& button) {
     auto semantic = button.describe();
-    return semantic && semantic->kind == lcars::Kind::button;
+    return semantic && semantic->kind == lcars::ComponentKind::button;
 }
 inline bool observe_execution(edit_form::Form& form, const lcars::ButtonHandle& button,
                               std::function<lcars::Result()> observer) {
@@ -302,14 +302,14 @@ inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
     else if (entry.page == "v03") filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
     else filler = form.handles.v04_title;
     if (!form.set_clip_padding(filler, std::move(padding))) return false;
-    if (target->kind == lcars::Kind::label && target->role == lcars::TextRole::error && !target->target.empty())
+    if (target->kind == lcars::ComponentKind::label && target->role == lcars::TextRole::error && !target->target.empty())
         return bool(form.handles.name.set_error(u"X04 clipped error"));
     return true;
 }
 inline bool restore_clipped(edit_form::Form& form, const Entry& entry) {
     auto target = describe(entry.handle);
     form.clear_clip_padding();
-    if (target && target->kind == lcars::Kind::label && target->role == lcars::TextRole::error && !target->target.empty())
+    if (target && target->kind == lcars::ComponentKind::label && target->role == lcars::TextRole::error && !target->target.empty())
         if (!form.handles.name.set_error(u"")) return false;
     form.scroll.offset = 0;
     return bool(form.handles.tabs.activate({"v01"}));
@@ -349,9 +349,9 @@ inline std::vector<int> clipped_offsets(const lcars::Frame& frame, lcars::Rect t
 inline const std::u16string error_message = u"X04 field error";
 inline bool error_supported(const lcars::Semantics& s) {
     using namespace lcars;
-    return (s.kind == Kind::label && s.role == TextRole::error && !s.target.empty()) ||
-        s.kind == Kind::text || s.kind == Kind::checkbox || s.kind == Kind::radio_group ||
-        s.kind == Kind::dropdown || s.kind == Kind::slider || s.kind == Kind::tabs;
+    return (s.kind == ComponentKind::label && s.role == TextRole::error && !s.target.empty()) ||
+        s.kind == ComponentKind::text || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group ||
+        s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider || s.kind == ComponentKind::tabs;
 }
 inline bool drive_error(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;
@@ -368,13 +368,13 @@ inline bool drive_error(edit_form::Form& form, const Entry& entry) {
 }
 inline bool error_semantics(edit_form::Form& form, const lcars::Semantics& s) {
     using namespace lcars;
-    if (s.kind == Kind::tabs) return !s.options.empty() && s.options[0].invalid;
-    if (s.kind == Kind::label) {
+    if (s.kind == ComponentKind::tabs) return !s.options.empty() && s.options[0].invalid;
+    if (s.kind == ComponentKind::label) {
         auto target = form.handles.name.describe();
         return s.role == TextRole::error && s.value == error_message && s.target == target->id && target->invalid &&
             target->error == error_message && std::find(target->labels.begin(), target->labels.end(), s.id) != target->labels.end();
     }
-    if (s.kind == Kind::text && s.id == form.handles.name.describe()->id) {
+    if (s.kind == ComponentKind::text && s.id == form.handles.name.describe()->id) {
         auto label = form.handles.name_error.describe();
         return s.invalid && s.error == error_message && label->role == TextRole::error && label->target == s.id &&
             label->value == s.error && std::find(s.labels.begin(), s.labels.end(), label->id) != s.labels.end();
@@ -408,7 +408,7 @@ inline bool open_candidate(const Entry& entry) {
     return true;
 }
 inline const lcars::Placement* candidate_placement(const lcars::Frame& frame, const lcars::Semantics& s) {
-    if (s.kind == lcars::Kind::dropdown) {
+    if (s.kind == lcars::ComponentKind::dropdown) {
         auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const auto& p) { return p.id == s.id && p.popup && !p.tooltip; });
         return it == frame.overlays.end() ? nullptr : &*it;
     }

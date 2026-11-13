@@ -45,14 +45,14 @@ bool valid_value(const Control& control, std::u16string_view text) { return vali
 // A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
 constexpr unsigned max_visible_lines = 1000;
 bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
-// What a type says about itself; a Kind no type is registered for says nothing.
-bool supports_text_flow(Kind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
+// What a type says about itself; a ComponentKind no type is registered for says nothing.
+bool supports_text_flow(ComponentKind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
 bool valid_text_align(TextAlign align) {
     return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
 }
 bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
 // Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
-bool admits_text_align(Kind kind, TextAlign align) {
+bool admits_text_align(ComponentKind kind, TextAlign align) {
     const auto* type = detail::find_component_type(kind);
     return align != TextAlign::distribute || (type && type->admits_distribute());
 }
@@ -327,7 +327,7 @@ detail::UiState::~UiState() {
 }
 ProgressHandle detail::UiState::add_progress(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::progress || control.id.empty() || find(control.id))
+    if (control.kind != ComponentKind::progress || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid progress component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -352,7 +352,7 @@ Query<Semantics> ProgressHandle::describe() const {
 }
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::text || control.id.empty() || find(control.id) || !detail::valid_text_control(control))
+    if (control.kind != ComponentKind::text || control.id.empty() || find(control.id) || !detail::valid_text_control(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
     field.session.text = control.value; field.rich = control.rich;
@@ -363,7 +363,7 @@ TextHandle detail::UiState::add_text(Control control) {
 }
 ButtonHandle detail::UiState::add_button(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::button || control.id.empty() || find(control.id))
+    if (control.kind != ComponentKind::button || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid button component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -373,7 +373,7 @@ ButtonHandle detail::UiState::add_button(Control control) {
 }
 LabelHandle detail::UiState::add_label(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::label || control.id.empty() || find(control.id))
+    if (control.kind != ComponentKind::label || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid label component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -381,7 +381,7 @@ LabelHandle detail::UiState::add_label(Control control) {
 }
 CheckboxHandle detail::UiState::add_checkbox(Control control) {
     OperationScope operation(this);
-    if (control.kind != Kind::checkbox || control.id.empty() || find(control.id))
+    if (control.kind != ComponentKind::checkbox || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid checkbox component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -469,7 +469,7 @@ Query<bool> CheckboxHandle::draft() const {
 }
 RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<RadioOption> options) {
     OperationScope operation(this);
-    if (control.kind != Kind::radio_group || control.id.empty() || find(control.id))
+    if (control.kind != ComponentKind::radio_group || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid radio group");
     std::set<std::string> ids;
     for (const auto& option : options)
@@ -481,7 +481,7 @@ RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<R
 }
 ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> items) {
     OperationScope operation(this);
-    if (control.kind != Kind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
+    if (control.kind != ComponentKind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
     std::set<std::string> ids;
     for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) throw std::invalid_argument("Invalid list identity");
     auto id = control.id; controls_.push_back(std::move(control));
@@ -672,7 +672,7 @@ Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
 }
 DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioOption> options) {
     OperationScope operation(this);
-    if (control.kind != Kind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
+    if (control.kind != ComponentKind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
     std::set<std::string> ids;
     for (const auto& option : options)
         if (option.value.id.empty() || !ids.insert(option.value.id).second) throw std::invalid_argument("Invalid dropdown option");
@@ -823,7 +823,7 @@ int snap_slider(SliderRange range, int input) {
 }
 SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
     OperationScope operation(this);
-    if (control.kind != Kind::slider || control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
+    if (control.kind != ComponentKind::slider || control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
         throw std::invalid_argument("Invalid slider component or range");
     auto id = control.id;
     controls_.push_back(std::move(control));
@@ -1074,7 +1074,7 @@ bool detail::UiState::retired_button(const ComponentHandle& handle) const {
 }
 TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages) {
     OperationScope operation(this);
-    if (control.kind != Kind::tabs || control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
+    if (control.kind != ComponentKind::tabs || control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
         throw std::invalid_argument("Invalid tabs component");
     std::set<std::string> values;
     std::set<Id> members;
@@ -1096,7 +1096,7 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
 }
 NavigationListHandle detail::UiState::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
     OperationScope operation(this);
-    if (control.kind != Kind::navigation_list || control.id.empty() || find(control.id) || pages.empty())
+    if (control.kind != ComponentKind::navigation_list || control.id.empty() || find(control.id) || pages.empty())
         throw std::invalid_argument("Invalid navigation list");
     auto selected = std::find_if(pages.begin(), pages.end(), [&](const auto& p) { return p.value == initial && p.enabled; });
     if (selected == pages.end()) throw std::invalid_argument("Invalid initial page");

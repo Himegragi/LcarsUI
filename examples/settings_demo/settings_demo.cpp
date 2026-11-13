@@ -26,56 +26,56 @@ std::optional<FocusIndicatorMode> focus_mode_from_id(std::string_view id) {
     return std::nullopt;
 }
 Demo::Demo(AboutInfo about) : about_(std::move(about)) {
-    nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
+    nav = ui.add_navigation_list({.id="app.nav", .kind=ComponentKind::navigation_list, .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
-    title_ = ui.add_label({.id="app.page_title",.kind=Kind::label}).value.value();
-    name_label_ = ui.add_label({.id="general.name.label",.kind=Kind::label,.value=u"顯示名稱",.target="general.name",.role=TextRole::name}).value.value();
-    name = ui.add_text({.id="general.name",.kind=Kind::text,.value=name_value_,.max_length=64}).value.value();
-    name_help_ = ui.add_label({.id="general.name.help",.kind=Kind::label,.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.role=TextRole::description}).value.value();
-    name_error_ = ui.add_label({.id="general.name.error",.kind=Kind::label,.target="general.name",.role=TextRole::error}).value.value();
-    notices = ui.add_checkbox({.id="general.notices",.kind=Kind::checkbox,.label=u"啟用提示"}).value.value();
-    mode = ui.add_radio_group({.id="general.mode",.kind=Kind::radio_group,.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
-    region = ui.add_dropdown({.id="general.region",.kind=Kind::dropdown,.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
-    volume = ui.add_slider({.id="general.volume",.kind=Kind::slider,.label=u"音量"},{0,100,5}).value.value();
-    items_search = ui.add_text({.id="items.search",.kind=Kind::text,.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
-    items_list = ui.add_list({.id="items.list",.kind=Kind::list,.label=u"\u9805\u76ee"}, {}).value.value();
-    items_count_ = ui.add_label({.id="items.count",.kind=Kind::label}).value.value();
-    items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
-    items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
-    items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    title_ = ui.add_label({.id="app.page_title",.kind=ComponentKind::label}).value.value();
+    name_label_ = ui.add_label({.id="general.name.label",.kind=ComponentKind::label,.value=u"顯示名稱",.target="general.name",.role=TextRole::name}).value.value();
+    name = ui.add_text({.id="general.name",.kind=ComponentKind::text,.value=name_value_,.max_length=64}).value.value();
+    name_help_ = ui.add_label({.id="general.name.help",.kind=ComponentKind::label,.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.role=TextRole::description}).value.value();
+    name_error_ = ui.add_label({.id="general.name.error",.kind=ComponentKind::label,.target="general.name",.role=TextRole::error}).value.value();
+    notices = ui.add_checkbox({.id="general.notices",.kind=ComponentKind::checkbox,.label=u"啟用提示"}).value.value();
+    mode = ui.add_radio_group({.id="general.mode",.kind=ComponentKind::radio_group,.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
+    region = ui.add_dropdown({.id="general.region",.kind=ComponentKind::dropdown,.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
+    volume = ui.add_slider({.id="general.volume",.kind=ComponentKind::slider,.label=u"音量"},{0,100,5}).value.value();
+    items_search = ui.add_text({.id="items.search",.kind=ComponentKind::text,.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
+    items_list = ui.add_list({.id="items.list",.kind=ComponentKind::list,.label=u"\u9805\u76ee"}, {}).value.value();
+    items_count_ = ui.add_label({.id="items.count",.kind=ComponentKind::label}).value.value();
+    items_add = ui.add_button({.id="items.add",.kind=ComponentKind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
+    items_edit = ui.add_button({.id="items.edit",.kind=ComponentKind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
+    items_delete = ui.add_button({.id="items.delete",.kind=ComponentKind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
     // Right-clicking a row selects it, then offers the same Edit and Delete as the buttons and the
     // Enter / Del shortcuts: each item runs the button's own action.
     items_menu = ui.add_context_menu(items_list, {
         {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .access_key=u'E', .shortcut_hint=u"Enter", .action=[this](const MenuContext&) { return items_edit.invoke(); }},
         {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .access_key=u'D', .shortcut_hint=u"Del", .action=[this](const MenuContext&) { return items_delete.invoke(); }},
     }).value.value();
-    font = ui.add_dropdown({.id="appearance.font",.kind=Kind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
-    font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
+    font = ui.add_dropdown({.id="appearance.font",.kind=ComponentKind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
+    font_status_ = ui.add_label({.id="appearance.font.status",.kind=ComponentKind::label}).value.value();
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
     refresh_fonts();
     font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + lcars::detail::utf8_from_utf16(value)}; }, subscribe_to(font_changed_)});
     font.connect_immediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
-    text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
+    text_size = ui.add_slider({.id="appearance.text_size",.kind=ComponentKind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.add_member({"appearance"}, text_size);
     text_size.connect_source({[this] { return ui.presentation().text_size; }, subscribe_to(text_size_changed_)});
     connect_slider(text_size, "appearance.text_size", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.text_size = change.value;
         return set_presentation(settings, join);
     });
-    dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
-    compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
+    dark = ui.add_checkbox({.id="appearance.dark",.kind=ComponentKind::checkbox,.label=u"\u6df1\u8272"}).value.value();
+    compact = ui.add_checkbox({.id="appearance.compact",.kind=ComponentKind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
     // WCAG 1.4.8: the user can turn justified text off for the whole window.
-    justify_left = ui.add_checkbox({.id="appearance.justify_left",.kind=Kind::checkbox,.label=u"左右對齊文字改為靠左"}).value.value();
-    accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    justify_left = ui.add_checkbox({.id="appearance.justify_left",.kind=ComponentKind::checkbox,.label=u"左右對齊文字改為靠左"}).value.value();
+    accent = ui.add_dropdown({.id="appearance.accent",.kind=ComponentKind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
     accent.connect_immediate([this](const Change<DropdownHandle>& c) { return set_accent(c.value ? c.value->id : "default"); });
     // The focus ring (#90): one dropdown for when it shows, a thickness slider, a radius (same as the component, or a slider) and a color.
-    focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.kind=Kind::dropdown,.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
-    focus_width = ui.add_slider({.id="appearance.focus_width",.kind=Kind::slider,.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
-    focus_radius_same = ui.add_checkbox({.id="appearance.focus_radius_same",.kind=Kind::checkbox,.label=u"焦點外框圓角跟元件一樣"}).value.value();
-    focus_radius = ui.add_slider({.id="appearance.focus_radius",.kind=Kind::slider,.label=u"焦點外框圓角"},{min_focus_ring_radius,max_focus_ring_radius,1}).value.value();
-    focus_color = ui.add_dropdown({.id="appearance.focus_color",.kind=Kind::dropdown,.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.kind=ComponentKind::dropdown,.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
+    focus_width = ui.add_slider({.id="appearance.focus_width",.kind=ComponentKind::slider,.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
+    focus_radius_same = ui.add_checkbox({.id="appearance.focus_radius_same",.kind=ComponentKind::checkbox,.label=u"焦點外框圓角跟元件一樣"}).value.value();
+    focus_radius = ui.add_slider({.id="appearance.focus_radius",.kind=ComponentKind::slider,.label=u"焦點外框圓角"},{min_focus_ring_radius,max_focus_ring_radius,1}).value.value();
+    focus_color = ui.add_dropdown({.id="appearance.focus_color",.kind=ComponentKind::dropdown,.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     for (ComponentHandle member : {ComponentHandle{focus_mode}, ComponentHandle{focus_width}, ComponentHandle{focus_radius_same}, ComponentHandle{focus_radius}, ComponentHandle{focus_color}}) nav.add_member({"appearance"}, member);
     focus_mode.connect_source({[this]() -> std::optional<OptionValue> {
         return OptionValue{focus_mode_id(ui.presentation().focus_indicator)};
@@ -105,8 +105,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     focus_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{focus_color_value_}; }, subscribe_to(focus_color_changed_)});
     focus_color.connect_immediate([this](const Change<DropdownHandle>& c) { return set_focus_color(c.value ? c.value->id : "default"); });
     refresh_focus_controls();
-    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
-    reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
+    preview_ = ui.add_label({.id="appearance.preview",.kind=ComponentKind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
+    reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=ComponentKind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
     justify_left.connect_source({[this] { return ui.presentation().justify_as_left; }, subscribe_to(justify_left_changed_)});
     justify_left.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
@@ -120,7 +120,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return set_presentation(PresentationSettings{});
     });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
-        about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
+        about_labels_.push_back(ui.add_label({.id=id,.kind=ComponentKind::label}).value.value());
         nav.add_member({"about"}, about_labels_.back());
     }
     about_labels_[0].connect_source([] { return u"LcarsUI 設定管理示範 0.1.0"; });
@@ -131,12 +131,12 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     about_labels_[5].connect_source([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
     about_labels_[6].connect_source([this] { return about_.settings_path; });
     // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
-    about_vertical_ = ui.add_label({.id="about.vertical",.kind=Kind::label,.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
+    about_vertical_ = ui.add_label({.id="about.vertical",.kind=ComponentKind::label,.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
     nav.add_member({"about"}, about_vertical_);
     std::vector<RadioOption> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
-    licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
-    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label,.line_spacing=1.4,.paragraph_spacing=8}).value.value();
+    licenses = ui.add_list({.id="about.licenses",.kind=ComponentKind::list,.label=u"授權"}, std::move(license_options)).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.kind=ComponentKind::label,.line_spacing=1.4,.paragraph_spacing=8}).value.value();
     licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
     licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
@@ -157,11 +157,11 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
-    status_ = ui.add_label({.id="app.status",.kind=Kind::label,.value=u"使用預設值，尚未建立設定檔"}).value.value();
-    undo_ = ui.add_button({.id="app.undo",.kind=Kind::button,.label=u"復原",.enabled=false}).value.value();
-    redo_ = ui.add_button({.id="app.redo",.kind=Kind::button,.label=u"重做",.enabled=false}).value.value();
-    revert_ = ui.add_button({.id="app.revert",.kind=Kind::button,.label=u"還原為已儲存",.enabled=false}).value.value();
-    save_ = ui.add_button({.id="app.save",.kind=Kind::button,.label=u"儲存",.enabled=false}).value.value();
+    status_ = ui.add_label({.id="app.status",.kind=ComponentKind::label,.value=u"使用預設值，尚未建立設定檔"}).value.value();
+    undo_ = ui.add_button({.id="app.undo",.kind=ComponentKind::button,.label=u"復原",.enabled=false}).value.value();
+    redo_ = ui.add_button({.id="app.redo",.kind=ComponentKind::button,.label=u"重做",.enabled=false}).value.value();
+    revert_ = ui.add_button({.id="app.revert",.kind=ComponentKind::button,.label=u"還原為已儲存",.enabled=false}).value.value();
+    save_ = ui.add_button({.id="app.save",.kind=ComponentKind::button,.label=u"儲存",.enabled=false}).value.value();
     for (ComponentHandle member : {ComponentHandle{name_label_}, ComponentHandle{name}, ComponentHandle{name_help_}, ComponentHandle{name_error_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.add_member({"general"}, member);
     title_.connect_source([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
     name.connect_source({[this] { return name_value_; }, subscribe_to(name_changed_)});
@@ -186,24 +186,24 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     region.connect_immediate([this](const Change<DropdownHandle>& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
     connect_slider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
-    item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
-    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
-    item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
-    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.kind=Kind::label,.target="items.dialog.name",.role=TextRole::error}).value.value();
-    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.kind=Kind::label,.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
-    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.kind=Kind::button,.label=u"粗體"}).value.value();
-    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.kind=Kind::button,.label=u"斜體"}).value.value();
-    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.kind=Kind::button,.label=u"底線"}).value.value();
-    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.kind=Kind::dropdown,.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
-    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
+    item_title_ = ui.add_label({.id="items.dialog.title",.kind=ComponentKind::label}).value.value();
+    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=ComponentKind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
+    item_name = ui.add_text({.id="items.dialog.name",.kind=ComponentKind::text,.max_length=64}).value.value();
+    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.kind=ComponentKind::label,.target="items.dialog.name",.role=TextRole::error}).value.value();
+    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.kind=ComponentKind::label,.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
+    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.kind=ComponentKind::button,.label=u"粗體"}).value.value();
+    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.kind=ComponentKind::button,.label=u"斜體"}).value.value();
+    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.kind=ComponentKind::button,.label=u"底線"}).value.value();
+    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.kind=ComponentKind::dropdown,.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
+    item_note = ui.add_text({.id="items.dialog.note",.kind=ComponentKind::text,.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
     // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
     item_note.set_colors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
-    item_cancel_ = ui.add_button({.id="items.dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
-    item_ok = ui.add_button({.id="items.dialog.ok",.kind=Kind::button,.label=u"\u78ba\u5b9a"}).value.value();
-    delete_title_ = ui.add_label({.id="items.delete_dialog.title",.kind=Kind::label,.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
-    delete_message_ = ui.add_label({.id="items.delete_dialog.message",.kind=Kind::label}).value.value();
-    delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
-    delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=Kind::button,.label=u"\u522a\u9664"}).value.value();
+    item_cancel_ = ui.add_button({.id="items.dialog.cancel",.kind=ComponentKind::button,.label=u"\u53d6\u6d88"}).value.value();
+    item_ok = ui.add_button({.id="items.dialog.ok",.kind=ComponentKind::button,.label=u"\u78ba\u5b9a"}).value.value();
+    delete_title_ = ui.add_label({.id="items.delete_dialog.title",.kind=ComponentKind::label,.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
+    delete_message_ = ui.add_label({.id="items.delete_dialog.message",.kind=ComponentKind::label}).value.value();
+    delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.kind=ComponentKind::button,.label=u"\u53d6\u6d88"}).value.value();
+    delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=ComponentKind::button,.label=u"\u522a\u9664"}).value.value();
     item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note_bold,item_note_italic,item_note_underline,item_note_color,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
     item_name.connect_source({[this] { return item_name_source_; }, subscribe_to(item_name_changed_)});
@@ -271,23 +271,23 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (auto r=refresh_items(); !r) return r;
         dirty(); return Result{};
     });
-    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=Kind::label,.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
-    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=Kind::label,.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
-    close_save = ui.add_button({.id="app.close_dialog.save",.kind=Kind::button,.label=u"\u5132\u5b58"}).value.value();
-    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=Kind::button,.label=u"\u4e0d\u5132\u5b58"}).value.value();
-    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
+    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=ComponentKind::label,.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
+    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=ComponentKind::label,.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
+    close_save = ui.add_button({.id="app.close_dialog.save",.kind=ComponentKind::button,.label=u"\u5132\u5b58"}).value.value();
+    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=ComponentKind::button,.label=u"\u4e0d\u5132\u5b58"}).value.value();
+    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=ComponentKind::button,.label=u"\u53d6\u6d88"}).value.value();
     close_dialog = ui.add_dialog("app.close_dialog", {close_title_,close_message_,close_save,close_discard,close_cancel}, close_save, save_, [](bool) {}).value.value();
     close_cancel.bind([this] { return close_dialog.settle(false); });
     close_discard.bind([this] { auto result=close_dialog.settle(true); if (result && close_handler_) close_handler_(); return result; });
     close_save.bind([this] { auto result=close_dialog.settle(true); if (!result) return result; result=save_document(); if (result && close_handler_) close_handler_(); return result; });
-    load_title_ = ui.add_label({.id="app.load_dialog.title",.kind=Kind::label}).value.value();
-    load_message_ = ui.add_label({.id="app.load_dialog.message",.kind=Kind::label}).value.value();
-    load_ok_ = ui.add_button({.id="app.load_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    load_title_ = ui.add_label({.id="app.load_dialog.title",.kind=ComponentKind::label}).value.value();
+    load_message_ = ui.add_label({.id="app.load_dialog.message",.kind=ComponentKind::label}).value.value();
+    load_ok_ = ui.add_button({.id="app.load_dialog.ok",.kind=ComponentKind::button,.label=u"確定"}).value.value();
     load_dialog_ = ui.add_dialog("app.load_dialog", {load_title_,load_message_,load_ok_}, load_ok_, save_, [this](bool) { nav.focus(); }).value.value();
     load_ok_.bind([this] { return load_dialog_.settle(true); });
-    error_title_ = ui.add_label({.id="app.error_dialog.title",.kind=Kind::label,.value=u"無法儲存"}).value.value();
-    error_message_ = ui.add_label({.id="app.error_dialog.message",.kind=Kind::label}).value.value();
-    error_ok_ = ui.add_button({.id="app.error_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    error_title_ = ui.add_label({.id="app.error_dialog.title",.kind=ComponentKind::label,.value=u"無法儲存"}).value.value();
+    error_message_ = ui.add_label({.id="app.error_dialog.message",.kind=ComponentKind::label}).value.value();
+    error_ok_ = ui.add_button({.id="app.error_dialog.ok",.kind=ComponentKind::button,.label=u"確定"}).value.value();
     error_dialog_ = ui.add_dialog("app.error_dialog", {error_title_,error_message_,error_ok_}, error_ok_, save_, [](bool) {}).value.value();
     error_ok_.bind([this] { return error_dialog_.settle(true); });
     ui.add_shortcut({.key=Key::enter},items_edit,items_list);

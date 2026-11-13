@@ -55,24 +55,24 @@ struct Page {
     Ui ui;
     std::vector<ComponentHandle> handles;
     Page() {
-        auto text = ui.add_text({.id = "text", .kind = Kind::text, .label = u"Name"}).value.value();
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-        auto box = ui.add_checkbox({.id = "box", .kind = Kind::checkbox, .label = u"Box"}).value.value();
-        auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Mode"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
-        auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
-        auto empty = ui.add_progress({.id = "progress_empty", .kind = Kind::progress, .label = u"Loading"}).value.value();
-        auto valued = ui.add_progress({.id = "progress_value", .kind = Kind::progress, .label = u"Copying"}).value.value();
+        auto text = ui.add_text({.id = "text", .kind = ComponentKind::text, .label = u"Name"}).value.value();
+        auto dropdown = ui.add_dropdown({.id = "dropdown", .kind = ComponentKind::dropdown, .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
+        auto box = ui.add_checkbox({.id = "box", .kind = ComponentKind::checkbox, .label = u"Box"}).value.value();
+        auto radio = ui.add_radio_group({.id = "radio", .kind = ComponentKind::radio_group, .label = u"Mode"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+        auto slider = ui.add_slider({.id = "slider", .kind = ComponentKind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
+        auto empty = ui.add_progress({.id = "progress_empty", .kind = ComponentKind::progress, .label = u"Loading"}).value.value();
+        auto valued = ui.add_progress({.id = "progress_value", .kind = ComponentKind::progress, .label = u"Copying"}).value.value();
         valued.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
-        auto button = ui.add_button({.id = "button", .kind = Kind::button, .label = u"Go"}).value.value();
-        auto nav = ui.add_navigation_list({.id = "nav", .kind = Kind::navigation_list}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
+        auto button = ui.add_button({.id = "button", .kind = ComponentKind::button, .label = u"Go"}).value.value();
+        auto nav = ui.add_navigation_list({.id = "nav", .kind = ComponentKind::navigation_list}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
         // #79 multi-line field: 8 lines in a 2-line box, so it paints its own scrollbar thumb.
-        auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
+        auto note = ui.add_text({.id = "note", .kind = ComponentKind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
         // #80: aligned single-line fields (short text, so the alignment shift applies) and aligned multi-line ones
         // (8 lines in a 2-line box, with line and paragraph spacing, so a thumb is drawn and rows are taller).
-        auto text_center = ui.add_text({.id = "text_center", .kind = Kind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
-        auto text_right = ui.add_text({.id = "text_right", .kind = Kind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
-        auto note_center = ui.add_text({.id = "note_center", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
-        auto note_right = ui.add_text({.id = "note_right", .kind = Kind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
+        auto text_center = ui.add_text({.id = "text_center", .kind = ComponentKind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
+        auto text_right = ui.add_text({.id = "text_right", .kind = ComponentKind::text, .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
+        auto note_center = ui.add_text({.id = "note_center", .kind = ComponentKind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
+        auto note_right = ui.add_text({.id = "note_right", .kind = ComponentKind::text, .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
         handles = {text, dropdown, box, radio, slider, empty, valued, button, nav, note, text_center, text_right, note_center, note_right};
     }
     Frame frame(const Appearance& appearance) {

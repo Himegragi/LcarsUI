@@ -91,7 +91,7 @@ void dark_new_component_sweep() {
                     if (!value.options.empty()) value.options[0].selected = true;
                     if (value.checked) value.checked = true;
                     auto paint = probe(value);
-                    auto cue = value.kind == Kind::checkbox || value.kind == Kind::radio_group ? palette.accent : palette.selection;
+                    auto cue = value.kind == ComponentKind::checkbox || value.kind == ComponentKind::radio_group ? palette.accent : palette.selection;
                     test::check(paint.has(cue), ("dark selection " + item.id).c_str());
                 }
                 if (type.supports_state(detail::ComponentState::error)) {
@@ -465,9 +465,9 @@ void exercise() {
         test::check(node && node->role == Role::list_item && node->selected == (page.item->id == "general"),
                     "semantic page items identify the selected page");
     }
-    auto items_probe = demo.ui.add_label({.id="probe.items", .kind=Kind::label}).value.value();
-    auto appearance_probe = demo.ui.add_label({.id="probe.appearance", .kind=Kind::label}).value.value();
-    auto about_probe = demo.ui.add_label({.id="probe.about", .kind=Kind::label}).value.value();
+    auto items_probe = demo.ui.add_label({.id="probe.items", .kind=ComponentKind::label}).value.value();
+    auto appearance_probe = demo.ui.add_label({.id="probe.appearance", .kind=ComponentKind::label}).value.value();
+    auto about_probe = demo.ui.add_label({.id="probe.about", .kind=ComponentKind::label}).value.value();
     test::check(bool(demo.nav.add_member({"items"}, items_probe)) && bool(demo.nav.add_member({"appearance"}, appearance_probe)) &&
                 bool(demo.nav.add_member({"about"}, about_probe)), "attach page-specific semantic probes");
     for (const char* page : {"general", "items", "appearance", "about"}) {
@@ -521,7 +521,7 @@ void exercise() {
             demo.nav.select({page});
             auto semantic = demo.nav.describe();
             RoleProbe probe(detail::access(demo.ui), *item, *semantic, *appearance, 1, true);
-            detail::component_type(Kind::navigation_list).paint(probe);
+            detail::component_type(ComponentKind::navigation_list).paint(probe);
             test::check(probe.selected && probe.focused, "selected and focused rows carry draw roles");
         }
         for (std::size_t i=0; i<item->options.size(); ++i) {
@@ -630,7 +630,7 @@ void item_search_count_and_empty_state() {
                 auto* empty = frame.find(demo.items_list);
                 test::check(empty && empty->options.empty() && empty->lines.size() == 1 && empty->lines[0].text == u"\u6c92\u6709\u9805\u76ee", "empty search displays the empty-list message");
                 TextProbe paint(state, *empty, *list, *appearance, 1, false);
-                detail::component_type(Kind::list).paint(paint);
+                detail::component_type(ComponentKind::list).paint(paint);
                 test::check(std::find(paint.drawn.begin(), paint.drawn.end(), u"\u6c92\u6709\u9805\u76ee") != paint.drawn.end(), "empty-list message is painted");
             }
             test::check(state.describe("app.status")->value == status, "search keeps status");
@@ -982,7 +982,7 @@ void about_keyboard_scroll() {
         test::check(item != frame.items.end(), "license has placement");
         auto description = state.describe("about.license_text");
         RoleProbe paint(state, *item, *description, *appearance, 1.f, true);
-        detail::component_type(Kind::label).paint(paint);
+        detail::component_type(ComponentKind::label).paint(paint);
         test::check(paint.focused, "focused license draws a focus indicator");
         state.key_down({.key=Key::down});
         test::check(demo.license_scroll.offset > 0, "Down scrolls license");
@@ -1315,7 +1315,7 @@ SliderProbe paint_slider(settings_demo::Demo& demo, const Appearance& appearance
     track = item->slider_track;
     auto semantic = detail::access(demo.ui).describe(item->id);
     SliderProbe probe(detail::access(demo.ui), *item, *semantic, appearance, 1.f, true);
-    detail::component_type(Kind::slider).paint(probe);
+    detail::component_type(ComponentKind::slider).paint(probe);
     return probe;
 }
 bool near_px(int a, int b) { return std::abs(a - b) <= 1; }
@@ -1365,7 +1365,7 @@ void slider_drag_is_one_write_per_value_and_one_undo() {
     settings_demo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
     paint_slider(demo, web_appearance(), demo.volume, track);
     int writes = 0; std::vector<int> values;
-    Ui ui; auto bare = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
+    Ui ui; auto bare = ui.add_slider({.id = "v", .kind = ComponentKind::slider, .label = u"V"}, {0, 100, 5}).value.value();
     int model = 40; bare.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     bare.connect_immediate([&](const Change<SliderHandle>& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
     auto& bare_state = detail::access(ui); const Rect bare_track{100, 0, 200, 20};
