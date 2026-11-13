@@ -1212,7 +1212,13 @@ void list_write_cannot_reenter_itself() {
     check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
 }
 
-// #99: a list's write hands a change record; its origin is the selection the source held just before the write.
+// #99: a list's write hands a change record; its origin is the selection the source held just before the write. The one
+// predicate every seam asserts: `count` writes so far, the last handing this list, the new item and that origin.
+bool last_list_change_is(const std::vector<Change<ListHandle>>& changes, std::size_t count, const ListHandle& list,
+                         const std::optional<OptionValue>& value, const std::optional<OptionValue>& origin) {
+    return count > 0 && changes.size() == count && changes.back().field == list && changes.back().value == value &&
+           changes.back().origin == origin;
+}
 void list_user_selection_hands_a_change_record() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
@@ -1220,14 +1226,14 @@ void list_user_selection_hands_a_change_record() {
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     list.focus(); detail::access(ui).key_down({.key = Key::down});
-    check(changes.size() == 1 && changes[0].field == list && changes[0].value == OptionValue{"b"} && changes[0].origin == OptionValue{"a"},
+    check(last_list_change_is(changes, 1, list, OptionValue{"b"}, OptionValue{"a"}),
           "A keyboard selection hands the list, the new item and the item selected before");
     auto& host = detail::access(ui);
     host.pointer_down("list", 2); host.pointer_up("list", 2);
-    check(changes.size() == 2 && changes[1].field == list && changes[1].value == OptionValue{"c"} && changes[1].origin == OptionValue{"b"},
+    check(last_list_change_is(changes, 2, list, OptionValue{"c"}, OptionValue{"b"}),
           "A pointer selection's origin is the selection the source held just before");
     selected.reset();
-    check(bool(list.select({"a"})) && changes.size() == 3 && changes[2].value == OptionValue{"a"} && !changes[2].origin,
+    check(bool(list.select({"a"})) && last_list_change_is(changes, 3, list, OptionValue{"a"}, std::nullopt),
           "Selecting with nothing selected hands an empty origin");
 }
 void list_items_that_drop_the_selection_hand_an_empty_change() {
@@ -1237,8 +1243,7 @@ void list_items_that_drop_the_selection_hand_an_empty_change() {
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     check(bool(list.set_items({{{"a"}, u"A"}, {{"b"}, u"B"}, {{"d"}, u"D"}})) && changes.empty(), "Items that keep the selection write nothing");
-    check(bool(list.set_items({{{"a"}, u"A"}})) && changes.size() == 1 && changes[0].field == list && !changes[0].value &&
-          changes[0].origin == OptionValue{"b"} && !selected,
+    check(bool(list.set_items({{{"a"}, u"A"}})) && last_list_change_is(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
           "Items without the selected one hand no selection, with the item that disappeared as origin");
 }
 // #99 keeps these list behaviors as they were.
