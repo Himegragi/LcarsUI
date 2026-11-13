@@ -41,6 +41,24 @@ auto description = name.describe();
 
 Check `Result::status` and query status before using results. Read-only, disabled, expired, wrong-thread and other refusals are observable. Drafts and field history are separate from applied application data. See the consumer for complete connection setup and the [verification record](examples/edit_form/evidence/rework-verification.md) for test scope and platform limits.
 
+A list keeps no draft, so it only writes immediately, and its write gets a change record like every other field: `value` is the newly selected item, `origin` the item the source held just before. When `set_items` drops the selected item, the write gets no value and the dropped item as `origin`. A label reads its text from a read function, or from a full read source when background work changes the text, so that a notification repaints it:
+
+```cpp
+std::optional<lcars::OptionValue> selection;
+std::function<void()> selection_changed;
+list.connect_source({[&] { return selection; }, [&](std::function<void()> notify) {
+    selection_changed = std::move(notify);
+    return [&] { selection_changed = {}; };
+}});
+list.connect_immediate([&](const lcars::Change<lcars::ListHandle>& change) {
+    selection = change.value;  // change.origin: the selection before
+    if (selection_changed) selection_changed();
+    return lcars::Result{};
+});
+title.connect_source([&] { return u"Templates"; });                      // text changes only through the screen
+clock.connect_source({[&] { return now_text(); }, subscribe_to_clock});  // a notification repaints
+```
+
 Every handle kind (`TextHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHandle`, `ContextMenuHandle`) compares with `==` against handles of its own kind: two handles are equal when they control the same thing now. Two default-constructed handles are equal and differ from every real one; a button removed and created again under the same id gives a different handle (the old one keeps answering `not_found`); the same id in another `Ui` is a different handle; a context menu attached again to a recreated target is the same handle, since the old handle controls the new attachment. Comparing handles of two kinds (`TextHandle == CheckboxHandle`) does not compile, and `ComponentHandle` and `ConfirmField` compare through their alternatives. Handles have no hash.
 
 ## Multi-line text fields
@@ -290,6 +308,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 | #94 shared handle base and handle equality | `lcars_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
 | #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
+| #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
