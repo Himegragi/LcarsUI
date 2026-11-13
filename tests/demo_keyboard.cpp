@@ -24,7 +24,7 @@ struct Walk {
     bool observe_close = false, callback_composing = true;
     std::u16string callback_draft;
     Walk(const Appearance& appearance, const std::filesystem::path& path)
-        : store(path), demo(info()), host(demo.ui,appearance,[this]{return demo.page();},demo.scroll,DesktopOptions{},real_input,!real_input), window(host.window()) {
+        : store(path), demo(info()), host(demo.ui,appearance,[this]{return demo.page();},demo.scroll,DesktopConfig{},real_input,!real_input), window(host.window()) {
         auto loaded=store.load(); if(loaded.document) demo.load_document(*loaded.document);
         demo.on_save([this](const auto& document) { return store.save(document); });
         demo.on_dirty_changed([this](bool dirty) { SetWindowTextW(window,dirty ? L"*Demo" : L"Demo"); });

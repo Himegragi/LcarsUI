@@ -132,7 +132,7 @@ struct Fixture {
             throw std::runtime_error("X04 client size mismatch: expected " + std::to_string(expected_width) + "x" +
                 std::to_string(expected_height) + ", got " + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
     }
-    static DesktopOptions options() { DesktopOptions o; o.title = u"LcarsUI host verification"; return o; }
+    static DesktopConfig options() { DesktopConfig o; o.title = u"LcarsUI host verification"; return o; }
     void settle() { host.pump(); host.paint(); }
     void post(UINT msg, WPARAM w, LPARAM l) { PostMessageW(host.window(), msg, w, l); }
     void key(WPARAM vk, bool repeat = false) { post(WM_KEYDOWN, vk, key_lparam(vk, repeat, false)); host.pump(); }
@@ -380,7 +380,7 @@ int demo_compare(const std::filesystem::path& evidence) {
         info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
         settings_demo::Demo demo(std::move(info));
-        DesktopOptions options; options.title=u"Demo comparison";
+        DesktopConfig options; options.title=u"Demo comparison";
         DesktopHost host(demo.ui,*appearance,[&]{return demo.page();},demo.scroll,options,false,true);
         ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(scale); host.client_size(scale==1.f?960:640,scale==1.f?720:480);
         SendMessageW(host.window(),WM_SETFOCUS,0,0); host.pump();
@@ -738,7 +738,7 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
     DesktopHost* active=nullptr; int depth=0, maximum_depth=0;
     auto initial=ui.presentation(); initial.font_family=u"LcarsUI definitely absent";
     ui.set_presentation(initial);
-    DesktopOptions options;
+    DesktopConfig options;
     options.on_diagnostic=[&](const RenderDiagnostic& event) {
         ++depth; maximum_depth=std::max(maximum_depth,depth); events.push_back(event);
         if(active && event.code=="font.family_unavailable") active->paint();
@@ -776,7 +776,7 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     int activations = 0;
     state.bind("probe", [&] { ++activations; return Result{}; });
     ScrollState scroll;
-    DesktopOptions options;
+    DesktopConfig options;
     DesktopHost host(ui, appearance, [&] { return layout::component(state.layout_handle("probe")); }, scroll, options, false, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -810,7 +810,7 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
     auto root=layout::row({layout::component(dropdown),layout::component(other)},8);
-    DesktopOptions settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
+    DesktopConfig settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
     ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(1.f); host.client_size(640,480);
     dropdown.open(); host.pump(); host.paint();
     auto post=[&](UINT message,WPARAM w,LPARAM l) { PostMessageW(host.window(),message,w,l); host.pump(); };
@@ -837,7 +837,7 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
 
 void list_native(const Appearance& appearance, Report& report) {
     list_page::Page page;
-    DesktopOptions options;
+    DesktopConfig options;
     DesktopHost host(page.ui, appearance, [&] { return page.page(); }, page.scroll, options, false, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE); host.force_scale(1.f); host.client_size(640, 480);
     page.handles.hundred.invoke(); page.handles.search.focus(); host.pump(); host.paint();
@@ -1207,7 +1207,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
     Ui ui; ScrollState scroll;
     auto note = ui.add_label({.id = "note", .value = std::u16string(300, u'字'),
                               .writing_mode = WritingMode::vertical}).value.value();
-    DesktopOptions options; options.title = u"LcarsUI vertical label verification";
+    DesktopConfig options; options.title = u"LcarsUI vertical label verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -1281,7 +1281,7 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     auto note = ui.add_text({.id = "note", .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
-    DesktopOptions options; options.title = u"LcarsUI multi-line verification";
+    DesktopConfig options; options.title = u"LcarsUI multi-line verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -1379,7 +1379,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     auto note = make("note", u"Alpha 重要 Beta");
     auto other = make("other", u"");
     note.set_colors({{"red", {200, 0, 0}, {255, 140, 140}}});
-    DesktopOptions options; options.title = u"LcarsUI rich text verification";
+    DesktopConfig options; options.title = u"LcarsUI rich text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note), layout::component(other)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -1469,7 +1469,7 @@ void word_select_native(const Appearance& appearance, Report& report) {
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     field_handle.set_word_segmentation(WordSegmentation::per_character);
     note.set_word_segmentation(WordSegmentation::per_character);
-    DesktopOptions options; options.title = u"LcarsUI word selection verification";
+    DesktopConfig options; options.title = u"LcarsUI word selection verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(field_handle), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -1553,7 +1553,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     auto note = ui.add_text({.id = "note", .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
-    DesktopOptions options; options.title = u"LcarsUI justified text verification";
+    DesktopConfig options; options.title = u"LcarsUI justified text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(sample), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
@@ -4198,7 +4198,7 @@ int native_presentation_matrix(const std::filesystem::path& folder) {
         report.appearance = appearance == &web_appearance() ? "web" : "material";
         try {
             presentation_matrix::run(edit_form::default_ids(), *appearance, [&](edit_form::Form& form) {
-                DesktopOptions options; options.title = u"Presentation matrix";
+                DesktopConfig options; options.title = u"Presentation matrix";
                 auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
                 return presentation_matrix::Driver{[host, &form](int width, int height, float scale, std::string_view reveal) {
                     return host->layout(width, height, scale, form.scroll, reveal);

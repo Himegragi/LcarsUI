@@ -942,11 +942,11 @@ void about_vertical_label() {
 }
 void td01_failure_diagnostic() {
     auto reset = settings_demo::failure_diagnostic({lcars::RendererFailureKind::device_reset, 0x8253, u"Graphics reset"});
-    test::check(reset.category == lcars::DiagnosticCategory::device_reset && reset.severity == lcars::DiagnosticSeverity::error &&
+    test::check(reset.kind == lcars::DiagnosticKind::device_reset && reset.severity == lcars::DiagnosticSeverity::error &&
                 reset.code == "renderer_failed.device_reset" && reset.native_code == 0x8253 && reset.native_message == "Graphics reset" &&
                 reset.backend == u"OpenGL", "TD01 a device reset becomes a device_reset diagnostic");
     auto present = settings_demo::failure_diagnostic({lcars::RendererFailureKind::present_failed, 5, u"SwapBuffers 失敗 \U0001F600"});
-    test::check(present.category == lcars::DiagnosticCategory::other && present.code == "renderer_failed.present_failed" &&
+    test::check(present.kind == lcars::DiagnosticKind::other && present.code == "renderer_failed.present_failed" &&
                 present.native_message == "SwapBuffers \xE5\xA4\xB1\xE6\x95\x97 \xF0\x9F\x98\x80", "TD01 other failures keep kind and UTF-8 message");
     test::check(settings_demo::failure_diagnostic({lcars::RendererFailureKind::frame_error, 0, u""}).code == "renderer_failed.frame_error" &&
                 settings_demo::failure_diagnostic({lcars::RendererFailureKind::resource_failed, 0, u""}).code == "renderer_failed.resource_failed",

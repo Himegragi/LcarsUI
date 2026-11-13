@@ -166,7 +166,7 @@ struct Renderer::Impl {
             RenderDiagnostic event; event.backend=u"OpenGL"; event.native_code=id;
             event.native_message.assign(message, length > 0 ? static_cast<std::size_t>(length) : 0);
             event.severity=severity==GL_DEBUG_SEVERITY_HIGH ? DiagnosticSeverity::error : severity==GL_DEBUG_SEVERITY_MEDIUM ? DiagnosticSeverity::warning : DiagnosticSeverity::info;
-            event.category=type==GL_DEBUG_TYPE_ERROR ? DiagnosticCategory::api_misuse : type==GL_DEBUG_TYPE_PERFORMANCE ? DiagnosticCategory::performance : DiagnosticCategory::other;
+            event.kind=type==GL_DEBUG_TYPE_ERROR ? DiagnosticKind::api_misuse : type==GL_DEBUG_TYPE_PERFORMANCE ? DiagnosticKind::performance : DiagnosticKind::other;
             event.component_id=self.current_group;
             event.backend_detail="OpenGL:"+std::to_string(source)+":"+std::to_string(type)+":"+std::to_string(id);
             self.sink(std::move(event));
@@ -364,7 +364,7 @@ Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug, st
 Renderer::~Renderer()=default;
 RenderDiagnostic frame_diagnostic(unsigned code) {
     RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
-    diagnostic.category=DiagnosticCategory::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
+    diagnostic.kind=DiagnosticKind::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
     return diagnostic;
 }
 void Renderer::restore_atlas(const std::vector<const AtlasPage*>& pages) {

@@ -158,7 +158,7 @@ int wmain(int argc, wchar_t** argv) {
             source_bound = connected && described && unrelated_reads > 0;
         }
         const auto& appearance = material ? lcars::material_appearance() : lcars::web_appearance();
-        lcars::DesktopOptions options; options.title = u"LcarsUI UIA test host";
+        lcars::DesktopConfig options; options.title = u"LcarsUI UIA test host";
         lcars::detail::RendererTestHooks hooks;
         lcars::detail::DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, options, false, true, &hooks);
         if (!unhandled) host.on_renderer_failure([](const lcars::RendererFailure&) {});

@@ -214,7 +214,7 @@ Query<std::u16string> WindowsClipboard::read() {
 }
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                         const DesktopOptions& options, bool trace, bool background, RendererTestHooks* hooks)
+                         const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
     : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
     hooks_ = hooks; debug_context_ = options.debug_context;
@@ -1267,15 +1267,15 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
 namespace lcars {
 struct Desktop::Impl {
     std::unique_ptr<detail::DesktopHost> host;
-    DesktopOptions options;
+    DesktopConfig options;
     std::thread::id owner = std::this_thread::get_id();
 };
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
-DesktopCreation Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options) {
     return detail::DesktopHost::create_for_test(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
-DesktopCreation detail::DesktopHost::create_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options, detail::RendererTestHooks* hooks) {
+CreateResult detail::DesktopHost::create_for_test(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options, detail::RendererTestHooks* hooks) {
     try {
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
         impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
@@ -1315,7 +1315,7 @@ void* Desktop::native_window() const { return impl_->host->window(); }
 Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
 bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
 RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
-RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopOptions options) {
+RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options) {
     auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(options));
     if (!creation.desktop) return {creation.status,{},creation.failure};
     return creation.desktop->run();

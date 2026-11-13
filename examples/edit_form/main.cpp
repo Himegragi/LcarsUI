@@ -17,7 +17,7 @@ int wmain() {
         const auto& appearance = lcars::web_appearance();
 #endif
         auto name = appearance.name();
-        lcars::DesktopOptions options;
+        lcars::DesktopConfig options;
         options.title = u"LcarsUI 編輯表單 — " + std::u16string(name.begin(), name.end());
         auto creation = lcars::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
         if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }

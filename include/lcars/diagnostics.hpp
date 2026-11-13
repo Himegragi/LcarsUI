@@ -9,11 +9,11 @@
 
 namespace lcars {
 enum class DiagnosticSeverity { info, warning, error };
-enum class DiagnosticCategory { api_misuse, performance, shader, resource, device_reset, other };
+enum class DiagnosticKind { api_misuse, performance, shader, resource, device_reset, other };
 struct RenderDiagnostic {
     std::u16string backend;
     DiagnosticSeverity severity = DiagnosticSeverity::warning;
-    DiagnosticCategory category = DiagnosticCategory::other;
+    DiagnosticKind kind = DiagnosticKind::other;
     std::string code;
     std::int64_t native_code = 0;
     std::string native_message;

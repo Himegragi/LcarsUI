@@ -70,7 +70,7 @@ int wmain(int argc, wchar_t** argv) {
         if (loaded.document) demo.load_document(*loaded.document);
         std::u16string path_text(path.begin(),path.end());
         demo.on_save([&store](const auto& document) { return store.save(document); },path_text);
-        lcars::DesktopOptions options;
+        lcars::DesktopConfig options;
 #ifdef LCARS_DEMO_DIAGNOSTICS
         options.on_diagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
         // Evidence runs (TD01) save the in-memory record; normal runs never write it.

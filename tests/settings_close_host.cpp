@@ -56,7 +56,7 @@ struct Fixture {
         std::filesystem::remove_all(path);
         check(store.save(demo.document()).empty(), "write baseline");
         demo.on_save([this](const auto& doc) { return store.save(doc); });
-        DesktopOptions options;
+        DesktopConfig options;
         options.on_close_requested=[this](Desktop& d) { ++requests; return controller.request(d,prompt); };
         if (fail) { hooks.gl_error_at_frame=1; options.on_renderer_failed=[this](Desktop& d, const RendererFailure& f) { controller.failure(d,f,prompt); }; }
         auto created=detail::DesktopHost::create_for_test(demo.ui,appearance,[this]{return demo.page();},demo.scroll,options,fail ? &hooks : nullptr);
@@ -116,7 +116,7 @@ static void appearance_discard(const Appearance& appearance) {
 static void composition_close(const Appearance& appearance) {
     Fixture f(appearance,"composition");
     std::u16string callback_draft; bool composing=true;
-    DesktopOptions options;
+    DesktopConfig options;
     // Replace the fixture host so the observer runs in the actual WM_CLOSE callback.
     f.desktop.reset();
     options.on_close_requested=[&](Desktop& d) {
@@ -153,7 +153,7 @@ static void failure_close(const Appearance& appearance, SaveChoice choice, bool 
     check(bool(f.demo.name.set_value(blank ? u"" : u"Retained")),"set retained draft");
     auto before=read_bytes(f.store.path());
     f.desktop.reset();
-    DesktopOptions options;
+    DesktopConfig options;
     options.on_close_requested=[&](Desktop& d) { ++f.requests; return f.controller.request(d,f.prompt); };
     options.on_renderer_failed=[&](Desktop& d,const RendererFailure& failure) {
         check(PostMessageW(f.hwnd(),WM_CLOSE,0,0)!=0,"post failure close");
