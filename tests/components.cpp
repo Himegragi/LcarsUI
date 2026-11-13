@@ -1246,6 +1246,21 @@ void list_items_that_drop_the_selection_hand_an_empty_change() {
     check(bool(list.set_items({{{"a"}, u"A"}})) && last_list_change_is(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
           "Items without the selected one hand no selection, with the item that disappeared as origin");
 }
+// #99 Q1, kept as it was: a selected item that stays listed but disabled counts as dropped, so the write hands no
+// selection with that still-listed item as origin.
+void list_items_that_disable_the_selection_hand_an_empty_change() {
+    std::optional<OptionValue> selected{OptionValue{"b"}}; std::vector<Change<ListHandle>> changes;
+    Ui ui;
+    auto list = ui.add_list({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
+    check(bool(list.set_items({{{"a"}, u"A"}, {{"b"}, u"B", false}})) &&
+          last_list_change_is(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
+          "Disabling the selected item hands no selection, with that item as origin");
+    auto s = list.describe();
+    check(s->items.size() == 2 && s->items[1].value == OptionValue{"b"} && !s->items[1].enabled && !s->items[1].selected,
+          "The disabled item stays listed, unselected");
+}
 // #99 keeps these list behaviors as they were.
 void list_selecting_the_selected_item_writes_nothing() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
@@ -1461,6 +1476,7 @@ int main() {
         {"G07 list write cannot reenter", list_write_cannot_reenter_itself},
         {"#99 list selection hands a change record", list_user_selection_hands_a_change_record},
         {"#99 list items dropping the selection", list_items_that_drop_the_selection_hand_an_empty_change},
+        {"#99 list items disabling the selection", list_items_that_disable_the_selection_hand_an_empty_change},
         {"#99 list reselection writes nothing",list_selecting_the_selected_item_writes_nothing},
         {"#99 list rejection keeps the selection", list_rejected_write_keeps_the_selection},
         {"#99 list write requires a source", list_write_requires_a_source_first},

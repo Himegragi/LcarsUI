@@ -601,7 +601,8 @@ public:
     Result enable(bool enabled) const;
     Result connect_source(Source<std::optional<OptionValue>> source) const;
     // The write runs when the user or the code selects another item: `value` is that item, `origin` the item the source
-    // held just before. When set_items drops the selected item it runs with no value and the dropped item as origin.
+    // held just before. When set_items drops the selected item (leaves it out, or keeps it disabled) it runs with no value
+    // and that item as origin.
     // Selecting the selected item writes nothing; a rejected write leaves the selection and returns the result as is.
     // Connect the source first. A list has no confirmed write: it keeps no draft (#99).
     Result connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const;

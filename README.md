@@ -41,7 +41,7 @@ auto description = name.describe();
 
 Check `Result::status` and query status before using results. Read-only, disabled, expired, wrong-thread and other refusals are observable. Drafts and field history are separate from applied application data. See the consumer for complete connection setup and the [verification record](examples/edit_form/evidence/rework-verification.md) for test scope and platform limits.
 
-A list keeps no draft, so it only writes immediately, and its write gets a change record like every other field: `value` is the newly selected item, `origin` the item the source held just before. When `set_items` drops the selected item, the write gets no value and the dropped item as `origin`. A label reads its text from a read function, or from a full read source when background work changes the text, so that a notification repaints it:
+A list keeps no draft, so it only writes immediately, and its write gets a change record like every other field: `value` is the newly selected item, `origin` the item the source held just before. When `set_items` drops the selected item (leaves it out, or keeps it but disabled), the write gets no value and that item as `origin`. A label reads its text from a read function, or from a full read source when background work changes the text, so that a notification repaints it:
 
 ```cpp
 std::optional<lcars::OptionValue> selection;
