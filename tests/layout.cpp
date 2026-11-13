@@ -433,7 +433,7 @@ void inactive_page_members_do_not_paint_or_hit() {
 
 void list_reveals_the_keyboard_row_and_clips_hits() {
     for (const auto* look : appearances) {
-        Ui ui; std::vector<RadioOption> items;
+        Ui ui; std::vector<OptionItem> items;
         for (int i = 1; i <= 100; ++i) items.push_back({{std::to_string(i)}, u"Row"});
         auto list = ui.add_list({.id = "list"}, std::move(items)).value.value();
         std::optional<OptionValue> selected;
@@ -452,7 +452,7 @@ void nested_scroll_reveals_the_list_target() {
     for (const auto* look : appearances) {
         Ui ui;
         auto filler = ui.add_label({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12"}).value.value();
-        std::vector<RadioOption> options;
+        std::vector<OptionItem> options;
         for (int i = 1; i <= 100; ++i) options.push_back({{std::to_string(i)}, u"Row"});
         auto list = ui.add_list({.id = "list"}, std::move(options)).value.value();
         std::optional<OptionValue> selected;
@@ -505,7 +505,7 @@ void multiple_dialog_layout() {
 
 void modal_long_dropdown() {
     Ui ui; auto background=ui.add_button({.id="background"}).value.value();
-    std::vector<RadioOption> choices;
+    std::vector<OptionItem> choices;
     for (int i=0; i<150; ++i) choices.push_back({{std::to_string(i)}, u"item"});
     auto dropdown=ui.add_dropdown({.id="modal.dropdown"},choices).value.value();
     dropdown.connect_source({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
@@ -524,7 +524,7 @@ void long_dropdown_viewport() {
     for (const auto* look : {&web_appearance(), &material_appearance()}) for (int size : {16, 28}) {
         Ui ui;
         if (size == 28) { PresentationSettings settings; settings.text_size=28; settings.density=Density::compact; ui.set_presentation(settings); }
-        std::vector<RadioOption> choices;
+        std::vector<OptionItem> choices;
         for (int i=0; i<150; ++i) { auto value=std::to_string(i); choices.push_back({{value}, std::u16string(value.begin(),value.end())}); }
         auto dropdown=ui.add_dropdown({.id="long"}, choices).value.value();
         dropdown.connect_source({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});

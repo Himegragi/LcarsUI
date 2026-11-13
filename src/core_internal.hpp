@@ -69,10 +69,10 @@ public:
     ButtonHandle add_button(Component control);
     LabelHandle add_label(Component control);
     CheckboxHandle add_checkbox(Component control);
-    RadioGroupHandle add_radio_group(Component control, std::vector<RadioOption> options);
+    RadioGroupHandle add_radio_group(Component control, std::vector<OptionItem> options);
     SliderHandle add_slider(Component control, SliderRange range);
     ProgressHandle add_progress(Component control);
-    DropdownHandle add_dropdown(Component control, std::vector<RadioOption> options);
+    DropdownHandle add_dropdown(Component control, std::vector<OptionItem> options);
     TabsHandle add_tabs(Component control, std::vector<TabPage> pages);
     NavigationListHandle add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activate_tab(const Id& id, OptionValue page);
@@ -82,7 +82,7 @@ public:
     Query<OptionValue> active_page(const Id& id) const;
     Query<ComponentSnapshot> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
-    ListHandle add_list(Component control, std::vector<RadioOption> items);
+    ListHandle add_list(Component control, std::vector<OptionItem> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
     void tooltip_time(std::uint64_t now);
     void tooltip_clock(std::function<std::uint64_t()> clock) { tooltip_clock_ = std::move(clock); }
@@ -489,13 +489,13 @@ private:
     std::map<Id, BoolField, std::less<>> bools_;
     struct RadioField : FieldConnection<Change<RadioGroupHandle>> {
         Source<std::optional<OptionValue>> source;
-        std::vector<RadioOption> options;
+        std::vector<OptionItem> options;
         std::optional<OptionValue> value, source_value, origin;
     };
     std::map<Id, RadioField, std::less<>> radios_;
     struct DropdownField : FieldConnection<Change<DropdownHandle>> {
         Source<std::optional<OptionValue>> source;
-        std::vector<RadioOption> options;
+        std::vector<OptionItem> options;
         std::optional<OptionValue> value, source_value, origin, candidate;
         ScrollState scroll; bool reveal = true;
     };
@@ -509,7 +509,7 @@ private:
     std::map<Id, TabsState, std::less<>> tabs_;
     std::map<Id, std::pair<Id, std::size_t>, std::less<>> page_members_;
     struct ListField {
-        std::vector<RadioOption> items;
+        std::vector<OptionItem> items;
         Source<std::optional<OptionValue>> source;
         std::optional<OptionValue> cursor;
         bool writing = false;

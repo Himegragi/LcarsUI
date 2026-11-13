@@ -802,7 +802,7 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
 
 void long_dropdown_native(const Appearance& appearance, Report& report) {
     std::optional<OptionValue> value=OptionValue{"0"}; std::function<void()> changed; bool invoked=false;
-    Ui ui; ScrollState scroll; std::vector<RadioOption> options;
+    Ui ui; ScrollState scroll; std::vector<OptionItem> options;
     for (int i=0; i<150; ++i) { auto id=std::to_string(i); options.push_back({{id},std::u16string(id.begin(),id.end())}); }
     auto dropdown=ui.add_dropdown({.id="native.dropdown",.label=u"Font"},std::move(options)).value.value();
     auto other=ui.add_button({.id="native.other",.label=u"Other"}).value.value();

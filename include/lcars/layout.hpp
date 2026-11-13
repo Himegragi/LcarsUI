@@ -183,7 +183,7 @@ struct Placement {
     std::vector<Line> lines;      // labels and command titles; vertical labels: one line per column
     bool vertical = false;        // labels in vertical writing mode: see `column_layout`
     VerticalLayout column_layout;
-    std::vector<Rect> options;   // radio option hit and paint bounds
+    std::vector<Rect> options;   // hit and paint bounds of each placed option of a radio group, a list or an open dropdown's panel (tabs and navigation lists: of each page)
     std::size_t option_start = 0; // logical index of the first placed option
     Rect slider_track;           // slider track in frame coordinates
     Rect progress_track, progress_fill; // progress display in frame coordinates

@@ -62,7 +62,7 @@ namespace {
 std::function<std::function<void()>(std::function<void()>)> no_updates() {
     return [](std::function<void()>) { return std::function<void()>([] {}); };
 }
-std::vector<RadioOption> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
+std::vector<OptionItem> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
 std::vector<TabPage> two_pages() { return {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", true, {}}}; }
 MenuItem command(std::string id, std::u16string label) { MenuItem item; item.id = std::move(id); item.label = std::move(label); return item; }
 StyleChange bold() { StyleChange change; change.bold = true; return change; }
@@ -210,7 +210,7 @@ std::vector<Op> progress_ops(const World& w) {
 }
 std::vector<Op> dropdown_ops(const World& w) {
     auto h = w.dropdown;
-    return {LCARS_OP(h, open()), LCARS_OP(h, cancel()), LCARS_OP(h, select({"b"})), LCARS_OP(h, set_options(two_options())),
+    return {LCARS_OP(h, open()), LCARS_OP(h, cancel()), LCARS_OP(h, select({"b"})), LCARS_OP(h, set_items(two_options())),
             LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
             LCARS_OP(h, connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })),

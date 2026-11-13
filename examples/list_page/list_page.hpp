@@ -20,7 +20,7 @@ public:
     bool owns(lcars::TextHandle field) const { return connected_ && field_ == field; }
 };
 class Page {
-    std::vector<lcars::RadioOption> items_;
+    std::vector<lcars::OptionItem> items_;
     std::optional<lcars::OptionValue> selection_;
     ImmediateSearchConnection search_;
     bool descending_ = false, disabled_eight_ = false;

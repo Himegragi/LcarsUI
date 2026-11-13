@@ -133,7 +133,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
     about_vertical_ = ui.add_label({.id="about.vertical",.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
     nav.add_member({"about"}, about_vertical_);
-    std::vector<RadioOption> license_options;
+    std::vector<OptionItem> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
     licenses = ui.add_list({.id="about.licenses",.label=u"授權"}, std::move(license_options)).value.value();
     license_text_ = ui.add_label({.id="about.license_text",.line_spacing=1.4,.paragraph_spacing=8}).value.value();
@@ -326,7 +326,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
 }
 Result Demo::refresh_items() {
     auto query = fold_ascii(search_value_);
-    std::vector<RadioOption> visible;
+    std::vector<OptionItem> visible;
     for (const auto& item : items_) if (fold_ascii(item.name).find(query) != std::u16string::npos) visible.push_back({item.id,item.name});
     auto count = visible.size();
     auto old_count = items_count_.describe();
@@ -357,7 +357,7 @@ int Demo::focus_radius_start() const {
     return appearance ? appearance->radius() : 6;
 }
 void Demo::refresh_fonts() {
-    std::vector<RadioOption> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
+    std::vector<OptionItem> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
     auto key = ui.presentation().font_family;
     bool found = key.empty();
     for (const auto& family : about_.fonts) {
@@ -365,7 +365,7 @@ void Demo::refresh_fonts() {
         found = found || family.key == key;
     }
     if (!found) options.push_back({{"family:" + lcars::detail::utf8_from_utf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
-    font.set_options(std::move(options));
+    font.set_items(std::move(options));
     auto resolution = about_.resolve_font ? about_.resolve_font(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
     font_status_.connect_source([status] { return status; });

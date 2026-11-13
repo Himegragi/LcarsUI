@@ -41,7 +41,7 @@ struct Page {
             {{{"d1"}, u"One"}, {{"d2"}, u"Two"}, {{"d3"}, u"Three", false}}).value.value();
         drop.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
         drop.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
-        std::vector<RadioOption> items;
+        std::vector<OptionItem> items;
         for (int i = 1; i <= 40; ++i) items.push_back({{"l" + std::to_string(i)}, u"Item " + std::u16string(1, char16_t(u'0' + i % 10)), i != 3});
         list = ui.add_list({.id = "list", .label = u"List"}, items).value.value();
         tabs = ui.add_tabs({.id = "tabs", .label = u"Tabs"},

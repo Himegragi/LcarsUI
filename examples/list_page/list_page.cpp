@@ -100,7 +100,7 @@ Result Page::set_clip_padding(LabelHandle label, std::u16string text) {
 }
 void Page::clear_clip_padding() { clip_padding_id_.clear(); clip_padding_text_.clear(); }
 Result Page::refresh() {
-    std::vector<RadioOption> visible;
+    std::vector<OptionItem> visible;
     for (auto item : items_) {
         if (item.label.find(search_.value()) == std::u16string::npos) continue;
         if (item.value.id == "T008") item.enabled = !disabled_eight_;

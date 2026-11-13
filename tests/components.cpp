@@ -1043,12 +1043,12 @@ void dropdown_leaving_and_replaced_options_are_safe() {
     dropdown.open(); host.key_down({.key = Key::down}); host.pointer_down("next"); host.pointer_up("next");
     check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && clicks == 1 && next.describe()->focused, "Outside click cancels and preserves the clicked action");
     dropdown.open(); host.pointer_down("region", 1);
-    dropdown.set_options({{{"south"}, u"South"}, {{"north"}, u"North"}});
+    dropdown.set_items({{{"south"}, u"South"}, {{"north"}, u"North"}});
     host.pointer_up("region", 1);
     check(*dropdown.draft() == OptionValue{"north"}, "Reordered options cannot turn a press into a different selection");
-    dropdown.set_options({});
+    dropdown.set_items({});
     check(!*dropdown.draft() && !dropdown.describe()->candidate, "Empty options clear value and candidate");
-    dropdown.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    dropdown.set_items({{{"north"}, u"North"}, {{"south"}, u"South"}});
     check(!*dropdown.draft() && !dropdown.describe()->candidate, "Restoring options does not restore an invalidated value or candidate");
     dropdown.enable(false);
     check(dropdown.open().status == Status::disabled && dropdown.select({"north"}).status == Status::disabled, "Disabled dropdown refuses opening and selection");
@@ -1062,8 +1062,8 @@ void dropdown_option_changes_do_not_recurse_into_notifications() {
     field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int calls = 0; Status nested = Status::ok;
-    ui.on_change([&] { if (++calls == 1) nested = field.set_options({}).status; });
-    field.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    ui.on_change([&] { if (++calls == 1) nested = field.set_items({}).status; });
+    field.set_items({{{"north"}, u"North"}, {{"south"}, u"South"}});
     check(calls == 1 && nested == Status::busy && field.describe()->options.size() == 2,
           "An option update during a notification is refused without recursion or mutation");
 }

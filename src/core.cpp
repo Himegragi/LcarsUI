@@ -467,7 +467,7 @@ Query<bool> CheckboxHandle::draft() const {
         return {Status::ok, {}, ui_->bools_.at(id_).value};
     });
 }
-RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector<RadioOption> options) {
+RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector<OptionItem> options) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::radio_group || control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid radio group");
@@ -479,7 +479,7 @@ RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
-ListHandle detail::UiState::add_list(Component control, std::vector<RadioOption> items) {
+ListHandle detail::UiState::add_list(Component control, std::vector<OptionItem> items) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
     std::set<std::string> ids;
@@ -538,7 +538,7 @@ Result ListHandle::focus(OptionValue value) const {
         return {};
     }, detail::UiState::gone_without_text);
 }
-Result ListHandle::set_items(std::vector<RadioOption> items) const {
+Result ListHandle::set_items(std::vector<OptionItem> items) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         std::set<std::string> ids;
@@ -670,7 +670,7 @@ Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
         return {Status::ok, {}, ui_->radios_.at(id_).value};
     });
 }
-DropdownHandle detail::UiState::add_dropdown(Component control, std::vector<RadioOption> options) {
+DropdownHandle detail::UiState::add_dropdown(Component control, std::vector<OptionItem> options) {
     OperationScope operation(this);
     if (control.kind != ComponentKind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
     std::set<std::string> ids;
@@ -718,7 +718,7 @@ Result DropdownHandle::enable(bool enabled) const {
         ui_->enable(id_, enabled); return {};
     });
 }
-Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
+Result DropdownHandle::set_items(std::vector<OptionItem> options) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
@@ -3225,7 +3225,7 @@ Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig config) {
     try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<RadioOption> options) {
+Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<OptionItem> options) {
     detail::Component control(ComponentKind::radio_group, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
@@ -3271,7 +3271,7 @@ Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig config, std:
     try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<RadioOption> options) {
+Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<OptionItem> options) {
     detail::Component control(ComponentKind::dropdown, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
@@ -3280,7 +3280,7 @@ Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<Radio
     try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<ListHandle> Ui::add_list(ComponentConfig config, std::vector<RadioOption> items) {
+Query<ListHandle> Ui::add_list(ComponentConfig config, std::vector<OptionItem> items) {
     detail::Component control(ComponentKind::list, std::move(config));
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
     if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};

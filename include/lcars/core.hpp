@@ -130,7 +130,8 @@ struct NamedColor {
 // Public operations a control currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
-struct RadioOption { OptionValue value; std::u16string label; bool enabled = true; };
+// One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
+struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
 struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
@@ -523,7 +524,7 @@ public:
     Result open() const;
     Result cancel() const;
     Result select(OptionValue value) const;
-    Result set_options(std::vector<RadioOption> options) const;
+    Result set_items(std::vector<OptionItem> items) const;
     Result use_latest() const;
     Result focus() const;
     Result enable(bool enabled) const;
@@ -581,7 +582,7 @@ class ListHandle : private detail::HandleBase<ListHandle> {
 public:
     ListHandle() = default;
     Result select(OptionValue value) const;
-    Result set_items(std::vector<RadioOption> items) const;
+    Result set_items(std::vector<OptionItem> items) const;
     Result focus() const;
     Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
@@ -696,14 +697,14 @@ public:
     Query<ButtonHandle> add_button(ComponentConfig config);
     Query<LabelHandle> add_label(ComponentConfig config);
     Query<CheckboxHandle> add_checkbox(ComponentConfig config);
-    Query<RadioGroupHandle> add_radio_group(ComponentConfig config, std::vector<RadioOption> options);
+    Query<RadioGroupHandle> add_radio_group(ComponentConfig config, std::vector<OptionItem> items);
     // Invalid ranges and steps return invalid_value without creating a component.
     Query<SliderHandle> add_slider(ComponentConfig config, SliderRange range);
     Query<ProgressHandle> add_progress(ComponentConfig config);
-    Query<DropdownHandle> add_dropdown(ComponentConfig config, std::vector<RadioOption> options);
+    Query<DropdownHandle> add_dropdown(ComponentConfig config, std::vector<OptionItem> items);
     Query<TabsHandle> add_tabs(ComponentConfig config, std::vector<TabPage> pages);
     Query<NavigationListHandle> add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);
-    Query<ListHandle> add_list(ComponentConfig config, std::vector<RadioOption> items);
+    Query<ListHandle> add_list(ComponentConfig config, std::vector<OptionItem> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,

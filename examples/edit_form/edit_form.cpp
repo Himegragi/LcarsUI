@@ -22,7 +22,7 @@ const std::u16string justify_sample_text =
 bool blank(std::u16string_view text) {
     return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t' || c == u'　'; });
 }
-std::vector<RadioOption> regions() {
+std::vector<OptionItem> regions() {
     return {{{"north"}, u"\u5317\u5340"}, {{"central"}, u"\u4e2d\u5340"}, {{"south"}, u"\u5357\u5340"}};
 }
 constexpr auto required_region = u"\u8acb\u9078\u64c7\u5730\u5340";
@@ -134,7 +134,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     });
     bind_action(handles.region_empty, [this] {
         region_empty_ = !region_empty_;
-        return handles.region.set_options(region_empty_ ? std::vector<RadioOption>{} : regions());
+        return handles.region.set_items(region_empty_ ? std::vector<OptionItem>{} : regions());
     });
     bind_action(handles.long_text, [this] { long_intro_ = !long_intro_; return Result{}; });
     bind_action(handles.reset, [this] { return reset(); });
@@ -214,7 +214,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             if (resolve_font_) return resolve_font_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
         };
-        std::vector<RadioOption> fonts = {{{"default"}, u"\u9810\u8a2d"}};
+        std::vector<OptionItem> fonts = {{{"default"}, u"\u9810\u8a2d"}};
         for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
             bool available = resolve(family).requested_available;
             fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available});
@@ -435,7 +435,7 @@ Result Form::reset() {
     long_intro_ = false;
     update_source(initial_name);
     notices_applied_ = true; mode_applied_ = OptionValue{"normal"}; region_applied_ = OptionValue{"north"}; volume_applied_ = 40;
-    region_empty_ = false; handles.region.set_options(regions());
+    region_empty_ = false; handles.region.set_items(regions());
     if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_();
     if (region_changed_) region_changed_();

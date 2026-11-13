@@ -31,7 +31,7 @@ Source<int> numeric_source() {
 Source<std::optional<OptionValue>> option_source() {
     return {[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-std::vector<RadioOption> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
+std::vector<OptionItem> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
 std::vector<TabPage> two_pages() { return {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", true, {}}}; }
 
 // One component of every built-in type, wired as far as its type allows (a source and an immediate write).
