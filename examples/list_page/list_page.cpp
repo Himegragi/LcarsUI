@@ -54,8 +54,8 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     handles.list.connect_source({[this] { return selection_; }, [this](auto changed) {
         selection_changed_ = std::move(changed); return [this] { selection_changed_ = {}; };
     }});
-    handles.list.connect_immediate([this](std::optional<OptionValue> value) {
-        selection_ = std::move(value); handles.erase.enable(selection_.has_value());
+    handles.list.connect_immediate([this](const Change<ListHandle>& change) {
+        selection_ = change.value; handles.erase.enable(selection_.has_value());
         if (selection_changed_) selection_changed_(); return Result{};
     });
     auto detail_id = handles.detail.describe()->id;

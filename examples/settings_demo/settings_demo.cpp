@@ -138,7 +138,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     licenses = ui.add_list({.id="about.licenses",.label=u"授權"}, std::move(license_options)).value.value();
     license_text_ = ui.add_label({.id="about.license_text",.line_spacing=1.4,.paragraph_spacing=8}).value.value();
     licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
-    licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
+    licenses.connect_immediate([this](const Change<ListHandle>& change) { license_selection_ = change.value; license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
     nav.add_member({"about"}, licenses);
     nav.add_member({"about"}, license_text_);
@@ -154,7 +154,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         return Result{};
     });
     items_list.connect_source({[this] { return selection_; }, subscribe_to(selection_changed_)});
-    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
+    items_list.connect_immediate([this](const Change<ListHandle>& change) { selection_=change.value; items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
     status_ = ui.add_label({.id="app.status",.value=u"使用預設值，尚未建立設定檔"}).value.value();

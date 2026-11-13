@@ -33,7 +33,9 @@ Header table, row `include/lcars/diagnostics.hpp` (around line 131):
     `Query<NavigationListHandle> add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);`
 - Close request interface block (around line 394): `struct DesktopOptions {` → `struct DesktopConfig {`
 - 交付 table, row S1 (around line 509): `` `Kind::navigation_list` `` → `` `ComponentKind::navigation_list` ``
-- Item dialog table, row `items.dialog.note` (around line 164): `` `Control::rich` `` → `` `ComponentConfig::rich` ``
+- Item dialog table, row `items.dialog.note` (around line 164): `` `Control::rich` `` → `` `ComponentConfig::rich` ``, and
+  (after `.spec-updates/ticket-95.md` item 2 is applied) `` `connect_mixed_confirmation` `` → `` `connect_confirmation` ``
+  (#96 Q5).
 
 ## docs/specs/v1-semantic-layer-and-uia.md
 

@@ -493,7 +493,7 @@ void list_menu_selects_the_row_and_hands_it_to_the_application() {
     auto selected = std::make_shared<std::optional<OptionValue>>();
     auto list = ui.add_list({.id = "items", .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙", false}}).value.value();
     check(bool(list.connect_source({[selected] { return *selected; }, [](std::function<void()>) { return [] {}; }})), "connect list source");
-    check(bool(list.connect_immediate([selected](std::optional<OptionValue> value) { *selected = value; return Result{}; })), "connect list write");
+    check(bool(list.connect_immediate([selected](const Change<ListHandle>& change) { *selected = change.value; return Result{}; })), "connect list write");
     std::optional<OptionValue> got; int runs = 0;
     auto menu = ui.add_context_menu(list, {
         {.id = "edit", .label = u"編輯(E)", .access_key = u'E', .shortcut_hint = u"Enter",

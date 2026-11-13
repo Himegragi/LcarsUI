@@ -438,7 +438,7 @@ void list_reveals_the_keyboard_row_and_clips_hits() {
         auto list = ui.add_list({.id = "list"}, std::move(items)).value.value();
         std::optional<OptionValue> selected;
         list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-        list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+        list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         FakeMeasure measure; ScrollState scroll;
         auto page = layout::scroll(layout::component(list));
@@ -457,7 +457,7 @@ void nested_scroll_reveals_the_list_target() {
         auto list = ui.add_list({.id = "list"}, std::move(options)).value.value();
         std::optional<OptionValue> selected;
         list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-        list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+        list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         ScrollState outer, inner; FakeMeasure measure;
         auto page = layout::scroll(layout::column({layout::component(filler), layout::scroll(layout::component(list), inner, 140)}));

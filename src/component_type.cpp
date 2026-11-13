@@ -281,7 +281,7 @@ public:
             return it == errors.end() ? std::u16string{} : it->second;
         }
         auto& providers = UiState::Internals::providers(ui);
-        if (auto it = providers.find(c.id); it != providers.end()) return it->second();
+        if (auto it = providers.find(c.id); it != providers.end()) return it->second.read();
         return std::nullopt;
     }
     bool accepts_text_provider() const override { return true; }
