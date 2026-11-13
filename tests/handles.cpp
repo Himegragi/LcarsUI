@@ -84,37 +84,46 @@ struct World {
     ContextMenuHandle menu;
     World() {
         auto accept = [](const auto&) { return Result{}; };
-        text = ui->add_text({.id = "text", .kind = Kind::text, .label = u"Text"}).value.value();
-        text.connect_source({[] { return std::u16string(u"x"); }, no_updates()});
-        text.connect_immediate(accept);
-        button = ui->add_button({.id = "button", .kind = Kind::button, .label = u"Button"}).value.value();
-        button.bind([] { return Result{}; });
-        label = ui->add_label({.id = "label", .kind = Kind::label, .value = u"Label"}).value.value();
-        checkbox = ui->add_checkbox({.id = "checkbox", .kind = Kind::checkbox, .label = u"Check"}).value.value();
-        checkbox.connect_source({[] { return false; }, no_updates()});
-        checkbox.connect_immediate(accept);
-        radio = ui->add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Radio"}, two_options()).value.value();
-        radio.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()});
-        radio.connect_immediate(accept);
-        slider = ui->add_slider({.id = "slider", .kind = Kind::slider, .label = u"Slider"}, {0, 100, 10}).value.value();
-        slider.connect_source({[] { return 20; }, no_updates()});
-        slider.connect_immediate(accept);
-        progress = ui->add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}).value.value();
-        progress.connect_source({[] { return 20; }, no_updates()});
-        dropdown = ui->add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Drop"}, two_options()).value.value();
-        dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()});
-        dropdown.connect_immediate(accept);
-        tabs = ui->add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Tabs"}, two_pages()).value.value();
-        navigation = ui->add_navigation_list({.id = "navigation", .kind = Kind::navigation_list, .label = u"Nav"}, two_pages(), {"a"}).value.value();
-        list = ui->add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()).value.value();
-        list.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()});
-        list.connect_immediate([](std::optional<OptionValue>) { return Result{}; });
+        text = made(ui->add_text({.id = "text", .kind = Kind::text, .label = u"Text"}), "add_text");
+        wired(text.connect_source({[] { return std::u16string(u"x"); }, no_updates()}), "text.connect_source");
+        wired(text.connect_immediate(accept), "text.connect_immediate");
+        button = made(ui->add_button({.id = "button", .kind = Kind::button, .label = u"Button"}), "add_button");
+        wired(button.bind([] { return Result{}; }), "button.bind");
+        label = made(ui->add_label({.id = "label", .kind = Kind::label, .value = u"Label"}), "add_label");
+        checkbox = made(ui->add_checkbox({.id = "checkbox", .kind = Kind::checkbox, .label = u"Check"}), "add_checkbox");
+        wired(checkbox.connect_source({[] { return false; }, no_updates()}), "checkbox.connect_source");
+        wired(checkbox.connect_immediate(accept), "checkbox.connect_immediate");
+        radio = made(ui->add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Radio"}, two_options()), "add_radio_group");
+        wired(radio.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "radio.connect_source");
+        wired(radio.connect_immediate(accept), "radio.connect_immediate");
+        slider = made(ui->add_slider({.id = "slider", .kind = Kind::slider, .label = u"Slider"}, {0, 100, 10}), "add_slider");
+        wired(slider.connect_source({[] { return 20; }, no_updates()}), "slider.connect_source");
+        wired(slider.connect_immediate(accept), "slider.connect_immediate");
+        progress = made(ui->add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}), "add_progress");
+        wired(progress.connect_source({[] { return 20; }, no_updates()}), "progress.connect_source");
+        dropdown = made(ui->add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Drop"}, two_options()), "add_dropdown");
+        wired(dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "dropdown.connect_source");
+        wired(dropdown.connect_immediate(accept), "dropdown.connect_immediate");
+        tabs = made(ui->add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Tabs"}, two_pages()), "add_tabs");
+        navigation = made(ui->add_navigation_list({.id = "navigation", .kind = Kind::navigation_list, .label = u"Nav"}, two_pages(), {"a"}),
+                          "add_navigation_list");
+        list = made(ui->add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()), "add_list");
+        wired(list.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "list.connect_source");
+        wired(list.connect_immediate([](std::optional<OptionValue>) { return Result{}; }), "list.connect_immediate");
         // The dialog has its own member and fallback, so the world's button stays free to be removed.
-        auto inside = ui->add_button({.id = "dialog.ok", .kind = Kind::button, .label = u"OK"}).value.value();
-        auto fallback = ui->add_button({.id = "dialog.fallback", .kind = Kind::button, .label = u"Back"}).value.value();
-        dialog = ui->add_dialog("dialog", {inside}, inside, fallback, [](bool) {}).value.value();
-        tooltip = ui->add_tooltip("tooltip", label, u"Tip").value.value();
-        menu = ui->add_context_menu(text, {command("app.one", u"One")}).value.value();
+        auto inside = made(ui->add_button({.id = "dialog.ok", .kind = Kind::button, .label = u"OK"}), "add_button dialog.ok");
+        auto fallback = made(ui->add_button({.id = "dialog.fallback", .kind = Kind::button, .label = u"Back"}), "add_button dialog.fallback");
+        dialog = made(ui->add_dialog("dialog", {inside}, inside, fallback, [](bool) {}), "add_dialog");
+        tooltip = made(ui->add_tooltip("tooltip", label, u"Tip"), "add_tooltip");
+        menu = made(ui->add_context_menu(text, {command("app.one", u"One")}), "add_context_menu");
+    }
+private:
+    // Every wiring step must succeed, so an operation that later answers not_found does so because its component or
+    // the Ui is gone, not because the world was built short.
+    static void wired(const Result& result, const char* step) { check(result.status == Status::ok, (std::string("World: ") + step).c_str()); }
+    template <class H> static H made(const Query<H>& created, const char* step) {
+        check(created.status == Status::ok && created.value.has_value(), (std::string("World: ") + step).c_str());
+        return *created.value;
     }
 };
 
@@ -225,7 +234,8 @@ std::vector<Op> list_ops(const World& w) {
 }
 std::vector<Op> dialog_ops(const World& w) {
     auto h = w.dialog;
-    return {LCARS_OP(h, open(ComponentHandle{})), LCARS_OP(h, open()), LCARS_OP(h, settle(true)), LCARS_OP(h, is_open())};
+    const ComponentHandle opener{w.text};  // a real opener, so the live call is not refused for want of one
+    return {Op{"open(opener)", [h, opener] { return answer(h.open(opener)); }}, LCARS_OP(h, open()), LCARS_OP(h, settle(true)), LCARS_OP(h, is_open())};
 }
 std::vector<Op> tooltip_ops(const World& w) {
     auto h = w.tooltip;
@@ -299,6 +309,21 @@ void expect_gone(const HandleKind& kind, const std::vector<Op>& operations) {
     }
 }
 
+// The live baseline the lifetime drivers stand on: while the component and its Ui exist, no listed operation answers
+// not_found, so a handle that always answered not_found fails here. Each operation runs in a World of its own, as some
+// change what follows them (a button's remove, a menu's set_items).
+void expect_live(const HandleKind& kind) {
+    const auto count = kind.operations(World{}).size();
+    for (std::size_t i = 0; i < count; ++i) {
+        World world;
+        const auto op = kind.operations(world)[i];
+        const auto [status, message] = op.run();
+        const auto what = std::string(kind.name) + "::" + op.name + " works while its component lives, got status " +
+                          std::to_string(static_cast<int>(status)) + " \"" + narrow(message) + "\"";
+        check(status != Status::not_found, what.c_str());
+    }
+}
+
 void list_covers_every_kind() {
     check(kinds().size() == std::tuple_size_v<HandleTypes>, "the list names all 14 handle kinds");
     // Every component handle alternative is in the list (the remaining three are DialogHandle, TooltipHandle, ContextMenuHandle).
@@ -310,6 +335,7 @@ void list_covers_every_kind() {
 }
 
 void every_operation_after_the_ui_ends_is_not_found() {
+    for (const auto& kind : kinds()) expect_live(kind);
     World world;
     std::vector<std::vector<Op>> operations;
     for (const auto& kind : kinds()) operations.push_back(kind.operations(world));
@@ -318,8 +344,9 @@ void every_operation_after_the_ui_ends_is_not_found() {
 }
 
 void every_operation_of_a_removed_button_is_not_found() {
-    World world;
     const auto& kind = kind_named("ButtonHandle");
+    expect_live(kind);
+    World world;
     auto operations = kind.operations(world);
     check(world.button.remove().status == Status::ok, "the button is removed");
     expect_gone(kind, operations);
