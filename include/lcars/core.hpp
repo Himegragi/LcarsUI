@@ -281,6 +281,7 @@ class CheckboxHandle;
 class RadioGroupHandle;
 class SliderHandle;
 class DropdownHandle;
+class ListHandle;
 namespace detail {
 // The value type a field kind's change record carries when Change names only the field kind (void: the kind has none).
 template <class Field> struct ChangeValue { using type = void; };
@@ -289,6 +290,7 @@ template <> struct ChangeValue<CheckboxHandle> { using type = bool; };
 template <> struct ChangeValue<RadioGroupHandle> { using type = std::optional<OptionValue>; };
 template <> struct ChangeValue<SliderHandle> { using type = int; };
 template <> struct ChangeValue<DropdownHandle> { using type = std::optional<OptionValue>; };
+template <> struct ChangeValue<ListHandle> { using type = std::optional<OptionValue>; };
 // The combinations the framework sends: each field kind with its own value type, and a rich text field's RichText.
 template <class Field, class Value>
 inline constexpr bool sends_change = (!std::is_void_v<Value> && std::is_same_v<Value, typename ChangeValue<Field>::type>) ||
@@ -298,9 +300,11 @@ inline constexpr bool sends_change = (!std::is_void_v<Value> && std::is_same_v<V
 // value, `origin` the value the draft started from (the source value when the draft began). One template told apart by
 // field kind and value type (#95): a radio group's and a dropdown's records share a value type, and a confirmation group
 // must still say which kind of field each came from. The value type defaults to the field kind's own:
-// Change<TextHandle> (std::u16string), Change<CheckboxHandle> (bool), Change<RadioGroupHandle> and Change<DropdownHandle>
-// (std::optional<OptionValue>), Change<SliderHandle> (int); a rich text field's is spelled Change<TextHandle, RichText>.
-// Only these six exist; any other combination (Change<ButtonHandle>, Change<SliderHandle, bool>) does not compile.
+// Change<TextHandle> (std::u16string), Change<CheckboxHandle> (bool), Change<RadioGroupHandle>, Change<DropdownHandle>
+// and Change<ListHandle> (std::optional<OptionValue>), Change<SliderHandle> (int); a rich text field's is spelled
+// Change<TextHandle, RichText>. A list keeps no draft (#99): its origin is the selection its source held just before the
+// write, and it writes immediately only, so Change<ListHandle> is in neither FieldChange nor a confirmation group.
+// Only these seven exist; any other combination (Change<ButtonHandle>, Change<SliderHandle, bool>) does not compile.
 template <class Field, class Value = typename detail::ChangeValue<Field>::type>
     requires detail::sends_change<Field, Value>
 struct Change {
@@ -425,6 +429,15 @@ private:
 class LabelHandle : private detail::HandleBase<LabelHandle> {
 public:
     LabelHandle() = default;
+    // The label's text, read again every time the label is drawn (it keeps no copy), so keep the read cheap. Two forms:
+    // a full read source, whose notifications ask for a repaint (text changed by background work: a clock, a download),
+    // or a read function alone, for text that only changes through what happens on screen (another field's draft).
+    // Connecting again, in either form, replaces the connection and cancels the previous subscription. A source without
+    // read or subscribe, or an empty function, is refused with invalid_value and keeps the current connection.
+    // A bare lambda, {read, subscribe}, {{}, {}} and a named Source each pick one form. Braces around a single lambda,
+    // connect_source({[] { ... }}), match both and do not compile (#99): drop the braces. (Braces around a variable that
+    // already is a std::function<std::u16string()> pick the read-function form, as the variable matches it exactly.)
+    Result connect_source(Source<std::u16string> source) const;
     Result connect_source(std::function<std::u16string()> read) const;
     // Owner configuration (#80); same rules as the text field's.
     Result set_text_align(TextAlign align) const;
@@ -587,7 +600,11 @@ public:
     Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
     Result connect_source(Source<std::optional<OptionValue>> source) const;
-    Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
+    // The write runs when the user or the code selects another item: `value` is that item, `origin` the item the source
+    // held just before. When set_items drops the selected item it runs with no value and the dropped item as origin.
+    // Selecting the selected item writes nothing; a rejected write leaves the selection and returns the result as is.
+    // Connect the source first. A list has no confirmed write: it keeps no draft (#99).
+    Result connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const;
     Query<Semantics> describe() const;
     bool operator==(const ListHandle& other) const = default;
 private:

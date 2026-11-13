@@ -67,7 +67,7 @@ struct Everything {
         components.push_back({"dropdown", dropdown});
         auto list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()).value.value();
         list.connect_source(option_source());
-        list.connect_immediate([](std::optional<OptionValue>) { return Result{}; });
+        list.connect_immediate([](const Change<ListHandle>&) { return Result{}; });
         components.push_back({"list", list});
         components.push_back({"tabs", ui.add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Tabs"}, two_pages()).value.value()});
         auto progress = ui.add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}).value.value();

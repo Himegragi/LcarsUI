@@ -211,7 +211,7 @@ struct Page {
         add("slider", layout::control(slider));
         auto list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"Items"}, {{{"i1"}, u"One"}, {{"i2"}, u"Two"}, {{"i3"}, u"Three"}}).value.value();
         list.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
-        list.connect_immediate([](std::optional<OptionValue>) { return Result{}; });
+        list.connect_immediate([](const Change<ListHandle>&) { return Result{}; });
         check(bool(list.select({"i2"})), "a list row is selected");
         add("list", layout::control(list));
         auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Pages"}, {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}}).value.value();
