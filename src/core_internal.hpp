@@ -16,6 +16,8 @@ namespace lcars {
 using Id = std::string;
 namespace detail {
 struct TextHit { unsigned offset = 0; bool upstream = false; };
+// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text and of a field supplied as data).
+bool valid_text_control(const Control& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
     friend class lcars::SemanticTree;
@@ -40,14 +42,9 @@ public:
     RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
     SliderHandle add_slider(Control control, SliderRange range);
     ProgressHandle add_progress(Control control);
-    ComponentHandle progress_layout_handle(const Control& control);
     DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
     TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
     NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
-    ComponentHandle navigation_layout_handle(const Control& control);
-    Result navigation_key_down(KeyPress key);
-    ComponentHandle tabs_layout_handle(const Control& control);
-    Result tabs_key_down(KeyPress key);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
     Result focus_error(const Id& id);
@@ -83,13 +80,7 @@ public:
     DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
     Result open_dialog(const Id& id, const ComponentHandle* opener);
     Result settle_dialog(const Id& id, bool confirmed);
-    ComponentHandle list_layout_handle(const Control& control);
-    Result list_key_down(KeyPress key);
-    ComponentHandle dropdown_layout_handle(const Control& control);
-    Result dropdown_key_down(KeyPress key);
     void close_popup();
-    ComponentHandle slider_layout_handle(const Control& control);
-    Result slider_key_down(KeyPress key);
     Result slider_set_value(const Id& id, int value);
     // A pointer drag converts the mouse x to a value against the track captured at press, so a layout
     // that moves under the pointer cannot change the value. The thumb is drawn at the pointer, not the value.
@@ -112,9 +103,6 @@ public:
     std::optional<double> slider_animated_ratio(std::string_view id) const;
     // Pointer x the thumb is drawn at while the pointer holds it (a drag, or any press with motion off).
     std::optional<int> slider_held_x(std::string_view id) const;
-    ComponentHandle radio_layout_handle(const Control& control);
-    Result radio_key_down(KeyPress key);
-    ComponentHandle checkbox_layout_handle(const Control& control);
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
@@ -124,13 +112,27 @@ public:
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
     bool retired_button(const ComponentHandle& handle) const;
-    // Internal adapters used by registered component types.
-    ComponentHandle text_layout_handle(const Control& control);
-    ComponentHandle label_layout_handle(const Control& control);
-    ComponentHandle button_layout_handle(const Control& control);
-    Result text_key_down(KeyPress key);
-    Result command_key_down(KeyPress key);
-    void command_pointer_down();
+    // What registered component types (src/component_type.cpp) use to act on the state around them.
+    // The typed handle of a component of the given handle type; a type's own handle() returns it.
+    template <class Handle> ComponentHandle typed_handle(const Control& control) {
+        OperationScope operation(this);
+        if constexpr (std::is_same_v<Handle, ButtonHandle>) return Handle(this, button_lifetimes_.at(control.id), control.id);
+        else return Handle(this, lifetime_, control.id);
+    }
+    // A pointer press arms its component with the row under the press (and that row's value); the release over the
+    // same component then reaches pointer_up of its type. A key press arms the component for the release of Space.
+    void arm_pointer(const Id& id, std::optional<std::size_t> option = std::nullopt, std::optional<OptionValue> value = std::nullopt) {
+        pointer_armed_ = id; pointer_option_ = option; pointer_option_value_ = std::move(value);
+    }
+    void arm_key(const Id& id) { key_armed_ = id; }
+    bool popup_open(std::string_view id) const { return popup_source_ == id; }
+    void invalidate() { if (invalidate_) invalidate_(); }
+    bool renderer_failed() const { return renderer_failed_; }
+    bool has_action(std::string_view id) const { return actions_.contains(id); }
+    bool text_composing(std::string_view id) const { auto it = edits_.find(id); return it != edits_.end() && it->second.session.composing; }
+    // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
+    // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
+    struct Internals;
     Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
                                 std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
@@ -183,10 +185,7 @@ public:
     // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
     bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
-    bool draws_focus_indicator(const Semantics& semantics) const {
-        if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
-        return semantics.focused && (focus_indicator_visible() || (semantics.kind == Kind::text && !semantics.read_only && semantics.enabled));
-    }
+    bool draws_focus_indicator(const Semantics& semantics) const;
     // A pointer press anywhere in the client area, including empty space and inert components.
     void pointer_pressed();
     // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
@@ -499,8 +498,7 @@ private:
     Result menu_run_builtin(const Id& target, std::string_view command);
     Result validate_menu_items(const std::vector<MenuItem>& items) const;
     void menu_items_changed(const Id& target);
-    bool field_editable(const Control& control, const Field& field) const;
-    Result delete_selection(std::string_view id);
+    Result delete_selection(std::string_view id);  // Delete and the Delete menu item share it
     std::map<Id, TooltipState, std::less<>> tooltips_;
     Id tooltip_hover_;
     // Pointer hover. hover_ is the raw target; hover_target() filters it against the live state.
@@ -619,7 +617,7 @@ private:
     Result submit_field(std::string_view id, Field& field,
                         const std::function<Result(const TextChange&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
-    Result edit_key(KeyPress key);
+    Result edit_key(KeyPress key);  // the keys a text field takes
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
     // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
     FieldView vertical_view(const Id& id);

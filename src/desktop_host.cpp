@@ -820,7 +820,7 @@ void DesktopHost::open_pointer_menu(int x, int y) {
     if (detail::component_type(hit->kind).selects_text()) offset = detail::placement_text_offset(frame_, hit->id, x);
     detail::access(ui_).menu_pointer_open(hit->id, frame_.option_at(*hit, x, y), offset, {x, y});
     after_input(before);
-    if (hit->kind == Kind::list) reveal_.clear();  // the pressed row is already visible
+    if (detail::component_type(hit->kind).has_row_cursor()) reveal_.clear();  // the pressed row is already visible
 }
 // Extend the selection of the field being dragged; outside a multi-line field's top or bottom edge it
 // scrolls a line, and a timer repeats that while the pointer rests there.
@@ -1055,7 +1055,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
         {
             // An open dialog blocks the page's scrollbars but not its own.
-            const bool popup_hit = hit && hit->kind == Kind::dropdown && hit->popup;
+            const bool popup_hit = hit && detail::component_type(hit->kind).opens_popup() && hit->popup;
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
                 if (frame_.modal && !popup_hit && !it->modal_content) continue;
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
@@ -1076,10 +1076,11 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         }
         if (!hit || !detail::component_type(hit->kind).accepts_pointer()) return 0;
         Id id = hit->id;
-        const bool on_list = hit->kind == Kind::list;  // after_input may arrange again, which replaces the frame hit points into
+        const auto& type = detail::component_type(hit->kind);
+        const bool on_list = type.has_row_cursor();  // after_input may arrange again, which replaces the frame hit points into
         finish_composition();
         if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
-            if (detail::component_type(hit->kind).selects_text()) {
+            if (type.selects_text()) {
                 // Core counts the clicks (double click time and box come from the current Windows settings) and
                 // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
                 auto at = detail::placement_text_hit(frame_, id, x, y);
@@ -1089,10 +1090,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 drag_ = Drag::text;
                 if (!touch) detail::access(ui_).hover_capture(id);
             }
-            if (hit->kind == Kind::slider) {
-                drag_ = Drag::slider;
-                detail::access(ui_).slider_pointer_down(id, x, hit->slider_track, scale());
-            }
+            if (type.begin_value_drag(detail::access(ui_), *hit, x, scale())) drag_ = Drag::slider;
             SetCapture(window_);
         }
         after_input(before);
@@ -1191,7 +1189,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         // Space runs a menu item; the character it also produces must not then type into the field.
         if (key.key == Key::space && detail::access(ui_).menu_open()) drop_space_char_ = true;
         detail::access(ui_).key_down(key);
-        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && focused->kind == Kind::list &&
+        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && detail::component_type(focused->kind).has_row_cursor() &&
             (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
             reveal_ = focused->id;
         after_input(before);

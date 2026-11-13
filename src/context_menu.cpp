@@ -13,7 +13,7 @@ bool reserved_id(std::string_view id) { return id.starts_with("lcars."); }
 }
 
 bool detail::UiState::has_menu(const Control& control) const {
-    const bool builtin = control.kind == Kind::text;
+    const bool builtin = component_type(control.kind).has_builtin_menu();
     auto attachment = menu_attachments_.find(control.id);
     if (attachment == menu_attachments_.end()) return builtin;
     switch (attachment->second.mode) {
@@ -23,10 +23,6 @@ bool detail::UiState::has_menu(const Control& control) const {
     }
     return false;
 }
-bool detail::UiState::field_editable(const Control& control, const Field& field) const {
-    return !control.read_only && !field.session.composing && field.has_source_value &&
-           (field.confirmation_member || field.immediate || field.confirmed);
-}
 std::vector<detail::UiState::MenuEntry> detail::UiState::menu_entries(const Id& target) const {
     std::vector<MenuEntry> raw;
     const auto* control = find(target);
@@ -35,29 +31,9 @@ std::vector<detail::UiState::MenuEntry> detail::UiState::menu_entries(const Id& 
     const auto mode = attachment == menu_attachments_.end() ? MenuMode::append : attachment->second.mode;
     if (mode == MenuMode::off) return raw;
     auto separator = [&] { MenuEntry entry; entry.separator = true; raw.push_back(std::move(entry)); };
-    if (mode == MenuMode::append && control->kind == Kind::text) {
-        const auto& field = edits_.at(target);
-        const bool editable = field_editable(*control, field);
-        const bool selected = field.session.begin() != field.session.end();
+    if (mode == MenuMode::append && component_type(control->kind).has_builtin_menu()) {
         const bool clipboard_text = menu_ && menu_->target == target && menu_->clipboard_text;
-        auto add = [&](const char* id, std::u16string label, char16_t key, std::u16string hint, bool enabled) {
-            raw.push_back({id, std::move(label), std::move(hint), enabled, false, key});
-        };
-        add(menu_undo, u"復原(U)", u'U', u"Ctrl+Z", editable && !field.past.empty());
-        add(menu_redo, u"重做(R)", u'R', u"Ctrl+Y", editable && !field.future.empty());
-        separator();
-        add(menu_cut, u"剪下(T)", u'T', u"Ctrl+X", editable && selected);
-        add(menu_copy, u"複製(C)", u'C', u"Ctrl+C", selected);
-        add(menu_paste, u"貼上(P)", u'P', u"Ctrl+V", editable && clipboard_text);
-        add(menu_delete, u"刪除(D)", u'D', u"Del", editable && selected);
-        separator();
-        add(menu_select_all, u"全選(A)", u'A', u"Ctrl+A", true);
-        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with 復原(U).
-            separator();
-            add(menu_bold, u"粗體(B)", u'B', u"Ctrl+B", editable);
-            add(menu_italic, u"斜體(I)", u'I', u"Ctrl+I", editable);
-            add(menu_underline, u"底線(U)", u'U', u"Ctrl+U", editable);
-        }
+        component_type(control->kind).builtin_menu_entries(*this, *control, clipboard_text, raw);
     }
     if (attachment != menu_attachments_.end()) {
         if (!raw.empty() && !attachment->second.items.empty()) separator();
@@ -83,7 +59,7 @@ std::optional<detail::UiState::MenuView> detail::UiState::menu_view() const {
     view.entries = menu_entries(view.target); view.highlighted = menu_->highlighted;
     view.anchor_item = view.item;
     if (!view.anchor_item)
-        if (auto list = lists_.find(view.target); list != lists_.end()) view.anchor_item = list->second.cursor;
+        if (const auto* control = find(view.target)) view.anchor_item = component_type(control->kind).menu_cursor(*this, *control);
     return view;
 }
 Result detail::UiState::validate_menu_items(const std::vector<MenuItem>& items) const {
@@ -125,16 +101,11 @@ Result detail::UiState::open_menu(std::string_view id, std::optional<MenuPositio
     if (dispatching_) return {Status::busy, u"操作尚未結束"};
     if (!composing_.empty()) return {Status::busy, u"組字中，請先完成或取消組字"};
     // Opened from the keyboard, a list hands the application its current row without selecting it.
+    const auto& type = component_type(control->kind);
     bool select_row = item.has_value();
-    if (!item && !at)
-        if (auto list = lists_.find(id); list != lists_.end()) item = list->second.cursor;
-    if (item) {
-        auto list = lists_.find(id);
-        if (list == lists_.end()) return {Status::invalid_value, u"只有清單可以指定項目"};
-        auto row = std::find_if(list->second.items.begin(), list->second.items.end(), [&](const auto& r) { return r.value == *item; });
-        if (row == list->second.items.end()) return {Status::not_found, u"沒有這個項目"};
-        if (!row->enabled) return {Status::disabled, u"項目已停用"};
-    }
+    if (!item && !at) item = type.menu_cursor(*this, *control);
+    if (item)
+        if (auto r = type.check_menu_item(*this, *control, *item); !r) return r;
     const Id target(id);
     menu_.reset();
     close_popup();
@@ -144,22 +115,20 @@ Result detail::UiState::open_menu(std::string_view id, std::optional<MenuPositio
         refresh_tooltips();
         if (auto r = available(target); !r) return r;
     }
-    if (text_offset) {
-        if (auto it = edits_.find(target); it != edits_.end()) {
-            const auto& session = it->second.session;
-            const bool inside = session.begin() != session.end() && *text_offset >= session.begin() && *text_offset <= session.end();
+    if (text_offset) {  // a press on text outside the selection moves the caret there first
+        if (const auto* session = edit(target)) {
+            const bool inside = session->begin() != session->end() && *text_offset >= session->begin() && *text_offset <= session->end();
             if (!inside) select(target, *text_offset, *text_offset);
         }
     }
     if (item && select_row) {
         // The row is selected first; a list that cannot be written still hands the row to the application.
-        (void)ListHandle(this, lifetime_, target).select(*item);
-        if (auto list = lists_.find(target); list != lists_.end()) list->second.cursor = item;
+        type.menu_row_chosen(*this, target, *item);
         if (auto r = available(target); !r) return r;
     }
     OpenMenu menu;
     menu.target = target; menu.item = std::move(item); menu.at = at;
-    if (edits_.contains(target) && clipboard_) menu.clipboard_text = bool(clipboard_->read());
+    if (type.has_builtin_menu() && clipboard_) menu.clipboard_text = bool(clipboard_->read());  // its paste item needs to know
     menu_ = std::move(menu);
     if (invalidate_) invalidate_();
     return {};
@@ -169,11 +138,11 @@ Result detail::UiState::menu_pointer_open(std::string_view id, std::optional<std
     if (auto r = available(id); !r) return r;
     if (!has_menu(*find(id))) return {Status::not_supported, u"元件沒有右鍵選單"};
     std::optional<OptionValue> item;
-    if (auto list = lists_.find(id); list != lists_.end() && option && *option < list->second.items.size()) {
-        const auto& row = list->second.items[*option];
-        if (!row.enabled) return {Status::disabled, u"項目已停用"};
-        item = row.value;
-    }
+    if (option)
+        if (auto row = component_type(find(id)->kind).menu_row(*this, *find(id), *option)) {
+            if (!*row) return {row->status, row->message};
+            item = row->value;
+        }
     return open_menu(id, at, std::move(item), text_offset);
 }
 Result detail::UiState::close_menu() {
@@ -238,21 +207,9 @@ Result detail::UiState::menu_execute(std::string_view item_id) {
     catch (...) { stopped_ = true; return {Status::failed, u"選單項目執行失敗，介面已停止"}; }
 }
 Result detail::UiState::menu_run_builtin(const Id& target, std::string_view command) {
-    if (command == menu_undo) return undo(target);
-    if (command == menu_redo) return redo(target);
-    if (command == menu_cut) return cut(target);
-    if (command == menu_copy) return copy(target);
-    if (command == menu_paste) return paste_clipboard(target);
-    if (command == menu_delete) return delete_selection(target);
-    if (command == menu_bold) return toggle_style(target, StyleAttribute::bold);
-    if (command == menu_italic) return toggle_style(target, StyleAttribute::italic);
-    if (command == menu_underline) return toggle_style(target, StyleAttribute::underline);
-    if (command == menu_select_all) {
-        auto it = edits_.find(target);
-        if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
-        return select(target, 0, static_cast<unsigned>(it->second.session.text.size()));
-    }
-    return {Status::not_found, u"沒有這個選單項目"};
+    const auto* control = find(target);
+    if (!control) return {Status::not_found, u"沒有這個選單項目"};
+    return component_type(control->kind).run_builtin_menu(*this, target, command);
 }
 Result detail::UiState::menu_key_down(KeyPress key) {
     OperationScope operation(this);

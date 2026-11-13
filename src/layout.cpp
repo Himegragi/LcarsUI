@@ -363,7 +363,8 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sideways_only) const {
     // A popup owns its own wheel input; it must not scroll the background beneath it.
     for (auto it = overlays.rbegin(); it != overlays.rend() && !sideways_only; ++it) {
         if (!it->dropdown_panel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
-        if (it->kind == Kind::dropdown) {
+        const auto& type = detail::component_type(it->kind);
+        if (type.opens_popup()) {
             auto current = detail::access(ui).describe(it->id);
             if (!current || !current->expanded) continue; // the frame can outlive a dismissed panel
             auto& state = owner.dropdown_scroll(it->id);
@@ -664,7 +665,7 @@ struct Arranger {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == target_id; });
             if (it != placed.end()) {
                 auto target = it->bounds;
-                if (it->kind == Kind::list) {
+                if (detail::component_type(it->kind).has_row_cursor()) {
                     auto s = ui.describe(it->id);
                     if (s && s->candidate) {
                         for (std::size_t i = 0; i < s->options.size() && i < it->options.size(); ++i)
@@ -681,7 +682,7 @@ struct Arranger {
         state.anchor_id.clear(); state.anchor_option.clear();
         int best = std::numeric_limits<int>::max();
         for (const auto& p : placed) {
-            if (p.kind == Kind::list && !p.options.empty()) {
+            if (detail::component_type(p.kind).has_row_cursor() && !p.options.empty()) {
                 auto semantic = ui.describe(p.id);
                 if (semantic) for (std::size_t i = 0; i < p.options.size() && i < semantic->options.size(); ++i) {
                     const auto& row = p.options[i];
@@ -718,24 +719,9 @@ struct Arranger {
         return r.h;
     }
 };
-// Where a keyboard-opened menu hangs: a text field's caret line, a list's current row, else the component.
+// Where a keyboard-opened menu hangs: what the component's type says (a text field's caret line, a list's current row), else the component.
 Rect keyboard_anchor(detail::UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) {
-    if (target.kind == Kind::text) {
-        const auto* session = state.edit(target.id);
-        if (session) {  // the caret's own line, also in a multi-line field
-            const auto caret = target.caret_rect(session->visible_caret());
-            return {caret.x, caret.y, 0, caret.h};
-        }
-        return {target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
-    }
-    if (target.kind == Kind::list && item) {
-        auto semantic = state.describe(target.id);
-        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
-            if (semantic->options[i].value == *item) {
-                const auto& row = target.options[i];
-                return {row.x + row_inset, row.y, 0, row.h};
-            }
-    }
+    if (auto anchor = detail::component_type(target.kind).keyboard_anchor(state, target, item, row_inset)) return *anchor;
     auto visible = intersect(target.bounds, target.clip);
     if (visible.w <= 0 || visible.h <= 0) visible = target.bounds;
     return {visible.x, visible.y, 0, visible.h};
@@ -842,7 +828,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     // Overlay placement is relative to its visible source, but clipped to the window, not its scroll region.
     auto popup_sources = a.frame.modal ? a.frame.overlays : a.frame.items;
     for (const auto& source : popup_sources) {
-        if (source.kind != Kind::dropdown) continue;
+        if (!detail::component_type(source.kind).opens_popup()) continue;
         auto s = detail::access(ui).describe(source.id);
         if (!s || !s->expanded) continue;
         if (intersect(source.bounds, source.clip).h <= 0 || intersect(source.bounds, source.clip).w <= 0) {
@@ -920,7 +906,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     auto visible = [](Rect bounds, Rect clip) { auto area = intersect(bounds, clip); return area.w > 0 && area.h > 0; };
     auto record = [&](const Placement& p) {
         visibility[p.id] = visibility[p.id] || visible(p.bounds, p.clip);
-        if (p.kind != Kind::text) return;
+        if (!detail::component_type(p.kind).labels_in_placement()) return;
         for (const auto& control : a.ui.controls()) {
             if (control.target != p.id) continue;
             const std::vector<Line>* lines = nullptr;
