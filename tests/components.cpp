@@ -1212,6 +1212,50 @@ void list_write_cannot_reenter_itself() {
     check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
 }
 
+// #99 keeps these list behaviors as they were.
+void list_selecting_the_selected_item_writes_nothing() {
+    std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
+    Ui ui;
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue> value) { ++writes; selected = value; return Result{}; });
+    check(bool(list.select({"a"})) && writes == 0 && selected == OptionValue{"a"}, "Selecting the selected item writes nothing");
+    list.focus(); detail::access(ui).key_down({.key = Key::space});
+    check(writes == 0, "Space on the selected row writes nothing either");
+}
+void list_rejected_write_keeps_the_selection() {
+    std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
+    Ui ui;
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](std::optional<OptionValue>) { ++writes; return Result{Status::invalid_value, u"Not now"}; });
+    auto result = list.select({"b"});
+    check(writes == 1 && result.status == Status::invalid_value && result.message == u"Not now",
+          "A rejected write returns the application's result as is");
+    auto s = list.describe();
+    check(selected == OptionValue{"a"} && s->options[0].selected && !s->options[1].selected, "A rejected write leaves the selection unchanged");
+}
+void list_write_requires_a_source_first() {
+    std::optional<OptionValue> selected; int writes = 0;
+    Ui ui;
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}}).value.value();
+    check(list.connect_immediate([&](std::optional<OptionValue>) { ++writes; return Result{}; }).status == Status::invalid_value,
+          "A list without a read source refuses a write connection");
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    check(list.select({"a"}).status == Status::invalid_value && writes == 0, "The refused write was not kept");
+}
+// #99 keeps the label's short form (a read function only) as it was.
+void label_read_function_is_read_on_demand_and_replaced() {
+    std::u16string first = u"first", second = u"second";
+    Ui ui;
+    auto label = ui.add_label({.id = "label", .kind = Kind::label}).value.value();
+    check(bool(label.connect_source([&] { return first; })) && label.describe()->value == u"first", "A label reads its text from the function");
+    first = u"changed";
+    check(label.describe()->value == u"changed", "The function is read again on every read");
+    check(bool(label.connect_source([&] { return second; })) && label.describe()->value == u"second", "Connecting again replaces the function");
+    check(label.connect_source(std::function<std::u16string()>{}).status == Status::invalid_value, "An empty function is refused");
+}
+
 void pointer_dispatch_rechecks_a_removed_focus_target() {
     Ui ui;
     auto button = ui.add_button({.id = "button", .kind = Kind::button}).value.value();
@@ -1335,6 +1379,10 @@ int main() {
         {"C08 list focus and keyboard", list_focus_and_keyboard_use_enabled_items},
         {"R11 list neighbor follows old identity order", list_recovers_cursor_when_data_changes},
         {"G07 list write cannot reenter", list_write_cannot_reenter_itself},
+        {"#99 list reselection writes nothing", list_selecting_the_selected_item_writes_nothing},
+        {"#99 list rejection keeps the selection", list_rejected_write_keeps_the_selection},
+        {"#99 list write requires a source", list_write_requires_a_source_first},
+        {"#99 label read function", label_read_function_is_read_on_demand_and_replaced},
         {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
         {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
         {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},
