@@ -117,6 +117,38 @@ detail::UiState::OperationScope::~OperationScope() {
         }
     }
 }
+// The write paths the checkbox, radio group, dropdown and slider share (#94); the text field uses connect_field_write too.
+template <class Connection>
+Result detail::UiState::connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate) {
+    if (!field.accepts_write(immediate) || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    (immediate ? field.immediate : field.confirmed) = std::move(write);
+    return {};
+}
+// The handle's confirm(): hand the draft to the confirmed write; a refusal shows its message on the field and focuses it.
+template <class Handle> Result detail::UiState::confirm_field(const Handle& handle) {
+    auto& f = fields_of<Handle>().at(handle.id_);
+    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+    if (f.submitting || dispatching_ || invoking_) return {Status::busy, u"Operation is already executing"};
+    typename std::decay_t<decltype(f)>::Change change{handle, f.value, f.origin}; f.submitting = true; invoking_ = true;
+    Result result;
+    try { result = f.confirmed(change); }
+    catch (...) { f.submitting = false; invoking_ = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    f.submitting = false; invoking_ = false;
+    if (result) { f.origin = change.value; set_error(handle.id_, u""); }
+    else { set_error(handle.id_, result.message); focus(handle.id_); }
+    auto notification = notify(); return notification ? result : notification;
+}
+// An edit of the value: an immediate write runs now (unless one is already running); otherwise the change is only announced.
+template <class FieldType> Result detail::UiState::write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change) {
+    if (!field.immediate || field.submitting) return notify();
+    field.submitting = true;
+    Result result;
+    try { result = field.immediate(change); } catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
+    field.submitting = false;
+    if (result) { field.origin = change.value; set_error(id, u""); }
+    else set_error(id, result.message);
+    auto notification = notify(); return notification ? result : notification;
+}
 bool detail::UiState::removal_pending(std::string_view id) const {
     return retiring_ == id || std::find(pending_removals_.begin(), pending_removals_.end(), id) != pending_removals_.end();
 }
@@ -144,13 +176,7 @@ void detail::UiState::commit_removals() {
             page_members_.erase(member);
         }
         if (auto group = confirmation_members_.find(id); group != confirmation_members_.end()) {
-            for (const auto& field : group->second) {
-                if (auto it = edits_.find(field); it != edits_.end()) it->second.confirmation_member = false;
-                if (auto it = bools_.find(field); it != bools_.end()) it->second.confirmation_member = false;
-                if (auto it = radios_.find(field); it != radios_.end()) it->second.confirmation_member = false;
-                if (auto it = dropdowns_.find(field); it != dropdowns_.end()) it->second.confirmation_member = false;
-                if (auto it = numerics_.find(field); it != numerics_.end()) it->second.confirmation_member = false;
-            }
+            for (const auto& field : group->second) with_connection(field, [](auto& connection) { connection.confirmation_member = false; });
             confirmation_members_.erase(group);
         }
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
@@ -402,52 +428,31 @@ void detail::UiState::bool_source_changed(const Id& id) {
 Result CheckboxHandle::connect_immediate(std::function<Result(const BoolChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& field = ui_->bools_.at(id_);
-        if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        field.immediate = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), true);
     });
 }
 Result CheckboxHandle::connect_confirmed(std::function<Result(const BoolChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->bools_.at(id_);
-        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.confirmed = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), false);
     });
 }
 Result CheckboxHandle::confirm() const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->available(id_); !r) return r;
-        auto& f = ui_->bools_.at(id_);
-        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-        BoolChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-        Result result;
-        try { result = f.confirmed(change); }
-        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-        f.submitting = false; ui_->invoking_ = false;
-        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-        auto notification = ui_->notify(); return notification ? result : notification;
+        return ui_->confirm_field(*this);
     });
 }
 Result detail::UiState::toggle_checkbox(const Id& id) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
     auto& field = bools_.at(id);
-    if (!field.connected || (!field.immediate && !field.confirmed && !field.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (!field.writable()) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = !field.value;
     BoolChange change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
-    if (!field.immediate || field.submitting) return notify();
-    field.submitting = true;
-    Result result;
-    try { result = field.immediate(change); } catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    field.submitting = false;
-    if (result) { field.origin = change.value; set_error(id, u""); }
-    else set_error(id, result.message);
-    auto notification = notify(); return notification ? result : notification;
+    return write_immediately(id, field, change);
 }
 Query<Semantics> CheckboxHandle::describe() const {
     return detail::operate(*this, [&]() -> Query<Semantics> {
@@ -625,33 +630,19 @@ void detail::UiState::option_source_changed(const Id& id) {
 Result RadioGroupHandle::connect_immediate(std::function<Result(const OptionChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& field = ui_->radios_.at(id_);
-        if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        field.immediate = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), true);
     });
 }
 Result RadioGroupHandle::connect_confirmed(std::function<Result(const OptionChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->radios_.at(id_);
-        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.confirmed = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), false);
     });
 }
 Result RadioGroupHandle::confirm() const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->available(id_); !r) return r;
-        auto& f = ui_->radios_.at(id_);
-        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-        OptionChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-        Result result;
-        try { result = f.confirmed(change); }
-        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-        f.submitting = false; ui_->invoking_ = false;
-        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-        auto notification = ui_->notify(); return notification ? result : notification;
+        return ui_->confirm_field(*this);
     });
 }
 Result RadioGroupHandle::select(OptionValue value) const {
@@ -664,18 +655,13 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     auto it = std::find_if(field.options.begin(), field.options.end(), [&](const auto& o) { return o.value == value; });
     if (it == field.options.end()) return {Status::invalid_value, u"Unknown option"};
     if (!it->enabled) return {Status::disabled, u"Option is disabled"};
-    if (!field.connected || (!field.immediate && !field.confirmed && !field.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (!field.writable()) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (field.value == value) return {};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = std::move(value);
     OptionChange change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
-    if (!field.immediate || field.submitting) return notify();
-    field.submitting = true; Result result;
-    try { result = field.immediate(change); } catch (...) { field.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    field.submitting = false;
-    if (result) { field.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
-    auto notification = notify(); return notification ? result : notification;
+    return write_immediately(id, field, change);
 }
 Query<Semantics> RadioGroupHandle::describe() const {
     return detail::operate(*this, [&]() -> Query<Semantics> {
@@ -710,7 +696,7 @@ Result DropdownHandle::open() const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->available(id_); !r) return r;
         auto& f = ui_->dropdowns_.at(id_);
-        if (!f.connected || (!f.confirmation_member && !f.immediate && !f.confirmed)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+        if (!f.writable()) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
         if (auto r = ui_->focus(id_); !r) return r;
         ui_->close_popup(); ui_->popup_source_ = id_;
         auto current = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && f.value && o.value == *f.value; });
@@ -778,30 +764,19 @@ void detail::UiState::dropdown_source_changed(const Id& id) {
 Result DropdownHandle::connect_immediate(std::function<Result(const DropdownChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->dropdowns_.at(id_);
-        if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.immediate = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), true);
     });
 }
 Result DropdownHandle::connect_confirmed(std::function<Result(const DropdownChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->dropdowns_.at(id_);
-        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.confirmed = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), false);
     });
 }
 Result DropdownHandle::confirm() const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->available(id_); !r) return r;
-        auto& f = ui_->dropdowns_.at(id_);
-        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-        DropdownChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true; Result result;
-        try { result = f.confirmed(change); } catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-        f.submitting = false; ui_->invoking_ = false;
-        if (result) { f.origin = change.value; ui_->set_error(id_, u""); } else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-        auto notification = ui_->notify(); return notification ? result : notification;
+        return ui_->confirm_field(*this);
     });
 }
 Result DropdownHandle::use_latest() const {
@@ -824,19 +799,14 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.value == value; });
     if (it == f.options.end()) return {Status::invalid_value, u"Unknown option"};
     if (!it->enabled) return {Status::disabled, u"Option is disabled"};
-    if (!f.connected || (!f.immediate && !f.confirmed && !f.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (!f.writable()) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (f.value == value) return {};
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = std::move(value); set_error(id, u"");
     if (invalidate_) invalidate_();
     DropdownChange change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
-    if (!f.immediate || f.submitting) return notify();
-    f.submitting = true; Result result;
-    try { result = f.immediate(change); } catch (...) { f.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false;
-    if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
-    auto notification = notify(); return notification ? result : notification;
+    return write_immediately(id, f, change);
 }
 Query<Semantics> DropdownHandle::describe() const {
     return detail::operate(*this, [&]() -> Query<Semantics> {
@@ -926,33 +896,19 @@ void detail::UiState::numeric_source_changed(const Id& id) {
 Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->numerics_.at(id_);
-        if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.immediate = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), true);
     });
 }
 Result SliderHandle::connect_confirmed(std::function<Result(const NumericChange&)> write) const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& f = ui_->numerics_.at(id_);
-        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-        f.confirmed = std::move(write); return {};
+        return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), false);
     });
 }
 Result SliderHandle::confirm() const {
     return detail::operate(*this, [&]() -> Result {
         if (auto r = ui_->available(id_); !r) return r;
-        auto& f = ui_->numerics_.at(id_);
-        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-        NumericChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-        Result result;
-        try { result = f.confirmed(change); }
-        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-        f.submitting = false; ui_->invoking_ = false;
-        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-        auto notification = ui_->notify(); return notification ? result : notification;
+        return ui_->confirm_field(*this);
     });
 }
 Result detail::UiState::slider_set_value(const Id& id, int value) {
@@ -960,7 +916,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (auto r = available(id); !r) return r;
     auto& f = numerics_.at(id);
     if (find(id)->read_only) return {Status::read_only, u"Component is read only"};
-    if (!f.connected || (!f.immediate && !f.confirmed && !f.confirmation_member)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+    if (!f.writable()) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     value = snap_slider(f.range, value);
     if (f.value == value) return {};
@@ -968,12 +924,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     f.value = value;
     slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
     NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
-    if (!f.immediate || f.submitting) return notify();
-    f.submitting = true; Result result;
-    try { result = f.immediate(change); } catch (...) { f.submitting = false; stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false;
-    if (result) { f.origin = change.value; set_error(id, u""); } else set_error(id, result.message);
-    auto notification = notify(); return notification ? result : notification;
+    return write_immediately(id, f, change);
 }
 namespace {
 double slider_share(const SliderRange& range, int value) {
@@ -1748,7 +1699,7 @@ Result detail::UiState::reset_to_source(const Id& id) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end() || !it->second.has_source_value)
+    if (it == edits_.end() || !it->second.connected)
         return {Status::invalid_value, u"Text source is not connected"};
     replace_rich(id, RichText{it->second.source_value, it->second.source_spans});
     it->second.origin = it->second.source_value;
@@ -1800,8 +1751,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Te
     std::set<Id> members;
     for (const auto& field : fields) {
         auto it = edits_.find(field.id_);
-        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.has_source_value ||
-            it->second.confirmation_member || it->second.immediate || it->second.confirmed || it->second.rich || !members.insert(field.id_).second)
+        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.joinable() || it->second.rich || !members.insert(field.id_).second)
             return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
     for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
@@ -1855,67 +1805,40 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
     for (const auto& member : fields) {
         bool valid = std::visit([&](const auto& h) {
             if (h.ui_ != this || h.lifetime_.expired() || !members.insert(h.id_).second) return false;
-            using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) {
-                auto it = edits_.find(h.id_); return it != edits_.end() && it->second.has_source_value && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
-            } else if constexpr (std::is_same_v<T, CheckboxHandle>) {
-                auto it = bools_.find(h.id_); return it != bools_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
-            } else if constexpr (std::is_same_v<T, SliderHandle>) {
-                auto it = numerics_.find(h.id_); return it != numerics_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
-            } else if constexpr (std::is_same_v<T, DropdownHandle>) {
-                auto it = dropdowns_.find(h.id_); return it != dropdowns_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
-            } else {
-                auto it = radios_.find(h.id_); return it != radios_.end() && it->second.connected && !it->second.confirmation_member && !it->second.immediate && !it->second.confirmed;
-            }
+            auto& state = fields_of<std::decay_t<decltype(h)>>();
+            auto it = state.find(h.id_);
+            return it != state.end() && it->second.joinable();
         }, member);
         if (!valid) return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
     }
-    for (const auto& member : fields) std::visit([&](const auto& h) {
-        using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).confirmation_member = true;
-        else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).confirmation_member = true;
-        else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).confirmation_member = true;
-        else if constexpr (std::is_same_v<T, DropdownHandle>) dropdowns_.at(h.id_).confirmation_member = true;
-        else radios_.at(h.id_).confirmation_member = true;
-    }, member);
+    for (const auto& member : fields) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).confirmation_member = true; }, member);
     confirmation_buttons_.insert(button.id_);
     confirmation_members_[button.id_] = {members.begin(), members.end()};
     bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
-            using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) { auto& f = edits_.at(h.id_); if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}}); else changes.emplace_back(TextChange{h, f.session.text, f.origin}); f.submitting = true; }
-            else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); changes.emplace_back(BoolChange{h, f.value, f.origin}); f.submitting = true; }
-            else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); changes.emplace_back(NumericChange{h, f.value, f.origin}); f.submitting = true; }
-            else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); changes.emplace_back(DropdownChange{h, f.value, f.origin}); f.submitting = true; }
-            else { auto& f = radios_.at(h.id_); changes.emplace_back(OptionChange{h, f.value, f.origin}); f.submitting = true; }
+            auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
+            if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
+                if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}});
+                else changes.emplace_back(TextChange{h, f.session.text, f.origin});
+            } else changes.emplace_back(typename std::decay_t<decltype(f)>::Change{h, f.value, f.origin});
+            f.submitting = true;
         }, member);
         MixedConfirmationResult outcome;
         try { outcome = submit(changes); }
         catch (...) {
-            for (const auto& member : fields) std::visit([&](const auto& h) {
-                using T = std::decay_t<decltype(h)>;
-                if constexpr (std::is_same_v<T, TextHandle>) edits_.at(h.id_).submitting = false;
-                else if constexpr (std::is_same_v<T, CheckboxHandle>) bools_.at(h.id_).submitting = false;
-                else if constexpr (std::is_same_v<T, SliderHandle>) numerics_.at(h.id_).submitting = false;
-                else if constexpr (std::is_same_v<T, DropdownHandle>) dropdowns_.at(h.id_).submitting = false;
-                else radios_.at(h.id_).submitting = false;
-            }, member);
+            for (const auto& member : fields) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).submitting = false; }, member);
             throw;
         }
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
-            using T = std::decay_t<decltype(h)>;
-            if constexpr (std::is_same_v<T, TextHandle>) {
-                auto& f = edits_.at(h.id_); f.submitting = false;
-                if (outcome.result) {
+            auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
+            f.submitting = false;
+            if (outcome.result) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
                     if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
                     else f.origin = std::get<TextChange>(changes[i]).value;
-                }
+                } else f.origin = std::get<typename std::decay_t<decltype(f)>::Change>(changes[i]).value;
             }
-            else if constexpr (std::is_same_v<T, CheckboxHandle>) { auto& f = bools_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<BoolChange>(changes[i]).value; }
-            else if constexpr (std::is_same_v<T, SliderHandle>) { auto& f = numerics_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<NumericChange>(changes[i]).value; }
-            else if constexpr (std::is_same_v<T, DropdownHandle>) { auto& f = dropdowns_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<DropdownChange>(changes[i]).value; }
-            else { auto& f = radios_.at(h.id_); f.submitting = false; if (outcome.result) f.origin = std::get<OptionChange>(changes[i]).value; }
             if (outcome.result) set_error(h.id_, u"");
         }, fields[i]);
         if (!outcome.result) {
@@ -1968,11 +1891,8 @@ Result detail::UiState::connect_write(const Id& id, std::function<Result(const T
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end() || !it->second.has_source_value || it->second.confirmation_member ||
-        (immediate ? bool(it->second.confirmed) : bool(it->second.immediate)) || !write)
-        return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    (immediate ? it->second.immediate : it->second.confirmed) = std::move(write);
-    return {};
+    if (it == edits_.end()) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+    return connect_field_write(it->second, std::move(write), immediate);
 }
 Result TextHandle::confirm() const {
     return detail::operate(*this, [&]() -> Result { return ui_->confirm(id_); });
@@ -2012,7 +1932,7 @@ Result detail::UiState::connect_source(const Id& id, TextSource source, std::fun
     if (it->second.disconnect) it->second.disconnect();
     it->second.source = std::move(source);
     it->second.rich_read = std::move(rich_read);
-    it->second.has_source_value = false;
+    it->second.connected = false;
     auto weak = std::weak_ptr<void>(lifetime_);
     it->second.disconnect = it->second.source.subscribe([weak, this, id] {
         if (!weak.expired()) source_changed(id);
@@ -2034,10 +1954,10 @@ void detail::UiState::source_changed(const Id& id) {
         latest.text = field.source.read();
         if (!valid_value(*find(id), latest.text)) return;
     }
-    const bool clean = !field.has_source_value || source_matches(field);
+    const bool clean = !field.connected || source_matches(field);
     field.source_value = latest.text;
     field.source_spans = latest.spans;
-    field.has_source_value = true;
+    field.connected = true;
     if (clean && !field.submitting && !field.session.composing) {
         field.origin = latest.text;
         field.origin_spans = latest.spans;
@@ -2059,7 +1979,7 @@ Result detail::UiState::use_latest(const Id& id) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end() || !it->second.has_source_value) return {Status::invalid_value, u"Text source is not connected"};
+    if (it == edits_.end() || !it->second.connected) return {Status::invalid_value, u"Text source is not connected"};
     auto latest = it->second.source_value;
     auto latest_spans = it->second.source_spans;
     const bool was_submitting = it->second.submitting;
@@ -2354,7 +2274,7 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"元件不是文字欄位"};
     if (find(id)->read_only) return {Status::read_only, u"欄位為唯讀"};
-    if (!it->second.has_source_value || (!it->second.confirmation_member && !it->second.immediate && !it->second.confirmed))
+    if (!it->second.writable())
         return {Status::invalid_value, u"Connect an explicit write timing before editing"};
     if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
     field = &it->second;
@@ -2386,7 +2306,7 @@ Result detail::UiState::replace_range(std::string_view id, Field& field, unsigne
                                           inserted_spans ? *inserted_spans : detail::uniform_spans(length, insertion_style(field, first, last)));
     }
     if (next == session.text && next_spans == field.spans) { session.select(caret, caret); return {}; }
-    if (field.has_source_value && !field.submitting && source_matches(field)) {
+    if (field.connected && !field.submitting && source_matches(field)) {
         field.origin = field.source_value;
         field.origin_spans = field.source_spans;
     }
@@ -2422,7 +2342,7 @@ Result detail::UiState::commit_style(std::string_view id, Field& field, std::vec
     OperationScope operation(this);
     if (spans == field.spans) return {};
     auto& session = field.session;
-    if (field.has_source_value && !field.submitting && source_matches(field)) {
+    if (field.connected && !field.submitting && source_matches(field)) {
         field.origin = field.source_value;
         field.origin_spans = field.source_spans;
     }
@@ -2538,7 +2458,7 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     auto& to = forward ? field->past : field->future;
     if (from.empty()) return {Status::empty_history, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
     auto& session = field->session;
-    if (field->has_source_value && !field->submitting && source_matches(*field)) {
+    if (field->connected && !field->submitting && source_matches(*field)) {
         field->origin = field->source_value;
         field->origin_spans = field->source_spans;
     }

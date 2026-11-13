@@ -216,11 +216,10 @@ bool arrow_key(Key key) {
     return key == Key::left || key == Key::right || key == Key::up || key == Key::down || key == Key::home || key == Key::end;
 }
 template <class T> bool diverged(bool connected, const T& origin, const T& source, const T& value) { return connected && origin != source && value != source; }
-template <class Field> bool admits_write(const Field& field) { return field.connected && (field.confirmation_member || field.immediate || field.confirmed); }
 // A text field the user can change now: not read only, not composing, with a source and a write timing. The edit operations
 // and the editing items of the context menu both follow this one rule.
 template <class Field> bool text_editable(const Control& control, const Field& field) {
-    return !control.read_only && !field.session.composing && field.has_source_value && (field.confirmation_member || field.immediate || field.confirmed);
+    return !control.read_only && !field.session.composing && field.writable();
 }
 std::u16string number_text(int value) { auto digits = std::to_string(value); return {digits.begin(), digits.end()}; }
 template <class Fields> bool has_confirmed_write(const Fields& fields, const Control& c) {
@@ -481,7 +480,7 @@ public:
             s.scroll_line = m.pending_first.value_or(m.first);
             s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
         }
-        s.source_conflict = field.has_source_value && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
+        s.source_conflict = field.connected && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
         s.rich = field.rich;
     }
     void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
@@ -918,7 +917,7 @@ public:
     void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& bools = UiState::Internals::bools(ui);
         auto it = bools.find(c.id);
-        if (!s.executing && (it == bools.end() || admits_write(it->second))) s.operations.push_back(Operation::activate);
+        if (!s.executing && (it == bools.end() || it->second.writable())) s.operations.push_back(Operation::activate);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         ComponentType::verbs(c, out);
@@ -983,7 +982,7 @@ public:
         auto it = radios.find(c.id);
         if (it == radios.end()) return;
         const auto& f = it->second;
-        if (admits_write(f) && std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
+        if (f.writable() && std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
             s.operations.push_back(Operation::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
@@ -1238,7 +1237,7 @@ public:
     void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
-        if (it != dropdowns.end() && admits_write(it->second)) s.operations.push_back(Operation::select);
+        if (it != dropdowns.end() && it->second.writable()) s.operations.push_back(Operation::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (c.item) { if (c.admits(Operation::select)) out.push_back(Verb::select); return; }
@@ -1366,7 +1365,7 @@ public:
     void describe_operations(const UiState& ui, const Control& c, Semantics& s) const override {
         auto& numerics = UiState::Internals::numerics(ui);
         auto it = numerics.find(c.id);
-        if (it != numerics.end() && !c.read_only && admits_write(it->second)) s.operations.push_back(Operation::edit);
+        if (it != numerics.end() && !c.read_only && it->second.writable()) s.operations.push_back(Operation::edit);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         ComponentType::verbs(c, out);
