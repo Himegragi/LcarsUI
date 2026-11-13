@@ -29,10 +29,10 @@ name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
 }});
-ui.connect_mixed_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
+ui.connect_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
     model = std::get<lcars::Change<lcars::TextHandle>>(changes[0]).value;
     if (notify_source) notify_source();
-    return lcars::MixedConfirmationResult{};
+    return lcars::ConfirmationResult{};
 });
 auto changed = name.set_value(u"Station");
 auto saved = save.invoke();
@@ -105,7 +105,7 @@ auto value = note.rich_value();                                      // Query<Ri
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typing_style()` / `set_typing_style()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
 - **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
-- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_mixed_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
+- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
 - **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.

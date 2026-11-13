@@ -366,7 +366,7 @@ public:
     Result connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const;
     // Rich fields (ComponentConfig::rich) connect with the rich value type; the plain connect_* calls above answer
     // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
-    // groups take rich fields through Ui::connect_mixed_confirmation (a Change<TextHandle, RichText> per rich field).
+    // groups take rich fields through Ui::connect_confirmation (a Change<TextHandle, RichText> per rich field).
     Result connect_rich_source(Source<RichText> source) const;
     Result connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
     Result connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
@@ -626,8 +626,8 @@ using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, 
 // One change record per field of a confirmation group; a rich text field's is Change<TextHandle, RichText>.
 using FieldChange = std::variant<Change<TextHandle>, Change<CheckboxHandle>, Change<RadioGroupHandle>, Change<SliderHandle>,
                                  Change<DropdownHandle>, Change<TextHandle, RichText>>;
-struct MixedFieldError { ConfirmField field; std::u16string message; };
-struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
+struct FieldError { ConfirmField field; std::u16string message; };
+struct ConfirmationResult { Result result; std::vector<FieldError> errors; };
 // ---- Context menu. A short list of commands opened beside a component.
 struct MenuContext;
 // A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
@@ -710,8 +710,8 @@ public:
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
     Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
-    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
     // Attach the application's menu to any component. Text fields have built-in items; with
     // MenuMode::append (the default) the application's items follow them after a separator.
     // Other components have no menu until one is attached. A component carries one attachment.

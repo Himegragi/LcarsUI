@@ -167,8 +167,8 @@ public:
     // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
     // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
     struct Internals;
-    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
     const std::vector<Component>& controls() const { return controls_; }

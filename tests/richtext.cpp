@@ -358,12 +358,12 @@ void a_confirmation_group_takes_a_rich_field_in_the_mixed_form() {
     note.connect_rich_source({[note_model] { return note_model->value; }, [](std::function<void()>) { return [] {}; }});
     name.connect_source({[name_value] { return *name_value; }, [](std::function<void()>) { return [] {}; }});
     RichText got, origin; std::u16string got_name; int calls = 0;
-    check(bool(ui.connect_mixed_confirmation(button, {name, note}, [&](const std::vector<FieldChange>& changes) {
+    check(bool(ui.connect_confirmation(button, {name, note}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         got_name = std::get<Change<TextHandle>>(changes[0]).value;
         const auto& rich = std::get<Change<TextHandle, RichText>>(changes[1]);
         got = rich.value; origin = rich.origin;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     })), "A rich field joins a mixed confirmation group");
     auto& host = detail::access(ui);
     host.focus("note"); host.select("note", 0, 2);

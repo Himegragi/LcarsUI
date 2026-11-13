@@ -236,7 +236,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    ui.connect_mixed_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> MixedConfirmationResult {
+    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> ConfirmationResult {
         const auto& value=std::get<Change<TextHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextHandle, RichText>>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};

@@ -1708,8 +1708,8 @@ Result detail::UiState::configuration_access(std::string_view id, bool read_only
     if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
-Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
+Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
     OperationScope operation(this);
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalid_value, u"Invalid confirmation group"};
@@ -1738,7 +1738,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             } else changes.emplace_back(typename std::decay_t<decltype(f)>::Change{h, f.value, f.origin});
             f.submitting = true;
         }, member);
-        MixedConfirmationResult outcome;
+        ConfirmationResult outcome;
         try { outcome = submit(changes); }
         catch (...) {
             for (const auto& member : fields) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).submitting = false; }, member);
@@ -3312,9 +3312,9 @@ Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> 
 Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
     return state_->add_shortcut(chord, std::move(target), std::move(scope));
 }
-Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
-    return state_->connect_mixed_confirmation(std::move(button), std::move(fields), std::move(submit));
+Result Ui::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
+    return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }

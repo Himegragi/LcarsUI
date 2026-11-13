@@ -61,7 +61,7 @@ const Subject subjects[] = {
             field.connect_source({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
             auto confirm = ui.add_button(control(id + ".apply", u"Apply")).value.value();
-            check(bool(ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; })), "the text field is confirmed");
+            check(bool(ui.connect_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
             field.set_value(u"draft"); *model = u"newest"; source.notify();
             check(field.describe()->source_conflict, "the text field reports a conflict");
         }

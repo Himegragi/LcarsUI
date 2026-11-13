@@ -397,8 +397,8 @@ void cross_page_error_is_revealed_in_first_frame() {
         current.connect_source(source); remote.connect_source(source);
         auto tabs = ui.add_tabs({.id = "tabs"}, {
             {{"one"}, u"One", true, {current, submit}}, {{"two"}, u"Two", true, {filler, remote}}}).value.value();
-        ui.connect_mixed_confirmation(submit, {remote, current}, [=](const auto&) {
-            return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
+        ui.connect_confirmation(submit, {remote, current}, [=](const auto&) {
+            return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
         });
         auto root = layout::pinned(layout::control(tabs), layout::scroll(layout::column({layout::control(current), layout::control(submit), layout::control(filler), layout::control(remote)})));
         submit.invoke();

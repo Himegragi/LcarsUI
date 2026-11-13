@@ -492,7 +492,7 @@ void group_action_cannot_be_replaced() {
     auto button = ui.add_button({.id = "group.button"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int submitted = 0, replacement = 0;
-    check(bool(ui.connect_mixed_confirmation(button, {field}, [&](const auto&) { ++submitted; return MixedConfirmationResult{}; })), "Group connects");
+    check(bool(ui.connect_confirmation(button, {field}, [&](const auto&) { ++submitted; return ConfirmationResult{}; })), "Group connects");
     auto rebind = button.bind([&] { ++replacement; return Result{}; });
     check(rebind.status == Status::invalid_value, "Rebinding a confirmation button returns an error");
     check(bool(button.invoke()) && submitted == 1 && replacement == 0, "The original confirmation still runs");
@@ -550,7 +550,7 @@ void source_conflict_keeps_draft_until_cancelled() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     auto confirm = ui.add_button({.id = "conflict.apply"}).value.value();
-    ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
+    ui.connect_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
     field.set_value(u"draft");
     model = u"newest";
     changed();
@@ -573,11 +573,11 @@ void confirmation_submits_draft_and_origin_and_keeps_history() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     std::u16string received_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         received_origin = std::get<Change<TextHandle>>(changes.at(0)).origin;
         model = std::get<Change<TextHandle>>(changes.at(0)).value;
         changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"draft");
     check(bool(apply.invoke()) && model == u"draft" && received_origin == u"before",
@@ -595,10 +595,10 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
     auto apply = ui.add_button({.id = "reject.apply"}).value.value();
     first.connect_source({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
     second.connect_source({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
         check(changes.size() == 2 && std::get<Change<TextHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextHandle>>(changes[1]).value == u"bad two",
               "Both drafts arrive together");
-        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
     });
     first.set_value(u"bad one");
     second.set_value(u"bad two");
@@ -617,7 +617,7 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int calls = 0;
     std::u16string second_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         if (calls == 1) {
             check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
@@ -625,7 +625,7 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
         } else second_origin = std::get<Change<TextHandle>>(changes[0]).origin;
         model = std::get<Change<TextHandle>>(changes[0]).value;
         changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"sent");
     auto accepted = apply.invoke();
@@ -654,7 +654,7 @@ void source_update_during_composition_keeps_preedit() {
     auto field = ui.add_text({.id = "ime.source"}).value.value();
     auto apply = ui.add_button({.id = "ime.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
+    ui.connect_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
     field.focus();
     detail::access(ui).composition_update(u"preedit", 7);
     model = u"external";
@@ -674,9 +674,9 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     auto apply = ui.add_button({.id = "origin.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     std::u16string sent_origin;
-    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         sent_origin = std::get<Change<TextHandle>>(changes[0]).origin;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     field.set_value(u"draft");
     model = u"latest"; changed();
@@ -800,12 +800,12 @@ void mixed_confirmation_submits_one_batch() {
     box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
     int calls = 0;
-    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         name = std::get<Change<TextHandle>>(changes[0]).value;
         enabled = std::get<Change<CheckboxHandle>>(changes[1]).value;
         mode = std::get<Change<RadioGroupHandle>>(changes[2]).value;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     text.set_value(u"after"); box.toggle(); radio.select({"focus"});
     check(name == u"before" && enabled && mode == OptionValue{"normal"}, "All three edits stay drafts before apply");
@@ -822,8 +822,8 @@ void mixed_rejection_marks_each_field_and_focuses_first() {
     text.connect_source({[] { return std::u16string(u"old"); }, [](std::function<void()>) { return [] {}; }});
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const auto&) {
-        return MixedConfirmationResult{{Status::invalid_value, u"Rejected"}, {{radio, u"Radio error"}, {box, u"Box error"}, {text, u"Text error"}}};
+    ui.connect_confirmation(apply, {text, box, radio}, [&](const auto&) {
+        return ConfirmationResult{{Status::invalid_value, u"Rejected"}, {{radio, u"Radio error"}, {box, u"Box error"}, {text, u"Text error"}}};
     });
     text.set_value(u"draft"); box.toggle(); radio.select({"a"});
     check(apply.invoke().status == Status::invalid_value && text.describe()->focused,
@@ -855,7 +855,7 @@ void radio_source_conflict_can_be_resolved() {
     auto group = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
     auto apply = ui.add_button({.id = "apply"}).value.value();
     group.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
-    ui.connect_mixed_confirmation(apply, {group}, [](const auto&) { return MixedConfirmationResult{}; });
+    ui.connect_confirmation(apply, {group}, [](const auto&) { return ConfirmationResult{}; });
     group.select({"b"}); model = OptionValue{"c"}; changed();
     check(*group.draft() == OptionValue{"b"} && group.describe()->source_conflict, "A new source does not overwrite the draft and is reported");
     check(bool(group.use_latest()) && *group.draft() == OptionValue{"c"} && !group.describe()->source_conflict,
@@ -898,9 +898,9 @@ void slider_connected_draft_is_confirmed_as_a_number() {
     auto slider = ui.add_slider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
     auto apply = ui.add_button({.id = "apply.slider"}).value.value();
     slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
         model = std::get<Change<SliderHandle>>(changes[0]).value;
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     check(bool(slider.set_value(55)) && *slider.draft() == 55 && model == 40 && slider.describe()->value == u"55",
           "The numeric edit and semantic value are drafts until apply");
@@ -972,9 +972,9 @@ void slider_source_conflict_and_invalid_updates() {
         saved = ui.add_slider({.id = "volume"}, {0, 100, 5}).value.value();
         auto apply = ui.add_button({.id = "send"}).value.value();
         saved.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
-        ui.connect_mixed_confirmation(apply, {saved}, [&](const auto& changes) {
+        ui.connect_confirmation(apply, {saved}, [&](const auto& changes) {
             origin = std::get<Change<SliderHandle>>(changes[0]).origin;
-            return MixedConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
+            return ConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
         });
         saved.set_value(55); model = 70; changed();
         check(*saved.draft() == 55 && saved.describe()->source_conflict, "External updates retain a conflicting numeric draft");
@@ -996,7 +996,7 @@ void slider_group_preserves_edits_during_submission() {
     auto apply = ui.add_button({.id = "apply"}).value.value();
     slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
     int calls = 0;
-    ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
         const auto change = std::get<Change<SliderHandle>>(changes[0]);
         ++calls; submitted_origin = change.origin;
         if (calls == 1) {
@@ -1004,7 +1004,7 @@ void slider_group_preserves_edits_during_submission() {
             slider.set_value(65);
         }
         model = change.value; changed();
-        return MixedConfirmationResult{};
+        return ConfirmationResult{};
     });
     slider.set_value(55); apply.invoke();
     check(model == 55 && *slider.draft() == 65, "An edit during submission survives as a new draft");
@@ -1151,8 +1151,8 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     first.connect_source(source); second.connect_source(source);
     auto tabs = ui.add_tabs({.id = "pages"}, {
         {{"one"}, u"One", true, {first, submit}}, {{"two"}, u"Two", true, {second}}}).value.value();
-    ui.connect_mixed_confirmation(submit, {second, first}, [=](const auto&) {
-        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
+    ui.connect_confirmation(submit, {second, first}, [=](const auto&) {
+        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
     });
     check(submit.invoke().status == Status::invalid_value, "Application rejects the batch");
     check(*tabs.active() == OptionValue{"two"} && second.describe()->focused, "First invalid field's page opens and receives focus");
@@ -1228,11 +1228,11 @@ void removing_confirmation_button_releases_its_fields() {
     auto owner = ui.add_button({.id = "owner"}).value.value();
     auto capture = std::make_shared<int>(42);
     std::weak_ptr<int> released = capture;
-    check(bool(ui.connect_mixed_confirmation(owner, {field}, [capture](const auto&) { return MixedConfirmationResult{}; })), "Connect first group");
+    check(bool(ui.connect_confirmation(owner, {field}, [capture](const auto&) { return ConfirmationResult{}; })), "Connect first group");
     capture.reset();
     check(bool(owner.remove()) && released.expired(), "Removing owner releases confirmation callback");
     auto next = ui.add_button({.id = "next"}).value.value();
-    check(bool(ui.connect_mixed_confirmation(next, {field}, [](const auto&) { return MixedConfirmationResult{}; })),
+    check(bool(ui.connect_confirmation(next, {field}, [](const auto&) { return ConfirmationResult{}; })),
           "Removed group releases the field for another connection");
 }
 

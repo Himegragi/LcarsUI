@@ -124,7 +124,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     handles.count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
     handles.name.on_blur([this] { validate(); });
     ui.on_change([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
-    ui.connect_mixed_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
+    ui.connect_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
     bind_action(handles.normal, [this] { set_mode(Mode::normal); return Result{}; });
     bind_action(handles.read_only, [this] { set_mode(Mode::read_only); return Result{}; });
     bind_action(handles.disabled, [this] { set_mode(Mode::disabled); return Result{}; });
@@ -356,14 +356,14 @@ bool Form::validate() {
     handles.name.set_error(valid ? u"" : required_name);
     return valid;
 }
-MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
+ConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
     if (auto observer = std::exchange(next_apply_observer_, {})) observer();
     const auto& name = std::get<Change<TextHandle>>(changes[0]);
     const auto& notices = std::get<Change<CheckboxHandle>>(changes[1]);
     const auto& mode = std::get<Change<RadioGroupHandle>>(changes[2]);
     const auto& region = std::get<Change<DropdownHandle>>(changes[3]);
     const auto& volume = std::get<Change<SliderHandle>>(changes[4]);
-    std::vector<MixedFieldError> errors;
+    std::vector<FieldError> errors;
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
     if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
