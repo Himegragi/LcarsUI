@@ -65,6 +65,7 @@ public:
     }
     explicit UiState(std::vector<Component> controls);
     ~UiState();
+    // Called only by Ui::add_x (through add_component in core.cpp), which builds `control` with the matching kind (#96).
     TextHandle add_text(Component control);
     ButtonHandle add_button(Component control);
     LabelHandle add_label(Component control);
