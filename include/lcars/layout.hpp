@@ -107,17 +107,17 @@ struct ScrollState {
 namespace layout {
 struct Node {
     enum class Kind { component, column, row, grid, scroll, stack, pinned, modal } kind = Kind::column;
-    ComponentHandle component;   // control: non-owning typed reference
+    ComponentHandle component;   // component: non-owning typed reference
     DialogHandle dialog;
     std::vector<DialogHandle> dialogs;
-    int text_size = 0;   // control: label size override in DIP, 0 = appearance default
+    int text_size = 0;   // component: label size override in DIP, 0 = appearance default
     int gap = 0;         // DIP between children
     int padding = 0;     // DIP around children
     int min_column = 0;  // grid: as many columns as fit at this width, at least one
     ScrollState* scroll_state = nullptr; // bounded nested viewport: caller keeps this state alive
     int scroll_height = 0; // viewport height in DIP; 0 fills the available space
     bool scrollable_text = false; // a single label may receive focus when it overflows
-    int vertical_height = 0;      // control: height in DIP of a vertical-writing label; 0 = columns never wrap
+    int vertical_height = 0;      // component: height in DIP of a vertical-writing label; 0 = columns never wrap
     std::vector<Node> children;
 };
 Node component(ComponentHandle component, int text_size = 0);
@@ -263,7 +263,7 @@ struct Frame {
     const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here
 };
-// reveal: when not empty, scroll so that control is fully visible (top-aligned if taller).
+// reveal: when not empty, scroll so that the component with this id is fully visible (top-aligned if taller).
 // Updates each focused field's display offset in ui so its caret stays visible.
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal = {});

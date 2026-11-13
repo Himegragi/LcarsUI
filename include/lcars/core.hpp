@@ -14,7 +14,7 @@
 #include <variant>
 
 namespace lcars {
-// Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
+// Labels may span lines and describe another component; an overflowing scroll_text label is focusable.
 enum class ComponentKind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class LabelKind { plain, name, description, error };
@@ -58,13 +58,13 @@ enum class WritingMode { horizontal, vertical };
 inline constexpr int max_vertical_digits = 3;
 struct ComponentConfig {
     std::string id;
-    std::u16string label = {};  // fallback accessible name when no name label targets this control
+    std::u16string label = {};  // fallback accessible name when no name label targets this component
     std::string page = {};
     std::u16string value = {};  // text field content, or label display text
     bool enabled = true;
     bool read_only = false;
     bool checked = false;
-    std::string target = {};         // labels: the control this text names, describes or reports errors for
+    std::string target = {};         // labels: the component this text names, describes or reports errors for
     LabelKind label_kind = LabelKind::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
     // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
@@ -80,7 +80,7 @@ struct ComponentConfig {
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
     WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
     int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
-    // Multi-line text fields only (invalid_value on any other control); fixed when the field is created.
+    // Multi-line text fields only (invalid_value on any other component); fixed when the field is created.
     // A rich field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
     bool rich = false;
 };
@@ -127,7 +127,7 @@ struct NamedColor {
     Color light, dark;
     bool operator==(const NamedColor&) const = default;
 };
-// Public operations a control currently admits; restricted ones are omitted, not just flagged.
+// Public operations a component currently admits; restricted ones are omitted, not just flagged.
 enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 // One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
@@ -158,7 +158,7 @@ struct ComponentSnapshot {
     std::optional<OptionValue> candidate;
     std::string target;
     LabelKind label_kind = LabelKind::plain;
-    std::vector<std::string> labels;  // labels whose target is this control, in declaration order
+    std::vector<std::string> labels;  // labels whose target is this component, in declaration order
     std::vector<Operation> operations;
     WritingMode writing_mode = WritingMode::horizontal;  // labels only
     int vertical_digits = max_vertical_digits;           // labels only
