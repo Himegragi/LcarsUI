@@ -882,9 +882,9 @@ void ps08_large_text_wraps_without_overlap() {
 void long_field_label_and_error_keep_their_association() {
     Ui ui;
     const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
-    auto label = ui.add_label({.id = "label", .value = title, .target = "field", .role = TextRole::name}).value.value();
+    auto label = ui.add_label({.id = "label", .value = title, .target = "field", .label_kind = LabelKind::name}).value.value();
     auto field = ui.add_text({.id = "field", .value = u"value"}).value.value();
-    auto error = ui.add_label({.id = "error", .target = "field", .role = TextRole::error}).value.value();
+    auto error = ui.add_label({.id = "error", .target = "field", .label_kind = LabelKind::error}).value.value();
     auto next = ui.add_button({.id = "next", .label = u"Next"}).value.value();
     auto root = layout::column({layout::control(field), layout::control(next)}, 12);
     test::FakeMeasure measure; ScrollState scroll;
@@ -1727,9 +1727,9 @@ struct ClippedPaintProbe : detail::ComponentPaint {
                       const Appearance& look, float scale, TextMeasure& metrics, const Semantics& target)
         : ComponentPaint(state, item, owner, look, scale, true), measure(metrics), current(item.clip), associated(nullptr) {
         if (!target.target.empty()) {
-            if (target.role == TextRole::name) associated = &item.label_lines;
-            else if (target.role == TextRole::description) associated = &item.description_lines;
-            else if (target.role == TextRole::error) associated = &item.error_lines;
+            if (target.label_kind == LabelKind::name) associated = &item.label_lines;
+            else if (target.label_kind == LabelKind::description) associated = &item.description_lines;
+            else if (target.label_kind == LabelKind::error) associated = &item.error_lines;
         }
     }
     void mark(Rect r) { auto v = intersect(r, current); visible = visible || (v.w > 0 && v.h > 0); }
@@ -2834,9 +2834,9 @@ void x04_name_conflict_is_drawn_at_field() {
         }
         auto semantic = h.name.describe();
         auto cue = appearance->component_presentation().conflict_suffix;
-        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
-            h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
-            h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error && semantic->labels.size() == 3;
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error && semantic->labels.size() == 3;
         check(field && semantic->visible && semantic->enabled && !semantic->read_only && !semantic->invalid && associated &&
               semantic->value == u"Draft" && caption.find(semantic->name) != std::u16string::npos &&
               description.find(semantic->description) != std::u16string::npos && !cue.empty() && description.find(cue) != std::u16string::npos,
@@ -2861,9 +2861,9 @@ void x04_name_read_only_size_scale() {
         }
         auto suffix = appearance->component_presentation().read_only_suffix;
         auto& h = form.handles;
-        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
-            h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
-            h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error && semantic->labels.size() == 3;
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error && semantic->labels.size() == 3;
         check(field && semantic->visible && semantic->enabled && semantic->read_only && !semantic->invalid && !semantic->source_conflict && associated &&
               semantic->value == *name.draft() && !suffix.empty() && description.find(semantic->description) != std::u16string::npos &&
               caption.find(semantic->name) != std::u16string::npos && caption.find(suffix) != std::u16string::npos &&

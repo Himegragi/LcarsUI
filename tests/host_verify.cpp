@@ -2746,9 +2746,9 @@ void x04_clipped_matrix(const Appearance& appearance, Report& report) {
                     auto area = intersect(*geometry, owner->clip);
                     const std::vector<Line>* associated = nullptr;
                     if (!semantic->target.empty()) {
-                        if (semantic->role == TextRole::name) associated = &owner->label_lines;
-                        else if (semantic->role == TextRole::description) associated = &owner->description_lines;
-                        else if (semantic->role == TextRole::error) associated = &owner->error_lines;
+                        if (semantic->label_kind == LabelKind::name) associated = &owner->label_lines;
+                        else if (semantic->label_kind == LabelKind::description) associated = &owner->description_lines;
+                        else if (semantic->label_kind == LabelKind::error) associated = &owner->error_lines;
                     }
                     bool visible_paint = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         if (draw.owner != owner->id || !draw.visible) return false;
@@ -2961,7 +2961,7 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                 }
                 if (!semantic->visible && semantic->kind == ComponentKind::label && semantic->value.empty()) {
                     compared = compared && (semantic->target.empty() ? !visible_owner_ink :
-                        semantic->role == TextRole::error && state.describe(semantic->target)->error.empty());
+                        semantic->label_kind == LabelKind::error && state.describe(semantic->target)->error.empty());
                 } else {
                     compared = compared && item && semantic->visible;
                     for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
@@ -3156,9 +3156,9 @@ void x04_name_read_only_matrix(const Appearance& appearance, Report& report) {
             bool restricted = name.set_value(u"rejected").status == Status::read_only &&
                 std::find(semantic->operations.begin(), semantic->operations.end(), Operation::edit) == semantic->operations.end();
             auto& h = f.form.handles;
-            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
-                h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
-                h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error &&
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error &&
                 semantic->labels.size() == 3 && !semantic->invalid && !semantic->source_conflict;
             bool painted = associations && !suffix.empty() && ink.find(semantic->name) != std::u16string::npos &&
                 ink.find(semantic->value) != std::u16string::npos && ink.find(semantic->description) != std::u16string::npos &&
@@ -3185,9 +3185,9 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
             for (const auto& event : f.host.paint_observations())
                 if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
             const auto& cue = appearance.component_presentation().conflict_suffix;
-            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->role == TextRole::name &&
-                h.name_help.describe()->target == semantic->id && h.name_help.describe()->role == TextRole::description &&
-                h.name_error.describe()->target == semantic->id && h.name_error.describe()->role == TextRole::error &&
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error &&
                 semantic->labels.size() == 3 && !semantic->invalid;
             bool field_painted = semantic->visible && semantic->enabled && !semantic->read_only && semantic->source_conflict && !cue.empty() && associations &&
                 ink.find(semantic->name) != std::u16string::npos && ink.find(semantic->value) != std::u16string::npos &&

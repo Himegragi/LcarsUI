@@ -29,10 +29,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav = ui.add_navigation_list({.id="app.nav", .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
     title_ = ui.add_label({.id="app.page_title"}).value.value();
-    name_label_ = ui.add_label({.id="general.name.label",.value=u"顯示名稱",.target="general.name",.role=TextRole::name}).value.value();
+    name_label_ = ui.add_label({.id="general.name.label",.value=u"顯示名稱",.target="general.name",.label_kind=LabelKind::name}).value.value();
     name = ui.add_text({.id="general.name",.value=name_value_,.max_length=64}).value.value();
-    name_help_ = ui.add_label({.id="general.name.help",.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.role=TextRole::description}).value.value();
-    name_error_ = ui.add_label({.id="general.name.error",.target="general.name",.role=TextRole::error}).value.value();
+    name_help_ = ui.add_label({.id="general.name.help",.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.label_kind=LabelKind::description}).value.value();
+    name_error_ = ui.add_label({.id="general.name.error",.target="general.name",.label_kind=LabelKind::error}).value.value();
     notices = ui.add_checkbox({.id="general.notices",.label=u"啟用提示"}).value.value();
     mode = ui.add_radio_group({.id="general.mode",.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
     region = ui.add_dropdown({.id="general.region",.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
@@ -187,10 +187,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
     connect_slider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
     item_title_ = ui.add_label({.id="items.dialog.title"}).value.value();
-    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
+    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.value=u"\u540d\u7a31",.target="items.dialog.name",.label_kind=LabelKind::name}).value.value();
     item_name = ui.add_text({.id="items.dialog.name",.max_length=64}).value.value();
-    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.target="items.dialog.name",.role=TextRole::error}).value.value();
-    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
+    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.target="items.dialog.name",.label_kind=LabelKind::error}).value.value();
+    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.label_kind=LabelKind::name}).value.value();
     item_note_bold = ui.add_button({.id="items.dialog.note.bold",.label=u"粗體"}).value.value();
     item_note_italic = ui.add_button({.id="items.dialog.note.italic",.label=u"斜體"}).value.value();
     item_note_underline = ui.add_button({.id="items.dialog.note.underline",.label=u"底線"}).value.value();

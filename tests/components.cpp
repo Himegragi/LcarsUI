@@ -22,10 +22,10 @@ void populate(Ui& ui, std::vector<detail::Component> controls) {
 }
 std::vector<detail::Component> name_form() {
     return {
-        {ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .role = TextRole::name}},
+        {ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
         {ComponentKind::text, {.id = "name", .value = u"測試使用者"}},
-        {ComponentKind::label, {.id = "name.help", .value = u"單行文字", .target = "name", .role = TextRole::description}},
-        {ComponentKind::label, {.id = "name.error", .target = "name", .role = TextRole::error}},
+        {ComponentKind::label, {.id = "name.help", .value = u"單行文字", .target = "name", .label_kind = LabelKind::description}},
+        {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
         {ComponentKind::label, {.id = "note", .value = u"第一行\n第二行"}},
     };
 }
@@ -38,7 +38,7 @@ void labels_associate_by_target_id() {
     check(field->labels == std::vector<Id>{"name.label", "name.help", "name.error"}, "Field lists every associated label");
     check(!field->invalid && field->error.empty(), "No error initially");
     auto error = detail::access(ui).describe("name.error");
-    check(error && error->target == "name" && error->role == TextRole::error, "Error label points at its field");
+    check(error && error->target == "name" && error->label_kind == LabelKind::error, "Error label points at its field");
     check(detail::access(ui).describe("note")->value == u"第一行\n第二行", "Plain labels keep multi-line display text");
 }
 

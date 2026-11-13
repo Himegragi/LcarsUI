@@ -2114,7 +2114,7 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return std::nullopt;
     Semantics s;
-    s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
+    s.id = control->id; s.kind = control->kind; s.target = control->target; s.label_kind = control->label_kind;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
         s.visible = it->second && available(id, true).status != Status::hidden;
@@ -2131,8 +2131,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     for (const auto& other : controls_) {
         if (other.target != id) continue;
         s.labels.push_back(other.id);
-        if (other.role == TextRole::name) s.name = text(other.id);
-        else if (other.role == TextRole::description) s.description = text(other.id);
+        if (other.label_kind == LabelKind::name) s.name = text(other.id);
+        else if (other.label_kind == LabelKind::description) s.description = text(other.id);
     }
     if (auto tip = tooltips_.find(id); tip != tooltips_.end()) {
         if (!s.description.empty()) s.description += u"\n";
@@ -3359,9 +3359,9 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         for (const auto& control : controls_) {
             if (control.target != p.id) continue;
             const std::vector<Line>* lines = nullptr;
-            if (control.role == TextRole::name) lines = &p.label_lines;
-            else if (control.role == TextRole::description) lines = &p.description_lines;
-            else if (control.role == TextRole::error) lines = &p.error_lines;
+            if (control.label_kind == LabelKind::name) lines = &p.label_lines;
+            else if (control.label_kind == LabelKind::description) lines = &p.description_lines;
+            else if (control.label_kind == LabelKind::error) lines = &p.error_lines;
             if (!lines) continue;
             for (const auto& line : *lines) {
                 auto r = intersect(line.bounds, p.clip);
@@ -3445,7 +3445,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
-    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
+    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {

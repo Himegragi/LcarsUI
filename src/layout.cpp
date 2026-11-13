@@ -910,9 +910,9 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         for (const auto& control : a.ui.controls()) {
             if (control.target != p.id) continue;
             const std::vector<Line>* lines = nullptr;
-            if (control.role == TextRole::name) lines = &p.label_lines;
-            else if (control.role == TextRole::description) lines = &p.description_lines;
-            else if (control.role == TextRole::error) lines = &p.error_lines;
+            if (control.label_kind == LabelKind::name) lines = &p.label_lines;
+            else if (control.label_kind == LabelKind::description) lines = &p.description_lines;
+            else if (control.label_kind == LabelKind::error) lines = &p.error_lines;
             if (lines) for (const auto& line : *lines)
                 visibility[control.id] = visibility[control.id] || visible(line.bounds, p.clip);
         }

@@ -50,10 +50,10 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     handles.error = ui.add_button({.id = i.error, .label = u"名稱錯誤"}).value.value();
     handles.long_text = ui.add_button({.id = i.long_text, .label = u"長說明"}).value.value();
     handles.reset = ui.add_button({.id = i.reset, .label = u"重設"}).value.value();
-    handles.name_label = ui.add_label({.id = i.name_label, .value = u"顯示名稱", .target = i.name, .role = TextRole::name}).value.value();
+    handles.name_label = ui.add_label({.id = i.name_label, .value = u"顯示名稱", .target = i.name, .label_kind = LabelKind::name}).value.value();
     handles.name = ui.add_text({.id = i.name, .value = initial_name}).value.value();
-    handles.name_help = ui.add_label({.id = i.name_help, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .role = TextRole::description}).value.value();
-    handles.name_error = ui.add_label({.id = i.name_error, .target = i.name, .role = TextRole::error}).value.value();
+    handles.name_help = ui.add_label({.id = i.name_help, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .label_kind = LabelKind::description}).value.value();
+    handles.name_error = ui.add_label({.id = i.name_error, .target = i.name, .label_kind = LabelKind::error}).value.value();
     handles.notices = ui.add_checkbox({.id = i.notices, .label = u"\u555f\u7528\u63d0\u793a"}).value.value();
     handles.mode = ui.add_radio_group({.id = i.mode, .label = u"\u6a21\u5f0f"},
         {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}}).value.value();

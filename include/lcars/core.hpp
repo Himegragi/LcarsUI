@@ -17,7 +17,7 @@ namespace lcars {
 // Labels may span lines and describe another control; an overflowing scroll_text label is focusable.
 enum class ComponentKind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
-enum class TextRole { plain, name, description, error };
+enum class LabelKind { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
 struct Result {
     Status status = Status::ok;
@@ -65,7 +65,7 @@ struct ComponentConfig {
     bool read_only = false;
     bool checked = false;
     std::string target = {};         // labels: the control this text names, describes or reports errors for
-    TextRole role = TextRole::plain;
+    LabelKind label_kind = LabelKind::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
     // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
     // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
@@ -156,7 +156,7 @@ struct Semantics {
     bool expanded = false;
     std::optional<OptionValue> candidate;
     std::string target;
-    TextRole role = TextRole::plain;
+    LabelKind label_kind = LabelKind::plain;
     std::vector<std::string> labels;  // labels whose target is this control, in declaration order
     std::vector<Operation> operations;
     WritingMode writing_mode = WritingMode::horizontal;  // labels only

@@ -302,14 +302,14 @@ inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
     else if (entry.page == "v03") filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
     else filler = form.handles.v04_title;
     if (!form.set_clip_padding(filler, std::move(padding))) return false;
-    if (target->kind == lcars::ComponentKind::label && target->role == lcars::TextRole::error && !target->target.empty())
+    if (target->kind == lcars::ComponentKind::label && target->label_kind == lcars::LabelKind::error && !target->target.empty())
         return bool(form.handles.name.set_error(u"X04 clipped error"));
     return true;
 }
 inline bool restore_clipped(edit_form::Form& form, const Entry& entry) {
     auto target = describe(entry.handle);
     form.clear_clip_padding();
-    if (target && target->kind == lcars::ComponentKind::label && target->role == lcars::TextRole::error && !target->target.empty())
+    if (target && target->kind == lcars::ComponentKind::label && target->label_kind == lcars::LabelKind::error && !target->target.empty())
         if (!form.handles.name.set_error(u"")) return false;
     form.scroll.offset = 0;
     return bool(form.handles.tabs.activate({"v01"}));
@@ -323,9 +323,9 @@ inline std::optional<lcars::Rect> clipped_rect(const lcars::Frame& frame, const 
     auto* owner = clipped_owner(frame, s); if (!owner) return std::nullopt;
     if (s.target.empty()) return owner->bounds;
     const std::vector<lcars::Line>* lines = nullptr;
-    if (s.role == lcars::TextRole::name) lines = &owner->label_lines;
-    else if (s.role == lcars::TextRole::description) lines = &owner->description_lines;
-    else if (s.role == lcars::TextRole::error) lines = &owner->error_lines;
+    if (s.label_kind == lcars::LabelKind::name) lines = &owner->label_lines;
+    else if (s.label_kind == lcars::LabelKind::description) lines = &owner->description_lines;
+    else if (s.label_kind == lcars::LabelKind::error) lines = &owner->error_lines;
     if (!lines || lines->empty()) return std::nullopt;
     auto r = lines->front().bounds;
     for (const auto& line : *lines) {
@@ -349,7 +349,7 @@ inline std::vector<int> clipped_offsets(const lcars::Frame& frame, lcars::Rect t
 inline const std::u16string error_message = u"X04 field error";
 inline bool error_supported(const lcars::Semantics& s) {
     using namespace lcars;
-    return (s.kind == ComponentKind::label && s.role == TextRole::error && !s.target.empty()) ||
+    return (s.kind == ComponentKind::label && s.label_kind == LabelKind::error && !s.target.empty()) ||
         s.kind == ComponentKind::text || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group ||
         s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider || s.kind == ComponentKind::tabs;
 }
@@ -371,12 +371,12 @@ inline bool error_semantics(edit_form::Form& form, const lcars::Semantics& s) {
     if (s.kind == ComponentKind::tabs) return !s.options.empty() && s.options[0].invalid;
     if (s.kind == ComponentKind::label) {
         auto target = form.handles.name.describe();
-        return s.role == TextRole::error && s.value == error_message && s.target == target->id && target->invalid &&
+        return s.label_kind == LabelKind::error && s.value == error_message && s.target == target->id && target->invalid &&
             target->error == error_message && std::find(target->labels.begin(), target->labels.end(), s.id) != target->labels.end();
     }
     if (s.kind == ComponentKind::text && s.id == form.handles.name.describe()->id) {
         auto label = form.handles.name_error.describe();
-        return s.invalid && s.error == error_message && label->role == TextRole::error && label->target == s.id &&
+        return s.invalid && s.error == error_message && label->label_kind == LabelKind::error && label->target == s.id &&
             label->value == s.error && std::find(s.labels.begin(), s.labels.end(), label->id) != s.labels.end();
     }
     return s.invalid && s.error == error_message;

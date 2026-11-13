@@ -275,7 +275,7 @@ class Label final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
-        if (c.role == TextRole::error) {
+        if (c.label_kind == LabelKind::error) {
             auto& errors = UiState::Internals::errors(ui);
             auto it = errors.find(c.target);
             return it == errors.end() ? std::u16string{} : it->second;
@@ -388,7 +388,7 @@ public:
                 }
             }
         };
-        if (c.semantics.role == TextRole::error) marked(c, PaintRole::error_text, paint); else paint();
+        if (c.semantics.label_kind == LabelKind::error) marked(c, PaintRole::error_text, paint); else paint();
     }
     void paint(ComponentPaint& c) const override {
         if (c.focus_visible) {  // a scrolling text: the ring frames its viewport, the text slides under the band, never over it
@@ -396,7 +396,7 @@ public:
             c.clip(shape.inner);
         }
         if (c.placement.vertical) paint_vertical(c, c.palette().text);
-        else if (c.semantics.role == TextRole::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.palette().text);
+        else if (c.semantics.label_kind == LabelKind::error) paint_errors(c, c.placement.lines, c.placement.text_size, c.palette().text);
         else paint_lines(c, c.placement.lines, c.placement.text_size, c.palette().text);
     }
     bool can_focus() const override { return false; }

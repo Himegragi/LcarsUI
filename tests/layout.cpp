@@ -140,9 +140,9 @@ void command_kinds_are_placed_like_buttons() {
 }
 
 std::vector<detail::Component> field_controls() {
-    return {{ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .role = TextRole::name}},
+    return {{ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
             {ComponentKind::text, {.id = "name", .value = u"測試使用者"}},
-            {ComponentKind::label, {.id = "name.error", .target = "name", .role = TextRole::error}},
+            {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
             {ComponentKind::button, {.id = "apply", .label = u"套用"}}};
 }
 const Appearance* appearances[] = {&web_appearance(), &material_appearance()};
