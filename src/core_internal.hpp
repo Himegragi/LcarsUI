@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 namespace lcars {
@@ -33,6 +34,20 @@ public:
     private:
         UiState* state_;
     };
+    // The not_found texts of a handle whose lifetime has ended. Each operation keeps the text it has always given (#94
+    // decision 7): component handles, context menus and most others say component_gone, dialogs and tooltips ui_gone.
+    static constexpr std::u16string_view component_gone = u"Component no longer exists";
+    static constexpr std::u16string_view ui_gone = u"UI no longer exists";
+    // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
+    // handle whose lifetime has ended (its Ui is gone, its button removed, a tooltip's source removed) runs nothing and
+    // answers not_found with `gone`. R is the operation's own return type (Result or a Query).
+    template <class Handle, class Body, class R = std::invoke_result_t<Body&>>
+    static R operate(const Handle& handle, Body&& body, std::u16string_view gone = component_gone) {
+        const bool alive = !handle.lifetime_.expired();
+        OperationScope operation(alive ? handle.ui_ : nullptr);
+        if (!alive) return R{Status::not_found, std::u16string(gone)};
+        return body();
+    }
     explicit UiState(std::vector<Control> controls);
     ~UiState();
     TextHandle add_text(Control control);
@@ -644,5 +659,9 @@ TextHit placement_text_hit(const Frame& frame, std::string_view id, int x, int y
 unsigned placement_text_cell(const Frame& frame, std::string_view id, int x, int y);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
+// What a typed handle operation is written as: `return detail::operate(*this, [&]() -> Result { ... });`.
+template <class Handle, class Body> auto operate(const Handle& handle, Body&& body, std::u16string_view gone = UiState::component_gone) {
+    return UiState::operate(handle, std::forward<Body>(body), gone);
+}
 }
 }

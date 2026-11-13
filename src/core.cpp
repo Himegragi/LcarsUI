@@ -302,23 +302,23 @@ ProgressHandle detail::UiState::add_progress(Control control) {
     return ProgressHandle(this, lifetime_, std::move(id));
 }
 Result ProgressHandle::connect_source(NumericSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
-    auto& field = ui_->progresses_.at(id_);
-    if (field.disconnect) field.disconnect();
-    field.source = std::move(source);
-    auto weak = lifetime_; auto state = ui_;
-    field.disconnect = field.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
-    if (ui_->invalidate_) ui_->invalidate_();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
+        auto& field = ui_->progresses_.at(id_);
+        if (field.disconnect) field.disconnect();
+        field.source = std::move(source);
+        auto weak = lifetime_; auto state = ui_;
+        field.disconnect = field.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    });
 }
 Query<Semantics> ProgressHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
@@ -360,39 +360,35 @@ CheckboxHandle detail::UiState::add_checkbox(Control control) {
     return CheckboxHandle(this, lifetime_, std::move(id));
 }
 Result CheckboxHandle::toggle() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->toggle_checkbox(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->toggle_checkbox(id_); });
 }
 Result CheckboxHandle::use_latest() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->bools_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
-    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->bools_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+        f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    });
 }
 Result CheckboxHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result CheckboxHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->enable(id_, enabled); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->enable(id_, enabled); return {};
+    });
 }
 Result CheckboxHandle::connect_source(BoolSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
-    auto& field = ui_->bools_.at(id_);
-    if (field.disconnect) field.disconnect();
-    field.source = std::move(source); field.connected = false;
-    auto weak = lifetime_; auto state = ui_; auto id = id_;
-    field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); });
-    ui_->bool_source_changed(id_); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
+        auto& field = ui_->bools_.at(id_);
+        if (field.disconnect) field.disconnect();
+        field.source = std::move(source); field.connected = false;
+        auto weak = lifetime_; auto state = ui_; auto id = id_;
+        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); });
+        ui_->bool_source_changed(id_); return {};
+    });
 }
 void detail::UiState::bool_source_changed(const Id& id) {
     OperationScope operation(this);
@@ -404,36 +400,36 @@ void detail::UiState::bool_source_changed(const Id& id) {
     if (invalidate_) invalidate_();
 }
 Result CheckboxHandle::connect_immediate(std::function<Result(const BoolChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& field = ui_->bools_.at(id_);
-    if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    field.immediate = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& field = ui_->bools_.at(id_);
+        if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        field.immediate = std::move(write); return {};
+    });
 }
 Result CheckboxHandle::connect_confirmed(std::function<Result(const BoolChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->bools_.at(id_);
-    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.confirmed = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->bools_.at(id_);
+        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.confirmed = std::move(write); return {};
+    });
 }
 Result CheckboxHandle::confirm() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->bools_.at(id_);
-    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-    BoolChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-    Result result;
-    try { result = f.confirmed(change); }
-    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false; ui_->invoking_ = false;
-    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-    auto notification = ui_->notify(); return notification ? result : notification;
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->bools_.at(id_);
+        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+        BoolChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+        Result result;
+        try { result = f.confirmed(change); }
+        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.submitting = false; ui_->invoking_ = false;
+        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+        auto notification = ui_->notify(); return notification ? result : notification;
+    });
 }
 Result detail::UiState::toggle_checkbox(const Id& id) {
     OperationScope operation(this);
@@ -454,15 +450,16 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     auto notification = notify(); return notification ? result : notification;
 }
 Query<Semantics> CheckboxHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<bool> CheckboxHandle::draft() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->bools_.at(id_).value};
+    return detail::operate(*this, [&]() -> Query<bool> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->bools_.at(id_).value};
+    });
 }
 RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<RadioOption> options) {
     OperationScope operation(this);
@@ -486,134 +483,136 @@ ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> i
     return ListHandle(this, lifetime_, std::move(id));
 }
 Result ListHandle::connect_source(OptionSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-    auto& f = ui_->lists_.at(id_); if (f.disconnect) f.disconnect();
-    f.source = std::move(source); auto weak = lifetime_; auto* state = ui_;
-    f.disconnect = f.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+        auto& f = ui_->lists_.at(id_); if (f.disconnect) f.disconnect();
+        f.source = std::move(source); auto weak = lifetime_; auto* state = ui_;
+        f.disconnect = f.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+        return {};
+    });
 }
 Result ListHandle::connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->lists_.at(id_); if (!f.source.read || !write) return {Status::invalid_value, u"A source and write are required"};
-    f.immediate = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->lists_.at(id_); if (!f.source.read || !write) return {Status::invalid_value, u"A source and write are required"};
+        f.immediate = std::move(write); return {};
+    });
 }
 Result ListHandle::select(OptionValue value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available_option(id_, value); !r) return r;
-    auto& f = ui_->lists_.at(id_);
-    auto item = std::find_if(f.items.begin(), f.items.end(), [&](const auto& row) { return row.value == value; });
-    if (item == f.items.end()) return ui_->find(id_)->read_only ? Result{Status::read_only, u"List is read only"} : Result{Status::invalid_value, u"Invalid list item"};
-    if (!item->enabled) return {Status::disabled, u"List item is disabled"};
-    if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
-    if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
-    if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
-    if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
-    f.writing = true; Result r;
-    try { r = f.immediate(value); }
-    catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.writing = false;
-    if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available_option(id_, value); !r) return r;
+        auto& f = ui_->lists_.at(id_);
+        auto item = std::find_if(f.items.begin(), f.items.end(), [&](const auto& row) { return row.value == value; });
+        if (item == f.items.end()) return ui_->find(id_)->read_only ? Result{Status::read_only, u"List is read only"} : Result{Status::invalid_value, u"Invalid list item"};
+        if (!item->enabled) return {Status::disabled, u"List item is disabled"};
+        if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
+        if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
+        if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
+        if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
+        f.writing = true; Result r;
+        try { r = f.immediate(value); }
+        catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.writing = false;
+        if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
+    });
 }
 Result ListHandle::focus(OptionValue value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, {}};
-    if (auto result = ui_->configuration_access(id_, true); !result) return result;
-    auto& list = ui_->lists_.at(id_);
-    auto item = std::find_if(list.items.begin(), list.items.end(), [&](const auto& row) { return row.value == value; });
-    if (item == list.items.end()) return {Status::not_found, {}};
-    if (auto result = ui_->available_option(id_, value); !result) return result;
-    if (!item->enabled) return {Status::disabled, {}};
-    if (auto result = ui_->focus(id_); !result) return result;
-    list.cursor = std::move(value);
-    if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
-    if (ui_->invalidate_) ui_->invalidate_();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_, true); !result) return result;
+        auto& list = ui_->lists_.at(id_);
+        auto item = std::find_if(list.items.begin(), list.items.end(), [&](const auto& row) { return row.value == value; });
+        if (item == list.items.end()) return {Status::not_found, {}};
+        if (auto result = ui_->available_option(id_, value); !result) return result;
+        if (!item->enabled) return {Status::disabled, {}};
+        if (auto result = ui_->focus(id_); !result) return result;
+        list.cursor = std::move(value);
+        if (ui_->reveal_requested_) ui_->reveal_requested_(id_);
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    }, u"");
 }
 Result ListHandle::set_items(std::vector<RadioOption> items) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    std::set<std::string> ids;
-    for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) return {Status::invalid_value, u"Invalid list identity"};
-    if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
-    auto& f = ui_->lists_.at(id_);
-    if (f.writing) return {Status::busy, u"Operation is already executing"};
-    auto exists = [&](const OptionValue& value) {
-        return std::any_of(items.begin(), items.end(), [&](const auto& item) { return item.enabled && item.value == value; });
-    };
-    auto selected = f.source.read ? f.source.read() : std::optional<OptionValue>{};
-    if (selected && !exists(*selected)) {
-        if (!f.immediate) return {Status::invalid_value, u"Cannot clear selection without a write connection"};
-        f.writing = true; Result result;
-        try { result = f.immediate(std::nullopt); }
-        catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-        f.writing = false; if (!result) return result;
-    }
-    if (f.cursor && !exists(*f.cursor)) {
-        auto old = std::find_if(f.items.begin(), f.items.end(), [&](const auto& item) { return item.value == *f.cursor; });
-        std::optional<OptionValue> replacement;
-        if (old != f.items.end()) {
-            for (auto it = old + 1; it != f.items.end(); ++it) if (exists(it->value)) { replacement = it->value; break; }
-            if (!replacement) for (auto it = old; it != f.items.begin();) { --it; if (exists(it->value)) { replacement = it->value; break; } }
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        std::set<std::string> ids;
+        for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) return {Status::invalid_value, u"Invalid list identity"};
+        if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
+        auto& f = ui_->lists_.at(id_);
+        if (f.writing) return {Status::busy, u"Operation is already executing"};
+        auto exists = [&](const OptionValue& value) {
+            return std::any_of(items.begin(), items.end(), [&](const auto& item) { return item.enabled && item.value == value; });
+        };
+        auto selected = f.source.read ? f.source.read() : std::optional<OptionValue>{};
+        if (selected && !exists(*selected)) {
+            if (!f.immediate) return {Status::invalid_value, u"Cannot clear selection without a write connection"};
+            f.writing = true; Result result;
+            try { result = f.immediate(std::nullopt); }
+            catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+            f.writing = false; if (!result) return result;
         }
-        f.cursor = replacement;
-    }
-    f.items = std::move(items); if (ui_->invalidate_) ui_->invalidate_(); return {};
+        if (f.cursor && !exists(*f.cursor)) {
+            auto old = std::find_if(f.items.begin(), f.items.end(), [&](const auto& item) { return item.value == *f.cursor; });
+            std::optional<OptionValue> replacement;
+            if (old != f.items.end()) {
+                for (auto it = old + 1; it != f.items.end(); ++it) if (exists(it->value)) { replacement = it->value; break; }
+                if (!replacement) for (auto it = old; it != f.items.begin();) { --it; if (exists(it->value)) { replacement = it->value; break; } }
+            }
+            f.cursor = replacement;
+        }
+        f.items = std::move(items); if (ui_->invalidate_) ui_->invalidate_(); return {};
+    });
 }
 Result ListHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_); if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; return ui_->focus(id_); }
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
+}
 Result ListHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_); if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; if (auto r = ui_->configuration_access(id_); !r) return r; ui_->enable(id_, enabled); return {}; }
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r; ui_->enable(id_, enabled); return {};
+    });
+}
 Query<Semantics> ListHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Result RadioGroupHandle::use_latest() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->radios_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
-    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->radios_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+        f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    });
 }
 Result RadioGroupHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result RadioGroupHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->enable(id_, enabled); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->enable(id_, enabled); return {};
+    });
 }
 Result RadioGroupHandle::enable_option(OptionValue value, bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& options = ui_->radios_.at(id_).options;
-    auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value == value; });
-    if (it == options.end()) return {Status::invalid_value, u"Unknown option"};
-    it->enabled = enabled; if (ui_->invalidate_) ui_->invalidate_(); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& options = ui_->radios_.at(id_).options;
+        auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value == value; });
+        if (it == options.end()) return {Status::invalid_value, u"Unknown option"};
+        it->enabled = enabled; if (ui_->invalidate_) ui_->invalidate_(); return {};
+    });
 }
 Result RadioGroupHandle::connect_source(OptionSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-    auto& field = ui_->radios_.at(id_);
-    if (field.disconnect) field.disconnect();
-    field.source = std::move(source); field.connected = false;
-    auto weak = lifetime_; auto state = ui_; auto id = id_;
-    field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->option_source_changed(id); });
-    ui_->option_source_changed(id_); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+        auto& field = ui_->radios_.at(id_);
+        if (field.disconnect) field.disconnect();
+        field.source = std::move(source); field.connected = false;
+        auto weak = lifetime_; auto state = ui_; auto id = id_;
+        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->option_source_changed(id); });
+        ui_->option_source_changed(id_); return {};
+    });
 }
 void detail::UiState::option_source_changed(const Id& id) {
     OperationScope operation(this);
@@ -624,41 +623,39 @@ void detail::UiState::option_source_changed(const Id& id) {
     if (invalidate_) invalidate_();
 }
 Result RadioGroupHandle::connect_immediate(std::function<Result(const OptionChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& field = ui_->radios_.at(id_);
-    if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    field.immediate = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& field = ui_->radios_.at(id_);
+        if (!field.connected || field.confirmation_member || field.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        field.immediate = std::move(write); return {};
+    });
 }
 Result RadioGroupHandle::connect_confirmed(std::function<Result(const OptionChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->radios_.at(id_);
-    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.confirmed = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->radios_.at(id_);
+        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.confirmed = std::move(write); return {};
+    });
 }
 Result RadioGroupHandle::confirm() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->radios_.at(id_);
-    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-    OptionChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-    Result result;
-    try { result = f.confirmed(change); }
-    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false; ui_->invoking_ = false;
-    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-    auto notification = ui_->notify(); return notification ? result : notification;
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->radios_.at(id_);
+        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+        OptionChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+        Result result;
+        try { result = f.confirmed(change); }
+        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.submitting = false; ui_->invoking_ = false;
+        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+        auto notification = ui_->notify(); return notification ? result : notification;
+    });
 }
 Result RadioGroupHandle::select(OptionValue value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->select_option(id_, std::move(value));
+    return detail::operate(*this, [&]() -> Result { return ui_->select_option(id_, std::move(value)); });
 }
 Result detail::UiState::select_option(const Id& id, OptionValue value) {
     OperationScope operation(this);
@@ -681,15 +678,16 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     auto notification = notify(); return notification ? result : notification;
 }
 Query<Semantics> RadioGroupHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->radios_.at(id_).value};
+    return detail::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->radios_.at(id_).value};
+    });
 }
 DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioOption> options) {
     OperationScope operation(this);
@@ -709,61 +707,62 @@ void detail::UiState::close_popup() {
     if (invalidate_) invalidate_();
 }
 Result DropdownHandle::open() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->dropdowns_.at(id_);
-    if (!f.connected || (!f.confirmation_member && !f.immediate && !f.confirmed)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
-    if (auto r = ui_->focus(id_); !r) return r;
-    ui_->close_popup(); ui_->popup_source_ = id_;
-    auto current = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && f.value && o.value == *f.value; });
-    if (current == f.options.end()) current = std::find_if(f.options.begin(), f.options.end(), [](const auto& o) { return o.enabled; });
-    f.reveal = true; f.scroll.offset = 0;
-    f.candidate = current == f.options.end() ? std::nullopt : std::optional<OptionValue>(current->value);
-    if (ui_->invalidate_) ui_->invalidate_();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_);
+        if (!f.connected || (!f.confirmation_member && !f.immediate && !f.confirmed)) return {Status::invalid_value, u"Connect an explicit write timing before editing"};
+        if (auto r = ui_->focus(id_); !r) return r;
+        ui_->close_popup(); ui_->popup_source_ = id_;
+        auto current = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && f.value && o.value == *f.value; });
+        if (current == f.options.end()) current = std::find_if(f.options.begin(), f.options.end(), [](const auto& o) { return o.enabled; });
+        f.reveal = true; f.scroll.offset = 0;
+        f.candidate = current == f.options.end() ? std::nullopt : std::optional<OptionValue>(current->value);
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    });
 }
 Result DropdownHandle::cancel() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    if (ui_->popup_source_ == id_) ui_->close_popup();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        if (ui_->popup_source_ == id_) ui_->close_popup();
+        return {};
+    });
 }
 Result DropdownHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_); if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"}; return ui_->focus(id_); }
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
+}
 Result DropdownHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->enable(id_, enabled); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->enable(id_, enabled); return {};
+    });
 }
 Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
-    std::set<std::string> ids;
-    for (const auto& o : options) if (o.value.id.empty() || !ids.insert(o.value.id).second) return {Status::invalid_value, u"Invalid dropdown option"};
-    auto& f = ui_->dropdowns_.at(id_); f.options = std::move(options);
-    auto valid = [&](const std::optional<OptionValue>& value) {
-        return value && std::any_of(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && o.value == *value; });
-    };
-    if (!valid(f.value)) f.value.reset();
-    if (!valid(f.candidate)) f.candidate.reset();
-    if (ui_->invalidate_) ui_->invalidate_();
-    return ui_->notify();
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
+        std::set<std::string> ids;
+        for (const auto& o : options) if (o.value.id.empty() || !ids.insert(o.value.id).second) return {Status::invalid_value, u"Invalid dropdown option"};
+        auto& f = ui_->dropdowns_.at(id_); f.options = std::move(options);
+        auto valid = [&](const std::optional<OptionValue>& value) {
+            return value && std::any_of(f.options.begin(), f.options.end(), [&](const auto& o) { return o.enabled && o.value == *value; });
+        };
+        if (!valid(f.value)) f.value.reset();
+        if (!valid(f.candidate)) f.candidate.reset();
+        if (ui_->invalidate_) ui_->invalidate_();
+        return ui_->notify();
+    });
 }
 Result DropdownHandle::connect_source(OptionSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-    auto& f = ui_->dropdowns_.at(id_); if (f.disconnect) f.disconnect();
-    f.source = std::move(source); f.connected = false;
-    auto weak = lifetime_; auto state = ui_; auto id = id_;
-    f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); });
-    ui_->dropdown_source_changed(id_); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
+        auto& f = ui_->dropdowns_.at(id_); if (f.disconnect) f.disconnect();
+        f.source = std::move(source); f.connected = false;
+        auto weak = lifetime_; auto state = ui_; auto id = id_;
+        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); });
+        ui_->dropdown_source_changed(id_); return {};
+    });
 }
 void detail::UiState::dropdown_source_changed(const Id& id) {
     OperationScope operation(this);
@@ -777,48 +776,46 @@ void detail::UiState::dropdown_source_changed(const Id& id) {
     if (invalidate_) invalidate_();
 }
 Result DropdownHandle::connect_immediate(std::function<Result(const DropdownChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->dropdowns_.at(id_);
-    if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.immediate = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_);
+        if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.immediate = std::move(write); return {};
+    });
 }
 Result DropdownHandle::connect_confirmed(std::function<Result(const DropdownChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->dropdowns_.at(id_);
-    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.confirmed = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_);
+        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.confirmed = std::move(write); return {};
+    });
 }
 Result DropdownHandle::confirm() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->dropdowns_.at(id_);
-    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-    DropdownChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true; Result result;
-    try { result = f.confirmed(change); } catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false; ui_->invoking_ = false;
-    if (result) { f.origin = change.value; ui_->set_error(id_, u""); } else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-    auto notification = ui_->notify(); return notification ? result : notification;
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_);
+        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+        DropdownChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true; Result result;
+        try { result = f.confirmed(change); } catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.submitting = false; ui_->invoking_ = false;
+        if (result) { f.origin = change.value; ui_->set_error(id_, u""); } else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+        auto notification = ui_->notify(); return notification ? result : notification;
+    });
 }
 Result DropdownHandle::use_latest() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->dropdowns_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
-    auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return f.source_value && o.enabled && o.value == *f.source_value; });
-    f.value = it == f.options.end() ? std::nullopt : f.source_value; f.origin = f.source_value;
-    if (ui_->invalidate_) ui_->invalidate_();
-    ui_->set_error(id_, u""); return ui_->notify();
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_); if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+        auto it = std::find_if(f.options.begin(), f.options.end(), [&](const auto& o) { return f.source_value && o.enabled && o.value == *f.source_value; });
+        f.value = it == f.options.end() ? std::nullopt : f.source_value; f.origin = f.source_value;
+        if (ui_->invalidate_) ui_->invalidate_();
+        ui_->set_error(id_, u""); return ui_->notify();
+    });
 }
 Result DropdownHandle::select(OptionValue value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->select_dropdown(id_, std::move(value));
+    return detail::operate(*this, [&]() -> Result { return ui_->select_dropdown(id_, std::move(value)); });
 }
 Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     OperationScope operation(this);
@@ -842,15 +839,16 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     auto notification = notify(); return notification ? result : notification;
 }
 Query<Semantics> DropdownHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->dropdowns_.at(id_).value};
+    return detail::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->dropdowns_.at(id_).value};
+    });
 }
 namespace {
 int snap_slider(SliderRange range, int input) {
@@ -872,46 +870,44 @@ SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
     return SliderHandle(this, lifetime_, std::move(id));
 }
 Result SliderHandle::set_value(int value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->available(id_); !result) return result;
-    const auto range = ui_->numerics_.at(id_).range;
-    if (value < range.minimum || value > range.maximum) return {Status::invalid_value, u"Value is outside the slider range"};
-    return ui_->slider_set_value(id_, value);
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->available(id_); !result) return result;
+        const auto range = ui_->numerics_.at(id_).range;
+        if (value < range.minimum || value > range.maximum) return {Status::invalid_value, u"Value is outside the slider range"};
+        return ui_->slider_set_value(id_, value);
+    });
 }
 Result SliderHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result SliderHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->enable(id_, enabled); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->enable(id_, enabled); return {};
+    });
 }
 Result SliderHandle::use_latest() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->numerics_.at(id_);
-    if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
-    if (f.value != f.source_value) ui_->slider_land(id_);
-    f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->numerics_.at(id_);
+        if (!f.connected) return {Status::invalid_value, u"Source is not connected"};
+        if (f.value != f.source_value) ui_->slider_land(id_);
+        f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
+    });
 }
 Result SliderHandle::connect_source(NumericSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
-    auto& f = ui_->numerics_.at(id_);
-    int value = source.read();
-    if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
-    if (f.disconnect) f.disconnect();
-    f.source = std::move(source); f.connected = false;
-    auto weak = lifetime_; auto state = ui_; auto id = id_;
-    f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); });
-    ui_->numeric_source_changed(id_); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
+        auto& f = ui_->numerics_.at(id_);
+        int value = source.read();
+        if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
+        if (f.disconnect) f.disconnect();
+        f.source = std::move(source); f.connected = false;
+        auto weak = lifetime_; auto state = ui_; auto id = id_;
+        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); });
+        ui_->numeric_source_changed(id_); return {};
+    });
 }
 void detail::UiState::numeric_source_changed(const Id& id) {
     OperationScope operation(this);
@@ -928,36 +924,36 @@ void detail::UiState::numeric_source_changed(const Id& id) {
     if (invalidate_) invalidate_();
 }
 Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->numerics_.at(id_);
-    if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.immediate = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->numerics_.at(id_);
+        if (!f.connected || f.confirmation_member || f.confirmed || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.immediate = std::move(write); return {};
+    });
 }
 Result SliderHandle::connect_confirmed(std::function<Result(const NumericChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& f = ui_->numerics_.at(id_);
-    if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    f.confirmed = std::move(write); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& f = ui_->numerics_.at(id_);
+        if (!f.connected || f.confirmation_member || f.immediate || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
+        f.confirmed = std::move(write); return {};
+    });
 }
 Result SliderHandle::confirm() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->available(id_); !r) return r;
-    auto& f = ui_->numerics_.at(id_);
-    if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
-    if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
-    NumericChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
-    Result result;
-    try { result = f.confirmed(change); }
-    catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
-    f.submitting = false; ui_->invoking_ = false;
-    if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
-    else { ui_->set_error(id_, result.message); ui_->focus(id_); }
-    auto notification = ui_->notify(); return notification ? result : notification;
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->available(id_); !r) return r;
+        auto& f = ui_->numerics_.at(id_);
+        if (!f.confirmed) return {Status::invalid_value, u"No confirmed write is connected"};
+        if (f.submitting || ui_->dispatching_ || ui_->invoking_) return {Status::busy, u"Operation is already executing"};
+        NumericChange change{*this, f.value, f.origin}; f.submitting = true; ui_->invoking_ = true;
+        Result result;
+        try { result = f.confirmed(change); }
+        catch (...) { f.submitting = false; ui_->invoking_ = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
+        f.submitting = false; ui_->invoking_ = false;
+        if (result) { f.origin = change.value; ui_->set_error(id_, u""); }
+        else { ui_->set_error(id_, result.message); ui_->focus(id_); }
+        auto notification = ui_->notify(); return notification ? result : notification;
+    });
 }
 Result detail::UiState::slider_set_value(const Id& id, int value) {
     OperationScope operation(this);
@@ -1107,15 +1103,16 @@ Query<bool> detail::UiState::animating() const {
     return {Status::ok, {}, animation_running()};
 }
 Query<Semantics> SliderHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<int> SliderHandle::draft() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->numerics_.at(id_).value};
+    return detail::operate(*this, [&]() -> Query<int> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->numerics_.at(id_).value};
+    });
 }
 ComponentHandle detail::UiState::layout_handle(std::string_view id) {
     OperationScope operation(this);
@@ -1392,12 +1389,12 @@ Result detail::UiState::clear_simulated_hover() {
     return {};
 }
 Query<bool> TooltipHandle::visible() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    auto it = ui_->tooltips_.find(id_);
-    if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
-    return {Status::ok, {}, it->second.visible};
+    return detail::operate(*this, [&]() -> Query<bool> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        auto it = ui_->tooltips_.find(id_);
+        if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
+        return {Status::ok, {}, it->second.visible};
+    }, detail::UiState::ui_gone);
 }
 bool detail::UiState::dialog_member(std::string_view id) const {
     for (const auto& [key, dialog] : dialogs_)
@@ -1476,24 +1473,21 @@ Result detail::UiState::settle_dialog(const Id& id, bool confirmed) {
     return {};
 }
 Result DialogHandle::open(ComponentHandle opener) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(id_, &opener);
+    return detail::operate(*this, [&]() -> Result { return ui_->open_dialog(id_, &opener); }, detail::UiState::ui_gone);
 }
 Result DialogHandle::open() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->open_dialog(id_, nullptr);
+    return detail::operate(*this, [&]() -> Result { return ui_->open_dialog(id_, nullptr); }, detail::UiState::ui_gone);
 }
 Result DialogHandle::settle(bool confirmed) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    return lifetime_.expired() ? Result{Status::not_found, u"UI no longer exists"} : ui_->settle_dialog(id_, confirmed);
+    return detail::operate(*this, [&]() -> Result { return ui_->settle_dialog(id_, confirmed); }, detail::UiState::ui_gone);
 }
 Query<bool> DialogHandle::is_open() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    auto it = ui_->dialogs_.find(id_);
-    if (it == ui_->dialogs_.end()) return {Status::not_found, u"Dialog not found", std::nullopt};
-    if (auto r = ui_->configuration_access(it->second.initial, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->modal_ && ui_->active_dialog_ == id_};
+    return detail::operate(*this, [&]() -> Query<bool> {
+        auto it = ui_->dialogs_.find(id_);
+        if (it == ui_->dialogs_.end()) return {Status::not_found, u"Dialog not found", std::nullopt};
+        if (auto r = ui_->configuration_access(it->second.initial, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->modal_ && ui_->active_dialog_ == id_};
+    }, detail::UiState::ui_gone);
 }
 Result detail::UiState::activate_tab(const Id& id, OptionValue page) {
     OperationScope operation(this);
@@ -1532,9 +1526,7 @@ Result detail::UiState::focus_error(const Id& id) {
     return focus(id);
 }
 Result TabsHandle::activate(OptionValue page) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->activate_tab(id_, std::move(page));
+    return detail::operate(*this, [&]() -> Result { return ui_->activate_tab(id_, std::move(page)); });
 }
 Result detail::UiState::add_page_member(const Id& id, OptionValue page, ComponentHandle component) {
     OperationScope operation(this);
@@ -1553,99 +1545,91 @@ Result detail::UiState::add_page_member(const Id& id, OptionValue page, Componen
     return {};
 }
 Result TabsHandle::add_member(OptionValue page, ComponentHandle component) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->add_page_member(id_, std::move(page), std::move(component));
+    return detail::operate(*this, [&]() -> Result { return ui_->add_page_member(id_, std::move(page), std::move(component)); });
 }
 Result TabsHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result TabsHandle::enable_page(OptionValue page, bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& t = ui_->tabs_.at(id_);
-    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
-    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
-    auto index = static_cast<std::size_t>(it - t.pages.begin());
-    if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
-    it->enabled = enabled;
-    if (!enabled && index == t.candidate) t.candidate = t.active;
-    if (ui_->invalidate_) ui_->invalidate_();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& t = ui_->tabs_.at(id_);
+        auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+        if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+        auto index = static_cast<std::size_t>(it - t.pages.begin());
+        if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
+        it->enabled = enabled;
+        if (!enabled && index == t.candidate) t.candidate = t.active;
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    });
 }
 Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->tabs_.at(id_).changed = std::move(callback); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->tabs_.at(id_).changed = std::move(callback); return {};
+    });
 }
 Query<Semantics> TabsHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<OptionValue> TabsHandle::active() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
+    return detail::operate(*this, [&]() -> Query<OptionValue> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
+    });
 }
 Result NavigationListHandle::select(OptionValue page) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->activate_tab(id_, std::move(page));
+    return detail::operate(*this, [&]() -> Result { return ui_->activate_tab(id_, std::move(page)); });
 }
 Result NavigationListHandle::add_member(OptionValue page, ComponentHandle component) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->add_page_member(id_, std::move(page), std::move(component));
+    return detail::operate(*this, [&]() -> Result { return ui_->add_page_member(id_, std::move(page), std::move(component)); });
 }
 Result NavigationListHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result NavigationListHandle::enable_page(OptionValue page, bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    auto& t = ui_->tabs_.at(id_);
-    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
-    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
-    auto index = static_cast<std::size_t>(it - t.pages.begin());
-    if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
-    it->enabled = enabled;
-    if (!enabled && index == t.candidate) t.candidate = t.active;
-    if (ui_->invalidate_) ui_->invalidate_();
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        auto& t = ui_->tabs_.at(id_);
+        auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+        if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+        auto index = static_cast<std::size_t>(it - t.pages.begin());
+        if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
+        it->enabled = enabled;
+        if (!enabled && index == t.candidate) t.candidate = t.active;
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    });
 }
 Result NavigationListHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    ui_->tabs_.at(id_).changed = std::move(callback); return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        ui_->tabs_.at(id_).changed = std::move(callback); return {};
+    });
 }
 Query<Semantics> NavigationListHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<OptionValue> NavigationListHandle::selected() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-    return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
+    return detail::operate(*this, [&]() -> Query<OptionValue> {
+        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
+        return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
+    });
 }
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (!read) return {Status::invalid_value, u"A label source requires a reader"};
-    ui_->bind_text(id_, std::move(read));
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (!read) return {Status::invalid_value, u"A label source requires a reader"};
+        ui_->bind_text(id_, std::move(read));
+        return {};
+    });
 }
 Result detail::UiState::writing_support(const Control& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
@@ -1655,32 +1639,32 @@ Result detail::UiState::writing_support(const Control& control) {
     return {};
 }
 Result LabelHandle::set_writing_mode(WritingMode mode) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (mode != WritingMode::horizontal && mode != WritingMode::vertical) return {Status::invalid_value, u"Unknown writing mode"};
-    ui_->set_label_writing(id_, mode, std::nullopt);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (mode != WritingMode::horizontal && mode != WritingMode::vertical) return {Status::invalid_value, u"Unknown writing mode"};
+        ui_->set_label_writing(id_, mode, std::nullopt);
+        return {};
+    });
 }
 Query<WritingMode> LabelHandle::writing_mode() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-    return {Status::ok, {}, ui_->find(id_)->writing_mode};
+    return detail::operate(*this, [&]() -> Query<WritingMode> {
+        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+        return {Status::ok, {}, ui_->find(id_)->writing_mode};
+    });
 }
 Result LabelHandle::set_vertical_digits(int digits) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (digits < 0 || digits > max_vertical_digits) return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
-    ui_->set_label_writing(id_, std::nullopt, digits);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (digits < 0 || digits > max_vertical_digits) return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
+        ui_->set_label_writing(id_, std::nullopt, digits);
+        return {};
+    });
 }
 Query<int> LabelHandle::vertical_digits() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-    return {Status::ok, {}, ui_->find(id_)->vertical_digits};
+    return detail::operate(*this, [&]() -> Query<int> {
+        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+        return {Status::ok, {}, ui_->find(id_)->vertical_digits};
+    });
 }
 void detail::UiState::set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits) {
     OperationScope operation(this);
@@ -1692,81 +1676,73 @@ void detail::UiState::set_label_writing(std::string_view id, std::optional<Writi
     if (changed && invalidate_) invalidate_();
 }
 Result ButtonHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result ButtonHandle::bind(std::function<Result()> action) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (!action) return {Status::invalid_value, u"An action is required"};
-    if (ui_->confirmation_buttons_.contains(id_)) return {Status::invalid_value, u"Confirmation action cannot be rebound"};
-    ui_->bind(id_, std::move(action));
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (!action) return {Status::invalid_value, u"An action is required"};
+        if (ui_->confirmation_buttons_.contains(id_)) return {Status::invalid_value, u"Confirmation action cannot be rebound"};
+        ui_->bind(id_, std::move(action));
+        return {};
+    });
 }
 Result ButtonHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    ui_->enable(id_, enabled);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        ui_->enable(id_, enabled);
+        return {};
+    });
 }
 Result ButtonHandle::remove() const {
-    detail::UiState::OperationScope scope(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto r = ui_->configuration_access(id_); !r) return r;
-    if (ui_->dialog_member(id_) || std::any_of(ui_->dialogs_.begin(), ui_->dialogs_.end(), [&](const auto& entry) { return entry.second.fallback == id_; }))
-        return {Status::invalid_value, u"Dialog focus targets must remain alive"};
-    if (std::find(ui_->pending_removals_.begin(), ui_->pending_removals_.end(), id_) == ui_->pending_removals_.end())
-        ui_->pending_removals_.push_back(id_);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configuration_access(id_); !r) return r;
+        if (ui_->dialog_member(id_) || std::any_of(ui_->dialogs_.begin(), ui_->dialogs_.end(), [&](const auto& entry) { return entry.second.fallback == id_; }))
+            return {Status::invalid_value, u"Dialog focus targets must remain alive"};
+        if (std::find(ui_->pending_removals_.begin(), ui_->pending_removals_.end(), id_) == ui_->pending_removals_.end())
+            ui_->pending_removals_.push_back(id_);
+        return {};
+    });
 }
 
 Result TextHandle::focus() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->focus(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result SliderHandle::on_blur(std::function<void()> callback) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
-    else ui_->blur_callbacks_.erase(id_);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
+        else ui_->blur_callbacks_.erase(id_);
+        return {};
+    });
 }
 Result TextHandle::on_blur(std::function<void()> callback) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
-    else ui_->blur_callbacks_.erase(id_);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
+        else ui_->blur_callbacks_.erase(id_);
+        return {};
+    });
 }
 Result TextHandle::set_error(std::u16string message) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_error(id_, std::move(message));
+    return detail::operate(*this, [&]() -> Result { return ui_->set_error(id_, std::move(message)); });
 }
 Result TextHandle::enable(bool enabled) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    ui_->enable(id_, enabled);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        ui_->enable(id_, enabled);
+        return {};
+    });
 }
 Result TextHandle::read_only(bool is_read_only) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    ui_->set_read_only(id_, is_read_only);
-    return {};
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        ui_->set_read_only(id_, is_read_only);
+        return {};
+    });
 }
 Result TextHandle::reset_to_source() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->reset_to_source(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->reset_to_source(id_); });
 }
 Result detail::UiState::reset_to_source(const Id& id) {
     OperationScope operation(this);
@@ -1780,45 +1756,32 @@ Result detail::UiState::reset_to_source(const Id& id) {
     return set_error(id, u"");
 }
 Result ButtonHandle::invoke() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->invoke(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->invoke(id_); });
 }
 Query<bool> ButtonHandle::executing() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto snapshot = describe();
-    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-    return {Status::ok, {}, snapshot->executing};
+    return detail::operate(*this, [&]() -> Query<bool> {
+        auto snapshot = describe();
+        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+        return {Status::ok, {}, snapshot->executing};
+    });
 }
 Result TextHandle::paste(std::u16string_view text) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->paste(id_, text);
+    return detail::operate(*this, [&]() -> Result { return ui_->paste(id_, text); });
 }
 Result TextHandle::undo() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->undo(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->undo(id_); });
 }
 Result TextHandle::redo() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->redo(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->redo(id_); });
 }
 Result TextHandle::select(unsigned anchor, unsigned caret) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->select(id_, anchor, caret);
+    return detail::operate(*this, [&]() -> Result { return ui_->select(id_, anchor, caret); });
 }
 Result TextHandle::copy() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->copy(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->copy(id_); });
 }
 Result TextHandle::cut() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->cut(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->cut(id_); });
 }
 Result detail::UiState::configuration_access(std::string_view id, bool read_only) const {
     if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
@@ -1972,26 +1935,22 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
     return {};
 }
 Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
-    return ui_->connect_write(id_, std::move(write), true);
+    return detail::operate(*this, [&]() -> Result {
+        if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
+        return ui_->connect_write(id_, std::move(write), true);
+    });
 }
 Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
-    return ui_->connect_write(id_, std::move(write), false);
+    return detail::operate(*this, [&]() -> Result {
+        if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
+        return ui_->connect_write(id_, std::move(write), false);
+    });
 }
 Result TextHandle::connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->connect_rich_write(id_, std::move(write), true);
+    return detail::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), true); });
 }
 Result TextHandle::connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->connect_rich_write(id_, std::move(write), false);
+    return detail::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), false); });
 }
 // The shared write path hands over plain TextChange; a rich write reads the field's spans at that moment.
 Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate) {
@@ -2016,9 +1975,7 @@ Result detail::UiState::connect_write(const Id& id, std::function<Result(const T
     return {};
 }
 Result TextHandle::confirm() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->confirm(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->confirm(id_); });
 }
 Result detail::UiState::confirm(const Id& id) {
     OperationScope operation(this);
@@ -2032,19 +1989,19 @@ Result detail::UiState::confirm(const Id& id) {
     return submit_field(id, field, field.confirmed, true);
 }
 Result TextHandle::connect_source(TextSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
-    return ui_->connect_source(id_, std::move(source));
+    return detail::operate(*this, [&]() -> Result {
+        if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
+        return ui_->connect_source(id_, std::move(source));
+    });
 }
 Result TextHandle::connect_rich_source(RichTextSource source) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    if (auto result = ui_->configuration_access(id_); !result) return result;
-    if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
-    auto read = source.read;
-    return ui_->connect_source(id_, TextSource{[read] { return read().text; }, std::move(source.subscribe)}, std::move(read));
+    return detail::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
+        auto read = source.read;
+        return ui_->connect_source(id_, TextSource{[read] { return read().text; }, std::move(source.subscribe)}, std::move(read));
+    });
 }
 Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
     OperationScope operation(this);
@@ -2089,15 +2046,14 @@ void detail::UiState::source_changed(const Id& id) {
     if (invalidate_) invalidate_();
 }
 Query<bool> TextHandle::source_conflict() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto snapshot = describe();
-    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-    return {Status::ok, {}, snapshot->source_conflict};
+    return detail::operate(*this, [&]() -> Query<bool> {
+        auto snapshot = describe();
+        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+        return {Status::ok, {}, snapshot->source_conflict};
+    });
 }
 Result TextHandle::use_latest() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->use_latest(id_);
+    return detail::operate(*this, [&]() -> Result { return ui_->use_latest(id_); });
 }
 Result detail::UiState::use_latest(const Id& id) {
     OperationScope operation(this);
@@ -2118,138 +2074,90 @@ Result detail::UiState::use_latest(const Id& id) {
     return result;
 }
 Result TextHandle::set_value(std::u16string value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_value(id_, std::move(value));
+    return detail::operate(*this, [&]() -> Result { return ui_->set_value(id_, std::move(value)); });
 }
 Result TextHandle::set_rich_value(RichText value) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_rich_value(id_, std::move(value));
+    return detail::operate(*this, [&]() -> Result { return ui_->set_rich_value(id_, std::move(value)); });
 }
 Query<RichText> TextHandle::rich_value() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->rich_value(id_);
+    return detail::operate(*this, [&]() -> Query<RichText> { return ui_->rich_value(id_); });
 }
 Result TextHandle::set_style(unsigned begin, unsigned end, StyleChange change) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_style(id_, begin, end, change);
+    return detail::operate(*this, [&]() -> Result { return ui_->set_style(id_, begin, end, change); });
 }
 Result TextHandle::toggle_style(StyleAttribute attribute) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->toggle_style(id_, attribute);
+    return detail::operate(*this, [&]() -> Result { return ui_->toggle_style(id_, attribute); });
 }
 Result TextHandle::apply_style(StyleChange change) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->apply_style(id_, change);
+    return detail::operate(*this, [&]() -> Result { return ui_->apply_style(id_, change); });
 }
 Query<TextStyle> TextHandle::typing_style() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->typing_style(id_);
+    return detail::operate(*this, [&]() -> Query<TextStyle> { return ui_->typing_style(id_); });
 }
 Result TextHandle::set_typing_style(TextStyle style) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_typing_style(id_, std::move(style));
+    return detail::operate(*this, [&]() -> Result { return ui_->set_typing_style(id_, std::move(style)); });
 }
 Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_colors(id_, std::move(colors));
+    return detail::operate(*this, [&]() -> Result { return ui_->set_colors(id_, std::move(colors)); });
 }
 Query<std::vector<NamedColor>> TextHandle::colors() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->colors(id_);
+    return detail::operate(*this, [&]() -> Query<std::vector<NamedColor>> { return ui_->colors(id_); });
 }
 Query<Semantics> TextHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Result TextHandle::set_visible_lines(unsigned lines) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_visible_lines(id_, lines);
+    return detail::operate(*this, [&]() -> Result { return ui_->set_visible_lines(id_, lines); });
 }
 Query<unsigned> TextHandle::visible_lines() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-    const auto* control = ui_->find(id_);
-    if (!control->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
-    return {Status::ok, {}, control->visible_lines};
+    return detail::operate(*this, [&]() -> Query<unsigned> {
+        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+        const auto* control = ui_->find(id_);
+        if (!control->multiline) return {Status::not_supported, u"Not a multi-line field", std::nullopt};
+        return {Status::ok, {}, control->visible_lines};
+    });
 }
 Result TextHandle::set_scroll_line(unsigned first_visible_line) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_scroll_line(id_, first_visible_line);
+    return detail::operate(*this, [&]() -> Result { return ui_->set_scroll_line(id_, first_visible_line); });
 }
 Query<unsigned> TextHandle::scroll_line() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->scroll_line(id_);
+    return detail::operate(*this, [&]() -> Query<unsigned> { return ui_->scroll_line(id_); });
 }
 Result TextHandle::set_word_segmentation(WordSegmentation mode) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->set_word_segmentation(id_, mode);
+    return detail::operate(*this, [&]() -> Result { return ui_->set_word_segmentation(id_, mode); });
 }
 Query<WordSegmentation> TextHandle::word_segmentation() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->word_segmentation(id_);
+    return detail::operate(*this, [&]() -> Query<WordSegmentation> { return ui_->word_segmentation(id_); });
 }
 Query<WordSegmentation> TextHandle::word_segmentation_in_use() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->word_segmentation_in_use(id_);
+    return detail::operate(*this, [&]() -> Query<WordSegmentation> { return ui_->word_segmentation_in_use(id_); });
 }
 Query<TextSpan> TextHandle::word_at(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->word_at(id_, offset);
+    return detail::operate(*this, [&]() -> Query<TextSpan> { return ui_->word_at(id_, offset); });
 }
 Query<TextSpan> TextHandle::paragraph_at(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->paragraph_at(id_, offset);
+    return detail::operate(*this, [&]() -> Query<TextSpan> { return ui_->paragraph_at(id_, offset); });
 }
 Query<unsigned> TextHandle::next_word_stop(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->word_stop(id_, offset, true);
+    return detail::operate(*this, [&]() -> Query<unsigned> { return ui_->word_stop(id_, offset, true); });
 }
 Query<unsigned> TextHandle::previous_word_stop(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    return ui_->word_stop(id_, offset, false);
+    return detail::operate(*this, [&]() -> Query<unsigned> { return ui_->word_stop(id_, offset, false); });
 }
 Result TextHandle::select_word(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->select_word(id_, offset);
+    return detail::operate(*this, [&]() -> Result { return ui_->select_word(id_, offset); });
 }
 Result TextHandle::select_paragraph(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->select_paragraph(id_, offset);
+    return detail::operate(*this, [&]() -> Result { return ui_->select_paragraph(id_, offset); });
 }
 Result TextHandle::double_click(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->double_click(id_, offset);
+    return detail::operate(*this, [&]() -> Result { return ui_->double_click(id_, offset); });
 }
 Result TextHandle::triple_click(unsigned offset) const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};
-    return ui_->triple_click(id_, offset);
+    return detail::operate(*this, [&]() -> Result { return ui_->triple_click(id_, offset); });
 }
 Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
     OperationScope operation(this);
@@ -2313,7 +2221,7 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     if (invalidate_) invalidate_();
     return {};
 }
-#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_text_align(id_, align); } Result Handle::set_line_spacing(double multiple) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_line_spacing(id_, multiple); } Result Handle::set_paragraph_spacing(int dip) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_paragraph_spacing(id_, dip); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; } Result Handle::set_justify_method(JustifyMethod method) const {     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);     if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists"};     return ui_->set_justify_method(id_, method); } Query<JustifyMethod> Handle::justify_method() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->justify_method}; }
+#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); }); } Result Handle::set_line_spacing(double multiple) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); }); } Result Handle::set_paragraph_spacing(int dip) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); }); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; } Result Handle::set_justify_method(JustifyMethod method) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); }); } Query<JustifyMethod> Handle::justify_method() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->justify_method}; }
 LCARS_TEXT_FLOW_HANDLE(TextHandle)
 LCARS_TEXT_FLOW_HANDLE(LabelHandle)
 #undef LCARS_TEXT_FLOW_HANDLE
@@ -2335,22 +2243,23 @@ Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
     return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
 Query<std::u16string> TextHandle::draft() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    auto snapshot = describe();
-    if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-    return {Status::ok, {}, snapshot->value};
+    return detail::operate(*this, [&]() -> Query<std::u16string> {
+        auto snapshot = describe();
+        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
+        return {Status::ok, {}, snapshot->value};
+    });
 }
 Query<Semantics> ButtonHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 Query<Semantics> LabelHandle::describe() const {
-    detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
-    if (lifetime_.expired()) return {Status::not_found, u"Component no longer exists", std::nullopt};
-    if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-    return {Status::ok, {}, ui_->describe(id_)};
+    return detail::operate(*this, [&]() -> Query<Semantics> {
+        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
+        return {Status::ok, {}, ui_->describe(id_)};
+    });
 }
 std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
