@@ -98,6 +98,13 @@ std::u16string EditSession::visible() const {
     if (composing) value.replace(begin(), end() - begin(), preedit);
     return value;
 }
+namespace {
+// A handle query that reads one member of the handle's own description: the description's failure, or the member.
+template <class Value> Query<Value> semantic_property(const Query<Semantics>& semantics, Value Semantics::*member) {
+    if (!semantics) return {semantics.status, semantics.message, std::nullopt};
+    return {Status::ok, {}, (*semantics).*member};
+}
+}
 detail::UiState::OperationScope::OperationScope(UiState* state)
     : state_(state && std::this_thread::get_id() == state->owner_ ? state : nullptr) {
     if (state_ && ++state_->operation_depth_ == 1 && !state_->semantic_subscribers_.empty() &&
@@ -341,10 +348,7 @@ Result ProgressHandle::connect_source(NumericSource source) const {
     });
 }
 Query<Semantics> ProgressHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 TextHandle detail::UiState::add_text(Control control) {
     OperationScope operation(this);
@@ -455,10 +459,7 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     return write_immediately(id, field, change);
 }
 Query<Semantics> CheckboxHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<bool> CheckboxHandle::draft() const {
     return detail::operate(*this, [&]() -> Query<bool> {
@@ -577,10 +578,7 @@ Result ListHandle::enable(bool enabled) const {
     });
 }
 Query<Semantics> ListHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Result RadioGroupHandle::use_latest() const {
     return detail::operate(*this, [&]() -> Result {
@@ -664,10 +662,7 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     return write_immediately(id, field, change);
 }
 Query<Semantics> RadioGroupHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
     return detail::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -809,10 +804,7 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     return write_immediately(id, f, change);
 }
 Query<Semantics> DropdownHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
     return detail::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -1054,10 +1046,7 @@ Query<bool> detail::UiState::animating() const {
     return {Status::ok, {}, animation_running()};
 }
 Query<Semantics> SliderHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<int> SliderHandle::draft() const {
     return detail::operate(*this, [&]() -> Query<int> {
@@ -1476,9 +1465,6 @@ Result detail::UiState::focus_error(const Id& id) {
     }
     return focus(id);
 }
-Result TabsHandle::activate(OptionValue page) const {
-    return detail::operate(*this, [&]() -> Result { return ui_->activate_tab(id_, std::move(page)); });
-}
 Result detail::UiState::add_page_member(const Id& id, OptionValue page, ComponentHandle component) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
@@ -1495,6 +1481,33 @@ Result detail::UiState::add_page_member(const Id& id, OptionValue page, Componen
     if (invalidate_) invalidate_();
     return {};
 }
+// Tabs and a navigation list are one component inside (#94): both handles run these operations, and differ only in the
+// names of activate / select and active / selected.
+Result detail::UiState::enable_page(const Id& id, const OptionValue& page, bool enabled) {
+    if (auto r = configuration_access(id); !r) return r;
+    auto& t = tabs_.at(id);
+    auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
+    if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
+    auto index = static_cast<std::size_t>(it - t.pages.begin());
+    if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
+    it->enabled = enabled;
+    if (!enabled && index == t.candidate) t.candidate = t.active;
+    if (invalidate_) invalidate_();
+    return {};
+}
+Result detail::UiState::on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback) {
+    if (auto r = configuration_access(id); !r) return r;
+    tabs_.at(id).changed = std::move(callback);
+    return {};
+}
+Query<OptionValue> detail::UiState::active_page(const Id& id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    const auto& t = tabs_.at(id);
+    return {Status::ok, {}, t.pages[t.active].value};
+}
+Result TabsHandle::activate(OptionValue page) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->activate_tab(id_, std::move(page)); });
+}
 Result TabsHandle::add_member(OptionValue page, ComponentHandle component) const {
     return detail::operate(*this, [&]() -> Result { return ui_->add_page_member(id_, std::move(page), std::move(component)); });
 }
@@ -1502,36 +1515,16 @@ Result TabsHandle::focus() const {
     return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result TabsHandle::enable_page(OptionValue page, bool enabled) const {
-    return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& t = ui_->tabs_.at(id_);
-        auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
-        if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
-        auto index = static_cast<std::size_t>(it - t.pages.begin());
-        if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
-        it->enabled = enabled;
-        if (!enabled && index == t.candidate) t.candidate = t.active;
-        if (ui_->invalidate_) ui_->invalidate_();
-        return {};
-    });
+    return detail::operate(*this, [&]() -> Result { return ui_->enable_page(id_, page, enabled); });
 }
 Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
-    return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        ui_->tabs_.at(id_).changed = std::move(callback); return {};
-    });
+    return detail::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
 Query<Semantics> TabsHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> TabsHandle::active() const {
-    return detail::operate(*this, [&]() -> Query<OptionValue> {
-        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-        return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
-    });
+    return detail::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
 }
 Result NavigationListHandle::select(OptionValue page) const {
     return detail::operate(*this, [&]() -> Result { return ui_->activate_tab(id_, std::move(page)); });
@@ -1543,36 +1536,16 @@ Result NavigationListHandle::focus() const {
     return detail::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result NavigationListHandle::enable_page(OptionValue page, bool enabled) const {
-    return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto& t = ui_->tabs_.at(id_);
-        auto it = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& p) { return p.value == page; });
-        if (it == t.pages.end()) return {Status::invalid_value, u"Unknown page"};
-        auto index = static_cast<std::size_t>(it - t.pages.begin());
-        if (!enabled && index == t.active) return {Status::invalid_value, u"Active page cannot be disabled"};
-        it->enabled = enabled;
-        if (!enabled && index == t.candidate) t.candidate = t.active;
-        if (ui_->invalidate_) ui_->invalidate_();
-        return {};
-    });
+    return detail::operate(*this, [&]() -> Result { return ui_->enable_page(id_, page, enabled); });
 }
 Result NavigationListHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
-    return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        ui_->tabs_.at(id_).changed = std::move(callback); return {};
-    });
+    return detail::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
 Query<Semantics> NavigationListHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> NavigationListHandle::selected() const {
-    return detail::operate(*this, [&]() -> Query<OptionValue> {
-        auto s = describe(); if (!s) return {s.status, s.message, std::nullopt};
-        return {Status::ok, {}, ui_->tabs_.at(id_).pages[ui_->tabs_.at(id_).active].value};
-    });
+    return detail::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
 }
 Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     return detail::operate(*this, [&]() -> Result {
@@ -1709,13 +1682,7 @@ Result detail::UiState::reset_to_source(const Id& id) {
 Result ButtonHandle::invoke() const {
     return detail::operate(*this, [&]() -> Result { return ui_->invoke(id_); });
 }
-Query<bool> ButtonHandle::executing() const {
-    return detail::operate(*this, [&]() -> Query<bool> {
-        auto snapshot = describe();
-        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-        return {Status::ok, {}, snapshot->executing};
-    });
-}
+Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &Semantics::executing); }
 Result TextHandle::paste(std::u16string_view text) const {
     return detail::operate(*this, [&]() -> Result { return ui_->paste(id_, text); });
 }
@@ -1965,13 +1932,7 @@ void detail::UiState::source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Query<bool> TextHandle::source_conflict() const {
-    return detail::operate(*this, [&]() -> Query<bool> {
-        auto snapshot = describe();
-        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-        return {Status::ok, {}, snapshot->source_conflict};
-    });
-}
+Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &Semantics::source_conflict); }
 Result TextHandle::use_latest() const {
     return detail::operate(*this, [&]() -> Result { return ui_->use_latest(id_); });
 }
@@ -2024,10 +1985,7 @@ Query<std::vector<NamedColor>> TextHandle::colors() const {
     return detail::operate(*this, [&]() -> Query<std::vector<NamedColor>> { return ui_->colors(id_); });
 }
 Query<Semantics> TextHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Result TextHandle::set_visible_lines(unsigned lines) const {
     return detail::operate(*this, [&]() -> Result { return ui_->set_visible_lines(id_, lines); });
@@ -2141,10 +2099,40 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     if (invalidate_) invalidate_();
     return {};
 }
-#define LCARS_TEXT_FLOW_HANDLE(Handle) Result Handle::set_text_align(TextAlign align) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); }); } Result Handle::set_line_spacing(double multiple) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); }); } Result Handle::set_paragraph_spacing(int dip) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); }); } Query<TextAlign> Handle::text_align() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->text_align}; } Query<double> Handle::line_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->line_spacing}; } Query<int> Handle::paragraph_spacing() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->paragraph_spacing}; } Result Handle::set_justify_method(JustifyMethod method) const {     return detail::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); }); } Query<JustifyMethod> Handle::justify_method() const {     auto s = describe();     if (!s) return {s.status, s.message, std::nullopt};     return {Status::ok, {}, s->justify_method}; }
-LCARS_TEXT_FLOW_HANDLE(TextHandle)
-LCARS_TEXT_FLOW_HANDLE(LabelHandle)
-#undef LCARS_TEXT_FLOW_HANDLE
+// Text flow (#80, #84): one implementation for the text field and the label (#94). The setters run the UiState operations
+// above, the getters read the handle's own description; both handles declare the same eight operations.
+Result TextHandle::set_text_align(TextAlign align) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
+}
+Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Result TextHandle::set_justify_method(JustifyMethod method) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
+}
+Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Result TextHandle::set_line_spacing(double multiple) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
+}
+Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Result TextHandle::set_paragraph_spacing(int dip) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
+}
+Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
+Result LabelHandle::set_text_align(TextAlign align) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
+}
+Query<TextAlign> LabelHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Result LabelHandle::set_justify_method(JustifyMethod method) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
+}
+Query<JustifyMethod> LabelHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Result LabelHandle::set_line_spacing(double multiple) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
+}
+Query<double> LabelHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Result LabelHandle::set_paragraph_spacing(int dip) const {
+    return detail::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
+}
+Query<int> LabelHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
 Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
@@ -2162,24 +2150,17 @@ Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
     const auto& m = edits_.find(id)->second.multi;
     return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
-Query<std::u16string> TextHandle::draft() const {
-    return detail::operate(*this, [&]() -> Query<std::u16string> {
-        auto snapshot = describe();
-        if (!snapshot) return {snapshot.status, snapshot.message, std::nullopt};
-        return {Status::ok, {}, snapshot->value};
-    });
-}
+Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &Semantics::value); }
 Query<Semantics> ButtonHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
 }
 Query<Semantics> LabelHandle::describe() const {
-    return detail::operate(*this, [&]() -> Query<Semantics> {
-        if (auto result = ui_->configuration_access(id_, true); !result) return {result.status, result.message, std::nullopt};
-        return {Status::ok, {}, ui_->describe(id_)};
-    });
+    return detail::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+}
+// What every component handle's describe() answers once its lifetime has been checked.
+Query<Semantics> detail::UiState::handle_describe(std::string_view id) const {
+    if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
+    return {Status::ok, {}, describe(id)};
 }
 std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);

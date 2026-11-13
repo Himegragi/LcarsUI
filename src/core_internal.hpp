@@ -67,6 +67,10 @@ public:
     NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
+    Result enable_page(const Id& id, const OptionValue& page, bool enabled);
+    Result on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
+    Query<OptionValue> active_page(const Id& id) const;
+    Query<Semantics> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
     ListHandle add_list(Control control, std::vector<RadioOption> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
