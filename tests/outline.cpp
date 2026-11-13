@@ -1,4 +1,4 @@
-// Control outlines (#86): which palette color draws the edge that identifies a control.
+// Component outlines (#86): which palette color draws the edge that identifies a component.
 // One generic driver walks every component kind x appearance x theme variant and asserts the paint
 // seam (ComponentPaint) colors; the expectations are a table of the ticket's rules, not a re-run of the code.
 #include "lcars/core.hpp"

@@ -139,7 +139,7 @@ void command_kinds_are_placed_like_buttons() {
           "Toggle and navigation carry their titles instead of being treated as text fields");
 }
 
-std::vector<Control> field_controls() {
+std::vector<ComponentConfig> field_controls() {
     return {{.id = "name.label", .kind = ComponentKind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
             {.id = "name", .kind = ComponentKind::text, .value = u"測試使用者"},
             {.id = "name.error", .kind = ComponentKind::label, .target = "name", .role = TextRole::error},
@@ -171,7 +171,7 @@ void field_roles_stay_with_their_field_in_both_appearances() {
     }
 }
 
-std::vector<Control> page_controls() {
+std::vector<ComponentConfig> page_controls() {
     auto controls = field_controls();
     controls.push_back({.id = "long", .kind = ComponentKind::label, .value = std::u16string(400, u'長')});
     controls.push_back({.id = "result", .kind = ComponentKind::label, .value = u"上次套用結果：測試使用者"});

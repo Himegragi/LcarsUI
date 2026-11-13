@@ -23,7 +23,7 @@ KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ct
 KeyPress press(Key key, bool shift = false, bool control = false) { return {.key = key, .shift = shift, .ctrl = control}; }
 
 // Every field gets an explicit write timing, as an application would.
-TextHandle connect(Ui& ui, Control control) {
+TextHandle connect(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto query = ui.add_text(std::move(control));
     check(bool(query), "Create the text field");
@@ -32,7 +32,7 @@ TextHandle connect(Ui& ui, Control control) {
     check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
-Control multi(std::string id, std::u16string value = {}, unsigned lines = 3) {
+ComponentConfig multi(std::string id, std::u16string value = {}, unsigned lines = 3) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines};
 }
 std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }

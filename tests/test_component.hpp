@@ -5,7 +5,7 @@
 // A test-only type supplies its own geometry, painting, hit region and input policy.
 class TestComponent final : public lcars::detail::ComponentType {
 public:
-    lcars::ComponentHandle handle(lcars::detail::UiState& ui, const lcars::Control& control) const override {
+    lcars::ComponentHandle handle(lcars::detail::UiState& ui, const lcars::ComponentConfig& control) const override {
         return ui.typed_handle<lcars::ButtonHandle>(control);
     }
     void arrange(lcars::detail::ComponentLayout& layout) const override {
@@ -19,5 +19,5 @@ public:
         paint.fill(paint.placement.bounds, {17, 91, 173});
     }
     lcars::Result key_down(lcars::detail::UiState& ui, lcars::KeyPress key) const override { return lcars::detail::command_key_down(ui, key); }
-    void pointer_down(lcars::detail::UiState& ui, const lcars::Control&, std::optional<std::size_t>) const override { lcars::detail::command_pointer_down(ui); }
+    void pointer_down(lcars::detail::UiState& ui, const lcars::ComponentConfig&, std::optional<std::size_t>) const override { lcars::detail::command_pointer_down(ui); }
 };

@@ -56,7 +56,7 @@ inline bool valid_paragraph_spacing(int value) { return value >= 0 && value <= m
 enum class WritingMode { horizontal, vertical };
 // Longest run of half-width digits that vertical text sets side by side in one cell (0 turns it off).
 inline constexpr int max_vertical_digits = 3;
-struct Control {
+struct ComponentConfig {
     std::string id;
     ComponentKind kind;
     std::u16string label = {};  // fallback accessible name when no name label targets this control
@@ -142,7 +142,7 @@ struct Semantics {
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
     bool visible = false; // intersects the clip in the latest arranged frame
     bool multiline = false;     // text fields: created multi-line
-    bool rich = false;          // text fields: created with Control::rich
+    bool rich = false;          // text fields: created with ComponentConfig::rich
     unsigned visible_lines = 0; // multi-line text fields: configured height in lines
     unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
     unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
@@ -232,7 +232,7 @@ bool valid_multi_line(std::u16string_view text, std::size_t max_length = default
 // hears that it changed. The application owns the model. Notifications run on the UI thread; the source outlives the
 // connection. Its subscription returns a disconnection function. One template told apart by value type (#95), so a
 // source of one value type never converts to another: Source<std::u16string> (text fields), Source<RichText> (text
-// fields created with Control::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
+// fields created with ComponentConfig::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
 // Source<std::optional<OptionValue>> (radio groups, dropdowns, lists). Write one as `{read, subscribe}`.
 // Integer sources (Source<int>) also feed read-only progress displays, which accept values outside 0-100.
 // Integer slider values are the minimum plus whole steps, with the maximum also valid.
@@ -364,7 +364,7 @@ public:
     Result connect_source(Source<std::u16string> source) const;
     Result connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const;
     Result connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const;
-    // Rich fields (Control::rich) connect with the rich value type; the plain connect_* calls above answer
+    // Rich fields (ComponentConfig::rich) connect with the rich value type; the plain connect_* calls above answer
     // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
     // groups take rich fields through Ui::connect_mixed_confirmation (a Change<TextHandle, RichText> per rich field).
     Result connect_rich_source(Source<RichText> source) const;
@@ -656,7 +656,7 @@ struct MenuItemInfo {
     std::u16string shortcut_hint;
 };
 struct MenuInfo { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemInfo> items; };
-// Built-in text field items, by id. A rich text field (Control::rich) adds bold, italic and underline, which run
+// Built-in text field items, by id. A rich text field (ComponentConfig::rich) adds bold, italic and underline, which run
 // the same function as Ctrl+B / Ctrl+I / Ctrl+U.
 inline constexpr const char* menu_undo = "lcars.undo";
 inline constexpr const char* menu_redo = "lcars.redo";
@@ -693,18 +693,18 @@ public:
     ~Ui();
     Ui(const Ui&) = delete;
     Ui& operator=(const Ui&) = delete;
-    Query<TextHandle> add_text(Control control);
-    Query<ButtonHandle> add_button(Control control);
-    Query<LabelHandle> add_label(Control control);
-    Query<CheckboxHandle> add_checkbox(Control control);
-    Query<RadioGroupHandle> add_radio_group(Control control, std::vector<RadioOption> options);
+    Query<TextHandle> add_text(ComponentConfig config);
+    Query<ButtonHandle> add_button(ComponentConfig config);
+    Query<LabelHandle> add_label(ComponentConfig config);
+    Query<CheckboxHandle> add_checkbox(ComponentConfig config);
+    Query<RadioGroupHandle> add_radio_group(ComponentConfig config, std::vector<RadioOption> options);
     // Invalid ranges and steps return invalid_value without creating a component.
-    Query<SliderHandle> add_slider(Control control, SliderRange range);
-    Query<ProgressHandle> add_progress(Control control);
-    Query<DropdownHandle> add_dropdown(Control control, std::vector<RadioOption> options);
-    Query<TabsHandle> add_tabs(Control control, std::vector<TabPage> pages);
-    Query<NavigationListHandle> add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
-    Query<ListHandle> add_list(Control control, std::vector<RadioOption> items);
+    Query<SliderHandle> add_slider(ComponentConfig config, SliderRange range);
+    Query<ProgressHandle> add_progress(ComponentConfig config);
+    Query<DropdownHandle> add_dropdown(ComponentConfig config, std::vector<RadioOption> options);
+    Query<TabsHandle> add_tabs(ComponentConfig config, std::vector<TabPage> pages);
+    Query<NavigationListHandle> add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);
+    Query<ListHandle> add_list(ComponentConfig config, std::vector<RadioOption> items);
     // Delay is in milliseconds; the source remains the focus and lifetime owner.
     Query<TooltipHandle> add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms = 500);
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,

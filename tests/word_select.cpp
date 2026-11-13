@@ -43,7 +43,7 @@ struct Field {
     Ui ui; TextHandle handle;
     explicit Field(std::u16string value, bool multiline = false, WordSegmentation mode = WordSegmentation::dictionary,
                    std::shared_ptr<const detail::WordBreaker> breaker = std::make_shared<PairBreaker>()) {
-        Control control{.id = "t", .kind = ComponentKind::text, .value = value, .multiline = multiline, .visible_lines = 4};
+        ComponentConfig control{.id = "t", .kind = ComponentKind::text, .value = value, .multiline = multiline, .visible_lines = 4};
         auto model = std::make_shared<std::u16string>(std::move(value));
         auto query = ui.add_text(std::move(control));
         check(bool(query), "Create the text field");

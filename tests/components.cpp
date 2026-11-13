@@ -9,7 +9,7 @@ using test::check;
 
 namespace {
 // Application-owned source fixtures give legacy host input tests explicit write timing.
-void populate(Ui& ui, std::vector<Control> controls) {
+void populate(Ui& ui, std::vector<ComponentConfig> controls) {
     for (auto& control : controls) {
         if (control.kind == ComponentKind::text) {
             auto model = std::make_shared<std::u16string>(control.value);
@@ -20,7 +20,7 @@ void populate(Ui& ui, std::vector<Control> controls) {
         else ui.add_label(std::move(control)).value.value();
     }
 }
-std::vector<Control> name_form() {
+std::vector<ComponentConfig> name_form() {
     return {
         {.id = "name.label", .kind = ComponentKind::label, .value = u"顯示名稱", .target = "name", .role = TextRole::name},
         {.id = "name", .kind = ComponentKind::text, .value = u"測試使用者"},
@@ -54,7 +54,7 @@ void field_error_has_one_source() {
           "Empty message clears the error and its label");
 }
 
-std::vector<Control> form_with_buttons() {
+std::vector<ComponentConfig> form_with_buttons() {
     auto controls = name_form();
     controls.push_back({.id = "apply", .kind = ComponentKind::button, .label = u"套用"});
     controls.push_back({.id = "reset", .kind = ComponentKind::button, .label = u"重設"});
@@ -120,7 +120,7 @@ void button_activates_once_per_press() {
 }
 
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
-std::vector<Control> two_fields() {
+std::vector<ComponentConfig> two_fields() {
     auto controls = form_with_buttons();
     controls.push_back({.id = "alias", .kind = ComponentKind::text, .value = u"別名"});
     return controls;
@@ -374,7 +374,7 @@ void keyboard_editing_obeys_the_same_admission() {
 
 void over_limit_edit_is_rejected_whole() {
     Ui ui; populate(ui, {{.id = "code", .kind = ComponentKind::text, .value = u"AB", .max_length = 4}});
-    check(Control{.id = "x", .kind = ComponentKind::text}.max_length == default_max_text_length && default_max_text_length == 4096,
+    check(ComponentConfig{.id = "x", .kind = ComponentKind::text}.max_length == default_max_text_length && default_max_text_length == 4096,
           "The default limit is public");
     detail::access(ui).focus("code");
     detail::access(ui).select("code", 2, 2);

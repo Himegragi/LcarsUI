@@ -349,7 +349,7 @@ void text_size_and_scale_change_the_columns() {
 // ---- #80: alignment, line spacing and paragraph spacing of vertical labels ----
 void the_text_flow_properties_map_onto_columns() {
     using Align = detail::VerticalParams::Align;
-    Control control{.id = "l", .kind = ComponentKind::label};
+    ComponentConfig control{.id = "l", .kind = ComponentKind::label};
     auto params = detail::vertical_params(control);
     check(params.align == Align::top && params.line_spacing == 1.0 && params.paragraph_spacing == 0, "The defaults are top, 1.0 and 0");
     control.text_align = TextAlign::center; control.line_spacing = 1.5; control.paragraph_spacing = 8;

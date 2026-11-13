@@ -26,7 +26,7 @@ struct VerticalParams {
     double line_spacing = 1.0;                                    // multiplies the column pitch
     int paragraph_spacing = 0;                                    // pixels between paragraphs
 };
-VerticalParams vertical_params(const Control& control, float scale = 1.f);
+VerticalParams vertical_params(const ComponentConfig& control, float scale = 1.f);
 
 // Flows text into columns of `height` pixels (0 = never wrap). Positions are relative to each column.
 // `pitch` is the column width; columns get bounds {0, 0, pitch, length}. Paragraphs start at '\n'.

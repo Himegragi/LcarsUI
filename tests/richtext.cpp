@@ -61,10 +61,10 @@ struct RichModel {
     int writes = 0;
     RichText last_written, last_origin;
 };
-Control rich_control(std::string id, std::u16string value = {}, unsigned lines = 3) {
+ComponentConfig rich_control(std::string id, std::u16string value = {}, unsigned lines = 3) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .rich = true};
 }
-TextHandle connect_rich(Ui& ui, Control control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
+TextHandle connect_rich(Ui& ui, ComponentConfig control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
     if (!model) model = std::make_shared<RichModel>();
     model->value.text = control.value;
     auto query = ui.add_text(std::move(control));
@@ -399,7 +399,7 @@ struct PlainOnlyClipboard final : Clipboard {  // a host that never learned the 
 };
 
 
-TextHandle connect_plain(Ui& ui, Control control) {
+TextHandle connect_plain(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});

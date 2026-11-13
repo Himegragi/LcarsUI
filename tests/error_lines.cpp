@@ -49,7 +49,7 @@ std::vector<std::unique_ptr<Source>>& sources() { static std::vector<std::unique
 Source& new_source() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
 
 const std::vector<RadioOption> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}, {{"c"}, u"Gamma"}};
-Control control(const std::string& id, ComponentKind kind, const char16_t* label) { Control c; c.id = id; c.kind = kind; c.label = label; return c; }
+ComponentConfig control(const std::string& id, ComponentKind kind, const char16_t* label) { ComponentConfig c; c.id = id; c.kind = kind; c.label = label; return c; }
 
 void put_error(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).set_error(id, long_error)), "an error is set"); }
 

@@ -22,7 +22,7 @@ struct Laid {
         frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
-Control label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
+ComponentConfig label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
     return {.id = std::move(id), .kind = ComponentKind::label, .value = std::move(value), .text_align = align, .justify_method = method};
 }
 // What a drawn line looks like: where its pieces start and end. A line that is not justified is one piece.
@@ -278,17 +278,17 @@ std::size_t laid_segments(Ui& ui, const LabelHandle& handle) {
 }
 
 // ---- Text fields ----------------------------------------------------------------------------------
-TextHandle field_of(Ui& ui, Control control) {
+TextHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
     check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
-Control multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
+ComponentConfig multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines, .text_align = align, .justify_method = method};
 }
-Control single(std::string id, std::u16string value, TextAlign align) {
+ComponentConfig single(std::string id, std::u16string value, TextAlign align) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .text_align = align};
 }
 // What a component painted: every text call and every selection fill.
@@ -474,7 +474,7 @@ void the_user_setting_draws_stretched_text_left_but_keeps_the_properties() {
 // spans below "bb cc" is bold and underlined (10 + 10 + 10 + 10 + 10 = 50 px) and the space after it is plain.
 const std::u16string words = u"aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp";
 const std::vector<StyleSpan> rich_spans = {{.start = 3, .length = 5, .bold = true, .underline = true, .color = {}}, {.start = 27, .length = 5, .italic = true, .color = {}}};
-TextHandle rich_field_of(Ui& ui, Control control, std::vector<StyleSpan> spans = rich_spans) {
+TextHandle rich_field_of(Ui& ui, ComponentConfig control, std::vector<StyleSpan> spans = rich_spans) {
     control.rich = true;
     auto model = std::make_shared<RichText>(RichText{control.value, std::move(spans)});
     auto field = *ui.add_text(std::move(control));

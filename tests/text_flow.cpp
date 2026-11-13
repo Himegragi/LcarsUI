@@ -22,7 +22,7 @@ struct Laid {
         frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
-Control label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
+ComponentConfig label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
     return {.id = std::move(id), .kind = ComponentKind::label, .value = std::move(value), .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
 
@@ -137,14 +137,14 @@ void a_scrollable_label_steps_one_actual_row() {
 }
 
 // A text field, connected so it accepts edits like an application's would.
-TextHandle field_of(Ui& ui, Control control) {
+TextHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
     check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
-Control single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
+ComponentConfig single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .text_align = align, .line_spacing = spacing};
 }
 
@@ -207,7 +207,7 @@ void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
     check(pb->text_top == 6, "The glyphs sit in the middle of the row");
 }
 
-Control multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
+ComponentConfig multi(std::string id, std::u16string value, unsigned lines = 3, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
     return {.id = std::move(id), .kind = ComponentKind::text, .value = std::move(value), .multiline = true, .visible_lines = lines,
             .text_align = align, .line_spacing = spacing, .paragraph_spacing = paragraph};
 }
@@ -393,7 +393,7 @@ Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollab
     for (const auto& line : p->lines) out.starts.push_back(line.bounds.x);  // frame coordinates already
     return out;
 }
-Drawn drawn_field(Ui& ui, Control control, const Appearance& look) {
+Drawn drawn_field(Ui& ui, ComponentConfig control, const Appearance& look) {
     auto handle = field_of(ui, std::move(control));
     FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::control(handle), ui, look, measure, 300, 400, 1.f, scroll);

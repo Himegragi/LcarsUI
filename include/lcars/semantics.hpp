@@ -68,7 +68,7 @@ struct SemanticNode {
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
-    bool rich = false;                 // text fields created with Control::rich
+    bool rich = false;                 // text fields created with ComponentConfig::rich
     std::vector<StyleSpan> styles;     // rich fields: the styled runs of value, in normal form
     std::optional<TextStyle> typing_style;  // rich fields: the style the next typed text takes
     std::optional<WordSegmentation> word_segmentation, word_segmentation_in_use;  // text fields: as set, and what works now
