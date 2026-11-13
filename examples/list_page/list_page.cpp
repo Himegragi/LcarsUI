@@ -123,11 +123,11 @@ Result Page::sample(int count) {
 }
 layout::Node Page::page() const {
     using namespace lcars::layout;
-    return layout::scroll(column({control(handles.title, 24),
-        row({control(handles.zero), control(handles.one), control(handles.twenty), control(handles.hundred)}, 6),
-        row({control(handles.sort), control(handles.disable_eight), control(handles.reset)}, 6),
-        control(handles.search),
-        grid({layout::scroll(control(handles.list), list_scroll, 220), column({control(handles.detail), control(handles.erase)}, 12)}, 400, 16)
+    return layout::scroll(column({component(handles.title, 24),
+        row({component(handles.zero), component(handles.one), component(handles.twenty), component(handles.hundred)}, 6),
+        row({component(handles.sort), component(handles.disable_eight), component(handles.reset)}, 6),
+        component(handles.search),
+        grid({layout::scroll(component(handles.list), list_scroll, 220), column({component(handles.detail), component(handles.erase)}, 12)}, 400, 16)
     }, 12, 16));
 }
 }

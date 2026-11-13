@@ -66,8 +66,8 @@ inline const lcars::Placement* placement(const lcars::Frame& frame, const lcars:
 // content even when closed. Associated labels use their field's placement.
 inline std::optional<bool> enclosing_scroll(const lcars::layout::Node& node, lcars::detail::UiState& ui,
                                              std::string_view id, bool inside = false) {
-    inside = inside || node.type == lcars::layout::Node::Type::scroll;
-    if (node.type == lcars::layout::Node::Type::control) {
+    inside = inside || node.kind == lcars::layout::Node::Kind::scroll;
+    if (node.kind == lcars::layout::Node::Kind::component) {
         auto actual = ui.layout_id(node.component);
         if (actual && *actual == id) return inside;
     }

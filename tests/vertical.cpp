@@ -284,7 +284,7 @@ void the_page_can_reveal_a_vertical_label_like_any_control() {
     Ui ui; test::FakeMeasure measure; ScrollState outer;
     auto tall = ui.add_label({.id = "tall", .value = std::u16string(300, u'x')}).value.value();
     auto label = vertical_label(ui, "label", cjk(25));
-    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(label, 200)}));
     auto frame = arrange(page, ui, look, measure, 300, 150, 1.f, outer);
     const auto* item = frame.find(label);
     check(item->bounds.y + item->bounds.h > 150, "The label starts below the fold");
@@ -292,7 +292,7 @@ void the_page_can_reveal_a_vertical_label_like_any_control() {
     item = frame.find(label);
     check(outer.offset > 0 && item->bounds.y == 0, "Revealing a control taller than the window aligns its top, as for any control");
     auto short_label = vertical_label(ui, "short", cjk(8));
-    auto short_page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(short_label, 100)}));
+    auto short_page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(short_label, 100)}));
     ScrollState second;
     frame = arrange(short_page, ui, look, measure, 300, 150, 1.f, second, "short");
     item = frame.find(short_label);
@@ -316,7 +316,7 @@ void a_vertical_label_inside_a_scrolling_page_chains_the_wheel_to_the_page() {
     Ui ui; test::FakeMeasure measure; ScrollState outer;
     auto tall = ui.add_label({.id = "tall", .value = std::u16string(20, u'x')}).value.value();
     auto label = vertical_label(ui, "label", cjk(25));
-    auto page = layout::scroll(layout::column({layout::control(tall), layout::vertical_text(label, 200)}));
+    auto page = layout::scroll(layout::column({layout::component(tall), layout::vertical_text(label, 200)}));
     auto frame = arrange(page, ui, look, measure, 48 + 16, 200, 1.f, outer);
     check(frame.regions.size() == 2 && !frame.regions[0].horizontal && frame.regions[1].horizontal, "The page region comes first, the label's region last");
     check(frame.maximum > 0 && frame.viewport == frame.regions[0].viewport, "The frame's page fields describe the page, not the label");

@@ -19,7 +19,7 @@ namespace {
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     template<class Handle> Laid(Ui& ui, const Handle& handle, int width = 200, float scale = 1.f, const Appearance& appearance = web_appearance()) {
-        frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
+        frame = arrange(layout::component(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
 ComponentConfig label(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0, int paragraph = 0) {
@@ -386,7 +386,7 @@ struct Subject {
 Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollable) {
     auto handle = *ui.add_label(label("subject", u"ab\ncde", align));
     FakeMeasure measure; ScrollState outer, inner;
-    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::control(handle);
+    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::component(handle);
     auto frame = arrange(node, ui, look, measure, 300, 400, 1.f, outer);
     const auto* p = frame.find(handle);
     Drawn out{{}, p->bounds.x, p->bounds.w, p->bounds.w, p->bounds};
@@ -396,7 +396,7 @@ Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollab
 Drawn drawn_field(Ui& ui, ComponentConfig control, const Appearance& look) {
     auto handle = field_of(ui, std::move(control));
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(handle), ui, look, measure, 300, 400, 1.f, scroll);
+    auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Drawn out;
     out.bounds = p->bounds;

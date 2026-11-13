@@ -593,8 +593,8 @@ void semantic_showcase_states_and_identity() {
 void semantic_unnamed_diagnostic() {
     Ui ui; auto button = ui.add_button({.id = "probe.unnamed"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
-    arrange(layout::control(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    arrange(layout::component(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
+    arrange(layout::component(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
     check(ui.semantics().get({"probe.unnamed"})->name.empty(), "SEM11 ID is never substituted for a missing name");
 #ifndef NDEBUG
     check(ui.diagnostics().size() == 1, "SEM11 unnamed focusable component emits one diagnostic");
@@ -627,7 +627,7 @@ void presentation_size_scales_explicit_and_default_text() {
     Ui ui;
     auto body = ui.add_label({.id = "body", .value = u"Body"}).value.value();
     auto title = ui.add_label({.id = "title", .value = u"Title"}).value.value();
-    auto root = layout::column({layout::control(body), layout::control(title, 24)});
+    auto root = layout::column({layout::component(body), layout::component(title, 24)});
     test::FakeMeasure measure; ScrollState scroll;
     auto settings = ui.presentation(); settings.text_size = 28;
     check(bool(ui.set_presentation(settings)), "Size accepted");
@@ -639,7 +639,7 @@ void compact_density_reflows_fields() {
     Ui ui;
     auto field = ui.add_text({.id = "density.field", .label = u"Name"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
-    auto root = layout::control(field);
+    auto root = layout::component(field);
     auto standard = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
     auto settings = ui.presentation(); settings.density = Density::compact;
     check(bool(ui.set_presentation(settings)), "Compact density accepted");
@@ -812,7 +812,7 @@ void unfocused_field_preserves_visible_character() {
     test::FakeMeasure measure;
     check(bool(h.name.set_value(u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")), "prepare long text");
     check(bool(h.name.focus()) && bool(h.name.select(30, 30)), "place caret inside long text");
-    auto draw = [&] { return arrange(layout::control(h.name), form.ui, *appearance, measure, 220, 400, 1.f, form.scroll); };
+    auto draw = [&] { return arrange(layout::component(h.name), form.ui, *appearance, measure, 220, 400, 1.f, form.scroll); };
     auto before = draw();
     auto first = [](const Placement& p) {
         for (const auto& [index, x] : p.run.stops) if (x >= p.offset - 0.01f) return index;
@@ -886,7 +886,7 @@ void long_field_label_and_error_keep_their_association() {
     auto field = ui.add_text({.id = "field", .value = u"value"}).value.value();
     auto error = ui.add_label({.id = "error", .target = "field", .label_kind = LabelKind::error}).value.value();
     auto next = ui.add_button({.id = "next", .label = u"Next"}).value.value();
-    auto root = layout::column({layout::control(field), layout::control(next)}, 12);
+    auto root = layout::column({layout::component(field), layout::component(next)}, 12);
     test::FakeMeasure measure; ScrollState scroll;
     auto before = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
     field.set_error(u"這是一段很長的錯誤訊息，需要換行而且不能覆蓋後面的按鈕");
@@ -912,7 +912,7 @@ void radio_boundaries_under_the_appearance() {
     radio.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_immediate([&](const Change<RadioGroupHandle>& change) { selected = change.value; return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
-    auto root = layout::column({layout::control(radio), layout::control(next)}, 8);
+    auto root = layout::column({layout::component(radio), layout::component(next)}, 8);
     auto frame = arrange(root, ui, *appearance, measure, 240, 300, 1.f, scroll);
     check(frame.find(radio) && !radio.draft()->has_value() && radio.select({"first"}).status == Status::disabled &&
           radio.select({"last"}).status == Status::disabled, "Empty radio rejects disabled first and last options");
@@ -925,7 +925,7 @@ void radio_boundaries_under_the_appearance() {
     auto after = all_ui.add_button({.id = "after"}).value.value();
     all.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     all.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
-    auto all_frame = arrange(layout::column({layout::control(all), layout::control(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
+    auto all_frame = arrange(layout::column({layout::component(all), layout::component(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
     all.focus(); detail::access(all_ui).key_down({Key::right}); detail::access(all_ui).key_down({Key::tab});
     check(all_frame.find(all) && !all.draft()->has_value() && after.describe()->focused, "All-disabled radio remains empty and can be exited");
 }
@@ -936,7 +936,7 @@ void slider_non_divisible_under_the_appearance() {
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
     slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
-    auto root = layout::control(slider);
+    auto root = layout::component(slider);
     auto frame = arrange(root, ui, *appearance, measure, 240, 120, 1.f, scroll);
     slider.set_value(3);
     check(frame.find(slider) && *slider.draft() == 5, "Non-divisible slider renders and midpoint rounds upward");
@@ -959,7 +959,7 @@ void disabled_tabs_under_the_appearance() {
     auto tabs = ui.add_tabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}}, {{"two"}, u"Two", true, {hidden}}}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::column({layout::control(tabs), layout::control(first), layout::control(hidden)}), ui, *appearance, measure, 400, 300, 1.f, scroll);
+    auto frame = arrange(layout::column({layout::component(tabs), layout::component(first), layout::component(hidden)}), ui, *appearance, measure, 400, 300, 1.f, scroll);
     check(frame.find(tabs) && !frame.find(hidden) && hidden.invoke().status == Status::hidden &&
           tabs.activate({"blocked"}).status == Status::disabled, "Hidden page is not rendered or actionable and disabled tab rejects activation");
     tabs.focus(); detail::access(ui).key_down({Key::right});
@@ -1121,7 +1121,7 @@ void checkbox_conflict_is_visible_and_can_use_latest() {
     });
     box.toggle(); box.confirm();
     test::FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(box), ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto frame = arrange(layout::component(box), ui, *appearance, measure, 400, 400, 1.f, scroll);
     const auto* placed = frame.find(box);
     check(box.describe()->source_conflict && *box.draft() && placed && !placed->description_lines.empty(),
           "A source update during a rejected confirmation keeps the draft and displays a conflict");
@@ -1151,8 +1151,8 @@ void option_conflicts_are_visible_and_can_use_latest() {
     h.mode.select({"focus"}); h.region.select({"central"});
     form.update_mode_source({"offline"}); form.update_region_source({"south"});
     test::FakeMeasure measure; ScrollState scroll;
-    auto mode_frame = arrange(layout::control(h.mode), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
-    auto region_frame = arrange(layout::control(h.region), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto mode_frame = arrange(layout::component(h.mode), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
+    auto region_frame = arrange(layout::component(h.region), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
     auto mode = mode_frame.find(h.mode); auto region = region_frame.find(h.region);
     check(h.mode.describe()->source_conflict && h.region.describe()->source_conflict && mode && region &&
           !mode->description_lines.empty() && !region->description_lines.empty() &&
@@ -1539,7 +1539,7 @@ void tooltip_layout_is_readable_and_pointer_transparent() {
     auto& host = detail::access(ui);
     host.window_active(true); force_focus_indicators(ui); source.focus();
     test::FakeMeasure measure; ScrollState scroll;
-    auto root = layout::column({layout::control(source)}, 0, 8);
+    auto root = layout::column({layout::component(source)}, 0, 8);
     auto frame = arrange(root, ui, *appearance, measure, 160, 110, 1.f, scroll);
     check(*tip.visible() && frame.overlays.size() == 1, "A visible tooltip produces an overlay");
     auto& popup = frame.overlays.front();
@@ -1574,7 +1574,7 @@ void x04_scrollable_text_inventory() {
     auto action = ui.add_button({.id="action", .label=u"Action"}).value.value();
     ScrollState outer, long_scroll, short_scroll;
     auto page = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 120),
-        layout::scroll_text(short_text, short_scroll, 120), layout::control(action)}));
+        layout::scroll_text(short_text, short_scroll, 120), layout::component(action)}));
     test::FakeMeasure measure;
     auto frame = arrange(page, ui, *appearance, measure, 640, 480, 1.f, outer);
     auto fits = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 10000)}));

@@ -172,30 +172,30 @@ unsigned FieldView::line_at(int y, unsigned first_line) const {
 }
 
 namespace layout {
-Node control(ComponentHandle component, int text_size) { Node n; n.type = Node::Type::control; n.component = std::move(component); n.text_size = text_size; return n; }
+Node component(ComponentHandle component, int text_size) { Node n; n.kind = Node::Kind::component; n.component = std::move(component); n.text_size = text_size; return n; }
 Node column(std::vector<Node> children, int gap, int padding) {
-    Node n; n.type = Node::Type::column; n.children = std::move(children); n.gap = gap; n.padding = padding; return n;
+    Node n; n.kind = Node::Kind::column; n.children = std::move(children); n.gap = gap; n.padding = padding; return n;
 }
-Node row(std::vector<Node> children, int gap) { Node n; n.type = Node::Type::row; n.children = std::move(children); n.gap = gap; return n; }
+Node row(std::vector<Node> children, int gap) { Node n; n.kind = Node::Kind::row; n.children = std::move(children); n.gap = gap; return n; }
 Node grid(std::vector<Node> children, int min_column, int gap) {
-    Node n; n.type = Node::Type::grid; n.children = std::move(children); n.min_column = min_column; n.gap = gap; return n;
+    Node n; n.kind = Node::Kind::grid; n.children = std::move(children); n.min_column = min_column; n.gap = gap; return n;
 }
-Node scroll(Node child) { Node n; n.type = Node::Type::scroll; n.children.push_back(std::move(child)); return n; }
+Node scroll(Node child) { Node n; n.kind = Node::Kind::scroll; n.children.push_back(std::move(child)); return n; }
 Node scroll(Node child, ScrollState& state, int height) {
     if (height <= 0) throw std::invalid_argument("Nested scroll height must be positive");
     Node n = scroll(std::move(child)); n.scroll_state = &state; n.scroll_height = height; return n;
 }
 Node scroll_text(LabelHandle label, ScrollState& state, int height) {
-    Node n = scroll(control(label), state, height); n.scrollable_text = true; return n;
+    Node n = scroll(component(label), state, height); n.scrollable_text = true; return n;
 }
 Node vertical_text(LabelHandle label, int height) {
     if (height < 0) throw std::invalid_argument("Vertical text height must not be negative");
-    Node n = control(label); n.vertical_height = height; return n;
+    Node n = component(label); n.vertical_height = height; return n;
 }
-Node pinned(Node header, Node content) { Node n; n.type = Node::Type::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
-Node stack(std::vector<Node> children) { Node n; n.type = Node::Type::stack; n.children = std::move(children); return n; }
+Node pinned(Node header, Node content) { Node n; n.kind = Node::Kind::pinned; n.children.push_back(std::move(header)); n.children.push_back(std::move(content)); return n; }
+Node stack(std::vector<Node> children) { Node n; n.kind = Node::Kind::stack; n.children = std::move(children); return n; }
 Node modal(Node background, std::vector<DialogLayout> dialogs) {
-    Node n; n.type = Node::Type::modal; n.children.push_back(std::move(background));
+    Node n; n.kind = Node::Kind::modal; n.children.push_back(std::move(background));
     for (auto& entry : dialogs) { n.dialogs.push_back(std::move(entry.dialog)); n.children.push_back(std::move(entry.content)); }
     return n;
 }
@@ -451,7 +451,7 @@ struct Arranger {
     int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
     int component_width(const Node& node) {
-        auto id = node.type == Node::Type::control ? ui.layout_id(node.component) : std::nullopt;
+        auto id = node.kind == Node::Kind::component ? ui.layout_id(node.component) : std::nullopt;
         auto control = id ? ui.find(*id) : nullptr;
         if (!control) return -1;
         Placement p;
@@ -473,8 +473,8 @@ struct Arranger {
     }
 
     int height(const Node& node, int width) {
-        switch (node.type) {
-        case Node::Type::control: {
+        switch (node.kind) {
+        case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
             if (!id && ui.retired_button(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
@@ -482,7 +482,7 @@ struct Arranger {
             int result = build(node, width).bounds.h;
             measuring = previous; return result;
         }
-        case Node::Type::scroll: return node.scroll_height ? d(node.scroll_height) : 0;
+        case Node::Kind::scroll: return node.scroll_height ? d(node.scroll_height) : 0;
         default: {
             std::vector<Placement> scratch;
             bool previous = measuring; measuring = true;
@@ -494,8 +494,8 @@ struct Arranger {
     // Places node into r (r.h ignored except for scroll); returns the used height.
     int place(const Node& node, Rect r, std::vector<Placement>& out) {
         int pad = d(node.padding), gap = d(node.gap);
-        switch (node.type) {
-        case Node::Type::control: {
+        switch (node.kind) {
+        case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
             if (!id && ui.retired_button(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
@@ -516,7 +516,7 @@ struct Arranger {
             out.push_back(std::move(p));
             return out.back().bounds.h;
         }
-        case Node::Type::column: {
+        case Node::Kind::column: {
             int y = r.y + pad;
             bool first = true;
             for (const auto& child : node.children) {
@@ -527,7 +527,7 @@ struct Arranger {
             }
             return y - r.y + pad;
         }
-        case Node::Type::row: {
+        case Node::Kind::row: {
             int fixed = 0, flexible = 0;
             for (const auto& child : node.children) {
                 if (auto width = component_width(child); width >= 0) fixed += width; else ++flexible;
@@ -550,7 +550,7 @@ struct Arranger {
             }
             return tallest;
         }
-        case Node::Type::grid: {
+        case Node::Kind::grid: {
             int min = d(node.min_column), n = static_cast<int>(node.children.size());
             int columns = std::clamp((r.w + gap) / std::max(1, min + gap), 1, std::max(1, n));
             int w = (r.w - gap * (columns - 1)) / columns, y = r.y;
@@ -562,21 +562,21 @@ struct Arranger {
             }
             return y - r.y;
         }
-        case Node::Type::scroll:
+        case Node::Kind::scroll:
             if (node.scroll_height) r.h = d(node.scroll_height);
             if (measuring) return r.h;
             return place_scroll(node, r, out);
-        case Node::Type::pinned: {
+        case Node::Kind::pinned: {
             int header = place(node.children[0], {r.x, r.y, r.w, 0}, out);
             place(node.children[1], {r.x, r.y + header, r.w, std::max(0, r.h - header)}, out);
             return r.h;
         }
-        case Node::Type::stack: {
+        case Node::Kind::stack: {
             int tallest = 0;
             for (const auto& child : node.children) tallest = std::max(tallest, place(child, r, out));
             return tallest;
         }
-        case Node::Type::modal: {
+        case Node::Kind::modal: {
             place(node.children[0], r, out);
             std::size_t selected = node.dialogs.size();
             for (std::size_t i = 0; i < node.dialogs.size(); ++i) {

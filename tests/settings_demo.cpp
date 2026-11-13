@@ -512,7 +512,7 @@ void exercise() {
     for (int size : {12, 16, 28})
     for (auto viewport : {std::pair{960,720}, std::pair{640,480}}) {
         test::FakeMeasure measure; ScrollState scroll;
-        auto root = layout::row({layout::control(demo.nav, size), layout::column({})});
+        auto root = layout::row({layout::component(demo.nav, size), layout::column({})});
         auto frame = arrange(root, demo.ui, *appearance, measure, viewport.first, viewport.second, 1, scroll);
         auto* item = frame.find(demo.nav);
         test::check(item && item->options.size() == 4 && item->bounds.w >= 160, "four navigation rows retain natural width");

@@ -583,7 +583,7 @@ struct Laid {
     test::FakeMeasure measure; ScrollState scroll; Frame frame;
     const Placement* field = nullptr;
     Laid(Ui& ui, const TextHandle& handle, int width = 200) {
-        frame = arrange(layout::control(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
+        frame = arrange(layout::component(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
         field = frame.find(handle);
         check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
     }

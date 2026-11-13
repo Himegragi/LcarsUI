@@ -50,7 +50,7 @@ struct Volume {
     detail::UiState& state() { return detail::access(ui); }
     ThumbProbe paint() {
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(slider), ui, appearance, measure, width, 200, 1.f, scroll);
+        auto frame = arrange(layout::component(slider), ui, appearance, measure, width, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
         check(item != nullptr, "slider is arranged");
         track = item->slider_track;

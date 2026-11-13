@@ -558,7 +558,7 @@ Frame layout_of(Ui& ui, int width, int height, ScrollState& scroll, float scale 
     test::FakeMeasure measure;
     std::vector<layout::Node> nodes;
     for (const auto& control : core(ui).controls())
-        if (control.kind != ComponentKind::label && control.page != "dialog") nodes.push_back(layout::control(core(ui).layout_handle(control.id)));
+        if (control.kind != ComponentKind::label && control.page != "dialog") nodes.push_back(layout::component(core(ui).layout_handle(control.id)));
     return arrange(layout::column(std::move(nodes), 8), ui, web_appearance(), measure, width, height, scale, scroll);
 }
 

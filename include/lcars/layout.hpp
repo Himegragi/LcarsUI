@@ -106,7 +106,7 @@ struct ScrollState {
 
 namespace layout {
 struct Node {
-    enum class Type { control, column, row, grid, scroll, stack, pinned, modal } type = Type::column;
+    enum class Kind { component, column, row, grid, scroll, stack, pinned, modal } kind = Kind::column;
     ComponentHandle component;   // control: non-owning typed reference
     DialogHandle dialog;
     std::vector<DialogHandle> dialogs;
@@ -120,7 +120,7 @@ struct Node {
     int vertical_height = 0;      // control: height in DIP of a vertical-writing label; 0 = columns never wrap
     std::vector<Node> children;
 };
-Node control(ComponentHandle component, int text_size = 0);
+Node component(ComponentHandle component, int text_size = 0);
 Node column(std::vector<Node> children, int gap = 12, int padding = 0);
 Node row(std::vector<Node> children, int gap = 12);  // buttons keep natural width, others share the rest
 Node grid(std::vector<Node> children, int min_column, int gap = 16);

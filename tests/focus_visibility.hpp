@@ -30,9 +30,9 @@ struct Fixture {
     }
     detail::UiState& state() { return detail::access(ui); }
     Frame frame() {
-        auto root = layout::column({layout::control(first), layout::control(second), layout::control(edit),
-                                    layout::control(readonly), layout::control(note), layout::control(note_readonly),
-                                    layout::control(slider)}, 0, 8);
+        auto root = layout::column({layout::component(first), layout::component(second), layout::component(edit),
+                                    layout::component(readonly), layout::component(note), layout::component(note_readonly),
+                                    layout::component(slider)}, 0, 8);
         return arrange(root, ui, *appearance, measure, 640, 480, 1.f, scroll);
     }
     const Placement* place(const Frame& laid, std::string_view id) {

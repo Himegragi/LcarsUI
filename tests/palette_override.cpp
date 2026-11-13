@@ -37,7 +37,7 @@ struct ColorProbe : detail::ComponentPaint {
 // Paints every placement of a checked checkbox page with the appearance and the Ui's current variant.
 std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const CheckboxHandle& box) {
     test::FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::column({layout::control(box)}), ui, appearance, measure, 400, 300, 1.f, scroll);
+    auto frame = arrange(layout::column({layout::component(box)}), ui, appearance, measure, 400, 300, 1.f, scroll);
     auto& state = detail::access(ui);
     std::vector<Color> all;
     for (const auto& item : frame.items) {
@@ -317,7 +317,7 @@ void a_multiline_field_paints_with_the_overridden_palette() {
     const Color track{245, 240, 250}, thumb{200, 30, 120};
     auto paint = [&] {
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(field), ui, web, measure, 400, 300, 1.f, scroll);
+        auto frame = arrange(layout::component(field), ui, web, measure, 400, 300, 1.f, scroll);
         auto& state = detail::access(ui);
         const auto& item = frame.items.front();
         auto semantics = state.describe(item.id);

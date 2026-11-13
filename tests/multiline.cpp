@@ -230,7 +230,7 @@ struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     const Placement* field = nullptr;
     Laid(Ui& ui, const TextHandle& handle, int width = field_width) {
-        frame = arrange(layout::control(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
+        frame = arrange(layout::component(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
         field = frame.find(handle);
         check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
     }
@@ -323,7 +323,7 @@ struct Editor {
         layout();
     }
     detail::UiState& host() { return detail::access(ui); }
-    void layout() { frame = arrange(layout::control(field), ui, web_appearance(), measure, width_, 400, 1.f, scroll); }
+    void layout() { frame = arrange(layout::component(field), ui, web_appearance(), measure, width_, 400, 1.f, scroll); }
     const Placement& placed() const { return *frame.find(field); }
     void key(Key k, bool shift = false, bool control = false) { host().key_down(press(k, shift, control)); layout(); }
     void put(unsigned anchor, unsigned caret) { check(bool(host().select("note", anchor, caret)), "Select"); layout(); }
@@ -470,7 +470,7 @@ void the_wheel_scrolls_the_field_then_the_page() {
     auto field = connect(ui, multi("note", numbered_lines(10), 3));
     auto tall = *ui.add_label({.id = "tall", .value = numbered_lines(30)});
     FakeMeasure measure; ScrollState page, outer;
-    auto node = layout::scroll(layout::column({layout::control(field), layout::control(tall)}, 8), outer, 200);
+    auto node = layout::scroll(layout::column({layout::component(field), layout::component(tall)}, 8), outer, 200);
     auto frame = arrange(node, ui, web_appearance(), measure, 300, 400, 1.f, page);
     const auto* placed = frame.find(field);
     check(placed != nullptr && frame.regions.size() == 2 && frame.regions.back().field == "note", "The field is an inner scroll region of the page");
@@ -493,8 +493,8 @@ void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
     auto note = connect(ui, multi("note", numbered_lines(10), 3));
     auto dialog = *ui.add_dialog("dlg", {note, cancel}, note, backup, [](bool) {});
     FakeMeasure measure; ScrollState page, outer;
-    auto content = layout::column({layout::control(note), layout::control(cancel)}, 8);
-    auto root = layout::modal(layout::scroll(layout::control(background), outer, 150), content, dialog);
+    auto content = layout::column({layout::component(note), layout::component(cancel)}, 8);
+    auto root = layout::modal(layout::scroll(layout::component(background), outer, 150), content, dialog);
     check(bool(dialog.open()), "Open the dialog");
     auto frame = arrange(root, ui, web_appearance(), measure, 400, 400, 1.f, page);
     const auto* placed = frame.find(note);

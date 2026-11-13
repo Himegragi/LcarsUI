@@ -536,33 +536,33 @@ std::u16string Demo::save_failed_renderer() {
 }
 layout::Node Demo::page() const {
     using namespace layout;
-    std::vector<Node> content{control(title_,24)};
+    std::vector<Node> content{component(title_,24)};
     if (nav.selected()->id == "general") {
-        content.push_back(control(name)); content.push_back(control(notices)); content.push_back(control(mode)); content.push_back(control(region)); content.push_back(control(volume));
+        content.push_back(component(name)); content.push_back(component(notices)); content.push_back(component(mode)); content.push_back(component(region)); content.push_back(component(volume));
     }
     if (nav.selected()->id == "items") {
-        content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
-        content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
+        content.push_back(component(items_search)); content.push_back(component(items_list)); content.push_back(component(items_count_));
+        content.push_back(row({component(items_add),component(items_edit),component(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent));
-        content.push_back(control(focus_mode)); content.push_back(control(focus_width)); content.push_back(control(focus_radius_same));
-        if (ui.presentation().focus_ring_radius) content.push_back(control(focus_radius));  // the slider shows once "same as the component" is unchecked
-        content.push_back(control(focus_color)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(component(font)); content.push_back(component(font_status_)); content.push_back(component(text_size)); content.push_back(component(dark)); content.push_back(component(compact)); content.push_back(component(justify_left)); content.push_back(component(accent));
+        content.push_back(component(focus_mode)); content.push_back(component(focus_width)); content.push_back(component(focus_radius_same));
+        if (ui.presentation().focus_ring_radius) content.push_back(component(focus_radius));  // the slider shows once "same as the component" is unchecked
+        content.push_back(component(focus_color)); content.push_back(component(preview_)); content.push_back(component(reset_appearance_)); }
     if (nav.selected()->id == "about") {
-        for (auto label : about_labels_) content.push_back(control(label));
+        for (auto label : about_labels_) content.push_back(component(label));
         content.push_back(vertical_text(about_vertical_, 200));
-        content.push_back(control(licenses));
+        content.push_back(component(licenses));
         content.push_back(scroll_text(license_text_, license_scroll, 200));
     }
-    content.push_back(control(status_));
-    content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));
-    auto background=layout::scroll(row({control(nav),column(std::move(content),12,24)},16));
+    content.push_back(component(status_));
+    content.push_back(row({component(undo_),component(redo_),component(revert_),component(save_)},8));
+    auto background=layout::scroll(row({component(nav),column(std::move(content),12,24)},16));
     return layout::modal(std::move(background), {
-        {item_dialog,column({control(item_title_,24),control(item_name),row({control(item_note_bold),control(item_note_italic),control(item_note_underline),control(item_note_color)},8),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
-        {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
-        {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
-        {close_dialog,column({control(close_title_,24),control(close_message_),row({control(close_save),control(close_discard),control(close_cancel)},8)},12)},
-        {error_dialog_,column({control(error_title_,24),control(error_message_),control(error_ok_)},12)}
+        {item_dialog,column({component(item_title_,24),component(item_name),row({component(item_note_bold),component(item_note_italic),component(item_note_underline),component(item_note_color)},8),component(item_note),row({component(item_cancel_),component(item_ok)},8)},12)},
+        {delete_dialog,column({component(delete_title_,24),component(delete_message_),row({component(delete_cancel_),component(delete_confirm_)},8)},12)},
+        {load_dialog_,column({component(load_title_,24),component(load_message_),component(load_ok_)},12)},
+        {close_dialog,column({component(close_title_,24),component(close_message_),row({component(close_save),component(close_discard),component(close_cancel)},8)},12)},
+        {error_dialog_,column({component(error_title_,24),component(error_message_),component(error_ok_)},12)}
     });
 }
 }

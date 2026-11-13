@@ -12,8 +12,8 @@ int main() {
         Ui probe;
         auto unnamed = probe.add_button({.id = "probe.unnamed"}).value.value();
         test::FakeMeasure measure; ScrollState scroll;
-        arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
-        arrange(layout::control(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
+        arrange(layout::component(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
+        arrange(layout::component(unnamed), probe, web_appearance(), measure, 300, 200, 1.f, scroll);
         check(probe.semantics().get({"probe.unnamed"})->name.empty());
         auto node = probe.semantics().get({"probe.unnamed"});
         check(std::find(node->verbs.begin(), node->verbs.end(), Verb::invoke) == node->verbs.end());
@@ -33,7 +33,7 @@ int main() {
         auto second = order.add_button({.id = "second", .label = u"Second"}).value.value();
         auto first = order.add_button({.id = "first", .label = u"First"}).value.value();
         test::FakeMeasure measure; ScrollState scroll;
-        arrange(layout::column({layout::control(first), layout::control(second)}), order, web_appearance(), measure, 300, 0, 1.f, scroll);
+        arrange(layout::column({layout::component(first), layout::component(second)}), order, web_appearance(), measure, 300, 0, 1.f, scroll);
         auto children = order.semantics().children({});
         check(children && children->size() == 2 && (*children)[0].id == "first" && (*children)[1].id == "second");
     }

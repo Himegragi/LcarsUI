@@ -745,7 +745,7 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
         --depth;
     };
     ScrollState scroll;
-    DesktopHost host(ui,appearance,[&] { return layout::control(*label); },scroll,options,false,true);
+    DesktopHost host(ui,appearance,[&] { return layout::component(*label); },scroll,options,false,true);
     active=&host;
     host.client_size(200,100); host.paint(); host.paint();
     auto dark=ui.presentation(); dark.variant=ThemeVariant::dark();
@@ -777,7 +777,7 @@ void registered_component_uses_native_host(const Appearance& appearance, Report&
     state.bind("probe", [&] { ++activations; return Result{}; });
     ScrollState scroll;
     DesktopOptions options;
-    DesktopHost host(ui, appearance, [&] { return layout::control(state.layout_handle("probe")); }, scroll, options, false, true);
+    DesktopHost host(ui, appearance, [&] { return layout::component(state.layout_handle("probe")); }, scroll, options, false, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(200, 100);
@@ -809,7 +809,7 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
     dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
-    auto root=layout::row({layout::control(dropdown),layout::control(other)},8);
+    auto root=layout::row({layout::component(dropdown),layout::component(other)},8);
     DesktopOptions settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
     ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(1.f); host.client_size(640,480);
     dropdown.open(); host.pump(); host.paint();
@@ -1282,7 +1282,7 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI multi-line verification";
-    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(600, 400);
@@ -1380,7 +1380,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     auto other = make("other", u"");
     note.set_colors({{"red", {200, 0, 0}, {255, 140, 140}}});
     DesktopOptions options; options.title = u"LcarsUI rich text verification";
-    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note), layout::control(other)}, 12, 12); }, scroll, options, true, true);
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note), layout::component(other)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(600, 420);
@@ -1470,7 +1470,7 @@ void word_select_native(const Appearance& appearance, Report& report) {
     field_handle.set_word_segmentation(WordSegmentation::per_character);
     note.set_word_segmentation(WordSegmentation::per_character);
     DesktopOptions options; options.title = u"LcarsUI word selection verification";
-    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(field_handle), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(field_handle), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(600, 400);
@@ -1554,7 +1554,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI justified text verification";
-    DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(sample), layout::control(note)}, 12, 12); }, scroll, options, true, true);
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(sample), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(560, 460);

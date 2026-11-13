@@ -68,11 +68,11 @@ struct Page {
         s.tooltip_time(0);
     }
     layout::Node root() const {
-        auto page = layout::scroll(layout::column(list_first ? std::vector<layout::Node>{layout::control(list), layout::control(save), layout::control(box)} : std::vector<layout::Node>{
-            layout::control(save), layout::control(off), layout::control(box), layout::control(radio), layout::control(drop),
-            layout::control(tabs), layout::control(nav), layout::control(slider), layout::control(field), layout::control(notes), layout::control(aligned), layout::control(aligned_notes), layout::control(progress),
-            layout::control(label), layout::control(vertical), layout::control(list)}));
-        return layout::modal(std::move(page), layout::control(ok), dialog);
+        auto page = layout::scroll(layout::column(list_first ? std::vector<layout::Node>{layout::component(list), layout::component(save), layout::component(box)} : std::vector<layout::Node>{
+            layout::component(save), layout::component(off), layout::component(box), layout::component(radio), layout::component(drop),
+            layout::component(tabs), layout::component(nav), layout::component(slider), layout::component(field), layout::component(notes), layout::component(aligned), layout::component(aligned_notes), layout::component(progress),
+            layout::component(label), layout::component(vertical), layout::component(list)}));
+        return layout::modal(std::move(page), layout::component(ok), dialog);
     }
     Frame arrange(const Appearance& look = web_appearance(), int width = 480) {
         return lcars::arrange(root(), ui, look, measure, width, height, 1.f, scroll);

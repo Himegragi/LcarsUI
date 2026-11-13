@@ -9,7 +9,7 @@ using test::FakeMeasure;
 
 namespace {
 layout::Node host_control(Ui& ui, std::string_view id, int text_size = 0) {
-    return layout::control(detail::access(ui).layout_handle(id), text_size);
+    return layout::component(detail::access(ui).layout_handle(id), text_size);
 }
 struct AlternatePresentation final : Appearance {
     const Appearance& base = web_appearance();
@@ -34,7 +34,7 @@ void appearance_controls_component_words_and_geometry() {
                                   {{{"a"}, u"Alpha", false}}).value.value();
     FakeMeasure measure; ScrollState scroll;
     AlternatePresentation alternate;
-    auto frame = arrange(layout::control(radio), ui, alternate, measure, 300, 200, 1.f, scroll);
+    auto frame = arrange(layout::component(radio), ui, alternate, measure, 300, 200, 1.f, scroll);
     auto* placed = frame.find(radio);
     check(placed && placed->lines.size() == 2 && placed->lines[1].text == u"Alpha [off]" &&
           placed->lines[1].bounds.x == 42, "Appearance controls disabled wording and option geometry");
@@ -64,14 +64,14 @@ void layout_rejects_foreign_or_expired_handles() {
     auto first_button = first.add_button({.id = "same"}).value.value();
     auto second_button = second.add_button({.id = "same"}).value.value();
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(first_button), first, web_appearance(), measure, 200, 100, 1.f, scroll);
+    auto frame = arrange(layout::component(first_button), first, web_appearance(), measure, 200, 100, 1.f, scroll);
     check(frame.find(first_button) && !frame.find(second_button), "Placement uses component identity, not its string ID");
     bool rejected = false;
-    try { arrange(layout::control(second_button), first, web_appearance(), measure, 200, 100, 1.f, scroll); }
+    try { arrange(layout::component(second_button), first, web_appearance(), measure, 200, 100, 1.f, scroll); }
     catch (const std::invalid_argument&) { rejected = true; }
     check(rejected, "A foreign component cannot enter another tree's layout");
     layout::Node expired;
-    { Ui temporary; expired = layout::control(temporary.add_button({.id = "gone"}).value.value()); }
+    { Ui temporary; expired = layout::component(temporary.add_button({.id = "gone"}).value.value()); }
     rejected = false;
     try { arrange(expired, first, web_appearance(), measure, 200, 100, 1.f, scroll); }
     catch (const std::invalid_argument&) { rejected = true; }
@@ -114,7 +114,7 @@ void disabled_button_cue_fits_narrow_bounds() {
         auto button = ui.add_button({.id = "button", .label = u"A long control name", .enabled = false}).value.value();
         auto next = ui.add_label({.id = "next", .value = u"Next"}).value.value();
         FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::column({layout::control(button), layout::control(next)}, 8), ui, *look, measure, 120, 400, 1.f, scroll);
+        auto frame = arrange(layout::column({layout::component(button), layout::component(next)}, 8), ui, *look, measure, 120, 400, 1.f, scroll);
         auto* item = frame.find(button); auto* following = frame.find(next);
         check(item && following && item->lines.size() > 1, "Narrow disabled button wraps its text");
         std::u16string text;
@@ -291,7 +291,7 @@ void radio_options_share_geometry_with_pointer_input() {
         group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
         group.connect_immediate([&](const Change<RadioGroupHandle>& c) { model = c.value; return Result{}; });
         FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(group), ui, *look, measure, 320, 240, 1.f, scroll);
+        auto frame = arrange(layout::component(group), ui, *look, measure, 320, 240, 1.f, scroll);
         auto item = frame.find(group);
         check(item && item->options.size() == 3, "All options have independently placed hit targets");
         auto rect = item->options[1];
@@ -313,7 +313,7 @@ void slider_track_and_drag_share_geometry() {
         slider.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
         slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(slider), ui, *appearance, measure, 400, 200, 1.f, scroll);
+        auto frame = arrange(layout::component(slider), ui, *appearance, measure, 400, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
         check(item && item->slider_track.w > 0 && frame.hit(item->slider_track.x, item->slider_track.y)->id == "volume", "The drawn track is a pointer target");
         detail::access(ui).pointer_down(item->id);
@@ -334,7 +334,7 @@ void dropdown_popup_overlaps_and_uses_topmost_hit() {
         field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
         field.open();
         FakeMeasure measure; ScrollState scroll;
-        auto page = layout::column({layout::control(field), layout::control(behind)}, 0);
+        auto page = layout::column({layout::component(field), layout::component(behind)}, 0);
         auto frame = arrange(page, ui, *look, measure, 240, 160, 1.f, scroll);
         check(frame.overlays.size() == 1 && frame.overlays[0].options.size() == 2, "Popup has two shared overlay targets");
         auto row = frame.overlays[0].options[0];
@@ -352,11 +352,11 @@ void dropdown_states_are_readable_without_color() {
     field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     FakeMeasure measure; ScrollState scroll;
     field.open();
-    auto frame = arrange(layout::control(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    auto frame = arrange(layout::component(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
     check(frame.find(field) && frame.find(field)->lines.size() >= 2 && !frame.overlays.empty() && !frame.overlays[0].lines.empty() &&
           frame.find(field)->lines[1].text == u"\u672a\u9078\u53d6" && frame.overlays[0].lines[0].text == u"\u6c92\u6709\u53ef\u7528\u9078\u9805", "Empty dropdown explains its state in text");
     field.enable(false);
-    frame = arrange(layout::control(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    frame = arrange(layout::component(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
     check(frame.find(field)->lines[0].text.find(u"\u505c\u7528") != std::u16string::npos, "Disabled dropdown is labeled in text");
 }
 
@@ -367,7 +367,7 @@ void stack_and_popup_edges_follow_paint_order() {
             auto lower = ui.add_button({.id = "lower", .label = u"Lower"}).value.value();
             auto upper = ui.add_button({.id = "upper", .label = u"Upper"}).value.value();
             FakeMeasure measure; ScrollState scroll;
-            auto stacked = arrange(layout::stack({layout::control(lower), layout::control(upper)}), ui, *look, measure, 200, 180, scale, scroll);
+            auto stacked = arrange(layout::stack({layout::component(lower), layout::component(upper)}), ui, *look, measure, 200, 180, scale, scroll);
             auto p = stacked.find(upper);
             check(p && stacked.hit(p->bounds.x + 2, p->bounds.y + 2)->id == "upper", "Later stack child wins overlapping hits");
             Ui other;
@@ -377,7 +377,7 @@ void stack_and_popup_edges_follow_paint_order() {
             dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
             dropdown.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
             dropdown.open();
-            auto page = layout::scroll(layout::column({layout::control(filler), layout::control(dropdown)}, 0));
+            auto page = layout::scroll(layout::column({layout::component(filler), layout::component(dropdown)}, 0));
             auto frame = arrange(page, other, *look, measure, static_cast<int>(240 * scale), static_cast<int>(180 * scale), scale, scroll, "region");
             check(frame.overlays.size() == 1 && frame.overlays[0].bounds.y < frame.find(dropdown)->bounds.y &&
                   inside(frame.overlays[0].bounds, {0, 0, static_cast<int>(240 * scale), static_cast<int>(180 * scale)}),
@@ -400,7 +400,7 @@ void cross_page_error_is_revealed_in_first_frame() {
         ui.connect_confirmation(submit, {remote, current}, [=](const auto&) {
             return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
         });
-        auto root = layout::pinned(layout::control(tabs), layout::scroll(layout::column({layout::control(current), layout::control(submit), layout::control(filler), layout::control(remote)})));
+        auto root = layout::pinned(layout::component(tabs), layout::scroll(layout::column({layout::component(current), layout::component(submit), layout::component(filler), layout::component(remote)})));
         submit.invoke();
         FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(root, ui, *look, measure, 400, 200, 1.f, scroll, detail::access(ui).focused());
@@ -417,7 +417,7 @@ void inactive_page_members_do_not_paint_or_hit() {
     auto first = ui.add_button({.id = "one", .label = u"One"}).value.value();
     auto second = ui.add_button({.id = "two", .label = u"Two"}).value.value();
     auto tabs = ui.add_tabs({.id = "tabs"}, {{{"one"}, u"One", true, {first}}, {{"two"}, u"Two", true, {second}}}).value.value();
-    auto root = layout::column({layout::control(tabs), layout::control(first), layout::control(second)});
+    auto root = layout::column({layout::component(tabs), layout::component(first), layout::component(second)});
     for (const auto* look : {&web_appearance(), &material_appearance()}) {
         FakeMeasure measure; ScrollState scroll;
         second.enable(false);
@@ -441,7 +441,7 @@ void list_reveals_the_keyboard_row_and_clips_hits() {
         list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         FakeMeasure measure; ScrollState scroll;
-        auto page = layout::scroll(layout::control(list));
+        auto page = layout::scroll(layout::component(list));
         auto frame = arrange(page, ui, *look, measure, 640, 480, 1.f, scroll, "list");
         auto item = frame.find(list);
         check(item && item->options.size() == 100 && inside(item->options.back(), frame.viewport), "End reveals the whole last row");
@@ -460,7 +460,7 @@ void nested_scroll_reveals_the_list_target() {
         list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         ScrollState outer, inner; FakeMeasure measure;
-        auto page = layout::scroll(layout::column({layout::control(filler), layout::scroll(layout::control(list), inner, 140)}));
+        auto page = layout::scroll(layout::column({layout::component(filler), layout::scroll(layout::component(list), inner, 140)}));
         auto frame = arrange(page, ui, *look, measure, 360, 200, 1.f, outer, "list");
         auto item = frame.find(list);
         check(item && item->options.size() == 100 && inside(item->options.back(), item->clip) &&
@@ -476,8 +476,8 @@ void assembled_layout_handles_long_text_and_larger_type() {
         auto left = ui.add_label({.id = "left", .value = u"很長的說明文字會在狹窄空間中重新換行並保留間距"}).value.value();
         auto right = ui.add_label({.id = "right", .value = u"右側標籤"}).value.value();
         auto below = ui.add_label({.id = "below", .value = u"下方結果"}).value.value();
-        auto page = layout::column({layout::row({layout::control(left, font), layout::control(right, font)}, 12),
-                                    layout::grid({layout::control(below, font)}, 160)}, 14, 8);
+        auto page = layout::column({layout::row({layout::component(left, font), layout::component(right, font)}, 12),
+                                    layout::grid({layout::component(below, font)}, 160)}, 14, 8);
         FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(page, ui, *look, measure, 240, 600, 1.f, scroll);
         auto a = frame.find(left)->bounds, b = frame.find(right)->bounds, c = frame.find(below)->bounds;
@@ -493,8 +493,8 @@ void multiple_dialog_layout() {
     auto two = ui.add_button({.id="two"}).value.value();
     auto first = ui.add_dialog("first", {one}, one, background, [](bool) {}).value.value();
     auto second = ui.add_dialog("second", {two}, two, background, [](bool) {}).value.value();
-    std::vector<DialogLayout> dialogs{{first, layout::control(one)}, {second, layout::control(two)}};
-    auto root = layout::modal(layout::control(background), std::move(dialogs));
+    std::vector<DialogLayout> dialogs{{first, layout::component(one)}, {second, layout::component(two)}};
+    auto root = layout::modal(layout::component(background), std::move(dialogs));
     FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(root, ui, *appearances[0], measure, 640, 480, 1, scroll);
     check(!frame.modal && frame.overlays.empty(), "closed dialogs leave background alone");
@@ -511,7 +511,7 @@ void modal_long_dropdown() {
     dropdown.connect_source({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
     dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
     auto dialog=ui.add_dialog("dialog",{dropdown},dropdown,background,[](bool) {}).value.value();
-    auto root=layout::modal(layout::control(background),layout::control(dropdown),dialog);
+    auto root=layout::modal(layout::component(background),layout::component(dropdown),dialog);
     dialog.open(); dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
     auto frame=arrange(root,ui,web_appearance(),measure,640,480,1,scroll);
     auto popup=std::find_if(frame.overlays.begin(),frame.overlays.end(),[](const auto& p) { return p.dropdown_panel; });
@@ -530,7 +530,7 @@ void long_dropdown_viewport() {
         dropdown.connect_source({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});
         dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
         dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
-        auto frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        auto frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(frame.overlays.size()==1 && frame.overlays[0].options.size()<=12, "long popup lays out only visible rows");
         auto& state=detail::access(ui);
         auto nodes=ui.semantics().children({"long"});
@@ -539,24 +539,24 @@ void long_dropdown_viewport() {
         auto last=ui.semantics().get({"long", OptionValue{"149"}});
         test::check(last && last->visible, "initial selection is visible");
         test::check(bool(state.key_down({.key=Key::home})), "Home moves candidate");
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         auto first=ui.semantics().get({"long", OptionValue{"0"}});
         last=ui.semantics().get({"long", OptionValue{"149"}});
         test::check(first && first->visible && last && !last->visible, "Home reveals first, last is offscreen");
         test::check(bool(state.key_down({.key=Key::end})), "End moves candidate");
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         last=ui.semantics().get({"long", OptionValue{"149"}});
         test::check(last && last->visible && dropdown.describe()->candidate->id=="149", "End reveals last candidate");
         state.key_down({.key=Key::home});
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         for (int i=1; i<150; ++i) {
             state.key_down({.key=Key::down, .repeat=true});
-            frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+            frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
             auto candidate=ui.semantics().get({"long",OptionValue{std::to_string(i)}});
             test::check(candidate && candidate->visible && candidate->bounds && candidate->bounds->h==frame.overlays[0].options.back().h, "repeated Down keeps candidate fully visible");
         }
         state.key_down({.key=Key::home});
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         auto popup=frame.overlays[0];
         for (std::size_t i=0; i<popup.options.size(); ++i) {
             const auto& row=popup.options[i];
@@ -568,11 +568,11 @@ void long_dropdown_viewport() {
             test::check(semantic && semantic->name==popup.lines[i].text, "each visible row hit matches its painted label");
         }
         test::check(frame.wheel(ui,popup.bounds.x+2,popup.bounds.y+2,-100), "wheel scrolls popup");
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(dropdown.describe()->expanded && dropdown.draft()->value().id=="149", "wheel preserves popup and value");
         auto region=frame.regions.back();
         test::check(frame.scroll_to(ui,*region.state,region.offset_for_thumb(region.track.y+region.track.h-region.thumb.h)), "drag scrollbar to end");
-        frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
+        frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(ui.semantics().get({"long",OptionValue{"149"}})->visible && dropdown.describe()->expanded, "drag reveals last without closing");
         auto row=frame.overlays[0].options[2];
         auto painted_label=frame.overlays[0].lines[2].text;

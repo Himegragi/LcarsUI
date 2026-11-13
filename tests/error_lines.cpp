@@ -66,12 +66,12 @@ const Subject subjects[] = {
             check(field.describe()->source_conflict, "the text field reports a conflict");
         }
         put_error(ui, id, error);
-        return layout::control(field);
+        return layout::component(field);
     }},
     {"checkbox", false, [](Ui& ui, const std::string& id, bool, bool error) -> layout::Node {
         auto checkbox = ui.add_checkbox(control(id, u"Remember me")).value.value();
         put_error(ui, id, error);
-        return layout::control(checkbox);
+        return layout::component(checkbox);
     }},
     {"radio", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto group = ui.add_radio_group(control(id, u"Mode"), options).value.value();
@@ -83,7 +83,7 @@ const Subject subjects[] = {
             check(group.describe()->source_conflict, "the radio group reports a conflict");
         }
         put_error(ui, id, error);
-        return layout::control(group);
+        return layout::component(group);
     }},
     {"dropdown", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto box = ui.add_dropdown(control(id, u"Region"), options).value.value();
@@ -95,7 +95,7 @@ const Subject subjects[] = {
             check(box.describe()->source_conflict, "the dropdown reports a conflict");
         }
         put_error(ui, id, error);
-        return layout::control(box);
+        return layout::component(box);
     }},
     {"slider", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto slider = ui.add_slider(control(id, u"Volume"), {0, 100, 5}).value.value();
@@ -107,7 +107,7 @@ const Subject subjects[] = {
             check(slider.describe()->source_conflict, "the slider reports a conflict");
         }
         put_error(ui, id, error);
-        return layout::control(slider);
+        return layout::component(slider);
     }},
 };
 struct State { const char* name; bool conflict, error; };

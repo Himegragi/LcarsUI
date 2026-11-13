@@ -452,18 +452,18 @@ Result Form::reset() {
 
 layout::Node Form::page() const {
     using namespace layout;
-    std::vector<Node> fields{control(handles.name)};
-    fields.push_back(control(handles.notices)); fields.push_back(control(handles.notices_latest));
-    fields.push_back(control(handles.mode)); fields.push_back(control(handles.mode_latest));
-    fields.push_back(control(handles.region)); fields.push_back(control(handles.region_latest));
-    fields.push_back(control(handles.volume)); fields.push_back(control(handles.volume_latest));
-    fields.push_back(row({control(handles.apply), control(handles.latest), control(handles.state)}, 16));
+    std::vector<Node> fields{component(handles.name)};
+    fields.push_back(component(handles.notices)); fields.push_back(component(handles.notices_latest));
+    fields.push_back(component(handles.mode)); fields.push_back(component(handles.mode_latest));
+    fields.push_back(component(handles.region)); fields.push_back(component(handles.region_latest));
+    fields.push_back(component(handles.volume)); fields.push_back(component(handles.volume_latest));
+    fields.push_back(row({component(handles.apply), component(handles.latest), component(handles.state)}, 16));
     auto form = layout::scroll(column({
-        control(handles.title, 24),
-        control(handles.intro),
-        grid({control(handles.normal), control(handles.read_only), control(handles.disabled), control(handles.error), control(handles.long_text), control(handles.offline_disabled), control(handles.region_empty), control(handles.reset)}, 120, 8),
+        component(handles.title, 24),
+        component(handles.intro),
+        grid({component(handles.normal), component(handles.read_only), component(handles.disabled), component(handles.error), component(handles.long_text), component(handles.offline_disabled), component(handles.region_empty), component(handles.reset)}, 120, 8),
         grid({column(std::move(fields), 12),
-              column({control(handles.draft), control(handles.result), control(handles.count)}, 8)},
+              column({component(handles.draft), component(handles.result), component(handles.count)}, 8)},
              360, 32),
     }, 16, 24));
     if (!pages_) return form;
@@ -475,26 +475,26 @@ layout::Node Form::page() const {
         std::vector<Node> items;
         bool clipping_fixture = clip_padding_id_ == handles.v04_title.describe()->id;
         if (clipping_fixture) items.push_back(column({}, 0, 700));
-        items.push_back(control(handles.v04_title, 24));
-        items.push_back(control(handles.font));
-        items.push_back(control(handles.text_size));
-        items.push_back(control(handles.dark));
-        items.push_back(control(handles.compact));
-        items.push_back(control(handles.preview));
-        items.push_back(control(handles.font_status));
-        items.push_back(control(handles.reset_v04));
+        items.push_back(component(handles.v04_title, 24));
+        items.push_back(component(handles.font));
+        items.push_back(component(handles.text_size));
+        items.push_back(component(handles.dark));
+        items.push_back(component(handles.compact));
+        items.push_back(component(handles.preview));
+        items.push_back(component(handles.font_status));
+        items.push_back(component(handles.reset_v04));
         // The alignment comparison: the paragraph with its two dropdowns, then "姓　名" distributed next to the same label left-aligned.
-        items.push_back(control(handles.justify_sample));
-        items.push_back(grid({control(handles.justify_align), control(handles.justify_method)}, 200, 16));
-        items.push_back(grid({control(handles.distribute_name), control(handles.distribute_plain)}, 120, 16));
+        items.push_back(component(handles.justify_sample));
+        items.push_back(grid({component(handles.justify_align), component(handles.justify_method)}, 200, 16));
+        items.push_back(grid({component(handles.distribute_name), component(handles.distribute_plain)}, 120, 16));
         if (clipping_fixture) items.push_back(column({}, 0, 700));
         content = layout::scroll(column(std::move(items), 16, 24));
     }
 
-    else content = layout::scroll(column({control(handles.v03_title, 24), control(handles.progress), control(handles.progress_source), control(handles.dialog_result), control(handles.dialog_open), control(handles.dialog_temporary),
-        grid({control(handles.progress_zero), control(handles.progress_half), control(handles.progress_full),
-              control(handles.progress_below), control(handles.progress_above), control(handles.reset_v03)}, 120, 8)}, 16, 24));
-    return modal(pinned(control(handles.tabs), std::move(content)),
-        column({control(handles.dialog_title, 20), control(handles.dialog_body), row({control(handles.dialog_cancel), control(handles.dialog_confirm)})}, 16), handles.dialog);
+    else content = layout::scroll(column({component(handles.v03_title, 24), component(handles.progress), component(handles.progress_source), component(handles.dialog_result), component(handles.dialog_open), component(handles.dialog_temporary),
+        grid({component(handles.progress_zero), component(handles.progress_half), component(handles.progress_full),
+              component(handles.progress_below), component(handles.progress_above), component(handles.reset_v03)}, 120, 8)}, 16, 24));
+    return modal(pinned(component(handles.tabs), std::move(content)),
+        column({component(handles.dialog_title, 20), component(handles.dialog_body), row({component(handles.dialog_cancel), component(handles.dialog_confirm)})}, 16), handles.dialog);
 }
 }

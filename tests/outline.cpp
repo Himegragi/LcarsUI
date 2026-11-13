@@ -78,7 +78,7 @@ struct Page {
     Frame frame(const Appearance& appearance) {
         test::FakeMeasure measure; ScrollState scroll;
         std::vector<layout::Node> nodes;
-        for (const auto& h : handles) nodes.push_back(layout::control(h));
+        for (const auto& h : handles) nodes.push_back(layout::component(h));
         return arrange(layout::column(nodes), ui, appearance, measure, 640, 2000, 1.f, scroll);
     }
 };

@@ -19,7 +19,7 @@ namespace {
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     template<class Handle> Laid(Ui& ui, const Handle& handle, int width = 100, float scale = 1.f, const Appearance& appearance = web_appearance()) {
-        frame = arrange(layout::control(handle), ui, appearance, measure, width, 400, scale, scroll);
+        frame = arrange(layout::component(handle), ui, appearance, measure, width, 400, scale, scroll);
     }
 };
 ComponentConfig label(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic) {
@@ -215,12 +215,12 @@ void the_per_character_method_cuts_inside_a_ligature_cluster_and_the_others_do_n
     auto per_character = *ui.add_label(label("p", u"office is open now", TextAlign::justify, JustifyMethod::per_character));
     auto automatic = *ui.add_label(label("a", u"office is open now", TextAlign::justify, JustifyMethod::automatic));
     LigatureMeasure measure; ScrollState scroll;
-    auto first = arrange(layout::control(per_character), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    auto first = arrange(layout::component(per_character), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
     const auto& line = first.find(per_character)->lines[0];
     check(line.text == u"office is " && std::count_if(line.segments.begin(), line.segments.end(), [&](const TextSegment& s) { return s.end - s.begin == 1; }) >= 8,
           "Every letter is a piece of its own, though the shaper clusters ffi");
     for (const auto& s : line.segments) check(line.text.substr(s.begin, s.end - s.begin).find(u"fi") == std::u16string::npos, "No piece can form the ligature");
-    auto second = arrange(layout::control(automatic), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
+    auto second = arrange(layout::component(automatic), ui, web_appearance(), measure, 100, 400, 1.f, scroll);
     const auto& plain = second.find(automatic)->lines[0];
     check(!plain.segments.empty() && plain.segments[0].end == 7, "The automatic method keeps the word, ligature and all, in one piece");
 }
@@ -754,7 +754,7 @@ float content_right(const std::u16string& line, const std::vector<TextSegment>& 
 }
 Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, bool scrollable, const Appearance& look) {
     FakeMeasure measure; ScrollState outer, inner;
-    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::control(handle);
+    auto node = scrollable ? layout::scroll(layout::column({layout::scroll_text(handle, inner, 400)})) : layout::component(handle);
     auto frame = arrange(node, ui, look, measure, 300, 400, 1.f, outer);
     const auto* p = frame.find(handle);
     Rows out; out.area = static_cast<float>(p->bounds.w);
@@ -771,7 +771,7 @@ Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, b
 }
 Rows field_rows(Ui& ui, const TextHandle& handle, const std::u16string& text, const Appearance& look) {
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::control(handle), ui, look, measure, 300, 400, 1.f, scroll);
+    auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Rows out;
     if (!p->multiline) {  // one line, the end of its paragraph

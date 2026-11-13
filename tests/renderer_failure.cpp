@@ -216,7 +216,7 @@ static void frozen_overlays(const Appearance& appearance) {
     check(bool(host.rebuild_renderer()), "overlay test recovery");
     edit_form::Form dropdown_form(edit_form::default_ids(), true);
     RendererTestHooks wheel_hooks; wheel_hooks.gl_error_at_frame = 1;
-    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::control(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
+    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::component(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
     check(bool(dropdown_form.handles.region.open()), "dropdown opened before failure");
     wheel_host.paint();
     check(wheel_host.renderer_failed(), "wheel test failure");
@@ -227,7 +227,7 @@ static void frozen_overlays(const Appearance& appearance) {
     auto button = pending_ui.add_button({.id="pending", .label=u"Pending"}).value.value();
     auto tip = pending_ui.add_tooltip("pending.tip", button, u"Help", 1000).value.value();
     ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
-    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);
+    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::component(button); }, pending_scroll, {}, false, true, &pending_hooks);
     auto& pending = access(pending_ui); std::uint64_t pending_now = 1000;
     pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true); pending.set_system_keyboard_cues(true);
     check(bool(button.focus()) && pending.tooltip_deadline() == 2000, "pending tooltip starts delay");

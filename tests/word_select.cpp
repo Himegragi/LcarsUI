@@ -274,7 +274,7 @@ constexpr int box = 200;
 struct Laid {
     test::FakeMeasure measure; ScrollState scroll; Frame frame; Field& field;
     explicit Laid(Field& f, int width = box) : field(f) { relayout(width); }
-    void relayout(int width = box) { frame = arrange(layout::control(field.handle), field.ui, web_appearance(), measure, width, 400, 1.f, scroll); }
+    void relayout(int width = box) { frame = arrange(layout::component(field.handle), field.ui, web_appearance(), measure, width, 400, 1.f, scroll); }
     const Placement& placed() const { return *frame.find(field.handle); }
     // The pointer position in the middle of the character starting at `offset`.
     int x_of(unsigned offset) const { return (placed().caret_x(offset) + placed().caret_x(offset + 1)) / 2; }
@@ -512,7 +512,7 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
         check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect the field");
         check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         if (multiline) check(p.view.lines[0].shift > 0 && p.view.lines[0].shift != p.view.lines[1].shift, "The lines of a centered field start at different x");
         else check(p.shift > 0, "A short centered single line starts right of the left edge");
@@ -550,7 +550,7 @@ void rich_text_words_select_through_the_styled_runs_and_keep_the_styles() {
         auto model = std::make_shared<RichText>(RichText{u"alpha bravo charlie", {bold_span(6, 5)}});
         auto handle = rich_field(ui, model, align);
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::control(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         check(p.view.lines[0].pieces.size() == 3, "The line has a plain, a bold and a plain piece");
         Pointer pointer;
