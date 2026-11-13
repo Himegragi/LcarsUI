@@ -1718,6 +1718,24 @@ Result detail::UiState::configuration_access(std::string_view id, bool read_only
     if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
+// A confirmation group member's value and last written value as its change record; a rich text field's carries its styles.
+template <class Handle, class FieldState>
+static FieldChange pending_change(const Handle& handle, const FieldState& f) {
+    if constexpr (std::is_same_v<Handle, TextHandle>) {
+        if (f.rich) return Change<TextHandle, RichText>{handle, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}};
+        return Change<TextHandle>{handle, f.session.text, f.origin};
+    } else return typename FieldState::Change{handle, f.value, f.origin};
+}
+// After the group's write succeeds: the value its change record handed over becomes the member's origin.
+template <class FieldState>
+static void adopt_written(FieldState& f, const FieldChange& written) {
+    if constexpr (std::is_same_v<typename FieldState::Change, Change<TextHandle>>) {
+        if (const auto* rich = std::get_if<Change<TextHandle, RichText>>(&written)) {
+            f.origin = rich->value.text; f.origin_spans = rich->value.spans; return;
+        }
+    }
+    f.origin = std::get<typename FieldState::Change>(written).value;
+}
 Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
     OperationScope operation(this);
@@ -1742,10 +1760,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
-            if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                if (f.rich) changes.emplace_back(Change<TextHandle, RichText>{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}});
-                else changes.emplace_back(Change<TextHandle>{h, f.session.text, f.origin});
-            } else changes.emplace_back(typename std::decay_t<decltype(f)>::Change{h, f.value, f.origin});
+            changes.push_back(pending_change(h, f));
             f.submitting = true;
         }, member);
         ConfirmationResult outcome;
@@ -1757,13 +1772,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             f.submitting = false;
-            if (outcome.result) {
-                if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                    if (f.rich) { const auto& rich = std::get<Change<TextHandle, RichText>>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
-                    else f.origin = std::get<Change<TextHandle>>(changes[i]).value;
-                } else f.origin = std::get<typename std::decay_t<decltype(f)>::Change>(changes[i]).value;
-            }
-            if (outcome.result) set_error(h.id_, u"");
+            if (outcome.result) { adopt_written(f, changes[i]); set_error(h.id_, u""); }
         }, fields[i]);
         if (!outcome.result) {
             std::optional<std::size_t> first;
