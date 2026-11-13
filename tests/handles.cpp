@@ -45,6 +45,9 @@ static_assert(handle_kinds::equality_holds, "decisions 2 and 4: every handle kin
 struct WithoutEquality {};
 static_assert(!handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<int, long>*>(nullptr)) &&
               !handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<TextHandle, WithoutEquality>*>(nullptr)));
+static_assert(handle_kinds::construction_holds, "a user makes only empty handles");
+struct OpenConstruction { OpenConstruction() = default; OpenConstruction(detail::UiState*, std::weak_ptr<void>, std::string) {} };
+static_assert(!handle_kinds::made_only_by_the_framework(static_cast<std::tuple<OpenConstruction>*>(nullptr)));
 static_assert(!std::equality_comparable_with<TextHandle, CheckboxHandle>);
 static_assert(!std::equality_comparable_with<TabsHandle, NavigationListHandle>);  // one implementation inside, still two kinds
 static_assert(!std::equality_comparable_with<TextHandle, LabelHandle>);

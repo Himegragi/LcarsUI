@@ -20,6 +20,7 @@ static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
 static_assert(handle_kinds::equality_holds);
+static_assert(handle_kinds::construction_holds);
 static_assert(std::tuple_size_v<handle_kinds::All> == 14);
 static_assert(std::equality_comparable<lcars::ComponentHandle> && std::equality_comparable<lcars::ConfirmField>);
 static_assert(!std::equality_comparable_with<lcars::TextHandle, lcars::CheckboxHandle>);  // one case of the list's rule, spelled out

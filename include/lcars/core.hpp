@@ -270,6 +270,9 @@ namespace detail { class UiState; UiState& access(Ui&); const UiState& access(co
 // and no class derived from one, reaches the Ui, the lifetime or the id, and two different kinds never compare.
 // Equality: two handles are equal when they control the same thing now (same Ui, same lifetime, same id); two default
 // handles are equal to each other and to no real one. Every kind declares `bool operator==(const Kind&) const = default;`.
+// Every kind takes HandleBase's constructor (`using HandleBase::HandleBase;`): it stays as private as the base's, so only
+// the framework makes real handles. Each kind still befriends UiState (and Frame) itself: reaching the base of a
+// privately derived handle needs friendship of the kind, not of the base.
 namespace detail {
 template <class Handle> class HandleBase {
     friend Handle;
@@ -383,8 +386,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    TextHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 class ButtonHandle : private detail::HandleBase<ButtonHandle> {
 public:
@@ -401,8 +403,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    ButtonHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 class LabelHandle : private detail::HandleBase<LabelHandle> {
 public:
@@ -427,8 +428,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    LabelHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct BoolChange;
 class CheckboxHandle : private detail::HandleBase<CheckboxHandle> {
@@ -448,8 +448,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    CheckboxHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct BoolChange { CheckboxHandle field; bool value, origin; };
 struct OptionChange;
@@ -471,8 +470,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    RadioGroupHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct OptionChange { RadioGroupHandle field; std::optional<OptionValue> value, origin; };
 struct NumericChange;
@@ -494,8 +492,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    SliderHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct NumericChange { SliderHandle field; int value, origin; };
 // A display-only percentage. Source values are never written; display is clamped to 0-100.
@@ -508,8 +505,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    ProgressHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct DropdownChange;
 class DropdownHandle : private detail::HandleBase<DropdownHandle> {
@@ -532,8 +528,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    DropdownHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
 class ListHandle;
@@ -555,8 +550,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    TabsHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 class NavigationListHandle : private detail::HandleBase<NavigationListHandle> {
 public:
@@ -573,8 +567,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    NavigationListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 class ListHandle : private detail::HandleBase<ListHandle> {
 public:
@@ -591,8 +584,7 @@ public:
 private:
     friend class detail::UiState;
     friend struct Frame;
-    ListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 // A single window-modal dialog, assembled from ordinary typed components. The opener and
 // fallback are non-owning handles; the result callback runs once for each successful opening.
@@ -606,8 +598,7 @@ public:
     bool operator==(const DialogHandle& other) const = default;
 private:
     friend class detail::UiState;
-    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 // Non-owning reference to explanatory content attached to a source component.
 class TooltipHandle : private detail::HandleBase<TooltipHandle> {
@@ -617,8 +608,7 @@ public:
     bool operator==(const TooltipHandle& other) const = default;
 private:
     friend class detail::UiState;
-    TooltipHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string source)
-        : HandleBase(ui, std::move(lifetime), std::move(source)) {}
+    using HandleBase::HandleBase;
 };
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
@@ -694,8 +684,7 @@ public:
     bool operator==(const ContextMenuHandle& other) const = default;
 private:
     friend class detail::UiState;
-    ContextMenuHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
+    using HandleBase::HandleBase;
 };
 // What the pointer hovers: a component, plus the item when the pointer is over one item of it.
 struct HoverTarget { std::string id; std::optional<OptionValue> item; bool operator==(const HoverTarget&) const = default; };
