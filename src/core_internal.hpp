@@ -42,7 +42,8 @@ public:
     static constexpr std::u16string_view gone_without_text = u"";
     // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
     // handle whose lifetime has ended (its Ui is gone, its button removed, a tooltip's source removed) runs nothing and
-    // answers not_found with `gone`. R is the operation's own return type (Result or a Query).
+    // answers not_found with `gone`. R is the operation's own return type (Result or a Query). A typed handle operation
+    // is written as `return detail::UiState::operate(*this, [&]() -> Result { ... });`.
     template <class Handle, class Body, class R = std::invoke_result_t<Body&>>
     static R operate(const Handle& handle, Body&& body, std::u16string_view gone = component_gone) {
         const bool alive = !handle.lifetime_.expired();
@@ -697,9 +698,5 @@ TextHit placement_text_hit(const Frame& frame, std::string_view id, int x, int y
 unsigned placement_text_cell(const Frame& frame, std::string_view id, int x, int y);
 UiState& access(Ui& ui);
 const UiState& access(const Ui& ui);
-// What a typed handle operation is written as: `return detail::operate(*this, [&]() -> Result { ... });`.
-template <class Handle, class Body> auto operate(const Handle& handle, Body&& body, std::u16string_view gone = UiState::component_gone) {
-    return UiState::operate(handle, std::forward<Body>(body), gone);
-}
 }
 }

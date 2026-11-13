@@ -352,7 +352,7 @@ Result detail::UiState::menu_attachment(std::string_view target, MenuAttachment*
 
 // ---- public API
 Result ContextMenuHandle::set_mode(MenuMode mode) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         menu->mode = mode;
@@ -361,7 +361,7 @@ Result ContextMenuHandle::set_mode(MenuMode mode) const {
     });
 }
 Result ContextMenuHandle::set_items(std::vector<MenuItem> items) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         if (auto r = ui_->validate_menu_items(items); !r) return r;
@@ -371,7 +371,7 @@ Result ContextMenuHandle::set_items(std::vector<MenuItem> items) const {
     });
 }
 Result ContextMenuHandle::add_item(MenuItem item, std::string before) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         auto items = menu->items;
@@ -388,7 +388,7 @@ Result ContextMenuHandle::add_item(MenuItem item, std::string before) const {
     });
 }
 Result ContextMenuHandle::remove_item(std::string id) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         auto& items = menu->items;
@@ -400,7 +400,7 @@ Result ContextMenuHandle::remove_item(std::string id) const {
     });
 }
 Result ContextMenuHandle::update_item(MenuItem item) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         if (item.separator) return {Status::invalid_value, u"分隔線沒有識別碼，不能更新"};
@@ -413,7 +413,7 @@ Result ContextMenuHandle::update_item(MenuItem item) const {
     });
 }
 Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
-    return detail::operate(*this, [&]() -> Result {
+    return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         auto& items = menu->items;
@@ -425,7 +425,7 @@ Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
     });
 }
 Query<std::vector<MenuItemInfo>> ContextMenuHandle::items() const {
-    return detail::operate(*this, [&]() -> Query<std::vector<MenuItemInfo>> {
+    return detail::UiState::operate(*this, [&]() -> Query<std::vector<MenuItemInfo>> {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menu_attachment(id_, menu, true); !r) return {r.status, r.message, std::nullopt};
         std::vector<MenuItemInfo> items;
