@@ -95,7 +95,7 @@ private:
     // A slider drag is one undo step: while a slider keeps the focus its changes join the first one. drag_group_ is the id of the
     // slider whose changes are joining (empty = none), so dirty(false) and apply() end every slider's group with one assignment.
     std::string drag_group_;
-    void connect_slider(lcars::SliderHandle& slider, const char* id, std::function<lcars::Result(const lcars::NumericChange&, bool join)> change);
+    void connect_slider(lcars::SliderHandle& slider, const char* id, std::function<lcars::Result(const lcars::Change<lcars::SliderHandle>&, bool join)> change);
 public:
     lcars::Ui ui;
     lcars::ScrollState scroll;

@@ -132,8 +132,8 @@ public:
     std::optional<int> slider_held_x(std::string_view id) const;
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
-    Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
-    Result connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate);
+    Result connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate);
+    Result connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate);
     bool is_rich(std::string_view id) const;
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
@@ -160,8 +160,6 @@ public:
     // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
     // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
     struct Internals;
-    Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     UiState(const UiState&)=delete;
@@ -409,7 +407,9 @@ private:
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id, bool read_only = false) const;
-    Result connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read = {});
+    // A text field's read source: plain, or rich for a field created with Control::rich (#95: one place for both).
+    using TextFieldSource = std::variant<Source<std::u16string>, Source<RichText>>;
+    Result connect_source(const Id& id, TextFieldSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
@@ -423,7 +423,7 @@ private:
     struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     // The data connection of every field that writes back to the application (#94): text field, checkbox, radio group,
     // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, use_latest and
-    // draft keep their names and parameters. Change is the field's public change type (TextChange, BoolChange, ...).
+    // draft keep their names and parameters. Change is the field's public change record (Change<TextHandle>, Change<CheckboxHandle>, ...).
     template <class ChangeType> struct FieldConnection {
         using Change = ChangeType;
         bool connected = false;            // the source has delivered a valid value
@@ -442,7 +442,7 @@ private:
         // Whether the field may join a confirmation group: a source and no write timing yet.
         bool joinable() const { return connected && !has_write_timing(); }
     };
-    struct Field : FieldConnection<TextChange> {
+    struct Field : FieldConnection<Change<TextHandle>> {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
@@ -466,29 +466,28 @@ private:
         WordSegmentation segmentation = WordSegmentation::dictionary;
         // A double or triple click arms a drag that grows by that unit while the selection stays as the click left it.
         struct UnitDrag { enum class Unit { character, word, paragraph } unit = Unit::character; TextSpan origin; Selection last; } drag;
-        TextSource source;
+        TextFieldSource source;                // empty until connected; a rich field's is a Source<RichText>
         std::u16string source_value, origin;
         bool rich = false;                     // Control::rich
         std::vector<StyleSpan> spans, source_spans, origin_spans;  // committed styles, last source value, last written value
-        std::function<RichText()> rich_read;   // the rich source (the TextSource subscribe half is shared)
         std::optional<TextStyle> typing;       // the temporary typing style, valid while the selection has not moved
         std::uint64_t typing_moves = 0;
         std::vector<NamedColor> colors;
     };
     std::map<Id, Field, std::less<>> edits_;
-    struct BoolField : FieldConnection<BoolChange> {
-        BoolSource source;
+    struct BoolField : FieldConnection<Change<CheckboxHandle>> {
+        Source<bool> source;
         bool value = false, source_value = false, origin = false;
     };
     std::map<Id, BoolField, std::less<>> bools_;
-    struct RadioField : FieldConnection<OptionChange> {
-        OptionSource source;
+    struct RadioField : FieldConnection<Change<RadioGroupHandle>> {
+        Source<std::optional<OptionValue>> source;
         std::vector<RadioOption> options;
         std::optional<OptionValue> value, source_value, origin;
     };
     std::map<Id, RadioField, std::less<>> radios_;
-    struct DropdownField : FieldConnection<DropdownChange> {
-        OptionSource source;
+    struct DropdownField : FieldConnection<Change<DropdownHandle>> {
+        Source<std::optional<OptionValue>> source;
         std::vector<RadioOption> options;
         std::optional<OptionValue> value, source_value, origin, candidate;
         ScrollState scroll; bool reveal = true;
@@ -504,7 +503,7 @@ private:
     std::map<Id, std::pair<Id, std::size_t>, std::less<>> page_members_;
     struct ListField {
         std::vector<RadioOption> items;
-        OptionSource source;
+        Source<std::optional<OptionValue>> source;
         std::optional<OptionValue> cursor;
         bool writing = false;
         std::function<Result(std::optional<OptionValue>)> immediate;
@@ -573,9 +572,9 @@ private:
     bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
-    struct NumericField : FieldConnection<NumericChange> {
+    struct NumericField : FieldConnection<Change<SliderHandle>> {
         SliderRange range;
-        NumericSource source;
+        Source<int> source;
         bool source_invalid = false;
         std::u16string error_before_source;
         int value, source_value, origin;
@@ -600,7 +599,7 @@ private:
     template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
     template <class Handle> Result confirm_field(const Handle& handle);
     template <class FieldType> Result write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change);
-    struct ProgressField { NumericSource source; std::function<void()> disconnect; };
+    struct ProgressField { Source<int> source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
     Result select_option(const Id& id, OptionValue value);
@@ -669,7 +668,7 @@ private:
     bool source_matches(const Field& field) const { return field.session.text == field.source_value && field.spans == field.source_spans; }
     Result finish_edit(std::string_view id, Field& field);
     Result submit_field(std::string_view id, Field& field,
-                        const std::function<Result(const TextChange&)>& write, bool command);
+                        const std::function<Result(const Change<TextHandle>&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);  // the keys a text field takes
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out

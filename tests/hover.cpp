@@ -40,7 +40,7 @@ struct Page {
         drop = ui.add_dropdown({.id = "drop", .kind = Kind::dropdown, .label = u"Drop"},
             {{{"d1"}, u"One"}, {{"d2"}, u"Two"}, {{"d3"}, u"Three", false}}).value.value();
         drop.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
-        drop.connect_immediate([](const DropdownChange&) { return Result{}; });
+        drop.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
         std::vector<RadioOption> items;
         for (int i = 1; i <= 40; ++i) items.push_back({{"l" + std::to_string(i)}, u"Item " + std::u16string(1, char16_t(u'0' + i % 10)), i != 3});
         list = ui.add_list({.id = "list", .kind = Kind::list, .label = u"List"}, items).value.value();
@@ -50,7 +50,7 @@ struct Page {
             {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}, {{"n3"}, u"Locked", false, {}}}, {"n1"}).value.value();
         slider = ui.add_slider({.id = "slider", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[] { return 50; }, [](auto) { return [] {}; }});
-        slider.connect_immediate([](const NumericChange&) { return Result{}; });
+        slider.connect_immediate([](const Change<SliderHandle>&) { return Result{}; });
         field = ui.add_text({.id = "field", .kind = Kind::text, .label = u"Name", .value = u"abc"}).value.value();
         notes = ui.add_text({.id = "notes", .kind = Kind::text, .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
         aligned = ui.add_text({.id = "aligned", .kind = Kind::text, .label = u"Right", .value = u"abc"}).value.value();

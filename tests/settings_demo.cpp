@@ -1367,7 +1367,7 @@ void slider_drag_is_one_write_per_value_and_one_undo() {
     int writes = 0; std::vector<int> values;
     Ui ui; auto bare = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
     int model = 40; bare.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    bare.connect_immediate([&](const NumericChange& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
+    bare.connect_immediate([&](const Change<SliderHandle>& c) { ++writes; values.push_back(c.value); model = c.value; return Result{}; });
     auto& bare_state = detail::access(ui); const Rect bare_track{100, 0, 200, 20};
     bare_state.pointer_down("v"); bare_state.slider_pointer_down("v", 100 + 94, bare_track);
     for (int x : {93, 94, 92, 91}) bare_state.slider_pointer("v", 100 + x);

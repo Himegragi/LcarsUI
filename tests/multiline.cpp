@@ -29,7 +29,7 @@ TextHandle connect(Ui& ui, Control control) {
     check(bool(query), "Create the text field");
     auto field = *query;
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 Control multi(std::string id, std::u16string value = {}, unsigned lines = 3) {

@@ -141,7 +141,7 @@ TextHandle field_of(Ui& ui, Control control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 Control single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {

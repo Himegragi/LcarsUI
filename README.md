@@ -17,7 +17,7 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
-Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. A text source supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
+Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
 ```cpp
 std::u16string model = u"Initial";
@@ -29,10 +29,10 @@ name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
 }});
-ui.connect_confirmation(save, {name}, [&](const std::vector<lcars::TextChange>& changes) {
-    model = changes[0].value;
+ui.connect_mixed_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
+    model = std::get<lcars::Change<lcars::TextHandle>>(changes[0]).value;
     if (notify_source) notify_source();
-    return lcars::ConfirmationResult{};
+    return lcars::MixedConfirmationResult{};
 });
 auto changed = name.set_value(u"Station");
 auto saved = save.invoke();
@@ -91,8 +91,8 @@ A multi-line field created with `rich = true` holds **plain text plus style span
 ```cpp
 auto note = ui.add_text({.id = "item.note", .kind = lcars::Kind::text, .multiline = true, .visible_lines = 3, .rich = true}).value.value();
 note.set_colors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
-note.connect_rich_source({[&] { return model; }, subscribe});        // RichTextSource: read() -> RichText
-note.connect_rich_confirmed([&](const lcars::RichTextChange& c) { model = c.value; return lcars::Result{}; });
+note.connect_rich_source({[&] { return model; }, subscribe});        // Source<RichText>: read() -> RichText
+note.connect_rich_confirmed([&](const lcars::Change<lcars::TextHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
 note.set_style(0, 2, {.bold = true});                                // a range of the committed text
 note.toggle_style(lcars::StyleAttribute::underline);                 // what Ctrl+U does: the selection, or the typing style at a caret
 note.apply_style({.color = "red"});                                  // set the selection's color (caret only: the typing style)
@@ -105,7 +105,7 @@ auto value = note.rich_value();                                      // Query<Ri
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typing_style()` / `set_typing_style()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
 - **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
-- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_mixed_confirmation` (a `RichTextChange` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
+- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_mixed_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
 - **Semantic layer and UI Automation.** `SemanticNode::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
@@ -289,6 +289,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #92 error-line layout | none beyond CTest: the error-line layout of every component type at three widths is pinned by `error_lines`, and `demo_render_compare` stays byte-identical to before (compare the saved images) |
 | #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
 | #94 shared handle base and handle equality | `lcars_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
+| #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
@@ -307,7 +308,7 @@ Then in your project:
 ```cmake
 cmake_minimum_required(VERSION 3.25)
 project(StationApp LANGUAGES CXX)
-find_package(LcarsUI 0.2 REQUIRED COMPONENTS Desktop AppearanceWeb)
+find_package(LcarsUI 0.3 REQUIRED COMPONENTS Desktop AppearanceWeb)
 add_executable(station_app main.cpp)
 target_link_libraries(station_app PRIVATE LcarsUI::Desktop LcarsUI::AppearanceWeb)
 install(FILES "${LcarsUI_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)

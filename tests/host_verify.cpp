@@ -807,7 +807,7 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     auto dropdown=ui.add_dropdown({.id="native.dropdown",.kind=Kind::dropdown,.label=u"Font"},std::move(options)).value.value();
     auto other=ui.add_button({.id="native.other",.kind=Kind::button,.label=u"Other"}).value.value();
     dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
-    dropdown.connect_immediate([&](const DropdownChange& c) { value=c.value; if (changed) changed(); return Result{}; });
+    dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
     auto root=layout::row({layout::control(dropdown),layout::control(other)},8);
     DesktopOptions settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
@@ -1280,7 +1280,7 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     auto model = std::make_shared<std::u16string>();
     auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI multi-line verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1373,7 +1373,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
         auto model = std::make_shared<RichText>(RichText{value, {}});
         auto field = ui.add_text({.id = id, .kind = Kind::text, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-        field.connect_rich_confirmed([](const RichTextChange&) { return Result{}; });
+        field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; });
         return field;
     };
     auto note = make("note", u"Alpha 重要 Beta");
@@ -1462,11 +1462,11 @@ void word_select_native(const Appearance& appearance, Report& report) {
     auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
     auto field_handle = ui.add_text({.id = "line", .kind = Kind::text, .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
     field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    field_handle.connect_confirmed([](const TextChange&) { return Result{}; });
+    field_handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
     auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
     note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     field_handle.set_word_segmentation(WordSegmentation::per_character);
     note.set_word_segmentation(WordSegmentation::per_character);
     DesktopOptions options; options.title = u"LcarsUI word selection verification";
@@ -1552,7 +1552,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     auto sample = ui.add_label({.id = "sample", .kind = Kind::label, .value = text, .text_align = TextAlign::justify}).value.value();
     auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const TextChange&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     DesktopOptions options; options.title = u"LcarsUI justified text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::control(sample), layout::control(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);

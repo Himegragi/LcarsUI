@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <variant>
@@ -227,22 +228,13 @@ public:
 bool valid_single_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
 // As valid_single_line, but LF is allowed (one UTF-16 unit each) and CR still is not.
 bool valid_multi_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
-// The application owns the model. Notifications run on the UI thread; the source outlives the
-// connection. Its subscription returns a disconnection function.
-struct TextSource {
-    std::function<std::u16string()> read;
-    std::function<std::function<void()>(std::function<void()>)> subscribe;
-};
-// The rich counterpart of TextSource, for fields created with Control::rich.
-struct RichTextSource {
-    std::function<RichText()> read;
-    std::function<std::function<void()>(std::function<void()>)> subscribe;
-};
-struct BoolSource {
-    std::function<bool()> read;
-    std::function<std::function<void()>(std::function<void()>)> subscribe;
-};
-// Integer sources also feed read-only progress displays, which accept values outside 0-100.
+// A read source: the half of a data connection through which a component reads the application's current value and
+// hears that it changed. The application owns the model. Notifications run on the UI thread; the source outlives the
+// connection. Its subscription returns a disconnection function. One template told apart by value type (#95), so a
+// source of one value type never converts to another: Source<std::u16string> (text fields), Source<RichText> (text
+// fields created with Control::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
+// Source<std::optional<OptionValue>> (radio groups, dropdowns, lists). Write one as `{read, subscribe}`.
+// Integer sources (Source<int>) also feed read-only progress displays, which accept values outside 0-100.
 // Integer slider values are the minimum plus whole steps, with the maximum also valid.
 // In-range edits snap to the closest valid value; ties choose the higher value.
 // Programmatic values outside the range are rejected; pointer and keyboard input clamp.
@@ -251,12 +243,8 @@ struct BoolSource {
 // The maximum is reachable even when the range is not divisible by the step. Source values
 // must already be valid; an invalid initial value rejects connection and later invalid notifications
 // leave the last valid value in place and expose an error.
-struct NumericSource {
-    std::function<int()> read;
-    std::function<std::function<void()>(std::function<void()>)> subscribe;
-};
-struct OptionSource {
-    std::function<std::optional<OptionValue>()> read;
+template <class T> struct Source {
+    std::function<T()> read;
     std::function<std::function<void()>(std::function<void()>)> subscribe;
 };
 class Ui;
@@ -288,8 +276,37 @@ template <class Handle> class HandleBase {
     std::string id_;
 };
 }
-struct TextChange;
-struct RichTextChange;
+class TextHandle;
+class CheckboxHandle;
+class RadioGroupHandle;
+class SliderHandle;
+class DropdownHandle;
+namespace detail {
+// The value type a field kind's change record carries when Change names only the field kind (void: the kind has none).
+template <class Field> struct ChangeValue { using type = void; };
+template <> struct ChangeValue<TextHandle> { using type = std::u16string; };
+template <> struct ChangeValue<CheckboxHandle> { using type = bool; };
+template <> struct ChangeValue<RadioGroupHandle> { using type = std::optional<OptionValue>; };
+template <> struct ChangeValue<SliderHandle> { using type = int; };
+template <> struct ChangeValue<DropdownHandle> { using type = std::optional<OptionValue>; };
+// The combinations the framework sends: each field kind with its own value type, and a rich text field's RichText.
+template <class Field, class Value>
+inline constexpr bool sends_change = (!std::is_void_v<Value> && std::is_same_v<Value, typename ChangeValue<Field>::type>) ||
+                                     (std::is_same_v<Field, TextHandle> && std::is_same_v<Value, RichText>);
+}
+// A change record: what a write hands the application's change entry. `field` is the field it came from, `value` the new
+// value, `origin` the value the draft started from (the source value when the draft began). One template told apart by
+// field kind and value type (#95): a radio group's and a dropdown's records share a value type, and a confirmation group
+// must still say which kind of field each came from. The value type defaults to the field kind's own:
+// Change<TextHandle> (std::u16string), Change<CheckboxHandle> (bool), Change<RadioGroupHandle> and Change<DropdownHandle>
+// (std::optional<OptionValue>), Change<SliderHandle> (int); a rich text field's is spelled Change<TextHandle, RichText>.
+// Only these six exist; any other combination (Change<ButtonHandle>, Change<SliderHandle, bool>) does not compile.
+template <class Field, class Value = typename detail::ChangeValue<Field>::type>
+    requires detail::sends_change<Field, Value>
+struct Change {
+    Field field;
+    Value value, origin;
+};
 // A handle identifies a component without owning it. Each operation validates its lifetime.
 class TextHandle : private detail::HandleBase<TextHandle> {
 public:
@@ -344,15 +361,15 @@ public:
     // Frame::select_to) grows it by words or paragraphs until the next selection change.
     Result double_click(unsigned offset) const;
     Result triple_click(unsigned offset) const;
-    Result connect_source(TextSource source) const;
-    Result connect_immediate(std::function<Result(const TextChange&)> write) const;
-    Result connect_confirmed(std::function<Result(const TextChange&)> write) const;
+    Result connect_source(Source<std::u16string> source) const;
+    Result connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const;
     // Rich fields (Control::rich) connect with the rich value type; the plain connect_* calls above answer
     // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
-    // groups take rich fields through Ui::connect_mixed_confirmation (a RichTextChange per rich field).
-    Result connect_rich_source(RichTextSource source) const;
-    Result connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const;
-    Result connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const;
+    // groups take rich fields through Ui::connect_mixed_confirmation (a Change<TextHandle, RichText> per rich field).
+    Result connect_rich_source(Source<RichText> source) const;
+    Result connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
+    Result connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
     // Rich fields only; any other field answers not_supported. The same admission as every edit (a
     // read-only, disabled, composing or unconnected field refuses with its usual status). set_rich_value
     // normalizes (normalize_rich_text) and is one undo entry; set_value on a rich field replaces the text
@@ -430,7 +447,6 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct BoolChange;
 class CheckboxHandle : private detail::HandleBase<CheckboxHandle> {
 public:
     CheckboxHandle() = default;
@@ -438,9 +454,9 @@ public:
     Result use_latest() const;
     Result focus() const;
     Result enable(bool enabled) const;
-    Result connect_source(BoolSource source) const;
-    Result connect_immediate(std::function<Result(const BoolChange&)> write) const;
-    Result connect_confirmed(std::function<Result(const BoolChange&)> write) const;
+    Result connect_source(Source<bool> source) const;
+    Result connect_immediate(std::function<Result(const Change<CheckboxHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<CheckboxHandle>&)> write) const;
     Result confirm() const;
     Query<bool> draft() const;
     Query<Semantics> describe() const;
@@ -450,8 +466,6 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct BoolChange { CheckboxHandle field; bool value, origin; };
-struct OptionChange;
 class RadioGroupHandle : private detail::HandleBase<RadioGroupHandle> {
 public:
     RadioGroupHandle() = default;
@@ -460,9 +474,9 @@ public:
     Result focus() const;
     Result enable(bool enabled) const;
     Result enable_option(OptionValue value, bool enabled) const;
-    Result connect_source(OptionSource source) const;
-    Result connect_immediate(std::function<Result(const OptionChange&)> write) const;
-    Result connect_confirmed(std::function<Result(const OptionChange&)> write) const;
+    Result connect_source(Source<std::optional<OptionValue>> source) const;
+    Result connect_immediate(std::function<Result(const Change<RadioGroupHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<RadioGroupHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
     Query<Semantics> describe() const;
@@ -472,8 +486,6 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct OptionChange { RadioGroupHandle field; std::optional<OptionValue> value, origin; };
-struct NumericChange;
 class SliderHandle : private detail::HandleBase<SliderHandle> {
 public:
     SliderHandle() = default;
@@ -482,9 +494,9 @@ public:
     Result use_latest() const;
     Result focus() const;
     Result enable(bool enabled) const;
-    Result connect_source(NumericSource source) const;
-    Result connect_immediate(std::function<Result(const NumericChange&)> write) const;
-    Result connect_confirmed(std::function<Result(const NumericChange&)> write) const;
+    Result connect_source(Source<int> source) const;
+    Result connect_immediate(std::function<Result(const Change<SliderHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<SliderHandle>&)> write) const;
     Result confirm() const;
     Query<int> draft() const;
     Query<Semantics> describe() const;
@@ -494,12 +506,11 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct NumericChange { SliderHandle field; int value, origin; };
 // A display-only percentage. Source values are never written; display is clamped to 0-100.
 class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
     ProgressHandle() = default;
-    Result connect_source(NumericSource source) const;
+    Result connect_source(Source<int> source) const;
     Query<Semantics> describe() const;
     bool operator==(const ProgressHandle& other) const = default;
 private:
@@ -507,7 +518,6 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct DropdownChange;
 class DropdownHandle : private detail::HandleBase<DropdownHandle> {
 public:
     DropdownHandle() = default;
@@ -518,9 +528,9 @@ public:
     Result use_latest() const;
     Result focus() const;
     Result enable(bool enabled) const;
-    Result connect_source(OptionSource source) const;
-    Result connect_immediate(std::function<Result(const DropdownChange&)> write) const;
-    Result connect_confirmed(std::function<Result(const DropdownChange&)> write) const;
+    Result connect_source(Source<std::optional<OptionValue>> source) const;
+    Result connect_immediate(std::function<Result(const Change<DropdownHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<DropdownHandle>&)> write) const;
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
     Query<Semantics> describe() const;
@@ -530,7 +540,6 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
-struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
 class ListHandle;
 class TabsHandle;
 class NavigationListHandle;
@@ -577,7 +586,7 @@ public:
     Result focus() const;
     Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
-    Result connect_source(OptionSource source) const;
+    Result connect_source(Source<std::optional<OptionValue>> source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
     Query<Semantics> describe() const;
     bool operator==(const ListHandle& other) const = default;
@@ -613,21 +622,10 @@ private:
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 using NavigationPage = TabPage;
-struct TextChange {
-    TextHandle field;
-    std::u16string value, origin;
-};
-struct RichTextChange {
-    TextHandle field;
-    RichText value, origin;
-};
-struct FieldError { TextHandle field; std::u16string message; };
-struct ConfirmationResult {
-    Result result;
-    std::vector<FieldError> errors;
-};
 using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
-using FieldChange = std::variant<TextChange, BoolChange, OptionChange, NumericChange, DropdownChange, RichTextChange>;
+// One change record per field of a confirmation group; a rich text field's is Change<TextHandle, RichText>.
+using FieldChange = std::variant<Change<TextHandle>, Change<CheckboxHandle>, Change<RadioGroupHandle>, Change<SliderHandle>,
+                                 Change<DropdownHandle>, Change<TextHandle, RichText>>;
 struct MixedFieldError { ConfirmField field; std::u16string message; };
 struct MixedConfirmationResult { Result result; std::vector<MixedFieldError> errors; };
 // ---- Context menu. A short list of commands opened beside a component.
@@ -712,8 +710,6 @@ public:
     Query<DialogHandle> add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial_focus,
                             ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
     Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
-    Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
     Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
     // Attach the application's menu to any component. Text fields have built-in items; with

@@ -334,7 +334,7 @@ ProgressHandle detail::UiState::add_progress(Control control) {
     progresses_.emplace(id, ProgressField{});
     return ProgressHandle(this, lifetime_, std::move(id));
 }
-Result ProgressHandle::connect_source(NumericSource source) const {
+Result ProgressHandle::connect_source(Source<int> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
@@ -408,7 +408,7 @@ Result CheckboxHandle::enable(bool enabled) const {
         ui_->enable(id_, enabled); return {};
     });
 }
-Result CheckboxHandle::connect_source(BoolSource source) const {
+Result CheckboxHandle::connect_source(Source<bool> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
@@ -429,13 +429,13 @@ void detail::UiState::bool_source_changed(const Id& id) {
     if (clean && !field.submitting) field.value = field.origin = value;
     if (invalidate_) invalidate_();
 }
-Result CheckboxHandle::connect_immediate(std::function<Result(const BoolChange&)> write) const {
+Result CheckboxHandle::connect_immediate(std::function<Result(const Change<CheckboxHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), true);
     });
 }
-Result CheckboxHandle::connect_confirmed(std::function<Result(const BoolChange&)> write) const {
+Result CheckboxHandle::connect_confirmed(std::function<Result(const Change<CheckboxHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), false);
@@ -455,7 +455,7 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = !field.value;
-    BoolChange change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
+    Change<CheckboxHandle> change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
 Query<Semantics> CheckboxHandle::describe() const {
@@ -488,7 +488,7 @@ ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> i
     ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
     return ListHandle(this, lifetime_, std::move(id));
 }
-Result ListHandle::connect_source(OptionSource source) const {
+Result ListHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
@@ -605,7 +605,7 @@ Result RadioGroupHandle::enable_option(OptionValue value, bool enabled) const {
         it->enabled = enabled; if (ui_->invalidate_) ui_->invalidate_(); return {};
     });
 }
-Result RadioGroupHandle::connect_source(OptionSource source) const {
+Result RadioGroupHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
@@ -625,13 +625,13 @@ void detail::UiState::option_source_changed(const Id& id) {
     if (clean && !field.submitting) field.value = field.origin = value;
     if (invalidate_) invalidate_();
 }
-Result RadioGroupHandle::connect_immediate(std::function<Result(const OptionChange&)> write) const {
+Result RadioGroupHandle::connect_immediate(std::function<Result(const Change<RadioGroupHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), true);
     });
 }
-Result RadioGroupHandle::connect_confirmed(std::function<Result(const OptionChange&)> write) const {
+Result RadioGroupHandle::connect_confirmed(std::function<Result(const Change<RadioGroupHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), false);
@@ -658,7 +658,7 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     if (field.value == value) return {};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = std::move(value);
-    OptionChange change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
+    Change<RadioGroupHandle> change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
 Query<Semantics> RadioGroupHandle::describe() const {
@@ -734,7 +734,7 @@ Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
         return ui_->notify();
     });
 }
-Result DropdownHandle::connect_source(OptionSource source) const {
+Result DropdownHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
@@ -756,13 +756,13 @@ void detail::UiState::dropdown_source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Result DropdownHandle::connect_immediate(std::function<Result(const DropdownChange&)> write) const {
+Result DropdownHandle::connect_immediate(std::function<Result(const Change<DropdownHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), true);
     });
 }
-Result DropdownHandle::connect_confirmed(std::function<Result(const DropdownChange&)> write) const {
+Result DropdownHandle::connect_confirmed(std::function<Result(const Change<DropdownHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), false);
@@ -800,7 +800,7 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = std::move(value); set_error(id, u"");
     if (invalidate_) invalidate_();
-    DropdownChange change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
+    Change<DropdownHandle> change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
 Query<Semantics> DropdownHandle::describe() const {
@@ -857,7 +857,7 @@ Result SliderHandle::use_latest() const {
         f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
     });
 }
-Result SliderHandle::connect_source(NumericSource source) const {
+Result SliderHandle::connect_source(Source<int> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
@@ -885,13 +885,13 @@ void detail::UiState::numeric_source_changed(const Id& id) {
     if (clean && !f.submitting) { if (f.value != value) slider_land(id); f.value = f.origin = value; }
     if (invalidate_) invalidate_();
 }
-Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
+Result SliderHandle::connect_immediate(std::function<Result(const Change<SliderHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), true);
     });
 }
-Result SliderHandle::connect_confirmed(std::function<Result(const NumericChange&)> write) const {
+Result SliderHandle::connect_confirmed(std::function<Result(const Change<SliderHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), false);
@@ -915,7 +915,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = value;
     slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
-    NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
+    Change<SliderHandle> change{SliderHandle(this, lifetime_, id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
 namespace {
@@ -1708,59 +1708,6 @@ Result detail::UiState::configuration_access(std::string_view id, bool read_only
     if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
-Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
-    OperationScope operation(this);
-    if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
-        return {Status::invalid_value, u"Invalid confirmation group"};
-    if (auto result = configuration_access(button.id_); !result) return result;
-    if (actions_.contains(button.id_)) return {Status::invalid_value, u"Confirmation button already has an action"};
-    std::set<Id> members;
-    for (const auto& field : fields) {
-        auto it = edits_.find(field.id_);
-        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.joinable() || it->second.rich || !members.insert(field.id_).second)
-            return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
-    }
-    for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
-    confirmation_buttons_.insert(button.id_);
-    confirmation_members_[button.id_] = {members.begin(), members.end()};
-    bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
-        std::vector<TextChange> changes;
-        for (const auto& handle : fields) {
-            auto& field = edits_.at(handle.id_);
-            changes.push_back({handle, field.session.text, field.origin});
-            field.submitting = true;
-        }
-        ConfirmationResult outcome;
-        try { outcome = submit(changes); }
-        catch (...) {
-            for (const auto& handle : fields) edits_.at(handle.id_).submitting = false;
-            throw;
-        }
-        for (std::size_t i = 0; i < fields.size(); ++i) {
-            auto& field = edits_.at(fields[i].id_);
-            field.submitting = false;
-            if (outcome.result) {
-                field.origin = changes[i].value;
-                set_error(fields[i].id_, u"");
-            }
-        }
-        if (!outcome.result) {
-            std::optional<std::size_t> first;
-            for (const auto& error : outcome.errors) {
-                auto it = std::find(fields.begin(), fields.end(), error.field);
-                if (it == fields.end()) continue;
-                const auto index = static_cast<std::size_t>(it - fields.begin());
-                set_error(it->id_, error.message);
-                if (!error.message.empty() && (!first || index < *first)) first = index;
-            }
-            if (first) focus_error(fields[*first].id_);
-        }
-        auto notification = notify();
-        return notification ? outcome.result : notification;
-    });
-    return {};
-}
 Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
     OperationScope operation(this);
@@ -1786,8 +1733,8 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         for (const auto& member : fields) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}});
-                else changes.emplace_back(TextChange{h, f.session.text, f.origin});
+                if (f.rich) changes.emplace_back(Change<TextHandle, RichText>{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}});
+                else changes.emplace_back(Change<TextHandle>{h, f.session.text, f.origin});
             } else changes.emplace_back(typename std::decay_t<decltype(f)>::Change{h, f.value, f.origin});
             f.submitting = true;
         }, member);
@@ -1802,8 +1749,8 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
             f.submitting = false;
             if (outcome.result) {
                 if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                    if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
-                    else f.origin = std::get<TextChange>(changes[i]).value;
+                    if (f.rich) { const auto& rich = std::get<Change<TextHandle, RichText>>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
+                    else f.origin = std::get<Change<TextHandle>>(changes[i]).value;
                 } else f.origin = std::get<typename std::decay_t<decltype(f)>::Change>(changes[i]).value;
             }
             if (outcome.result) set_error(h.id_, u"");
@@ -1824,37 +1771,37 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
     });
     return {};
 }
-Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
+Result TextHandle::connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
         return ui_->connect_write(id_, std::move(write), true);
     });
 }
-Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
+Result TextHandle::connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
         return ui_->connect_write(id_, std::move(write), false);
     });
 }
-Result TextHandle::connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const {
+Result TextHandle::connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), true); });
 }
-Result TextHandle::connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const {
+Result TextHandle::connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), false); });
 }
-// The shared write path hands over plain TextChange; a rich write reads the field's spans at that moment.
-Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate) {
+// The shared write path hands over a plain Change<TextHandle>; a rich write reads the field's spans at that moment.
+Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
     if (!write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    return connect_write(id, [this, write = std::move(write)](const TextChange& change) {
+    return connect_write(id, [this, write = std::move(write)](const Change<TextHandle>& change) {
         auto& field = edits_.at(change.field.id_);
-        return write(RichTextChange{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
+        return write(Change<TextHandle, RichText>{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
     }, immediate);
 }
-Result detail::UiState::connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate) {
+Result detail::UiState::connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
@@ -1875,52 +1822,51 @@ Result detail::UiState::confirm(const Id& id) {
         return {Status::busy, u"Operation is already executing"};
     return submit_field(id, field, field.confirmed, true);
 }
-Result TextHandle::connect_source(TextSource source) const {
+Result TextHandle::connect_source(Source<std::u16string> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
         return ui_->connect_source(id_, std::move(source));
     });
 }
-Result TextHandle::connect_rich_source(RichTextSource source) const {
+Result TextHandle::connect_rich_source(Source<RichText> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
-        auto read = source.read;
-        // Built before the call: argument order is unspecified, so the lambda must copy `read` before it is moved.
-        TextSource text{[read] { return read().text; }, std::move(source.subscribe)};
-        return ui_->connect_source(id_, std::move(text), std::move(read));
+        return ui_->connect_source(id_, std::move(source));
     });
 }
-Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
+Result detail::UiState::connect_source(const Id& id, TextFieldSource source) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
+    if (!std::visit([](const auto& s) { return s.read && s.subscribe; }, source))
+        return {Status::invalid_value, u"A text source requires read and subscribe"};
     if (it->second.disconnect) it->second.disconnect();
     it->second.source = std::move(source);
-    it->second.rich_read = std::move(rich_read);
     it->second.connected = false;
     auto weak = std::weak_ptr<void>(lifetime_);
-    it->second.disconnect = it->second.source.subscribe([weak, this, id] {
-        if (!weak.expired()) source_changed(id);
-    });
+    it->second.disconnect = std::visit([&](const auto& s) {
+        return s.subscribe([weak, this, id] {
+            if (!weak.expired()) source_changed(id);
+        });
+    }, it->second.source);
     source_changed(id);
     return {};
 }
 void detail::UiState::source_changed(const Id& id) {
     OperationScope operation(this);
     auto it = edits_.find(id);
-    if (it == edits_.end() || !it->second.source.read) return;
+    if (it == edits_.end() || !std::visit([](const auto& s) { return bool(s.read); }, it->second.source)) return;
     auto& field = it->second;
     RichText latest;
-    if (field.rich_read) {  // a rich source: only a value in normal form (or one that normalizes) is adopted
-        auto read = normalize_rich_text(field.rich_read(), find(id)->max_length);
+    if (const auto* rich = std::get_if<Source<RichText>>(&field.source)) {  // only a value in normal form (or one that normalizes) is adopted
+        auto read = normalize_rich_text(rich->read(), find(id)->max_length);
         if (!read) return;
         latest = std::move(*read);
     } else {
-        latest.text = field.source.read();
+        latest.text = std::get<Source<std::u16string>>(field.source).read();
         if (!valid_value(*find(id), latest.text)) return;
     }
     const bool clean = !field.connected || source_matches(field);
@@ -2456,8 +2402,8 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     return finish_edit(id, *field);
 }
 Result detail::UiState::submit_field(std::string_view id, Field& field,
-        const std::function<Result(const TextChange&)>& write, bool command) {
-    auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+        const std::function<Result(const Change<TextHandle>&)>& write, bool command) {
+    auto change = Change<TextHandle>{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
     field.submitting = true;
     if (command) invoking_ = true;
     Result result;
@@ -3354,10 +3300,6 @@ Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> 
 }
 Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
     return state_->add_shortcut(chord, std::move(target), std::move(scope));
-}
-Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-        std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
-    return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {

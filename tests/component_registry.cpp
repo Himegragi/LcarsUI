@@ -19,16 +19,16 @@ using test::check;
 namespace {
 bool printing = false;
 
-TextSource text_source(std::shared_ptr<std::u16string> value) {
+Source<std::u16string> text_source(std::shared_ptr<std::u16string> value) {
     return {[value] { return *value; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-BoolSource bool_source() {
+Source<bool> bool_source() {
     return {[] { return false; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-NumericSource numeric_source() {
+Source<int> numeric_source() {
     return {[] { return 20; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-OptionSource option_source() {
+Source<std::optional<OptionValue>> option_source() {
     return {[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
 std::vector<RadioOption> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }

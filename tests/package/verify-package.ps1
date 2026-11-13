@@ -166,9 +166,9 @@ try {
     } else { $rows.Add([pscustomobject]@{Scenario='reject/missing-desktop';Generator=$primary;Configuration=$cfg;Compiler='';Result='N/A';Message='Desktop installed'}) }
     Run-Case 'reject/runtime' $primary $cfg $req 'reject' @('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded') '(?s)runtime mismatch.*consumer MultiThreaded.*LcarsUI\s+MultiThreaded.*DLL'
     if ($Generators -contains 'Ninja') { Run-Case 'reject/empty-build-type' 'Ninja' '' $req 'reject' @('-DCMAKE_BUILD_TYPE=') 'specify -DCMAKE_BUILD_TYPE' }
-    foreach ($v in '0.1','1.0','0.2') {
+    foreach ($v in '0.1','1.0','0.2','0.3') {
         $src = Source "version-$v" "find_package(LcarsUI $v REQUIRED)"
-        if ($v -eq '0.2') { Run-Case "version/$v" $primary $cfg $src 'configure' } else { Run-Case "reject/version/$v" $primary $cfg $src 'reject' @() 'version' }
+        if ($v -eq '0.3') { Run-Case "version/$v" $primary $cfg $src 'configure' } else { Run-Case "reject/version/$v" $primary $cfg $src 'reject' @() 'version' }
     }
     Run-Case 'reject/no-prefix' $primary $cfg $req 'reject' @('-DCMAKE_PREFIX_PATH=', '-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF') 'LcarsUI'
     # Exercise relocation on an owned copy: the caller's prefix is never removed.

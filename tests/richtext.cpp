@@ -71,7 +71,7 @@ TextHandle connect_rich(Ui& ui, Control control, std::shared_ptr<RichModel> mode
     check(bool(query), "Create the rich field");
     auto field = *query;
     check(bool(field.connect_rich_source({[model] { return model->value; }, [model](std::function<void()> cb) { model->notify = cb; return [] {}; }})), "Connect a rich source");
-    auto write = [model](const RichTextChange& change) { ++model->writes; model->last_written = change.value; model->last_origin = change.origin; return Result{}; };
+    auto write = [model](const Change<TextHandle, RichText>& change) { ++model->writes; model->last_written = change.value; model->last_origin = change.origin; return Result{}; };
     check(bool(immediate ? field.connect_rich_immediate(write) : field.connect_rich_confirmed(write)), "Connect a rich write");
     return field;
 }
@@ -357,13 +357,11 @@ void a_confirmation_group_takes_a_rich_field_in_the_mixed_form() {
     note_model->value.text = u"abc";
     note.connect_rich_source({[note_model] { return note_model->value; }, [](std::function<void()>) { return [] {}; }});
     name.connect_source({[name_value] { return *name_value; }, [](std::function<void()>) { return [] {}; }});
-    check(ui.connect_confirmation(button, {name, note}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; }).status == Status::invalid_value,
-          "The plain confirmation group refuses a rich field");
     RichText got, origin; std::u16string got_name; int calls = 0;
     check(bool(ui.connect_mixed_confirmation(button, {name, note}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
-        got_name = std::get<TextChange>(changes[0]).value;
-        const auto& rich = std::get<RichTextChange>(changes[1]);
+        got_name = std::get<Change<TextHandle>>(changes[0]).value;
+        const auto& rich = std::get<Change<TextHandle, RichText>>(changes[1]);
         got = rich.value; origin = rich.origin;
         return MixedConfirmationResult{};
     })), "A rich field joins a mixed confirmation group");
@@ -405,7 +403,7 @@ TextHandle connect_plain(Ui& ui, Control control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const TextChange&) { return Result{}; });
+    field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     return field;
 }
 

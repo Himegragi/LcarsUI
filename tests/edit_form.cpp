@@ -910,7 +910,7 @@ void radio_boundaries_under_the_appearance() {
     auto next = ui.add_button({.id = "next", .kind = Kind::button, .label = u"Next"}).value.value();
     std::optional<OptionValue> selected;
     radio.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    radio.connect_immediate([&](const OptionChange& change) { selected = change.value; return Result{}; });
+    radio.connect_immediate([&](const Change<RadioGroupHandle>& change) { selected = change.value; return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::column({layout::control(radio), layout::control(next)}, 8);
     auto frame = arrange(root, ui, *appearance, measure, 240, 300, 1.f, scroll);
@@ -924,7 +924,7 @@ void radio_boundaries_under_the_appearance() {
     auto all = all_ui.add_radio_group({.id = "all", .kind = Kind::radio_group}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
     auto after = all_ui.add_button({.id = "after", .kind = Kind::button}).value.value();
     all.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    all.connect_immediate([](const OptionChange&) { return Result{}; });
+    all.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     auto all_frame = arrange(layout::column({layout::control(all), layout::control(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
     all.focus(); detail::access(all_ui).key_down({Key::right}); detail::access(all_ui).key_down({Key::tab});
     check(all_frame.find(all) && !all.draft()->has_value() && after.describe()->focused, "All-disabled radio remains empty and can be exited");
@@ -934,7 +934,7 @@ void slider_non_divisible_under_the_appearance() {
     Ui ui;
     auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
-    slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+    slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::control(slider);
     auto frame = arrange(root, ui, *appearance, measure, 240, 120, 1.f, scroll);
@@ -1115,7 +1115,7 @@ void checkbox_conflict_is_visible_and_can_use_latest() {
     Ui ui;
     auto box = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"}).value.value();
     box.connect_source({[&] { return source; }, [&](std::function<void()> cb) { changed = std::move(cb); return [] {}; }});
-    box.connect_confirmed([&](const BoolChange&) {
+    box.connect_confirmed([&](const Change<CheckboxHandle>&) {
         box.toggle(); source = false; changed();
         return Result{Status::invalid_value, u"Rejected"};
     });

@@ -15,7 +15,7 @@ void populate(Ui& ui, std::vector<Control> controls) {
             auto model = std::make_shared<std::u16string>(control.value);
             auto field = ui.add_text(std::move(control)).value.value();
             check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect fixture source");
-            check(bool(field.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect fixture write");
+            check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect fixture write");
         } else if (control.kind == Kind::button) ui.add_button(std::move(control)).value.value();
         else ui.add_label(std::move(control)).value.value();
     }
@@ -430,7 +430,7 @@ void confirmed_field_respects_shared_command_guard() {
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int writes = 0;
     Status nested = Status::ok;
-    field.connect_confirmed([&](const TextChange&) { ++writes; nested = button.invoke().status; return Result{}; });
+    field.connect_confirmed([&](const Change<TextHandle>&) { ++writes; nested = button.invoke().status; return Result{}; });
     field.set_value(u"draft");
     int commands = 0;
     button.bind([&] { ++commands; return field.confirm(); });
@@ -443,7 +443,7 @@ void public_text_operations_obey_restrictions() {
     Ui ui; MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
     auto field = ui.add_text({.id = "public.text", .kind = Kind::text}).value.value();
     field.connect_source({[] { return std::u16string(u"alpha"); }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const TextChange&) { return Result{}; });
+    field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     check(bool(field.select(0, 5)) && bool(field.copy()) && clipboard.content == u"alpha", "Public selection and copy");
     check(bool(field.cut()) && field.describe()->value.empty(), "Public cut");
     check(bool(field.undo()) && bool(field.redo()) && field.describe()->value.empty(), "Public undo and redo");
@@ -492,7 +492,7 @@ void group_action_cannot_be_replaced() {
     auto button = ui.add_button({.id = "group.button", .kind = Kind::button}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int submitted = 0, replacement = 0;
-    check(bool(ui.connect_confirmation(button, {field}, [&](const auto&) { ++submitted; return ConfirmationResult{}; })), "Group connects");
+    check(bool(ui.connect_mixed_confirmation(button, {field}, [&](const auto&) { ++submitted; return MixedConfirmationResult{}; })), "Group connects");
     auto rebind = button.bind([&] { ++replacement; return Result{}; });
     check(rebind.status == Status::invalid_value, "Rebinding a confirmation button returns an error");
     check(bool(button.invoke()) && submitted == 1 && replacement == 0, "The original confirmation still runs");
@@ -512,7 +512,7 @@ void handles_expire_with_their_component_tree() {
         Ui ui;
         field = ui.add_text({.id = "handle.field", .kind = Kind::text, .value = u"initial"}).value.value();
         field.connect_source({[] { return std::u16string(u"initial"); }, [](std::function<void()>) { return [] {}; }});
-        field.connect_confirmed([](const TextChange&) { return Result{}; });
+        field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
         check(bool(field.set_value(u"edited")) && field.describe()->value == u"edited",
               "Typed handle edits and describes its field");
     }
@@ -550,7 +550,7 @@ void source_conflict_keeps_draft_until_cancelled() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     auto confirm = ui.add_button({.id = "conflict.apply", .kind = Kind::button}).value.value();
-    ui.connect_confirmation(confirm, {field}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; });
+    ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
     field.set_value(u"draft");
     model = u"newest";
     changed();
@@ -573,11 +573,11 @@ void confirmation_submits_draft_and_origin_and_keeps_history() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     std::u16string received_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
-        received_origin = changes.at(0).origin;
-        model = changes.at(0).value;
+    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+        received_origin = std::get<Change<TextHandle>>(changes.at(0)).origin;
+        model = std::get<Change<TextHandle>>(changes.at(0)).value;
         changed();
-        return ConfirmationResult{};
+        return MixedConfirmationResult{};
     });
     field.set_value(u"draft");
     check(bool(apply.invoke()) && model == u"draft" && received_origin == u"before",
@@ -595,10 +595,10 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
     auto apply = ui.add_button({.id = "reject.apply", .kind = Kind::button}).value.value();
     first.connect_source({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
     second.connect_source({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
-    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<TextChange>& changes) {
-        check(changes.size() == 2 && changes[0].value == u"bad one" && changes[1].value == u"bad two",
+    ui.connect_mixed_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
+        check(changes.size() == 2 && std::get<Change<TextHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextHandle>>(changes[1]).value == u"bad two",
               "Both drafts arrive together");
-        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
+        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
     });
     first.set_value(u"bad one");
     second.set_value(u"bad two");
@@ -617,15 +617,15 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int calls = 0;
     std::u16string second_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
+    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
         if (calls == 1) {
             check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
             check(bool(field.set_value(u"newer")), "The field remains editable while the action executes");
-        } else second_origin = changes[0].origin;
-        model = changes[0].value;
+        } else second_origin = std::get<Change<TextHandle>>(changes[0]).origin;
+        model = std::get<Change<TextHandle>>(changes[0]).value;
         changed();
-        return ConfirmationResult{};
+        return MixedConfirmationResult{};
     });
     field.set_value(u"sent");
     auto accepted = apply.invoke();
@@ -654,7 +654,7 @@ void source_update_during_composition_keeps_preedit() {
     auto field = ui.add_text({.id = "ime.source", .kind = Kind::text}).value.value();
     auto apply = ui.add_button({.id = "ime.apply", .kind = Kind::button}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    ui.connect_confirmation(apply, {field}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; });
+    ui.connect_mixed_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; });
     field.focus();
     detail::access(ui).composition_update(u"preedit", 7);
     model = u"external";
@@ -674,9 +674,9 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     auto apply = ui.add_button({.id = "origin.apply", .kind = Kind::button}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     std::u16string sent_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<TextChange>& changes) {
-        sent_origin = changes[0].origin;
-        return ConfirmationResult{};
+    ui.connect_mixed_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+        sent_origin = std::get<Change<TextHandle>>(changes[0]).origin;
+        return MixedConfirmationResult{};
     });
     field.set_value(u"draft");
     model = u"latest"; changed();
@@ -692,7 +692,7 @@ void explicit_immediate_write_keeps_a_rejected_draft() {
     Ui ui;
     auto field = ui.add_text({.id = "immediate.field", .kind = Kind::text}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    field.connect_immediate([&](const TextChange& change) {
+    field.connect_immediate([&](const Change<TextHandle>& change) {
         if (change.value == u"bad") return Result{Status::invalid_value, u"Rejected"};
         model = change.value;
         changed();
@@ -711,7 +711,7 @@ void cancelling_a_rejected_draft_clears_its_error_without_writing() {
     auto field = ui.add_text({.id = "cancel.field", .kind = Kind::text}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int writes = 0;
-    field.connect_immediate([&](const TextChange&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
+    field.connect_immediate([&](const Change<TextHandle>&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
     field.set_value(u"bad");
     check(bool(field.use_latest()) && field.describe()->value == u"saved" && !field.describe()->invalid && writes == 1,
           "Cancelling restores the source, clears its rejection, and makes no new write");
@@ -737,7 +737,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
     Ui ui;
     auto field = ui.add_text({.id = "single.field", .kind = Kind::text}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    field.connect_confirmed([&](const TextChange& change) {
+    field.connect_confirmed([&](const Change<TextHandle>& change) {
         origin = change.origin;
         model = change.value;
         changed();
@@ -752,7 +752,7 @@ void checkbox_toggles_a_connected_boolean() {
     Ui ui;
     auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"}).value.value();
     box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    box.connect_immediate([&](const BoolChange& change) { model = change.value; return Result{}; });
+    box.connect_immediate([&](const Change<CheckboxHandle>& change) { model = change.value; return Result{}; });
     check(bool(box.toggle()) && !model && !*box.draft() && box.describe()->value == u"false",
           "Toggling changes the connected boolean and its semantic value exactly once");
 }
@@ -762,7 +762,7 @@ void checkbox_input_and_disabled_state_agree() {
     Ui ui;
     auto box = ui.add_checkbox({.id = "notice", .kind = Kind::checkbox, .label = u"Notices"}).value.value();
     box.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    box.connect_immediate([&](const BoolChange& change) { model = change.value; return Result{}; });
+    box.connect_immediate([&](const Change<CheckboxHandle>& change) { model = change.value; return Result{}; });
     auto& host = detail::access(ui);
     box.focus(); host.key_down({.key = Key::space}); host.key_down({.key = Key::space, .repeat = true}); host.key_up(Key::space);
     check(model && box.describe()->checked == true, "Space changes the value and check mark once");
@@ -777,7 +777,7 @@ void radio_can_start_empty_and_skip_disabled_options() {
     auto group = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group, .label = u"Mode"},
         {{{"normal"}, u"Normal", false}, {{"focus"}, u"Focus", true}, {{"offline"}, u"Offline", false}}).value.value();
     group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    group.connect_immediate([&](const OptionChange& change) { model = change.value; return Result{}; });
+    group.connect_immediate([&](const Change<RadioGroupHandle>& change) { model = change.value; return Result{}; });
     check(!group.draft()->has_value(), "A radio group can initially have no selection");
     check(group.select({"normal"}).status == Status::disabled && !model, "Disabled options cannot be selected");
     group.focus();
@@ -802,9 +802,9 @@ void mixed_confirmation_submits_one_batch() {
     int calls = 0;
     ui.connect_mixed_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
         ++calls;
-        name = std::get<TextChange>(changes[0]).value;
-        enabled = std::get<BoolChange>(changes[1]).value;
-        mode = std::get<OptionChange>(changes[2]).value;
+        name = std::get<Change<TextHandle>>(changes[0]).value;
+        enabled = std::get<Change<CheckboxHandle>>(changes[1]).value;
+        mode = std::get<Change<RadioGroupHandle>>(changes[2]).value;
         return MixedConfirmationResult{};
     });
     text.set_value(u"after"); box.toggle(); radio.select({"focus"});
@@ -839,7 +839,7 @@ void radio_all_disabled_remains_empty_and_tab_can_leave() {
         {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
     auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    radio.connect_immediate([](const OptionChange&) { return Result{}; });
+    radio.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     radio.focus();
     detail::access(ui).key_down({.key = Key::right});
     detail::access(ui).key_down({.key = Key::left});
@@ -870,8 +870,8 @@ void standalone_boolean_and_option_confirmation() {
     auto radio = ui.add_radio_group({.id = "radio", .kind = Kind::radio_group}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
-    box.connect_confirmed([&](const BoolChange& c) { enabled = c.value; return Result{}; });
-    radio.connect_confirmed([&](const OptionChange& c) { mode = c.value; return Result{}; });
+    box.connect_confirmed([&](const Change<CheckboxHandle>& c) { enabled = c.value; return Result{}; });
+    radio.connect_confirmed([&](const Change<RadioGroupHandle>& c) { mode = c.value; return Result{}; });
     box.toggle(); radio.select({"b"});
     check(!enabled && mode == OptionValue{"a"}, "Standalone confirmed connections keep drafts until confirmed");
     check(bool(box.confirm()) && bool(radio.confirm()) && enabled && mode == OptionValue{"b"}, "Each explicit confirm writes its typed draft");
@@ -886,8 +886,8 @@ void unconnected_selection_controls_do_not_advertise_writes() {
           "Unconnected controls do not advertise unavailable modifications");
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    box.connect_immediate([](const BoolChange&) { return Result{}; });
-    radio.connect_immediate([](const OptionChange&) { return Result{}; });
+    box.connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; });
+    radio.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     check(has(*box.describe(), Operation::activate) && has(*radio.describe(), Operation::select),
           "Connected editable controls advertise their available modifications");
 }
@@ -899,7 +899,7 @@ void slider_connected_draft_is_confirmed_as_a_number() {
     auto apply = ui.add_button({.id = "apply.slider", .kind = Kind::button}).value.value();
     slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
-        model = std::get<NumericChange>(changes[0]).value;
+        model = std::get<Change<SliderHandle>>(changes[0]).value;
         return MixedConfirmationResult{};
     });
     check(bool(slider.set_value(55)) && *slider.draft() == 55 && model == 40 && slider.describe()->value == u"55",
@@ -911,7 +911,7 @@ void slider_non_divisible_range_and_keyboard() {
     Ui ui;
     auto slider = ui.add_slider({.id = "level", .kind = Kind::slider}, {-3, 8, 4}).value.value();
     slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
-    slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+    slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
     check(slider.set_value(-4).status == Status::invalid_value && *slider.draft() == -3 &&
           slider.set_value(9).status == Status::invalid_value && *slider.draft() == -3,
           "Programmatic values outside the range are rejected without changing the draft");
@@ -973,7 +973,7 @@ void slider_source_conflict_and_invalid_updates() {
         auto apply = ui.add_button({.id = "send", .kind = Kind::button}).value.value();
         saved.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
         ui.connect_mixed_confirmation(apply, {saved}, [&](const auto& changes) {
-            origin = std::get<NumericChange>(changes[0]).origin;
+            origin = std::get<Change<SliderHandle>>(changes[0]).origin;
             return MixedConfirmationResult{{Status::invalid_value, u"No"}, {{saved, u"Volume rejected"}}};
         });
         saved.set_value(55); model = 70; changed();
@@ -997,7 +997,7 @@ void slider_group_preserves_edits_during_submission() {
     slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
     int calls = 0;
     ui.connect_mixed_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
-        const auto change = std::get<NumericChange>(changes[0]);
+        const auto change = std::get<Change<SliderHandle>>(changes[0]);
         ++calls; submitted_origin = change.origin;
         if (calls == 1) {
             check(apply.invoke().status == Status::busy, "A running confirmation cannot be reentered");
@@ -1018,7 +1018,7 @@ void dropdown_candidate_is_not_a_draft_until_confirmed() {
     auto region = ui.add_dropdown({.id = "region", .kind = Kind::dropdown},
         {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
     check(bool(region.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }})), "Connect region source");
-    check(bool(region.connect_confirmed([](const DropdownChange&) { return Result{}; })), "Connect confirmed write");
+    check(bool(region.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })), "Connect confirmed write");
     check(bool(region.focus()) && bool(region.open()), "Open the dropdown");
     detail::access(ui).key_down({.key = Key::down});
     check(*region.draft() == OptionValue{"north"} && region.describe()->candidate == OptionValue{"south"},
@@ -1036,7 +1036,7 @@ void dropdown_leaving_and_replaced_options_are_safe() {
     auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
     int clicks = 0; next.bind([&] { ++clicks; return Result{}; });
     dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-    dropdown.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    dropdown.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     auto& host = detail::access(ui);
     dropdown.open(); host.key_down({.key = Key::down}); host.key_down({.key = Key::tab});
     check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && next.describe()->focused, "Tab cancels and advances");
@@ -1060,7 +1060,7 @@ void dropdown_option_changes_do_not_recurse_into_notifications() {
     Ui ui;
     auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}}).value.value();
     field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int calls = 0; Status nested = Status::ok;
     ui.on_change([&] { if (++calls == 1) nested = field.set_options({}).status; });
     field.set_options({{{"north"}, u"North"}, {{"south"}, u"South"}});
@@ -1072,7 +1072,7 @@ void dropdown_programmatic_edits_request_a_frame() {
     Ui ui;
     auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
     field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
     field.select({"south"});
     check(frames > 0, "A public selection requests repaint");
@@ -1147,12 +1147,12 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     auto first = ui.add_text({.id = "first-field", .kind = Kind::text}).value.value();
     auto second = ui.add_text({.id = "second-field", .kind = Kind::text}).value.value();
     auto submit = ui.add_button({.id = "submit", .kind = Kind::button}).value.value();
-    auto source = TextSource{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
+    auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
     first.connect_source(source); second.connect_source(source);
     auto tabs = ui.add_tabs({.id = "pages", .kind = Kind::tabs}, {
         {{"one"}, u"One", true, {first, submit}}, {{"two"}, u"Two", true, {second}}}).value.value();
-    ui.connect_confirmation(submit, {second, first}, [=](const auto&) {
-        return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
+    ui.connect_mixed_confirmation(submit, {second, first}, [=](const auto&) {
+        return MixedConfirmationResult{{Status::invalid_value, u"Invalid"}, {{first, u"First error"}, {second, u"Second error"}}};
     });
     check(submit.invoke().status == Status::invalid_value, "Application rejects the batch");
     check(*tabs.active() == OptionValue{"two"} && second.describe()->focused, "First invalid field's page opens and receives focus");
@@ -1228,11 +1228,11 @@ void removing_confirmation_button_releases_its_fields() {
     auto owner = ui.add_button({.id = "owner", .kind = Kind::button}).value.value();
     auto capture = std::make_shared<int>(42);
     std::weak_ptr<int> released = capture;
-    check(bool(ui.connect_confirmation(owner, {field}, [capture](const auto&) { return ConfirmationResult{}; })), "Connect first group");
+    check(bool(ui.connect_mixed_confirmation(owner, {field}, [capture](const auto&) { return MixedConfirmationResult{}; })), "Connect first group");
     capture.reset();
     check(bool(owner.remove()) && released.expired(), "Removing owner releases confirmation callback");
     auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
-    check(bool(ui.connect_confirmation(next, {field}, [](const auto&) { return ConfirmationResult{}; })),
+    check(bool(ui.connect_mixed_confirmation(next, {field}, [](const auto&) { return MixedConfirmationResult{}; })),
           "Removed group releases the field for another connection");
 }
 

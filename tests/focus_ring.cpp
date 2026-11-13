@@ -204,7 +204,7 @@ struct Page {
         add("radio_none", layout::control(radio_none));
         auto radio_sel = ui.add_radio_group({.id = "radio_sel", .kind = Kind::radio_group, .label = u"Size"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
         radio_sel.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
-        radio_sel.connect_immediate([](const OptionChange&) { return Result{}; });
+        radio_sel.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
         check(bool(radio_sel.select({"b"})), "a radio option is selected");
         add("radio_sel", layout::control(radio_sel));
         auto slider = ui.add_slider({.id = "slider", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();

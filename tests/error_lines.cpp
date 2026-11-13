@@ -61,7 +61,7 @@ const Subject subjects[] = {
             field.connect_source({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
             auto confirm = ui.add_button(control(id + ".apply", Kind::button, u"Apply")).value.value();
-            check(bool(ui.connect_confirmation(confirm, {field}, [](const std::vector<TextChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
+            check(bool(ui.connect_mixed_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return MixedConfirmationResult{}; })), "the text field is confirmed");
             field.set_value(u"draft"); *model = u"newest"; source.notify();
             check(field.describe()->source_conflict, "the text field reports a conflict");
         }
@@ -78,7 +78,7 @@ const Subject subjects[] = {
         auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             group.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(group.connect_confirmed([](const OptionChange&) { return Result{}; })), "the radio group holds a draft");
+            check(bool(group.connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })), "the radio group holds a draft");
             group.select({"b"}); *model = OptionValue{"c"}; source.notify();
             check(group.describe()->source_conflict, "the radio group reports a conflict");
         }
@@ -90,7 +90,7 @@ const Subject subjects[] = {
         auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             box.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(box.connect_confirmed([](const DropdownChange&) { return Result{}; })), "the dropdown holds a draft");
+            check(bool(box.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })), "the dropdown holds a draft");
             box.select({"b"}); *model = OptionValue{"c"}; source.notify();
             check(box.describe()->source_conflict, "the dropdown reports a conflict");
         }
@@ -102,7 +102,7 @@ const Subject subjects[] = {
         auto& source = new_source(); auto model = std::make_shared<int>(0);
         if (conflict) {
             slider.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(slider.connect_confirmed([](const NumericChange&) { return Result{}; })), "the slider holds a draft");
+            check(bool(slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })), "the slider holds a draft");
             slider.set_value(10); *model = 20; source.notify();
             check(slider.describe()->source_conflict, "the slider reports a conflict");
         }
