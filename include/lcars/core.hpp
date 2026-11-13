@@ -263,10 +263,32 @@ class Ui;
 class SemanticTree;
 struct Frame;
 namespace detail { class UiState; UiState& access(Ui&); const UiState& access(const Ui&); }
+// What every typed handle holds (#94): the Ui it belongs to, the lifetime that says whether what it names still exists
+// (the whole Ui's, a button's own, or a tooltip's source component's), and the id of what it names (the component; for
+// a context menu the component it is attached to, for a tooltip its source, for a dialog the dialog). Each handle kind
+// derives from its own HandleBase privately, so only the kind itself and the framework see inside: no user of a handle,
+// and no class derived from one, reaches the Ui, the lifetime or the id, and two different kinds never compare.
+// Equality: two handles are equal when they control the same thing now (same Ui, same lifetime, same id); two default
+// handles are equal to each other and to no real one. Every kind declares `bool operator==(const Kind&) const = default;`.
+namespace detail {
+template <class Handle> class HandleBase {
+    friend Handle;
+    friend class UiState;
+    friend struct ::lcars::Frame;
+    HandleBase() = default;
+    HandleBase(UiState* ui, std::weak_ptr<void> lifetime, std::string id) : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
+    bool operator==(const HandleBase& other) const {
+        return ui_ == other.ui_ && id_ == other.id_ && !lifetime_.owner_before(other.lifetime_) && !other.lifetime_.owner_before(lifetime_);
+    }
+    UiState* ui_ = nullptr;
+    std::weak_ptr<void> lifetime_;
+    std::string id_;
+};
+}
 struct TextChange;
 struct RichTextChange;
 // A handle identifies a component without owning it. Each operation validates its lifetime.
-class TextHandle {
+class TextHandle : private detail::HandleBase<TextHandle> {
 public:
     TextHandle() = default;
     Result set_value(std::u16string value) const;
@@ -357,20 +379,14 @@ public:
     Result use_latest() const;
     Query<Semantics> describe() const;
     Query<std::u16string> draft() const;
-    bool operator==(const TextHandle& other) const {
-        return ui_ == other.ui_ && id_ == other.id_ &&
-               !lifetime_.owner_before(other.lifetime_) && !other.lifetime_.owner_before(lifetime_);
-    }
+    bool operator==(const TextHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     TextHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
-class ButtonHandle {
+class ButtonHandle : private detail::HandleBase<ButtonHandle> {
 public:
     ButtonHandle() = default;
     Result invoke() const;
@@ -381,16 +397,14 @@ public:
     Result remove() const;
     Query<bool> executing() const;
     Query<Semantics> describe() const;
+    bool operator==(const ButtonHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     ButtonHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
-class LabelHandle {
+class LabelHandle : private detail::HandleBase<LabelHandle> {
 public:
     LabelHandle() = default;
     Result connect_source(std::function<std::u16string()> read) const;
@@ -409,17 +423,15 @@ public:
     Result set_vertical_digits(int digits) const;
     Query<int> vertical_digits() const;
     Query<Semantics> describe() const;
+    bool operator==(const LabelHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     LabelHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct BoolChange;
-class CheckboxHandle {
+class CheckboxHandle : private detail::HandleBase<CheckboxHandle> {
 public:
     CheckboxHandle() = default;
     Result toggle() const;
@@ -432,18 +444,16 @@ public:
     Result confirm() const;
     Query<bool> draft() const;
     Query<Semantics> describe() const;
+    bool operator==(const CheckboxHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     CheckboxHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct BoolChange { CheckboxHandle field; bool value, origin; };
 struct OptionChange;
-class RadioGroupHandle {
+class RadioGroupHandle : private detail::HandleBase<RadioGroupHandle> {
 public:
     RadioGroupHandle() = default;
     Result select(OptionValue value) const;
@@ -457,18 +467,16 @@ public:
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
     Query<Semantics> describe() const;
+    bool operator==(const RadioGroupHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     RadioGroupHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct OptionChange { RadioGroupHandle field; std::optional<OptionValue> value, origin; };
 struct NumericChange;
-class SliderHandle {
+class SliderHandle : private detail::HandleBase<SliderHandle> {
 public:
     SliderHandle() = default;
     Result on_blur(std::function<void()> callback) const;
@@ -482,33 +490,29 @@ public:
     Result confirm() const;
     Query<int> draft() const;
     Query<Semantics> describe() const;
+    bool operator==(const SliderHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     SliderHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct NumericChange { SliderHandle field; int value, origin; };
 // A display-only percentage. Source values are never written; display is clamped to 0-100.
-class ProgressHandle {
+class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
     ProgressHandle() = default;
     Result connect_source(NumericSource source) const;
     Query<Semantics> describe() const;
+    bool operator==(const ProgressHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     ProgressHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct DropdownChange;
-class DropdownHandle {
+class DropdownHandle : private detail::HandleBase<DropdownHandle> {
 public:
     DropdownHandle() = default;
     Result open() const;
@@ -524,21 +528,19 @@ public:
     Result confirm() const;
     Query<std::optional<OptionValue>> draft() const;
     Query<Semantics> describe() const;
+    bool operator==(const DropdownHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     DropdownHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 struct DropdownChange { DropdownHandle field; std::optional<OptionValue> value, origin; };
 class ListHandle;
 class TabsHandle;
 class NavigationListHandle;
 using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
-class TabsHandle {
+class TabsHandle : private detail::HandleBase<TabsHandle> {
 public:
     TabsHandle() = default;
     Result activate(OptionValue page) const;
@@ -549,16 +551,14 @@ public:
     Query<OptionValue> active() const;
     Query<Semantics> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
+    bool operator==(const TabsHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     TabsHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
-class NavigationListHandle {
+class NavigationListHandle : private detail::HandleBase<NavigationListHandle> {
 public:
     NavigationListHandle() = default;
     Result select(OptionValue page) const;
@@ -569,16 +569,14 @@ public:
     Query<OptionValue> selected() const;
     Query<Semantics> describe() const;
     Result on_page_change(std::function<void(OptionValue, OptionValue)> callback) const;
+    bool operator==(const NavigationListHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     NavigationListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
-class ListHandle {
+class ListHandle : private detail::HandleBase<ListHandle> {
 public:
     ListHandle() = default;
     Result select(OptionValue value) const;
@@ -589,43 +587,38 @@ public:
     Result connect_source(OptionSource source) const;
     Result connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const;
     Query<Semantics> describe() const;
+    bool operator==(const ListHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
     ListHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 // A single window-modal dialog, assembled from ordinary typed components. The opener and
 // fallback are non-owning handles; the result callback runs once for each successful opening.
-class DialogHandle {
+class DialogHandle : private detail::HandleBase<DialogHandle> {
 public:
     DialogHandle() = default;
     Result open(ComponentHandle opener) const;
     Result open() const;
     Result settle(bool confirmed) const;
     Query<bool> is_open() const;
+    bool operator==(const DialogHandle& other) const = default;
 private:
     friend class detail::UiState;
-    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id) : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+    DialogHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 // Non-owning reference to explanatory content attached to a source component.
-class TooltipHandle {
+class TooltipHandle : private detail::HandleBase<TooltipHandle> {
 public:
     TooltipHandle() = default;
     Query<bool> visible() const;
+    bool operator==(const TooltipHandle& other) const = default;
 private:
     friend class detail::UiState;
     TooltipHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string source)
-        : ui_(ui), lifetime_(std::move(lifetime)), source_(std::move(source)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string source_;
+        : HandleBase(ui, std::move(lifetime), std::move(source)) {}
 };
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
@@ -688,7 +681,7 @@ inline constexpr const char* menu_bold = "lcars.bold";
 inline constexpr const char* menu_italic = "lcars.italic";
 inline constexpr const char* menu_underline = "lcars.underline";
 // The application's items attached to one component. Built-in items are not part of it.
-class ContextMenuHandle {
+class ContextMenuHandle : private detail::HandleBase<ContextMenuHandle> {
 public:
     ContextMenuHandle() = default;
     Result set_mode(MenuMode mode) const;
@@ -698,13 +691,11 @@ public:
     Result update_item(MenuItem item) const;  // replaces the item with the same id
     Result enable_item(std::string id, bool enabled) const;
     Query<std::vector<MenuItemInfo>> items() const;
+    bool operator==(const ContextMenuHandle& other) const = default;
 private:
     friend class detail::UiState;
     ContextMenuHandle(detail::UiState* ui, std::weak_ptr<void> lifetime, std::string id)
-        : ui_(ui), lifetime_(std::move(lifetime)), id_(std::move(id)) {}
-    detail::UiState* ui_ = nullptr;
-    std::weak_ptr<void> lifetime_;
-    std::string id_;
+        : HandleBase(ui, std::move(lifetime), std::move(id)) {}
 };
 // What the pointer hovers: a component, plus the item when the pointer is over one item of it.
 struct HoverTarget { std::string id; std::optional<OptionValue> item; bool operator==(const HoverTarget&) const = default; };

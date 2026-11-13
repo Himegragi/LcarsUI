@@ -7,6 +7,7 @@ static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
 static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 2 && LCARS_VERSION_PATCH == 0);
 static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 2 && lcars::framework_version_patch == 0);
 static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
+#include <concepts>
 #include <cstdio>
 #include <string>
 #include <type_traits>
@@ -16,6 +17,20 @@ static_assert(!std::is_convertible_v<lcars::BoolSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::NumericSource>);
 static_assert(!std::is_convertible_v<lcars::TextSource, lcars::BoolSource>);
 static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
+// Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
+static_assert(std::equality_comparable<lcars::TextHandle> && std::equality_comparable<lcars::ButtonHandle> &&
+              std::equality_comparable<lcars::LabelHandle> && std::equality_comparable<lcars::CheckboxHandle> &&
+              std::equality_comparable<lcars::RadioGroupHandle> && std::equality_comparable<lcars::SliderHandle> &&
+              std::equality_comparable<lcars::ProgressHandle> && std::equality_comparable<lcars::DropdownHandle> &&
+              std::equality_comparable<lcars::TabsHandle> && std::equality_comparable<lcars::NavigationListHandle> &&
+              std::equality_comparable<lcars::ListHandle> && std::equality_comparable<lcars::DialogHandle> &&
+              std::equality_comparable<lcars::TooltipHandle> && std::equality_comparable<lcars::ContextMenuHandle>);
+static_assert(std::equality_comparable<lcars::ComponentHandle> && std::equality_comparable<lcars::ConfirmField>);
+static_assert(!std::equality_comparable_with<lcars::TextHandle, lcars::CheckboxHandle>);
+static_assert(!std::equality_comparable_with<lcars::TextHandle, lcars::LabelHandle>);
+static_assert(!std::equality_comparable_with<lcars::TabsHandle, lcars::NavigationListHandle>);
+static_assert(!std::equality_comparable_with<lcars::DialogHandle, lcars::ContextMenuHandle>);
+static_assert(!std::equality_comparable_with<lcars::ButtonHandle, lcars::TooltipHandle>);
 // Applications use typed handles; string operations belong to the semantic layer, not Ui.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);

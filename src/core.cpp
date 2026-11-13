@@ -1394,8 +1394,8 @@ Result detail::UiState::clear_simulated_hover() {
 Query<bool> TooltipHandle::visible() const {
     detail::UiState::OperationScope operation(lifetime_.expired() ? nullptr : ui_);
     if (lifetime_.expired()) return {Status::not_found, u"UI no longer exists", std::nullopt};
-    if (auto r = ui_->configuration_access(source_, true); !r) return {r.status, r.message, std::nullopt};
-    auto it = ui_->tooltips_.find(source_);
+    if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
+    auto it = ui_->tooltips_.find(id_);
     if (it == ui_->tooltips_.end()) return {Status::not_found, u"Tooltip no longer exists", std::nullopt};
     return {Status::ok, {}, it->second.visible};
 }

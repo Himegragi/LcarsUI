@@ -2,18 +2,58 @@
 // (`kinds` below) and generic drivers over it:
 //   - lifetime: once the Ui is gone, every operation of every handle answers not_found with that operation's text of
 //     today; a removed button's handle does the same while the Ui lives on.
-// A new handle kind is one more World member and one more entry in `kinds` (with every public operation it has).
+//   - equality: two handles are equal when they control the same thing now. Two default (empty) handles are equal and
+//     differ from every real one; a recreated button differs from the removed one; the same id in another Ui differs.
+//     Handles of different kinds do not compare at all (a compile error, checked with static_assert).
+// A new handle kind is one more World member, one more entry in `kinds` (with every public operation it has) and one
+// more type in HandleTypes.
 #include "lcars/core.hpp"
 #include "check.hpp"
+#include <concepts>
 #include <functional>
 #include <memory>
 #include <string>
+#include <optional>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 using namespace lcars;
 using test::check;
+
+// Every handle kind, for the compile-time checks.
+using HandleTypes = std::tuple<TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, ProgressHandle,
+                               DropdownHandle, TabsHandle, NavigationListHandle, ListHandle, DialogHandle, TooltipHandle, ContextMenuHandle>;
+template <class A, class... H> constexpr bool compares_only_with_itself = ((std::is_same_v<A, H> || !std::equality_comparable_with<A, H>) && ...);
+template <class... H> constexpr bool kinds_apart(std::tuple<H...>*) { return (compares_only_with_itself<H, H...> && ...); }
+template <class... H> constexpr bool kinds_comparable(std::tuple<H...>*) { return (std::equality_comparable<H> && ...); }
+template <class T, class... H> constexpr bool listed(std::tuple<H...>*) { return (std::is_same_v<T, H> || ...); }
+template <class... A> constexpr bool every_alternative_listed(std::variant<std::monostate, A...>*) {
+    return (listed<A>(static_cast<HandleTypes*>(nullptr)) && ...);
+}
+// What a handle holds stays private: neither its user nor a class derived from it reaches the Ui, lifetime or id.
+template <class H> struct Derived : H {
+    static constexpr bool sees_state() {
+        return requires(const Derived& d) { d.ui_; } || requires(const Derived& d) { d.lifetime_; } || requires(const Derived& d) { d.id_; };
+    }
+};
+template <class H> concept exposes_state = requires(const H& h) { h.ui_; } || requires(const H& h) { h.lifetime_; } || requires(const H& h) { h.id_; };
+template <class... H> constexpr bool state_private(std::tuple<H...>*) { return ((!exposes_state<H> && !Derived<H>::sees_state()) && ...); }
+
+static_assert(std::tuple_size_v<HandleTypes> == 14);
+static_assert(every_alternative_listed(static_cast<ComponentHandle*>(nullptr)));
+static_assert(kinds_comparable(static_cast<HandleTypes*>(nullptr)), "decision 2: every handle kind has operator==");
+static_assert(kinds_apart(static_cast<HandleTypes*>(nullptr)), "decision 4: handles of different kinds never compare");
+static_assert(!std::equality_comparable_with<TextHandle, CheckboxHandle>);
+static_assert(!std::equality_comparable_with<TabsHandle, NavigationListHandle>);  // one implementation inside, still two kinds
+static_assert(!std::equality_comparable_with<TextHandle, LabelHandle>);
+static_assert(std::equality_comparable<ComponentHandle> && std::equality_comparable<ConfirmField>);
+static_assert(state_private(static_cast<HandleTypes*>(nullptr)));
+// The two probes do see state that is reachable, so the check above is not vacuous.
+struct OpenState { void* ui_ = nullptr; };
+class InheritedState { protected: int id_ = 0; };
+static_assert(exposes_state<OpenState> && Derived<InheritedState>::sees_state());
 
 namespace {
 std::function<std::function<void()>(std::function<void()>)> no_updates() {
@@ -200,27 +240,38 @@ std::vector<Op> menu_ops(const World& w) {
 #undef LCARS_OP
 
 // The one list of handle kinds. `gone` is the not_found text the kind's operations give today once the Ui is gone.
+// The comparisons are filled in from the World member, so a kind is listed once and every driver sees it.
 struct HandleKind {
     const char* name;
     const char16_t* gone;
     std::vector<Op> (*operations)(const World&);
+    bool (*equal)(const World&, const World&);  // the kind's handle in one world == the one in the other
+    bool (*empty_equals)(const World&);         // a default handle of the kind == the world's
+    bool (*empties_equal)();                    // two default handles of the kind are equal
 };
+template <auto member> HandleKind kind(const char* name, const char16_t* gone, std::vector<Op> (*operations)(const World&)) {
+    using H = std::remove_cvref_t<decltype(std::declval<World&>().*member)>;
+    return {name, gone, operations,
+            [](const World& a, const World& b) { return a.*member == b.*member; },
+            [](const World& w) { return H{} == w.*member; },
+            [] { return H{} == H{}; }};
+}
 const std::vector<HandleKind>& kinds() {
     static const std::vector<HandleKind> list{
-        {"TextHandle", u"Component no longer exists", text_ops},
-        {"ButtonHandle", u"Component no longer exists", button_ops},
-        {"LabelHandle", u"Component no longer exists", label_ops},
-        {"CheckboxHandle", u"Component no longer exists", checkbox_ops},
-        {"RadioGroupHandle", u"Component no longer exists", radio_ops},
-        {"SliderHandle", u"Component no longer exists", slider_ops},
-        {"ProgressHandle", u"Component no longer exists", progress_ops},
-        {"DropdownHandle", u"Component no longer exists", dropdown_ops},
-        {"TabsHandle", u"Component no longer exists", tabs_ops},
-        {"NavigationListHandle", u"Component no longer exists", navigation_ops},
-        {"ListHandle", u"Component no longer exists", list_ops},
-        {"DialogHandle", u"UI no longer exists", dialog_ops},
-        {"TooltipHandle", u"UI no longer exists", tooltip_ops},
-        {"ContextMenuHandle", u"Component no longer exists", menu_ops},
+        kind<&World::text>("TextHandle", u"Component no longer exists", text_ops),
+        kind<&World::button>("ButtonHandle", u"Component no longer exists", button_ops),
+        kind<&World::label>("LabelHandle", u"Component no longer exists", label_ops),
+        kind<&World::checkbox>("CheckboxHandle", u"Component no longer exists", checkbox_ops),
+        kind<&World::radio>("RadioGroupHandle", u"Component no longer exists", radio_ops),
+        kind<&World::slider>("SliderHandle", u"Component no longer exists", slider_ops),
+        kind<&World::progress>("ProgressHandle", u"Component no longer exists", progress_ops),
+        kind<&World::dropdown>("DropdownHandle", u"Component no longer exists", dropdown_ops),
+        kind<&World::tabs>("TabsHandle", u"Component no longer exists", tabs_ops),
+        kind<&World::navigation>("NavigationListHandle", u"Component no longer exists", navigation_ops),
+        kind<&World::list>("ListHandle", u"Component no longer exists", list_ops),
+        kind<&World::dialog>("DialogHandle", u"UI no longer exists", dialog_ops),
+        kind<&World::tooltip>("TooltipHandle", u"UI no longer exists", tooltip_ops),
+        kind<&World::menu>("ContextMenuHandle", u"Component no longer exists", menu_ops),
     };
     return list;
 }
@@ -242,7 +293,7 @@ void expect_gone(const HandleKind& kind, const std::vector<Op>& operations) {
 }
 
 void list_covers_every_kind() {
-    check(kinds().size() == 14, "the list names all 14 handle kinds");
+    check(kinds().size() == std::tuple_size_v<HandleTypes>, "the list names all 14 handle kinds");
     // Every component handle alternative is in the list (the remaining three are DialogHandle, TooltipHandle, ContextMenuHandle).
     check(std::variant_size_v<ComponentHandle> - 1 + 3 == kinds().size(), "component handles plus dialog, tooltip and menu");
     for (const auto& kind : kinds()) {
@@ -267,6 +318,83 @@ void every_operation_of_a_removed_button_is_not_found() {
     expect_gone(kind, operations);
     check(world.text.describe().status == Status::ok, "the Ui itself lives on");
 }
+
+void expect(bool condition, const HandleKind& kind, const char* expectation) {
+    const auto text = std::string(kind.name) + ": " + expectation;
+    check(condition, text.c_str());
+}
+
+void empty_handles_equal_each_other_and_no_real_one() {
+    World world;
+    for (const auto& kind : kinds()) {
+        expect(kind.empties_equal(), kind, "two default handles are equal");
+        expect(!kind.empty_equals(world), kind, "a default handle differs from a real one");
+    }
+}
+
+void a_handle_equals_its_copy() {
+    World world;
+    for (const auto& kind : kinds()) expect(kind.equal(world, world), kind, "a handle equals its copy");
+}
+
+void the_same_id_in_another_ui_differs() {
+    World one, other;
+    for (const auto& kind : kinds()) expect(!kind.equal(one, other), kind, "the same id in another Ui is another handle");
+}
+
+void a_handle_the_framework_hands_back_equals_the_one_from_creation() {
+    Ui ui;
+    auto checkbox = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"}).value.value();
+    checkbox.connect_source({[] { return false; }, no_updates()});
+    std::optional<CheckboxHandle> written;
+    checkbox.connect_immediate([&](const BoolChange& change) { written = change.field; return Result{}; });
+    check(checkbox.toggle().status == Status::ok && written, "the write ran");
+    check(*written == checkbox, "the change names the same checkbox");
+    check(ComponentHandle{*written} == ComponentHandle{checkbox}, "and so does a component handle of it");
+    check(ConfirmField{*written} == ConfirmField{checkbox}, "and a confirmation field of it");
+    check(!(ComponentHandle{checkbox} == ComponentHandle{}), "an empty component handle is no checkbox");
+}
+
+void a_recreated_button_is_another_handle() {
+    Ui ui;
+    auto old = ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"}).value.value();
+    check(old.remove().status == Status::ok, "the button is removed");
+    auto recreated = ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"}).value.value();
+    check(!(old == recreated) && old != recreated, "the recreated button is not the removed one");
+    check(old.invoke().status == Status::not_found, "the old handle still controls nothing");
+    check(recreated.focus().status == Status::ok, "the new one controls the new button");
+    check(ComponentHandle{old} != ComponentHandle{recreated}, "as component handles too");
+}
+
+// A context menu handle names its target (same Ui, same id): a menu attached again to a recreated target is the same
+// menu handle, as the old handle controls the new attachment today.
+void a_menu_attached_again_is_the_same_handle() {
+    Ui ui;
+    auto target = ui.add_button({.id = "target", .kind = Kind::button, .label = u"Target"}).value.value();
+    auto old = ui.add_context_menu(target, {command("app.one", u"One")}).value.value();
+    check(target.remove().status == Status::ok, "the target is removed");
+    check(old.items().status == Status::not_found, "the old menu is gone with it");
+    auto recreated = ui.add_button({.id = "target", .kind = Kind::button, .label = u"Target"}).value.value();
+    auto again = ui.add_context_menu(recreated, {command("app.two", u"Two")}).value.value();
+    check(old == again, "the menu attached again to the same id is the same handle");
+    auto items = old.items();
+    check(items && items->size() == 1 && items->front().id == "app.two", "and the old handle controls the new attachment");
+}
+
+// A tooltip handle lives as long as its source component: a tooltip on a recreated button is not reached through the
+// old handle (it answers not_found today), so the two handles do not control the same thing and are not equal.
+void a_tooltip_on_a_recreated_button_is_another_handle() {
+    Ui ui;
+    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto old = ui.add_tooltip("tip", source, u"Tip").value.value();
+    check(source.remove().status == Status::ok, "the source is removed");
+    auto recreated = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto again = ui.add_tooltip("tip", recreated, u"Tip").value.value();
+    auto stale = old.visible();
+    check(stale.status == Status::not_found && stale.message == u"UI no longer exists", "the old handle controls nothing");
+    check(again.visible().status == Status::ok, "the new one controls the new tooltip");
+    check(!(old == again), "so they are different handles");
+}
 }
 
 int main() {
@@ -274,6 +402,13 @@ int main() {
         {"the list covers every handle kind", list_covers_every_kind},
         {"every operation of every handle answers not_found after the Ui ends", every_operation_after_the_ui_ends_is_not_found},
         {"every operation of a removed button's handle answers not_found", every_operation_of_a_removed_button_is_not_found},
+        {"default handles equal each other and no real handle", empty_handles_equal_each_other_and_no_real_one},
+        {"a handle equals its copy", a_handle_equals_its_copy},
+        {"the same id in another Ui is another handle", the_same_id_in_another_ui_differs},
+        {"a handle handed back by the framework equals the one from creation", a_handle_the_framework_hands_back_equals_the_one_from_creation},
+        {"a recreated button is another handle", a_recreated_button_is_another_handle},
+        {"a menu attached again to the same target is the same handle", a_menu_attached_again_is_the_same_handle},
+        {"a tooltip on a recreated button is another handle", a_tooltip_on_a_recreated_button_is_another_handle},
     };
     return test::run("handles", cases);
 }
