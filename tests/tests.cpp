@@ -17,9 +17,9 @@ void core_behavior(){
     auto run = ui.add_button({.id = "run", .kind = Kind::button}).value.value();
     ui.add_button({.id = "cancel", .kind = Kind::button, .page = "dialog"}).value.value();
     name.connect_source({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
-    name.connect_confirmed([](const TextChange&) { return Result{}; });
+    name.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     locked.connect_source({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});
-    locked.connect_confirmed([](const TextChange&) { return Result{}; });
+    locked.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     int calls=0;run.bind([&]{++calls;return Result{};});
     check(detail::access(ui).set_value("absent",u"x").status==Status::not_found,"Unknown ID must fail");
     check(locked.set_value(u"x").status==Status::read_only,"Read-only write must fail");
@@ -59,7 +59,7 @@ void renderer_failure_admission() {
     Ui ui;
     auto name = ui.add_text({.id="name", .kind=Kind::text, .value=u"draft"}).value.value();
     name.connect_source({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
-    name.connect_confirmed([](const TextChange&) { return Result{}; });
+    name.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
     detail::access(ui).renderer_failed(true);
     check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");

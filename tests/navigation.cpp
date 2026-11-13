@@ -93,7 +93,7 @@ void exercise() {
     check(detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'}).status == Status::disabled && saves==1, "disabled shortcut target rejected");
     save.enable(true);
     text.connect_source({[&] { return value; }, [&](auto callback) { notify=std::move(callback); return [&] { notify={}; }; }});
-    text.connect_confirmed([](const TextChange&) { return Result{}; });
+    text.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     check(bool(detail::access(shortcuts).composition_update(u"x",1)), "composition starts");
     detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'});
     check(saves==1, "composition blocks shortcuts");

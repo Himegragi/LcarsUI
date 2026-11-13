@@ -155,11 +155,11 @@ std::vector<Op> text_ops(const World& w) {
             LCARS_OP(h, next_word_stop(0)), LCARS_OP(h, previous_word_stop(0)), LCARS_OP(h, select_word(0)), LCARS_OP(h, select_paragraph(0)),
             LCARS_OP(h, double_click(0)), LCARS_OP(h, triple_click(0)),
             LCARS_OP(h, connect_source({[] { return std::u16string(); }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const TextChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const TextChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<TextHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<TextHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_rich_source({[] { return RichText{}; }, no_updates()})),
-            LCARS_OP(h, connect_rich_immediate([](const RichTextChange&) { return Result{}; })),
-            LCARS_OP(h, connect_rich_confirmed([](const RichTextChange&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_immediate([](const Change<TextHandle, RichText>&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; })),
             LCARS_OP(h, set_rich_value(RichText{u"r", {}})), LCARS_OP(h, rich_value()), LCARS_OP(h, set_style(0, 1, bold())),
             LCARS_OP(h, toggle_style(StyleAttribute::bold)), LCARS_OP(h, apply_style(bold())),
             LCARS_OP(h, typing_style()), LCARS_OP(h, set_typing_style(TextStyle{})), LCARS_OP(h, set_colors({})), LCARS_OP(h, colors()),
@@ -183,8 +183,8 @@ std::vector<Op> checkbox_ops(const World& w) {
     auto h = w.checkbox;
     return {LCARS_OP(h, toggle()), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return true; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const BoolChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const BoolChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<CheckboxHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> radio_ops(const World& w) {
@@ -192,16 +192,16 @@ std::vector<Op> radio_ops(const World& w) {
     return {LCARS_OP(h, select({"b"})), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, enable_option({"b"}, false)),
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const OptionChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const OptionChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> slider_ops(const World& w) {
     auto h = w.slider;
     return {LCARS_OP(h, on_blur([] {})), LCARS_OP(h, set_value(30)), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return 40; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const NumericChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const NumericChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<SliderHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> progress_ops(const World& w) {
@@ -213,8 +213,8 @@ std::vector<Op> dropdown_ops(const World& w) {
     return {LCARS_OP(h, open()), LCARS_OP(h, cancel()), LCARS_OP(h, select({"b"})), LCARS_OP(h, set_options(two_options())),
             LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const DropdownChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const DropdownChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> tabs_ops(const World& w) {
@@ -384,7 +384,7 @@ void a_handle_the_framework_hands_back_equals_the_one_from_creation() {
     auto checkbox = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"}).value.value();
     checkbox.connect_source({[] { return false; }, no_updates()});
     std::optional<CheckboxHandle> written;
-    checkbox.connect_immediate([&](const BoolChange& change) { written = change.field; return Result{}; });
+    checkbox.connect_immediate([&](const Change<CheckboxHandle>& change) { written = change.field; return Result{}; });
     check(checkbox.toggle().status == Status::ok && written, "the write ran");
     check(*written == checkbox, "the change names the same checkbox");
     check(ComponentHandle{*written} == ComponentHandle{checkbox}, "and so does a component handle of it");

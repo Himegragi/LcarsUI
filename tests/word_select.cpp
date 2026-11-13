@@ -49,7 +49,7 @@ struct Field {
         check(bool(query), "Create the text field");
         handle = *query;
         check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-        check(bool(handle.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect a write");
+        check(bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
         host().set_word_breaker(std::move(breaker));
         check(bool(handle.set_word_segmentation(mode)), "Choose the segmentation");
     }
@@ -323,7 +323,7 @@ void clicks_count_by_time_distance_and_target() {
     auto second = *f.ui.add_text({.id = "u", .kind = Kind::text, .value = u"aa bb cc"});
     auto model = std::make_shared<std::u16string>(u"aa bb cc");
     second.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    second.connect_confirmed([](const TextChange&) { return Result{}; });
+    second.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     auto& host = f.host();
     std::uint64_t now = 0;
     host.set_click_clock([&] { return now; });
@@ -509,7 +509,7 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
         Ui ui;
         auto model = std::make_shared<std::u16string>(multiline ? text : u"aa bb cc");
         auto handle = *ui.add_text({.id = "c", .kind = Kind::text, .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
-        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect the field");
+        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect the field");
         check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::control(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
@@ -535,7 +535,7 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
 TextHandle rich_field(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
     auto handle = *ui.add_text({.id = "r", .kind = Kind::text, .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
-    check(bool(handle.connect_rich_immediate([model](const RichTextChange& change) { *model = change.value; return Result{}; })), "Connect a rich write");
+    check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
     check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
     return handle;
 }

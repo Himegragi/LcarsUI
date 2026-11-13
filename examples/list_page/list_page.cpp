@@ -11,7 +11,7 @@ Result ImmediateSearchConnection::connect(TextHandle field, std::function<Result
         changed_ = std::move(changed); return [this] { changed_ = {}; };
     }});
     if (!source) return source;
-    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const TextChange& change) {
+    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const Change<TextHandle>& change) {
         value_ = change.value; if (changed_) changed_(); return refresh();
     });
     connected_ = bool(write);

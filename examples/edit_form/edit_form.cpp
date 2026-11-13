@@ -225,7 +225,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             const auto& f = ui.presentation().font_family;
             return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
         }, [this](std::function<void()> changed) { font_changed_ = std::move(changed); return [this] { font_changed_ = {}; }; }});
-        handles.font.connect_immediate([this](const DropdownChange& change) {
+        handles.font.connect_immediate([this](const Change<DropdownHandle>& change) {
             if (!change.value) return Result{Status::invalid_value, u"Font choice required"};
             const auto& id = change.value->id;
             auto settings = ui.presentation();
@@ -249,19 +249,19 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .kind = Kind::slider, .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
         handles.dark = ui.add_checkbox({.id = prefix + "v04.dark", .kind = Kind::checkbox, .label = u"\u6df1\u8272"}).value.value();
         handles.dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](std::function<void()> changed) { dark_changed_ = std::move(changed); return [this] { dark_changed_ = {}; }; }});
-        handles.dark.connect_immediate([this](const BoolChange& change) {
+        handles.dark.connect_immediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.variant = change.value ? ThemeVariant::dark() : ThemeVariant::light();
             auto result = ui.set_presentation(settings); if (result && dark_changed_) dark_changed_(); return result;
         });
         handles.compact = ui.add_checkbox({.id = prefix + "v04.compact", .kind = Kind::checkbox, .label = u"\u7dfb\u6e4a"}).value.value();
         handles.compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
-        handles.compact.connect_immediate([this](const BoolChange& change) {
+        handles.compact.connect_immediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
             return ui.set_presentation(settings);
         });
         handles.preview = ui.add_text({.id = prefix + "v04.preview", .kind = Kind::text, .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
-        handles.preview.connect_immediate([this](const TextChange& change) { preview_ = change.value; return Result{}; });
+        handles.preview.connect_immediate([this](const Change<TextHandle>& change) { preview_ = change.value; return Result{}; });
         // #84: one mixed-script paragraph (Chinese, English and digits) whose alignment and justification method
         // the two dropdowns switch live, and short labels to compare distribute with left alignment.
         handles.justify_sample = ui.add_label({.id = prefix + "v04.justify.sample", .kind = Kind::label, .value = justify_sample_text, .text_align = TextAlign::justify}).value.value();
@@ -275,7 +275,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             const auto align = handles.justify_sample.text_align().value.value_or(TextAlign::left);
             return std::optional<OptionValue>{{align == TextAlign::center ? "center" : align == TextAlign::right ? "right" : align == TextAlign::justify ? "justify" : align == TextAlign::distribute ? "distribute" : "left"}};
         }, [this](std::function<void()> changed) { justify_align_changed_ = std::move(changed); return [this] { justify_align_changed_ = {}; }; }});
-        handles.justify_align.connect_immediate([this](const DropdownChange& change) {
+        handles.justify_align.connect_immediate([this](const Change<DropdownHandle>& change) {
             if (!change.value) return Result{Status::invalid_value, u"Alignment choice required"};
             const auto& id = change.value->id;
             auto result = handles.justify_sample.set_text_align(id == "center" ? TextAlign::center : id == "right" ? TextAlign::right : id == "justify" ? TextAlign::justify : id == "distribute" ? TextAlign::distribute : TextAlign::left);
@@ -286,7 +286,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             const auto method = handles.justify_sample.justify_method().value.value_or(JustifyMethod::automatic);
             return std::optional<OptionValue>{{method == JustifyMethod::spaces ? "spaces" : method == JustifyMethod::per_character ? "per_character" : "automatic"}};
         }, [this](std::function<void()> changed) { justify_method_changed_ = std::move(changed); return [this] { justify_method_changed_ = {}; }; }});
-        handles.justify_method.connect_immediate([this](const DropdownChange& change) {
+        handles.justify_method.connect_immediate([this](const Change<DropdownHandle>& change) {
             if (!change.value) return Result{Status::invalid_value, u"Method choice required"};
             const auto& id = change.value->id;
             auto result = handles.justify_sample.set_justify_method(id == "spaces" ? JustifyMethod::spaces : id == "per_character" ? JustifyMethod::per_character : JustifyMethod::automatic);
@@ -294,7 +294,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             return result;
         });
         handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](std::function<void()> changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
-        handles.text_size.connect_immediate([this](const NumericChange& change) {
+        handles.text_size.connect_immediate([this](const Change<SliderHandle>& change) {
             auto settings = ui.presentation(); settings.text_size = change.value;
             auto result = ui.set_presentation(settings); if (result && text_size_changed_) text_size_changed_(); return result;
         });
@@ -358,11 +358,11 @@ bool Form::validate() {
 }
 MixedConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
     if (auto observer = std::exchange(next_apply_observer_, {})) observer();
-    const auto& name = std::get<TextChange>(changes[0]);
-    const auto& notices = std::get<BoolChange>(changes[1]);
-    const auto& mode = std::get<OptionChange>(changes[2]);
-    const auto& region = std::get<DropdownChange>(changes[3]);
-    const auto& volume = std::get<NumericChange>(changes[4]);
+    const auto& name = std::get<Change<TextHandle>>(changes[0]);
+    const auto& notices = std::get<Change<CheckboxHandle>>(changes[1]);
+    const auto& mode = std::get<Change<RadioGroupHandle>>(changes[2]);
+    const auto& region = std::get<Change<DropdownHandle>>(changes[3]);
+    const auto& volume = std::get<Change<SliderHandle>>(changes[4]);
     std::vector<MixedFieldError> errors;
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});

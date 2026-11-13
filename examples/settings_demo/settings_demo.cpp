@@ -54,11 +54,11 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
     refresh_fonts();
     font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + lcars::detail::utf8_from_utf16(value)}; }, subscribe_to(font_changed_)});
-    font.connect_immediate([this](const DropdownChange& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
+    font.connect_immediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
     text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.add_member({"appearance"}, text_size);
     text_size.connect_source({[this] { return ui.presentation().text_size; }, subscribe_to(text_size_changed_)});
-    connect_slider(text_size, "appearance.text_size", [this](const NumericChange& change, bool join) {
+    connect_slider(text_size, "appearance.text_size", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.text_size = change.value;
         return set_presentation(settings, join);
     });
@@ -69,7 +69,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
-    accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
+    accent.connect_immediate([this](const Change<DropdownHandle>& c) { return set_accent(c.value ? c.value->id : "default"); });
     // The focus ring (#90): one dropdown for when it shows, a thickness slider, a radius (same as the component, or a slider) and a color.
     focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.kind=Kind::dropdown,.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
     focus_width = ui.add_slider({.id="appearance.focus_width",.kind=Kind::slider,.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
@@ -80,40 +80,40 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     focus_mode.connect_source({[this]() -> std::optional<OptionValue> {
         return OptionValue{focus_mode_id(ui.presentation().focus_indicator)};
     }, subscribe_to(focus_mode_changed_)});
-    focus_mode.connect_immediate([this](const DropdownChange& c) {
+    focus_mode.connect_immediate([this](const Change<DropdownHandle>& c) {
         auto settings = ui.presentation();
         settings.focus_indicator = (c.value ? focus_mode_from_id(c.value->id) : std::nullopt).value_or(FocusIndicatorMode::automatic);
         return set_presentation(settings);
     });
     // 3 DIP is the appearances' own ring thickness (ComponentPresentation::focus): what the slider shows while the setting is empty.
     focus_width.connect_source({[this] { return ui.presentation().focus_ring_width.value_or(3); }, subscribe_to(focus_width_changed_)});
-    connect_slider(focus_width, "appearance.focus_width", [this](const NumericChange& change, bool join) {
+    connect_slider(focus_width, "appearance.focus_width", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_width = change.value;
         return set_presentation(settings, join);
     });
     focus_radius_same.connect_source({[this] { return !ui.presentation().focus_ring_radius.has_value(); }, subscribe_to(focus_radius_same_changed_)});
-    focus_radius_same.connect_immediate([this](const BoolChange& c) {
+    focus_radius_same.connect_immediate([this](const Change<CheckboxHandle>& c) {
         auto settings = ui.presentation();
         settings.focus_ring_radius = c.value ? std::nullopt : std::optional<int>{focus_radius_start()};
         return set_presentation(settings);
     });
     focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_start()); }, subscribe_to(focus_radius_changed_)});
-    connect_slider(focus_radius, "appearance.focus_radius", [this](const NumericChange& change, bool join) {
+    connect_slider(focus_radius, "appearance.focus_radius", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_radius = change.value; focus_radius_memory_ = change.value;
         return set_presentation(settings, join);
     });
     focus_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{focus_color_value_}; }, subscribe_to(focus_color_changed_)});
-    focus_color.connect_immediate([this](const DropdownChange& c) { return set_focus_color(c.value ? c.value->id : "default"); });
+    focus_color.connect_immediate([this](const Change<DropdownHandle>& c) { return set_focus_color(c.value ? c.value->id : "default"); });
     refresh_focus_controls();
     preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
     reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
     justify_left.connect_source({[this] { return ui.presentation().justify_as_left; }, subscribe_to(justify_left_changed_)});
-    justify_left.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
+    justify_left.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
     dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
     compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
-    dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
-    compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
+    dark.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
+    compact.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
     reset_appearance_.bind([this] {
         if (auto r = apply_palette("default", "default"); !r) return r;
         accent_value_ = focus_color_value_ = "default"; if (accent_changed_) accent_changed_(); if (focus_color_changed_) focus_color_changed_();
@@ -147,7 +147,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
     items_search.connect_source({[this] { return search_value_; }, subscribe_to(search_changed_)});
-    items_search.connect_immediate([this](const TextChange& c) {
+    items_search.connect_immediate([this](const Change<TextHandle>& c) {
         search_value_=c.value;
         if (auto r=refresh_items(); !r) return r;
         if (search_changed_) search_changed_();
@@ -165,7 +165,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     for (ComponentHandle member : {ComponentHandle{name_label_}, ComponentHandle{name}, ComponentHandle{name_help_}, ComponentHandle{name_error_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.add_member({"general"}, member);
     title_.connect_source([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
     name.connect_source({[this] { return name_value_; }, subscribe_to(name_changed_)});
-    name.connect_confirmed([this](const TextChange& change) {
+    name.connect_confirmed([this](const Change<TextHandle>& change) {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
     });
@@ -179,13 +179,13 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         name.reset_to_source(); update_history_controls();
     });
     notices.connect_source({[this] { return notices_value_; }, subscribe_to(notices_changed_)});
-    notices.connect_immediate([this](const BoolChange& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
+    notices.connect_immediate([this](const Change<CheckboxHandle>& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
     mode.connect_source({[this] { return mode_value_; }, subscribe_to(mode_changed_)});
-    mode.connect_immediate([this](const OptionChange& c) { mode_value_=c.value; if (mode_changed_) mode_changed_(); dirty(); return Result{}; });
+    mode.connect_immediate([this](const Change<RadioGroupHandle>& c) { mode_value_=c.value; if (mode_changed_) mode_changed_(); dirty(); return Result{}; });
     region.connect_source({[this] { return region_value_; }, subscribe_to(region_changed_)});
-    region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
+    region.connect_immediate([this](const Change<DropdownHandle>& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
-    connect_slider(volume, "general.volume", [this](const NumericChange& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
+    connect_slider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
     item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
     item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
     item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
@@ -214,7 +214,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     };
     style_button(item_note_bold, lcars::StyleAttribute::bold); style_button(item_note_italic, lcars::StyleAttribute::italic); style_button(item_note_underline, lcars::StyleAttribute::underline);
     item_note_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{note_color_value_}; }, subscribe_to(note_color_changed_)});
-    item_note_color.connect_immediate([this](const DropdownChange& c) {
+    item_note_color.connect_immediate([this](const Change<DropdownHandle>& c) {
         note_color_value_ = c.value ? c.value->id : "default"; if (note_color_changed_) note_color_changed_();
         auto result = item_note.apply_style({.color = note_color_value_ == "default" ? std::string{} : note_color_value_});
         item_note.focus();
@@ -237,7 +237,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
     ui.connect_mixed_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> MixedConfirmationResult {
-        const auto& value=std::get<TextChange>(changes[0]).value; const auto& rich=std::get<RichTextChange>(changes[1]).value;
+        const auto& value=std::get<Change<TextHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextHandle, RichText>>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
@@ -342,8 +342,8 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
-void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Result(const NumericChange&, bool join)> change) {
-    slider.connect_immediate([this, &slider, id, change = std::move(change)](const NumericChange& c) {
+void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Result(const Change<SliderHandle>&, bool join)> change) {
+    slider.connect_immediate([this, &slider, id, change = std::move(change)](const Change<SliderHandle>& c) {
         const bool focused = slider.describe()->focused;
         auto result = change(c, focused && drag_group_ == id); if (!result) return result;
         drag_group_ = focused ? id : "";

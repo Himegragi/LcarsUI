@@ -42,7 +42,7 @@ struct Volume {
     explicit Volume(const Appearance& look = web_appearance()) : appearance(look) {
         slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
-        slider.connect_immediate([this](const NumericChange& change) { model = change.value; if (changed) changed(); return Result{}; });
+        slider.connect_immediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
         detail::access(ui).animation_time([this] { return now; });
         slider.focus();
         paint();
@@ -357,7 +357,7 @@ void without_a_time_source_changes_are_instant() {
     auto slider = ui.add_slider({.id = "v", .kind = Kind::slider, .label = u"V"}, {0, 100, 5}).value.value();
     int model = 45; std::function<void()> changed;
     slider.connect_source({[&] { return model; }, [&](std::function<void()> n) { changed = std::move(n); return [] {}; }});
-    slider.connect_immediate([&](const NumericChange& c) { model = c.value; if (changed) changed(); return Result{}; });
+    slider.connect_immediate([&](const Change<SliderHandle>& c) { model = c.value; if (changed) changed(); return Result{}; });
     slider.focus();
     check(bool(detail::access(ui).key_down({.key = Key::right})) && model == 50, "step");
     check(!ui.animating().value.value(), "a core-only host that gave no clock never animates");

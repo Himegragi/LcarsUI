@@ -263,7 +263,7 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
     auto name_field = ui.add_text({.id = "name", .kind = Kind::text, .value = std::u16string(60, u'A')}).value.value();
     ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
     name_field.connect_source({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
-    name_field.connect_confirmed([](const TextChange&) { return Result{}; });
+    name_field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     FakeMeasure measure;
     ScrollState scroll;
     auto page = layout::column({host_control(ui, "name"), host_control(ui, "apply")});
@@ -289,7 +289,7 @@ void radio_options_share_geometry_with_pointer_input() {
         auto group = ui.add_radio_group({.id = "mode", .kind = Kind::radio_group, .label = u"Mode"},
             {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}, {{"offline"}, u"Offline", false}}).value.value();
         group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-        group.connect_immediate([&](const OptionChange& c) { model = c.value; return Result{}; });
+        group.connect_immediate([&](const Change<RadioGroupHandle>& c) { model = c.value; return Result{}; });
         FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::control(group), ui, *look, measure, 320, 240, 1.f, scroll);
         auto item = frame.find(group);
@@ -311,7 +311,7 @@ void slider_track_and_drag_share_geometry() {
         Ui ui;
         auto slider = ui.add_slider({.id = "volume", .kind = Kind::slider, .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
-        slider.connect_confirmed([](const NumericChange&) { return Result{}; });
+        slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
         test::FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::control(slider), ui, *appearance, measure, 400, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
@@ -331,7 +331,7 @@ void dropdown_popup_overlaps_and_uses_topmost_hit() {
             {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
         auto behind = ui.add_button({.id = "behind", .kind = Kind::button, .label = u"Behind"}).value.value();
         field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-        field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+        field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
         field.open();
         FakeMeasure measure; ScrollState scroll;
         auto page = layout::column({layout::control(field), layout::control(behind)}, 0);
@@ -349,7 +349,7 @@ void dropdown_states_are_readable_without_color() {
     Ui ui;
     auto field = ui.add_dropdown({.id = "region", .kind = Kind::dropdown, .label = u"Region"}, {}).value.value();
     field.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const DropdownChange&) { return Result{}; });
+    field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
     FakeMeasure measure; ScrollState scroll;
     field.open();
     auto frame = arrange(layout::control(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
@@ -375,7 +375,7 @@ void stack_and_popup_edges_follow_paint_order() {
             auto dropdown = other.add_dropdown({.id = "region", .kind = Kind::dropdown, .label = u"Region"},
                 {{{"north"}, u"North"}, {{"central"}, u"Central"}, {{"south"}, u"South"}}).value.value();
             dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-            dropdown.connect_confirmed([](const DropdownChange&) { return Result{}; });
+            dropdown.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
             dropdown.open();
             auto page = layout::scroll(layout::column({layout::control(filler), layout::control(dropdown)}, 0));
             auto frame = arrange(page, other, *look, measure, static_cast<int>(240 * scale), static_cast<int>(180 * scale), scale, scroll, "region");
@@ -393,7 +393,7 @@ void cross_page_error_is_revealed_in_first_frame() {
         auto remote = ui.add_text({.id = "remote", .kind = Kind::text}).value.value();
         auto filler = ui.add_label({.id = "filler", .kind = Kind::label, .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10"}).value.value();
         auto submit = ui.add_button({.id = "apply", .kind = Kind::button}).value.value();
-        auto source = TextSource{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
+        auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
         current.connect_source(source); remote.connect_source(source);
         auto tabs = ui.add_tabs({.id = "tabs", .kind = Kind::tabs}, {
             {{"one"}, u"One", true, {current, submit}}, {{"two"}, u"Two", true, {filler, remote}}}).value.value();
@@ -509,7 +509,7 @@ void modal_long_dropdown() {
     for (int i=0; i<150; ++i) choices.push_back({{std::to_string(i)}, u"item"});
     auto dropdown=ui.add_dropdown({.id="modal.dropdown",.kind=Kind::dropdown},choices).value.value();
     dropdown.connect_source({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
-    dropdown.connect_immediate([](const DropdownChange&) { return Result{}; });
+    dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
     auto dialog=ui.add_dialog("dialog",{dropdown},dropdown,background,[](bool) {}).value.value();
     auto root=layout::modal(layout::control(background),layout::control(dropdown),dialog);
     dialog.open(); dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
@@ -528,7 +528,7 @@ void long_dropdown_viewport() {
         for (int i=0; i<150; ++i) { auto value=std::to_string(i); choices.push_back({{value}, std::u16string(value.begin(),value.end())}); }
         auto dropdown=ui.add_dropdown({.id="long",.kind=Kind::dropdown}, choices).value.value();
         dropdown.connect_source({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});
-        dropdown.connect_immediate([](const DropdownChange&) { return Result{}; });
+        dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
         dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
         auto frame=arrange(layout::control(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(frame.overlays.size()==1 && frame.overlays[0].options.size()<=12, "long popup lays out only visible rows");

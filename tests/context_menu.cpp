@@ -30,7 +30,7 @@ Field add_field(Ui& ui, std::string id, std::u16string value, bool read_only = f
     auto model = std::make_shared<std::u16string>(value);
     auto handle = ui.add_text({.id = id, .kind = Kind::text, .label = u"欄位", .value = value, .read_only = read_only}).value.value();
     check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect field source");
-    check(bool(handle.connect_immediate([model](const TextChange& change) { *model = change.value; return Result{}; })), "connect field write");
+    check(bool(handle.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
     return {handle, model};
 }
 detail::UiState& core(Ui& ui) { return detail::access(ui); }
@@ -160,7 +160,7 @@ RichField add_rich_field(Ui& ui, std::string id, std::u16string value, bool read
     auto model = std::make_shared<RichText>(RichText{value, {}});
     auto handle = ui.add_text({.id = id, .kind = Kind::text, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect rich source");
-    check(bool(handle.connect_rich_immediate([model](const RichTextChange& change) { *model = change.value; return Result{}; })), "connect rich write");
+    check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
     return {handle, model};
 }
 const std::vector<std::string> rich_layout{"lcars.undo", "lcars.redo", "-", "lcars.cut", "lcars.copy", "lcars.paste", "lcars.delete", "-", "lcars.select_all",
@@ -655,7 +655,7 @@ void multi_line_field_menu_hangs_from_the_caret_line() {
     auto model = std::make_shared<std::u16string>(u"first\nsecond\nthird");
     auto note = ui.add_text({.id = "note", .kind = Kind::text, .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
     check(bool(note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) &&
-          bool(note.connect_immediate([model](const TextChange& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
+          bool(note.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
     ScrollState scroll;
     note.select(8, 8); note.focus();
     auto frame = layout_of(ui, 600, 400, scroll);

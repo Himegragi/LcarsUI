@@ -282,7 +282,7 @@ TextHandle field_of(Ui& ui, Control control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const TextChange&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 Control multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
@@ -479,7 +479,7 @@ TextHandle rich_field_of(Ui& ui, Control control, std::vector<StyleSpan> spans =
     auto model = std::make_shared<RichText>(RichText{control.value, std::move(spans)});
     auto field = *ui.add_text(std::move(control));
     check(bool(field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
-    check(bool(field.connect_rich_confirmed([](const RichTextChange&) { return Result{}; })), "Connect a rich write");
+    check(bool(field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; })), "Connect a rich write");
     return field;
 }
 // What a rich field painted: every styled draw call and every fill, with the role it was painted in.

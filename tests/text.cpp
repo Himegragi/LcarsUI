@@ -209,7 +209,7 @@ int main() {
     auto field=ui.add_text({.id="font-test",.kind=lcars::Kind::text,.value=u"測試使用者"});
     if(!field) return 31;
     if(!field->connect_source({[]{return std::u16string(u"測試使用者");}, [](std::function<void()>) { return std::function<void()>([]{}); }}) ||
-       !field->connect_confirmed([](const lcars::TextChange&) {return lcars::Result{};})) return 31;
+       !field->connect_confirmed([](const lcars::Change<lcars::TextHandle>&) {return lcars::Result{};})) return 31;
     auto selection=field->select(5,5); auto insert=field->paste(u"字");
     if(!selection || !insert || field->describe()->value!=u"測試使用者字") {
         std::cerr << "editing status " << static_cast<int>(selection.status) << ' ' << static_cast<int>(insert.status) << "\n"; return 31;
