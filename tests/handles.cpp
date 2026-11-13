@@ -6,9 +6,10 @@
 //     differ from every real one; a recreated button differs from the removed one; the same id in another Ui differs.
 //     Handles of different kinds do not compare at all (a compile error, checked with static_assert).
 // A new handle kind is one more World member, one more entry in `kinds` (with every public operation it has) and one
-// more type in HandleTypes.
+// more type in handle_kinds::All (examples/consumer/handle_kinds.hpp, shared with the consumer example).
 #include "lcars/core.hpp"
 #include "check.hpp"
+#include "../examples/consumer/handle_kinds.hpp"
 #include <concepts>
 #include <functional>
 #include <memory>
@@ -22,12 +23,8 @@
 using namespace lcars;
 using test::check;
 
-// Every handle kind, for the compile-time checks.
-using HandleTypes = std::tuple<TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, ProgressHandle,
-                               DropdownHandle, TabsHandle, NavigationListHandle, ListHandle, DialogHandle, TooltipHandle, ContextMenuHandle>;
-template <class A, class... H> constexpr bool compares_only_with_itself = ((std::is_same_v<A, H> || !std::equality_comparable_with<A, H>) && ...);
-template <class... H> constexpr bool kinds_apart(std::tuple<H...>*) { return (compares_only_with_itself<H, H...> && ...); }
-template <class... H> constexpr bool kinds_comparable(std::tuple<H...>*) { return (std::equality_comparable<H> && ...); }
+// Every handle kind, for the compile-time checks: the one list the consumer example asserts too.
+using HandleTypes = handle_kinds::All;
 template <class T, class... H> constexpr bool listed(std::tuple<H...>*) { return (std::is_same_v<T, H> || ...); }
 template <class... A> constexpr bool every_alternative_listed(std::variant<std::monostate, A...>*) {
     return (listed<A>(static_cast<HandleTypes*>(nullptr)) && ...);
@@ -43,8 +40,11 @@ template <class... H> constexpr bool state_private(std::tuple<H...>*) { return (
 
 static_assert(std::tuple_size_v<HandleTypes> == 14);
 static_assert(every_alternative_listed(static_cast<ComponentHandle*>(nullptr)));
-static_assert(kinds_comparable(static_cast<HandleTypes*>(nullptr)), "decision 2: every handle kind has operator==");
-static_assert(kinds_apart(static_cast<HandleTypes*>(nullptr)), "decision 4: handles of different kinds never compare");
+static_assert(handle_kinds::equality_holds, "decisions 2 and 4: every handle kind has operator==, and different kinds never compare");
+// The shared predicate does fail a list with a kind that compares across kinds, or one without ==, so it is not vacuous.
+struct WithoutEquality {};
+static_assert(!handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<int, long>*>(nullptr)) &&
+              !handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<TextHandle, WithoutEquality>*>(nullptr)));
 static_assert(!std::equality_comparable_with<TextHandle, CheckboxHandle>);
 static_assert(!std::equality_comparable_with<TabsHandle, NavigationListHandle>);  // one implementation inside, still two kinds
 static_assert(!std::equality_comparable_with<TextHandle, LabelHandle>);
