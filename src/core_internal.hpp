@@ -518,6 +518,9 @@ private:
     };
     struct MenuAttachment { MenuMode mode = MenuMode::append; std::vector<MenuItem> items; };
     std::map<Id, MenuAttachment, std::less<>> menu_attachments_;
+    // The opening every ContextMenuHandle operation shares: the configuration check (read_only for a query), then the
+    // attachment on this target, not_found "Menu no longer exists" without one. On ok, `attachment` points at it.
+    Result menu_attachment(std::string_view target, MenuAttachment*& attachment, bool read_only = false);
     struct OpenMenu {
         Id target;
         std::optional<OptionValue> item;

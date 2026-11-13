@@ -342,34 +342,39 @@ std::optional<std::vector<NodeRef>> detail::UiState::menu_children(const NodeRef
     return children;
 }
 
+Result detail::UiState::menu_attachment(std::string_view target, MenuAttachment*& attachment, bool read_only) {
+    if (auto r = configuration_access(target, read_only); !r) return r;
+    auto it = menu_attachments_.find(target);
+    if (it == menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
+    attachment = &it->second;
+    return {};
+}
+
 // ---- public API
 Result ContextMenuHandle::set_mode(MenuMode mode) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-        it->second.mode = mode;
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        menu->mode = mode;
         ui_->menu_items_changed(id_);
         return {};
     });
 }
 Result ContextMenuHandle::set_items(std::vector<MenuItem> items) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         if (auto r = ui_->validate_menu_items(items); !r) return r;
-        it->second.items = std::move(items);
+        menu->items = std::move(items);
         ui_->menu_items_changed(id_);
         return {};
     });
 }
 Result ContextMenuHandle::add_item(MenuItem item, std::string before) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-        auto items = it->second.items;
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto items = menu->items;
         auto position = items.end();
         if (!before.empty()) {
             position = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == before; });
@@ -377,17 +382,16 @@ Result ContextMenuHandle::add_item(MenuItem item, std::string before) const {
         }
         items.insert(position, std::move(item));
         if (auto r = ui_->validate_menu_items(items); !r) return r;
-        it->second.items = std::move(items);
+        menu->items = std::move(items);
         ui_->menu_items_changed(id_);
         return {};
     });
 }
 Result ContextMenuHandle::remove_item(std::string id) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-        auto& items = it->second.items;
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
         if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
         items.erase(found);
@@ -397,11 +401,10 @@ Result ContextMenuHandle::remove_item(std::string id) const {
 }
 Result ContextMenuHandle::update_item(MenuItem item) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
         if (item.separator) return {Status::invalid_value, u"分隔線沒有識別碼，不能更新"};
-        auto& items = it->second.items;
+        auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == item.id; });
         if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
         *found = std::move(item);
@@ -411,10 +414,9 @@ Result ContextMenuHandle::update_item(MenuItem item) const {
 }
 Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
     return detail::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists"};
-        auto& items = it->second.items;
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu); !r) return r;
+        auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
         if (found == items.end()) return {Status::not_found, u"沒有這個選單項目"};
         found->enabled = enabled;
@@ -424,11 +426,10 @@ Result ContextMenuHandle::enable_item(std::string id, bool enabled) const {
 }
 Query<std::vector<MenuItemInfo>> ContextMenuHandle::items() const {
     return detail::operate(*this, [&]() -> Query<std::vector<MenuItemInfo>> {
-        if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
-        auto it = ui_->menu_attachments_.find(id_);
-        if (it == ui_->menu_attachments_.end()) return {Status::not_found, u"Menu no longer exists", std::nullopt};
+        detail::UiState::MenuAttachment* menu;
+        if (auto r = ui_->menu_attachment(id_, menu, true); !r) return {r.status, r.message, std::nullopt};
         std::vector<MenuItemInfo> items;
-        for (const auto& item : it->second.items)
+        for (const auto& item : menu->items)
             items.push_back({item.id, item.label, item.enabled, item.separator, false, item.access_key, item.shortcut_hint});
         return {Status::ok, {}, std::move(items)};
     });
