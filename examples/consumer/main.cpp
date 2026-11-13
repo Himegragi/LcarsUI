@@ -43,6 +43,35 @@ static_assert(!SpellsChange<lcars::ButtonHandle>);
 static_assert(!SpellsChange<lcars::SliderHandle, bool>);
 static_assert(std::same_as<lcars::FieldChange, std::variant<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::CheckboxHandle>,
     lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::SliderHandle>, lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>>);
+// A list's write hands a change record too (#99): the seventh combination, written immediately only, so it is in neither
+// FieldChange (above) nor ConfirmField. It shares its value type with the radio group and the dropdown and converts into
+// neither; it has no other value type; and the bare-value write callback of 0.2 is no longer accepted.
+static_assert(change_holds<lcars::ListHandle, std::optional<lcars::OptionValue>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::ListHandle>, lcars::Change<lcars::RadioGroupHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::ListHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::ListHandle>, lcars::Change<lcars::DropdownHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::ListHandle>>);
+static_assert(!SpellsChange<lcars::ListHandle, int>);
+static_assert(!std::is_convertible_v<lcars::ListHandle, lcars::ConfirmField>);
+template <class List> concept ListWritesBareValue = requires(const List& list) {
+    list.connect_immediate([](std::optional<lcars::OptionValue>) { return lcars::Result{}; });
+};
+template <class List> concept ListWritesChange = requires(const List& list) {
+    list.connect_immediate([](const lcars::Change<lcars::ListHandle>&) { return lcars::Result{}; });
+};
+static_assert(!ListWritesBareValue<lcars::ListHandle> && ListWritesChange<lcars::ListHandle>);
+// A label takes either a read function or a full read source (#99). Braces around a single function match both and are
+// ambiguous by design; every other spelling picks one.
+template <class Label> concept LabelTakesFunction = requires(const Label& label) { label.connect_source([] { return std::u16string(); }); };
+template <class Label> concept LabelTakesSource = requires(const Label& label, std::function<std::u16string()> read,
+                                                             std::function<std::function<void()>(std::function<void()>)> subscribe,
+                                                             lcars::Source<std::u16string> source) {
+    label.connect_source({read, subscribe});
+    label.connect_source({{}, {}});
+    label.connect_source(source);
+};
+template <class Label> concept LabelTakesBracedFunction = requires(const Label& label, std::function<std::u16string()> read) { label.connect_source({read}); };
+static_assert(LabelTakesFunction<lcars::LabelHandle> && LabelTakesSource<lcars::LabelHandle> && !LabelTakesBracedFunction<lcars::LabelHandle>);
 // The pre-0.3.0 names are gone without aliases (#95). Unqualified lookup inside a namespace nested in lcars finds lcars's
 // own declaration first and reaches these global stand-ins only when lcars has none, so a check fails while an old name exists.
 namespace removed_in_0_3 { struct Name {}; }
