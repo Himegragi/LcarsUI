@@ -246,6 +246,7 @@ struct HandleKind {
     const char16_t* gone;
     std::vector<Op> (*operations)(const World&);
     bool (*equal)(const World&, const World&);  // the kind's handle in one world == the one in the other
+    bool (*copies_equal)(const World&);         // a copy-constructed and a copy-assigned handle == the world's
     bool (*empty_equals)(const World&);         // a default handle of the kind == the world's
     bool (*empties_equal)();                    // two default handles of the kind are equal
 };
@@ -253,6 +254,12 @@ template <auto member> HandleKind kind(const char* name, const char16_t* gone, s
     using H = std::remove_cvref_t<decltype(std::declval<World&>().*member)>;
     return {name, gone, operations,
             [](const World& a, const World& b) { return a.*member == b.*member; },
+            [](const World& w) {
+                const H constructed(w.*member);
+                H assigned;
+                assigned = w.*member;
+                return constructed == w.*member && w.*member == constructed && assigned == w.*member && assigned == constructed;
+            },
             [](const World& w) { return H{} == w.*member; },
             [] { return H{} == H{}; }};
 }
@@ -334,7 +341,7 @@ void empty_handles_equal_each_other_and_no_real_one() {
 
 void a_handle_equals_its_copy() {
     World world;
-    for (const auto& kind : kinds()) expect(kind.equal(world, world), kind, "a handle equals its copy");
+    for (const auto& kind : kinds()) expect(kind.copies_equal(world), kind, "a handle equals its copies");
 }
 
 void the_same_id_in_another_ui_differs() {
