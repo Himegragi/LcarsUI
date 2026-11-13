@@ -28,7 +28,8 @@ static_assert(!std::is_convertible_v<lcars::Change<lcars::RadioGroupHandle>, lca
 static_assert(!std::is_convertible_v<lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::RadioGroupHandle>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle, lcars::RichText>, lcars::Change<lcars::TextHandle>>);
-// Each field kind's default value type, and the only combinations that can be spelled: the six the framework sends.
+// Each field kind's default value type, and the only combinations that can be spelled: those the framework sends (the
+// list's is checked below).
 template <class Field, class... Value> concept SpellsChange = requires { typename lcars::Change<Field, Value...>; };
 template <class Field, class Value> constexpr bool change_holds =
     SpellsChange<Field> && std::same_as<decltype(lcars::Change<Field>::value), Value> && std::same_as<decltype(lcars::Change<Field>::origin), Value> &&
