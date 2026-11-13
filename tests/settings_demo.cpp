@@ -82,13 +82,13 @@ void dark_new_component_sweep() {
                 }
                 if (type.can_focus()) {
                     auto value = *semantic; value.enabled = true; value.focused = true; value.invalid = false;
-                    if (!value.options.empty()) { value.options[0].selected = true; value.candidate = value.options[0].value; }
+                    if (!value.items.empty()) { value.items[0].selected = true; value.candidate = value.items[0].value; }
                     auto paint = probe(value);
                     test::check(paint.has(palette.accent, detail::PaintRole::focus_indicator), ("dark focus " + item.id).c_str());
                 }
                 if (type.supports_state(detail::ComponentState::selected)) {
                     auto value = *semantic; value.enabled = true; value.focused = false;
-                    if (!value.options.empty()) value.options[0].selected = true;
+                    if (!value.items.empty()) value.items[0].selected = true;
                     if (value.checked) value.checked = true;
                     auto paint = probe(value);
                     auto cue = value.kind == ComponentKind::checkbox || value.kind == ComponentKind::radio_group ? palette.accent : palette.selection;
@@ -552,13 +552,13 @@ void exercise() {
     }
     demo.nav.select({"about"});
     demo.nav.select({"items"});
-    test::check(demo.items_list.describe()->options.size() == 20, "items page starts with twenty entries");
+    test::check(demo.items_list.describe()->items.size() == 20, "items page starts with twenty entries");
     demo.items_search.set_value(u"\u7bc4\u672c 0");
-    test::check(demo.items_list.describe()->options.size()==7, "search matches seven numbered templates");
+    test::check(demo.items_list.describe()->items.size()==7, "search matches seven numbered templates");
     demo.items_search.set_value(u"XYZ");
-    test::check(demo.items_list.describe()->options.empty(), "unmatched search is empty");
+    test::check(demo.items_list.describe()->items.empty(), "unmatched search is empty");
     demo.items_search.set_value(u"\u5171\u7528");
-    test::check(demo.items_list.describe()->options.size() == 2, "search filters duplicate names");
+    test::check(demo.items_list.describe()->items.size() == 2, "search filters duplicate names");
     demo.items_search.set_value(u"");
     test::check(bool(demo.items_add.invoke()), "open add item");
     test::check(bool(*demo.item_dialog.is_open()), "item dialog opens");
@@ -571,7 +571,7 @@ void exercise() {
     test::check(detail::access(demo.ui).focused()=="items.dialog.name" && !demo.item_name.describe()->error.empty(), "invalid name is focused with an error");
     demo.item_name.set_value(u"Workstation A");
     test::check(bool(demo.item_ok.invoke()), "valid item is added");
-    test::check(!*demo.item_dialog.is_open() && demo.items_list.describe()->options.size()==21, "new item visible");
+    test::check(!*demo.item_dialog.is_open() && demo.items_list.describe()->items.size()==21, "new item visible");
     test::check(bool(demo.items_list.select({"T006"})), "select item for edit");
     demo.items_list.focus();
     test::check(bool(detail::access(demo.ui).key_down({.key=Key::enter})) && *demo.item_dialog.is_open(), "Enter opens edit");
@@ -581,18 +581,18 @@ void exercise() {
     demo.items_list.focus();
     test::check(bool(detail::access(demo.ui).key_down({.key=Key::del})) && *demo.delete_dialog.is_open(), "Delete opens confirmation");
     detail::access(demo.ui).key_down({.key=Key::escape});
-    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->options.size()==21, "Escape cancels deletion");
+    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->items.size()==21, "Escape cancels deletion");
     detail::access(demo.ui).key_down({.key=Key::del});
     detail::access(demo.ui).key_down({.key=Key::tab});
     detail::access(demo.ui).key_down({.key=Key::space});
     detail::access(demo.ui).key_up(Key::space);
-    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->options.size()==20, "keyboard confirms deletion");
+    test::check(!*demo.delete_dialog.is_open() && demo.items_list.describe()->items.size()==20, "keyboard confirms deletion");
     test::check(!demo.items_edit.describe()->enabled && !demo.items_delete.describe()->enabled, "actions disabled with no selection");
     demo.items_search.set_value(u"\u5171\u7528");
     test::check(bool(demo.items_add.invoke()), "add from filtered list");
     demo.item_name.set_value(u"Outside filter");
     test::check(bool(demo.item_ok.invoke()), "filtered add succeeds");
-    test::check(demo.items_search.draft().value.value().empty() && demo.items_list.describe()->options.size()==21, "filtered add clears search and reveals item");
+    test::check(demo.items_search.draft().value.value().empty() && demo.items_list.describe()->items.size()==21, "filtered add clears search and reveals item");
     demo.nav.select({"about"});
     test::check(demo.name.set_value(u"X").status == Status::hidden, "general page hidden");
 }
@@ -617,9 +617,9 @@ void item_search_count_and_empty_state() {
             state.on_invalidate({});
             test::check(!redraw_counts.empty() && std::all_of(redraw_counts.begin(), redraw_counts.end(), [&](const auto& value) { return value == c.count; }), "every requested redraw observes the updated count");
             auto list = demo.items_list.describe();
-            test::check(bool(list) && list->options.size() == (c.query.empty() ? 20 : c.ids.size()), "search returns the expected number of items");
+            test::check(bool(list) && list->items.size() == (c.query.empty() ? 20 : c.ids.size()), "search returns the expected number of items");
             for (std::size_t i = 0; i < c.ids.size(); ++i)
-                test::check(list->options[i].value.id == c.ids[i], "search preserves the expected item identities");
+                test::check(list->items[i].value.id == c.ids[i], "search preserves the expected item identities");
             test::FakeMeasure measure; ScrollState scroll;
             auto frame = arrange(demo.page(), demo.ui, *appearance, measure, 960, 720, 1, scroll);
             auto count = std::find_if(frame.items.begin(), frame.items.end(), [](const auto& item) { return item.id == "items.count"; });
@@ -712,11 +712,11 @@ void it03_unchanged_edit_has_no_history() {
     test::check(bool(demo.items_edit.invoke()), "open T006");
     demo.item_name.set_value(u"\u5171\u7528\u7bc4\u672c B");
     test::check(bool(demo.item_ok.invoke()), "rename T006");
-    auto items=demo.items_list.describe()->options;
+    auto items=demo.items_list.describe()->items;
     test::check(items[4].label==u"\u5171\u7528\u7bc4\u672c" && items[5].label==u"\u5171\u7528\u7bc4\u672c B", "only T006 changed");
     test::check(bool(demo.items_edit.invoke()) && bool(demo.item_ok.invoke()), "confirm unchanged edit");
     test::check(bool(state.invoke("app.undo")), "undo changed edit");
-    items=demo.items_list.describe()->options;
+    items=demo.items_list.describe()->items;
     test::check(items[4].label==u"\u5171\u7528\u7bc4\u672c" && items[5].label==u"\u5171\u7528\u7bc4\u672c", "one undo restores T006");
     test::check(!state.describe("app.undo")->enabled, "unchanged edit adds no history step");
 }
@@ -755,10 +755,10 @@ void history_delete_restore() {
     settings_demo::Demo demo; auto& state=detail::access(demo.ui);
     demo.nav.select({"items"}); demo.items_list.select({"T003"}); demo.items_delete.invoke();
     test::check(bool(state.invoke("items.delete_dialog.confirm")), "confirm deletion");
-    test::check(demo.items_list.describe()->options.size()==19, "deleted item absent");
+    test::check(demo.items_list.describe()->items.size()==19, "deleted item absent");
     test::check(bool(state.invoke("app.undo")), "undo deletion");
     auto list=demo.items_list.describe();
-    test::check(list->options.size()==20 && list->options[2].value.id=="T003", "undo restores original identity and order");
+    test::check(list->items.size()==20 && list->items[2].value.id=="T003", "undo restores original identity and order");
 }
 
 void history_key_repeat() {
@@ -802,11 +802,11 @@ void history_items() {
     settings_demo::Demo demo; auto& state=detail::access(demo.ui);
     demo.nav.select({"items"}); demo.items_add.invoke(); demo.item_name.set_value(u"Station");
     test::check(bool(demo.item_ok.invoke()), "add item");
-    test::check(demo.items_list.describe()->options.size()==21, "new item visible");
+    test::check(demo.items_list.describe()->items.size()==21, "new item visible");
     test::check(bool(state.invoke("app.undo")), "undo item addition");
-    test::check(demo.items_list.describe()->options.size()==20, "undo removes item");
+    test::check(demo.items_list.describe()->items.size()==20, "undo removes item");
     demo.items_add.invoke(); demo.item_name.set_value(u"Next"); demo.item_ok.invoke();
-    test::check(demo.items_list.describe()->options.back().value.id=="T021", "undo restores next item id");
+    test::check(demo.items_list.describe()->items.back().value.id=="T021", "undo restores next item id");
 }
 
 void history_revert_is_undoable() {
@@ -1220,7 +1220,7 @@ void item_note_is_rich_with_a_style_bar() {
     auto& tree = demo.ui.semantics();
     test::check(tree.get({"items.dialog.note"})->rich && !tree.get({"items.dialog.name"})->rich, "the note is rich, the name is not");
     for (const char* id : {"items.dialog.note.bold", "items.dialog.note.italic", "items.dialog.note.underline"}) test::check(tree.get({id})->role == Role::button, "a style button above the note");
-    test::check(tree.get({"items.dialog.note.color"})->role == Role::dropdown && demo.item_note_color.describe()->options.size() == 4, "a color list with default, red, green and blue");
+    test::check(tree.get({"items.dialog.note.color"})->role == Role::dropdown && demo.item_note_color.describe()->items.size() == 4, "a color list with default, red, green and blue");
     test::check(bool(demo.item_note.set_value(u"重要通知內容")) && bool(demo.item_name.set_value(u"Styled")), "write the note");
     auto& host = detail::access(demo.ui);
     demo.item_note.focus(); demo.item_note.select(0, 2);
@@ -1251,7 +1251,7 @@ void item_note_is_rich_with_a_style_bar() {
     demo.items_list.focus();
     test::check(bool(host.key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter on the list opens the edit dialog");
     test::check(demo.item_note.rich_value()->spans == document.items.back().note_spans, "editing loads the styles back");
-    test::check(!demo.item_note_color.describe()->options.empty() && demo.item_note_color.draft()->has_value() && (*demo.item_note_color.draft())->id == "default", "the color list starts at default for each opening");
+    test::check(!demo.item_note_color.describe()->items.empty() && demo.item_note_color.draft()->has_value() && (*demo.item_note_color.draft())->id == "default", "the color list starts at default for each opening");
 }
 // The note's named colors stay readable (WCAG AA 4.5:1) on the field's surface in both appearances and both themes.
 void note_colors_are_readable_in_every_appearance_and_theme() {
@@ -1405,7 +1405,7 @@ void items_context_menu_acts_on_the_clicked_row() {
     auto& core = detail::access(demo.ui);
     test::check(bool(demo.nav.select({"items"})), "open items page");
     auto row_of = [&](const char* id) {
-        auto options = demo.items_list.describe()->options;
+        auto options = demo.items_list.describe()->items;
         auto it = std::find_if(options.begin(), options.end(), [&](const auto& o) { return o.value.id == id; });
         return static_cast<std::size_t>(it - options.begin());
     };
@@ -1425,7 +1425,7 @@ void items_context_menu_acts_on_the_clicked_row() {
     // Delete the clicked row, not the previous selection.
     test::check(bool(demo.items_list.select({"T001"})), "a different row is selected first");
     test::check(bool(core.menu_pointer_open("items.list", row_of("T003"), std::nullopt, {10, 10})), "right button on row T003");
-    test::check(demo.items_list.describe()->options[row_of("T003")].selected && !demo.items_list.describe()->options[row_of("T001")].selected, "the clicked row is selected");
+    test::check(demo.items_list.describe()->items[row_of("T003")].selected && !demo.items_list.describe()->items[row_of("T001")].selected, "the clicked row is selected");
     menu = demo.ui.context_menu();
     test::check(menu->items[0].enabled && menu->items[1].enabled, "Edit and Delete are on");
     test::check(bool(demo.ui.invoke_menu_item("items.delete")) && *demo.delete_dialog.is_open(), "Delete opens the confirmation");
@@ -1436,7 +1436,7 @@ void items_context_menu_acts_on_the_clicked_row() {
     test::check(bool(core.key_down({.key = Key::del})) && *demo.delete_dialog.is_open() && demo.ui.semantics().get({"items.delete_dialog.message"})->value == by_menu,
                 "the Del key opens the very same confirmation");
     core.key_down({.key = Key::tab}); core.key_down({.key = Key::space}); core.key_up(Key::space);
-    test::check(!*demo.delete_dialog.is_open() && row_of("T003") == demo.items_list.describe()->options.size() && demo.items_list.describe()->options.size() == 19,
+    test::check(!*demo.delete_dialog.is_open() && row_of("T003") == demo.items_list.describe()->items.size() && demo.items_list.describe()->items.size() == 19,
                 "confirming deletes row T003");
     // Edit through the menu with the keyboard: the menu key, then the quick key.
     test::check(bool(core.menu_pointer_open("items.list", row_of("T005"), std::nullopt, {10, 10})), "right button on row T005");

@@ -187,10 +187,10 @@ void radio_with_every_option_disabled_draws_the_light_border() {
     sweep([](Page& page, const Appearance& a, const Palette& p, const Subject& s, const Placement& item, const ComponentSnapshot& sem, const std::string& label) {
         if (s.id != "radio") return;
         auto value = sem; value.enabled = true;
-        for (auto& o : value.options) o.enabled = false;
+        for (auto& o : value.items) o.enabled = false;
         auto probe = paint(page, a, item, value);
         check(!probe.has(p.outline) && probe.has(p.border), (label + ": disabled options use border").c_str());
-        auto one = sem; one.options[0].enabled = false;
+        auto one = sem; one.items[0].enabled = false;
         check(paint(page, a, item, one).has(p.outline), (label + ": a remaining enabled option keeps the outline").c_str());
     });
 }

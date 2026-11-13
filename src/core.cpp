@@ -1232,8 +1232,8 @@ bool detail::UiState::hover_admitted(const HoverTarget& target) const {
     if (!target.item) return true;
     auto semantics = describe(target.id);
     if (!semantics) return false;
-    auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *target.item; });
-    return option != semantics->options.end() && option->enabled;
+    auto option = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *target.item; });
+    return option != semantics->items.end() && option->enabled;
 }
 void detail::UiState::hover_set(std::optional<HoverTarget> target) {
     if (hover_ == target) return;
@@ -1256,8 +1256,8 @@ void detail::UiState::hover_from_frame(const Frame& frame, int x, int y) {
         if (auto index = frame.option_at(*hit, x, y)) {
             auto semantics = describe(hit->id);
             // A disabled item hovers nothing: the target keeps the component without the item.
-            if (semantics && *index < semantics->options.size() && semantics->options[*index].enabled)
-                target->item = semantics->options[*index].value;
+            if (semantics && *index < semantics->items.size() && semantics->items[*index].enabled)
+                target->item = semantics->items[*index].value;
         }
         if (!hover_admitted(*target)) target.reset();
     }
@@ -1308,8 +1308,8 @@ Result detail::UiState::simulate_hover(std::string_view id, const std::optional<
     if (item) {
         auto semantics = describe(id);
         if (!semantics) return {Status::not_found, u"Component no longer exists"};
-        auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *item; });
-        if (option == semantics->options.end()) return {Status::not_found, u"Item no longer exists"};
+        auto option = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *item; });
+        if (option == semantics->items.end()) return {Status::not_found, u"Item no longer exists"};
         if (!option->enabled) return {Status::disabled, u"目前無法執行"};
     }
     hover_simulated_ = true;
@@ -2181,8 +2181,8 @@ Result detail::UiState::available_option(std::string_view id, const OptionValue&
     if (result.status == Status::blocked_by_modal) {
         auto snapshot = describe(id);
         if (snapshot) {
-            auto option = std::find_if(snapshot->options.begin(), snapshot->options.end(), [&](const auto& o) { return o.value == value; });
-            if (option != snapshot->options.end() && !option->enabled) return {Status::disabled, {}};
+            auto option = std::find_if(snapshot->items.begin(), snapshot->items.end(), [&](const auto& o) { return o.value == value; });
+            if (option != snapshot->items.end() && !option->enabled) return {Status::disabled, {}};
         }
     }
     return result;
@@ -3449,13 +3449,13 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {
-        auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
-        if (it == s.options.end()) return {Status::not_found, {}, {}};
+        auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *ref.item; });
+        if (it == s.items.end()) return {Status::not_found, {}, {}};
         if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
-        n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
+        n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
@@ -3488,7 +3488,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
             for (const auto& c : u.controls_)
                 if (std::find(members.begin(), members.end(), c.id) != members.end() && !u.removal_pending(c.id)) result.push_back({c.id});
         } else if (!parent.item) {
-            auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
+            auto s = u.describe(parent.id); if (s) for (const auto& o : s->items) result.push_back({parent.id, o.value});
             if (u.menu_ && u.menu_->target == parent.id) result.push_back({menu_node_id(parent.id)});
         }
     }

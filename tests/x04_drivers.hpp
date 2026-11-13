@@ -104,9 +104,9 @@ inline bool normal_semantics(const lcars::ComponentSnapshot& s) {
     using lcars::ComponentKind;
     if (s.kind == ComponentKind::checkbox) return s.checked && s.value == (*s.checked ? u"true" : u"false");
     if (s.kind == ComponentKind::radio_group || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) {
-        auto count = std::count_if(s.options.begin(), s.options.end(), [](const auto& option) { return option.selected; });
+        auto count = std::count_if(s.items.begin(), s.items.end(), [](const auto& option) { return option.selected; });
         if (count > 1) return false;
-        if (count == 1) return std::any_of(s.options.begin(), s.options.end(), [&](const auto& o) { return o.selected && o.label == s.value; });
+        if (count == 1) return std::any_of(s.items.begin(), s.items.end(), [&](const auto& o) { return o.selected && o.label == s.value; });
         return s.value.empty();
     }
     return true;
@@ -175,15 +175,15 @@ inline bool drive_selected(const Entry& entry) {
 inline bool selected_semantics(const lcars::ComponentSnapshot& semantic) {
     using namespace lcars;
     if (semantic.kind == ComponentKind::checkbox) return semantic.checked == true;
-    return !semantic.value.empty() && std::count_if(semantic.options.begin(), semantic.options.end(),
+    return !semantic.value.empty() && std::count_if(semantic.items.begin(), semantic.items.end(),
         [&](const auto& option) { return option.selected && option.label == semantic.value; }) == 1;
 }
 inline bool same_selection(const lcars::ComponentSnapshot& a, const lcars::ComponentSnapshot& b) {
-    if (a.checked != b.checked || a.options.size() != b.options.size()) return false;
-    for (std::size_t i = 0; i < a.options.size(); ++i)
-        if (a.options[i].value != b.options[i].value || a.options[i].label != b.options[i].label ||
-            a.options[i].enabled != b.options[i].enabled || a.options[i].selected != b.options[i].selected ||
-            a.options[i].invalid != b.options[i].invalid) return false;
+    if (a.checked != b.checked || a.items.size() != b.items.size()) return false;
+    for (std::size_t i = 0; i < a.items.size(); ++i)
+        if (a.items[i].value != b.items[i].value || a.items[i].label != b.items[i].label ||
+            a.items[i].enabled != b.items[i].enabled || a.items[i].selected != b.items[i].selected ||
+            a.items[i].invalid != b.items[i].invalid) return false;
     return true;
 }
 inline std::vector<lcars::ComponentSnapshot> snapshot(edit_form::Form& form) {
@@ -368,7 +368,7 @@ inline bool drive_error(edit_form::Form& form, const Entry& entry) {
 }
 inline bool error_semantics(edit_form::Form& form, const lcars::ComponentSnapshot& s) {
     using namespace lcars;
-    if (s.kind == ComponentKind::tabs) return !s.options.empty() && s.options[0].invalid;
+    if (s.kind == ComponentKind::tabs) return !s.items.empty() && s.items[0].invalid;
     if (s.kind == ComponentKind::label) {
         auto target = form.handles.name.describe();
         return s.label_kind == LabelKind::error && s.value == error_message && s.target == target->id && target->invalid &&
@@ -417,8 +417,8 @@ inline const lcars::Placement* candidate_placement(const lcars::Frame& frame, co
 }
 inline std::optional<std::u16string> candidate_label(const lcars::ComponentSnapshot& s) {
     if (!s.candidate) return std::nullopt;
-    auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *s.candidate && o.enabled; });
-    return it == s.options.end() ? std::nullopt : std::optional<std::u16string>{it->label};
+    auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *s.candidate && o.enabled; });
+    return it == s.items.end() ? std::nullopt : std::optional<std::u16string>{it->label};
 }
 inline bool restore_candidate(edit_form::Form& form, const Entry& entry) {
     using namespace lcars;

@@ -94,7 +94,7 @@ static void run(const Appearance& appearance, const std::filesystem::path& path)
         check(d.document().items.size()==20 && d.document().items[4].name==u"共用範本 A","step 7: undo deletion");
         w.tabs(2,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_RETURN); w.tap(VK_END); w.tap(VK_RETURN); w.tap(VK_TAB); w.tap(VK_END); w.tap(VK_TAB); w.tap(VK_SPACE);
         check(!d.ui.presentation().font_family.empty() && d.ui.presentation().text_size==28 && d.ui.presentation().variant==ThemeVariant::dark(),"step 8: appearance");
-        w.tabs(3,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_DOWN); check(d.nav.selected()->id=="about" && d.licenses.describe()->options[1].selected,"step 9: about");
+        w.tabs(3,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_DOWN); check(d.nav.selected()->id=="about" && d.licenses.describe()->items[1].selected,"step 9: about");
         w.tap('S',true); check(!d.is_dirty(),"step 10: save"); w.alt_f4(); check(w.closed,"step 10: close");
     }
     {

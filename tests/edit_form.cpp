@@ -1029,7 +1029,7 @@ void resets_reproduce_cases_and_preserve_other_pages() {
     h.tabs.activate({"v02"});
     check(*list.search.draft() == u"共用範本" && form.list->selection() == OptionValue{"T006"}, "V01 reset retained V02 state");
     list.reset.invoke();
-    check(frame().find(list.list) && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->options.size() == 20, "V02 reset restores initial list");
+    check(frame().find(list.list) && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->items.size() == 20, "V02 reset restores initial list");
     list.list.select({"T003"}); list.erase.invoke();
     check(!form.list->selection() && list.list.describe()->candidate == OptionValue{"T004"}, "Representative V02 deletion works again after reset");
     h.tabs.activate({"v03"});
@@ -1041,7 +1041,7 @@ void resets_reproduce_cases_and_preserve_other_pages() {
     h.tabs.activate({"v01"});
     check(form.applied() == u"工作站 A" && form.applies() == 1, "Other-page resets retain V01 applied result");
     h.tabs.activate({"v02"});
-    check(list.list.describe()->options.size() == 19 && !form.list->selection(), "V03 reset retained V02 deletion");
+    check(list.list.describe()->items.size() == 19 && !form.list->selection(), "V03 reset retained V02 deletion");
 }
 // Arrange the page with the current appearance and check the role carriers follow the state.
 void settle(edit_form::Form& form) {
@@ -1297,7 +1297,7 @@ void source_updates_offer_the_latest_value() {
 void checkbox_and_radio_are_applied_together() {
     edit_form::Form form(ids);
     check(form.handles.notices.describe()->name == u"\u555f\u7528\u63d0\u793a" &&
-          form.handles.mode.describe()->options[0].label == u"\u4e00\u822c", "New controls retain their Traditional Chinese labels");
+          form.handles.mode.describe()->items[0].label == u"\u4e00\u822c", "New controls retain their Traditional Chinese labels");
     check(*form.handles.notices.draft() && *form.handles.mode.draft() == OptionValue{"normal"},
           "Notices and normal mode are initially selected");
     form.handles.notices.focus();
@@ -1367,12 +1367,12 @@ void v02_identity_filter_and_delete() {
     h.sort.invoke();
     check(page.selection() == OptionValue{"T006"}, "Restoring sort preserves T006");
     h.list.select({"T003"}); h.search.set_value(u"範本 20");
-    check(!page.selection() && h.list.describe()->options.size() == 1 && h.list.describe()->options[0].value == OptionValue{"T020"},
+    check(!page.selection() && h.list.describe()->items.size() == 1 && h.list.describe()->items[0].value == OptionValue{"T020"},
           "Filtering T003 out clears selection and leaves T020");
     h.search.set_value(u"");
-    check(!page.selection() && h.list.describe()->options.size() == 20, "Clearing the filter does not restore selection");
+    check(!page.selection() && h.list.describe()->items.size() == 20, "Clearing the filter does not restore selection");
     h.list.focus(); h.list.select({"T003"}); h.erase.invoke();
-    const auto remaining = h.list.describe()->options;
+    const auto remaining = h.list.describe()->items;
     bool identities = remaining.size() == 19;
     for (int n = 1; n <= 20 && identities; ++n) {
         if (n == 3) continue;
@@ -1380,7 +1380,7 @@ void v02_identity_filter_and_delete() {
         auto index = static_cast<std::size_t>(n < 3 ? n - 1 : n - 2);
         identities = remaining[index].value == OptionValue{expected};
     }
-    check(!page.selection() && h.list.describe()->candidate == OptionValue{"T004"} && h.list.describe()->options.size() == 19 &&
+    check(!page.selection() && h.list.describe()->candidate == OptionValue{"T004"} && h.list.describe()->items.size() == 19 &&
           identities && h.erase.invoke().status == Status::disabled, "Deleting T003 keeps all other identities, clears selection and disables deletion");
     h.search.focus(); detail::access(form.ui).key_down({Key::tab});
     check(h.list.describe()->focused && !page.selection() && h.list.describe()->candidate == OptionValue{"T001"},
@@ -1394,7 +1394,7 @@ void v02_disabled_and_filtered_neighbors() {
     test::FakeMeasure measure;
     h.list.focus(); h.list.select({"T008"}); h.disable_eight.invoke();
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id);
-    auto options = h.list.describe()->options;
+    auto options = h.list.describe()->items;
     bool identities = options.size() == 20;
     for (int n = 1; n <= 20 && identities; ++n) {
         auto expected = "T" + std::string(n < 10 ? "00" : "0") + std::to_string(n);
@@ -1432,7 +1432,7 @@ void pages_keep_independent_drafts_history_and_scroll() {
     h.tabs.activate({"v02"});
     check(*list.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
     list.reset.invoke();
-    check(list.reset.describe()->focused && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->options.size() == 20, "V02 reset restores the real list and keeps focus");
+    check(list.reset.describe()->focused && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->items.size() == 20, "V02 reset restores the real list and keeps focus");
     list.hundred.invoke(); list.list.focus(); list.list.select({"T100"});
     auto list_frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, list.list.describe()->id);
     auto row = list_frame.find(list.list)->options.back();
@@ -1711,9 +1711,9 @@ void list_paints_only_visible_rows() {
     auto semantic=form.list->handles.list.describe();
     PaintTextProbe paint(state,placement,*semantic,*appearance,1.f,true);
     detail::component_type(placement.kind).paint(paint);
-    check(paint.text_calls <= 3 && paint.drawn.find(semantic->options[0].label)!=std::u16string::npos &&
-          paint.drawn.find(semantic->options[1].label)!=std::u16string::npos &&
-          paint.drawn.find(semantic->options[99].label)==std::u16string::npos,
+    check(paint.text_calls <= 3 && paint.drawn.find(semantic->items[0].label)!=std::u16string::npos &&
+          paint.drawn.find(semantic->items[1].label)!=std::u16string::npos &&
+          paint.drawn.find(semantic->items[99].label)==std::u16string::npos,
           "Only the visible and partially visible rows produce text work");
 }
 // Model the core paint adapter's clipping, including associated-label text that is
@@ -1816,10 +1816,10 @@ void painted_states_agree_with_semantics() {
     check(h.notices.describe()->checked == false && !has_color(observe(h.notices), palette.accent),
           "X04 unchecked checkbox has no checked indicator");
     auto mode = h.mode.describe();
-    check(std::any_of(mode->options.begin(), mode->options.end(), [](const auto& o) { return o.selected; }) &&
+    check(std::any_of(mode->items.begin(), mode->items.end(), [](const auto& o) { return o.selected; }) &&
           has_color(observe(h.mode), palette.accent), "X04 radio selection has an accent indicator");
     h.offline_disabled.invoke();
-    check(!h.mode.describe()->options[2].enabled && contains(observe(h.mode), wording.disabled_suffix),
+    check(!h.mode.describe()->items[2].enabled && contains(observe(h.mode), wording.disabled_suffix),
           "X04 disabled radio option is identified in the paint text");
     h.reset.invoke(); h.region_empty.invoke(); h.apply.invoke();
     check(h.region.describe()->invalid && !h.region.describe()->error.empty() &&
@@ -1831,15 +1831,15 @@ void painted_states_agree_with_semantics() {
     check(!form.list->handles.erase.describe()->enabled && has_color(observe(form.list->handles.erase), palette.muted),
           "X04 disabled list delete button is muted");
     form.list->handles.zero.invoke();
-    check(list.describe()->options.empty() && contains(observe(list), wording.no_items), "X04 empty list has visible empty wording");
+    check(list.describe()->items.empty() && contains(observe(list), wording.no_items), "X04 empty list has visible empty wording");
     form.list->handles.twenty.invoke(); form.list->handles.disable_eight.invoke();
-    check(!list.describe()->options[7].enabled && contains(observe(list), wording.disabled_suffix),
+    check(!list.describe()->items[7].enabled && contains(observe(list), wording.disabled_suffix),
           "X04 disabled list row has disabled wording");
     list.select({"T003"});
-    check(list.describe()->options[2].selected && has_color(observe(list), palette.selection) &&
-          contains(observe(list), wording.selected_marker + list.describe()->options[2].label),
+    check(list.describe()->items[2].selected && has_color(observe(list), palette.selection) &&
+          contains(observe(list), wording.selected_marker + list.describe()->items[2].label),
           "X04 selected list row has a selection highlight");
-    check(h.tabs.describe()->options[1].selected && has_color(observe(h.tabs), palette.selection),
+    check(h.tabs.describe()->items[1].selected && has_color(observe(h.tabs), palette.selection),
           "X04 active tab has a selection highlight");
     h.tabs.activate({"v03"}); h.dialog_open.invoke();
     check(contains(observe(h.dialog_title), h.dialog_title.describe()->value) &&
@@ -2159,7 +2159,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                 auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                      int(size.second * scale), scale, form.scroll);
                 auto semantic = tabs.describe(); auto* item = frame.find(tabs);
-                check(item && !semantic->options[1].enabled && tabs.activate({"v02"}).status == Status::disabled,
+                check(item && !semantic->items[1].enabled && tabs.activate({"v02"}).status == Status::disabled,
                       "X04 disabled tab restriction");
                 PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
                 detail::component_type(item->kind).paint(paint);
@@ -2207,11 +2207,11 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                 auto option_frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                             int(size.second * scale), scale, form.scroll, initial->id);
                 auto option_semantic = radio.describe(); auto* option_item = option_frame.find(radio);
-                check(option_item && !option_semantic->options[2].enabled && radio.select({"offline"}).status == Status::disabled,
+                check(option_item && !option_semantic->items[2].enabled && radio.select({"offline"}).status == Status::disabled,
                       "X04 disabled radio option rejects public selection");
                 PaintTextProbe option_paint(state, *option_item, *option_semantic, *appearance, scale, true);
                 detail::component_type(option_item->kind).paint(option_paint);
-                check(option_paint.drawn.find(option_semantic->options[2].label + appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+                check(option_paint.drawn.find(option_semantic->items[2].label + appearance->component_presentation().disabled_suffix) != std::u16string::npos,
                       "X04 disabled radio option has a text cue");
                 state.pointer_down(option_semantic->id, 2);
                 check(state.pointer_up(option_semantic->id, 2).status == Status::disabled, "X04 disabled radio option rejects pointer");
@@ -2359,7 +2359,7 @@ void visible_text_agrees_with_semantics_on_each_page() {
             if (item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
                 check(contains(semantic->value), "X04 value is sent to paint");
             if (item.kind == ComponentKind::radio_group || item.kind == ComponentKind::list || item.kind == ComponentKind::tabs)
-                for (const auto& option : semantic->options)
+                for (const auto& option : semantic->items)
                     check(contains(option.label), "X04 option label is sent to paint");
         }
     }

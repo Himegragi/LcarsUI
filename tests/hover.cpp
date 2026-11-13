@@ -360,7 +360,7 @@ void hover_commands_follow_the_target_everywhere() {
                     Rect region = intersect(q->bounds, q->clip);
                     if (target->item) {
                         auto semantics = page.state().describe(q->id);
-                        auto index = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *target->item; }) - semantics->options.begin();
+                        auto index = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *target->item; }) - semantics->items.begin();
                         region = q->options.at(static_cast<std::size_t>(index) - q->option_start);
                     }
                     check(inside(rect_of(command), region) || q->kind == ComponentKind::slider, (context + ": hover stays inside the hovered component or item").c_str());

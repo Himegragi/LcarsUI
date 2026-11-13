@@ -1064,7 +1064,7 @@ void dropdown_option_changes_do_not_recurse_into_notifications() {
     int calls = 0; Status nested = Status::ok;
     ui.on_change([&] { if (++calls == 1) nested = field.set_items({}).status; });
     field.set_items({{{"north"}, u"North"}, {{"south"}, u"South"}});
-    check(calls == 1 && nested == Status::busy && field.describe()->options.size() == 2,
+    check(calls == 1 && nested == Status::busy && field.describe()->items.size() == 2,
           "An option update during a notification is refused without recursion or mutation");
 }
 
@@ -1156,7 +1156,7 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     });
     check(submit.invoke().status == Status::invalid_value, "Application rejects the batch");
     check(*tabs.active() == OptionValue{"two"} && second.describe()->focused, "First invalid field's page opens and receives focus");
-    check(tabs.describe()->options[0].invalid && first.describe()->invalid && second.describe()->invalid,
+    check(tabs.describe()->items[0].invalid && first.describe()->invalid && second.describe()->invalid,
           "Errors on the other page remain discoverable from its tab");
 }
 
@@ -1169,7 +1169,7 @@ void list_selection_uses_stable_identity() {
     list.connect_immediate([&](std::optional<OptionValue> value) { selected = std::move(value); return Result{}; });
     check(bool(list.select({"T006"})) && selected == OptionValue{"T006"}, "Select the second item with a shared name");
     list.set_items({{{"T006"}, u"Shared"}, {{"T005"}, u"Shared"}});
-    check(list.describe()->options[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
+    check(list.describe()->items[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
 }
 
 void list_focus_and_keyboard_use_enabled_items() {

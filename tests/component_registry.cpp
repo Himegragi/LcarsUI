@@ -126,8 +126,8 @@ std::vector<std::string> semantic_table(bool confirmed) {
         auto node = all.ui.semantics().get({name});
         auto semantics = detail::access(all.ui).describe(name);
         lines.push_back(std::string(name) + ": " + (node ? describe_node(*node, semantics ? &*semantics : nullptr) : "none"));
-        if (semantics && !semantics->options.empty()) {
-            auto item = all.ui.semantics().get({name, semantics->options[0].value});
+        if (semantics && !semantics->items.empty()) {
+            auto item = all.ui.semantics().get({name, semantics->items[0].value});
             lines.push_back(std::string(name) + "[0]: " + (item ? describe_node(*item, nullptr) : "none"));
         }
     }

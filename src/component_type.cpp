@@ -261,7 +261,7 @@ void describe_pages(const UiState& ui, const Component& c, ComponentSnapshot& s)
                 if (error != errors.end() && !error->second.empty()) { invalid = true; break; }
             }
         }
-        s.options.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
+        s.items.push_back({page.value, page.label, page.enabled, i == t.active, invalid});
         if (i == t.active) s.value = page.label;
     }
 }
@@ -973,7 +973,7 @@ public:
         s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
         for (const auto& option : it->second.options) {
             bool selected = it->second.value && *it->second.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
+            s.items.push_back({option.value, option.label, option.enabled, selected});
             if (selected) s.value = option.label;
         }
     }
@@ -1009,7 +1009,7 @@ public:
         const int label_x = std::max(scaled(c.scale, c.presentation().radio_label_offset), circle_x + size + scaled(c.scale, c.presentation().gap));
         p.lines.push_back({{0, 0, c.width, line}, semantics.name + (semantics.enabled ? u"" : c.presentation().disabled_suffix)});
         int y = line + scaled(c.scale, c.presentation().gap_small);
-        for (const auto& option : semantics.options) {
+        for (const auto& option : semantics.items) {
             p.options.push_back({0, y, c.width, row});
             p.lines.push_back({{label_x, y + (row - line) / 2, std::max(0, c.width - label_x - ring), line}, option.label + (option.enabled ? u"" : c.presentation().disabled_suffix)});
             y += row;
@@ -1025,13 +1025,13 @@ public:
         // The ring frames the selected option's row, or the first usable one while nothing is selected.
         std::optional<std::size_t> framed;
         if (c.focus_visible) {
-            for (std::size_t i = 0; i < c.semantics.options.size() && i < item.options.size(); ++i)
-                if (c.semantics.options[i].selected) { framed = i; break; }
-            for (std::size_t i = 0; !framed && i < c.semantics.options.size() && i < item.options.size(); ++i)
-                if (c.semantics.options[i].enabled) framed = i;
+            for (std::size_t i = 0; i < c.semantics.items.size() && i < item.options.size(); ++i)
+                if (c.semantics.items[i].selected) { framed = i; break; }
+            for (std::size_t i = 0; !framed && i < c.semantics.items.size() && i < item.options.size(); ++i)
+                if (c.semantics.items[i].enabled) framed = i;
         }
         for (std::size_t i = 0; i < item.options.size(); ++i) {
-            const auto& r = item.options[i]; const auto& option = c.semantics.options[i];
+            const auto& r = item.options[i]; const auto& option = c.semantics.items[i];
             int size = scaled(c.scale, c.presentation().indicator), inset = scaled(c.scale, c.presentation().focus);
             int x = r.x + std::max(scaled(c.scale, c.presentation().gap_small), focus_ring_width(c.ui, c.appearance, c.scale)), y = r.y + (r.h - size) / 2;
             Rect shown = r; int shown_radius = 0;  // what hover covers: the row, or what the ring leaves of it
@@ -1077,8 +1077,8 @@ public:
     std::optional<Rect> keyboard_anchor(UiState& state, const Placement& target, const std::optional<OptionValue>& item, int row_inset) const override {
         if (!item) return std::nullopt;
         auto semantic = state.describe(target.id);
-        if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < target.options.size(); ++i)
-            if (semantic->options[i].value == *item) {
+        if (semantic) for (std::size_t i = 0; i < semantic->items.size() && i < target.options.size(); ++i)
+            if (semantic->items[i].value == *item) {
                 const auto& row = target.options[i];
                 return Rect{row.x + row_inset, row.y, 0, row.h};
             }
@@ -1112,7 +1112,7 @@ public:
         s.candidate = f.cursor;
         for (const auto& item : f.items) {
             bool selected = value && *value == item.value;
-            s.options.push_back({item.value, item.label, item.enabled, selected});
+            s.items.push_back({item.value, item.label, item.enabled, selected});
             if (selected) s.value = item.label;
         }
     }
@@ -1157,11 +1157,11 @@ public:
         p.label_lines = block(c.measure, s.name + (s.enabled ? u"" : c.presentation().disabled_suffix), p.text_size, c.width);
         int y = height_of(p.label_lines);
         if (y) y += scaled(c.scale, c.presentation().gap_small);
-        if (s.options.empty()) {
+        if (s.items.empty()) {
             p.lines.push_back({{text_x, y, c.width, line}, c.presentation().no_items});
             y += row;
         }
-        for (const auto& item : s.options) {
+        for (const auto& item : s.items) {
             p.options.push_back({0, y, c.width, row});
             auto text = (item.selected ? c.presentation().selected_marker : c.presentation().unselected_marker) + item.label;
             if (!item.enabled) text += c.presentation().disabled_suffix;
@@ -1173,9 +1173,9 @@ public:
     void paint(ComponentPaint& c) const override {
         auto palette = c.palette(); const auto& p = c.placement;
         paint_lines(c, p.label_lines, p.text_size, c.semantics.enabled ? palette.text : palette.muted);
-        if (c.semantics.options.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
+        if (c.semantics.items.empty()) { paint_lines(c, p.lines, p.text_size, palette.muted); return; }
         for (std::size_t i = 0; i < p.options.size(); ++i) {
-            const auto& item = c.semantics.options[i]; const auto& row = p.options[i];
+            const auto& item = c.semantics.items[i]; const auto& row = p.options[i];
             // Avoid shaping and submitting text for rows entirely outside the viewport.
             const auto visible = intersect(row, p.clip);
             if (visible.w <= 0 || visible.h <= 0) continue;
@@ -1230,7 +1230,7 @@ public:
         s.expanded = ui.popup_open(c.id); s.candidate = f.candidate;
         for (const auto& option : f.options) {
             bool selected = f.value && *f.value == option.value;
-            s.options.push_back({option.value, option.label, option.enabled, selected});
+            s.items.push_back({option.value, option.label, option.enabled, selected});
             if (selected) s.value = option.label;
         }
     }
@@ -1279,12 +1279,12 @@ public:
         if (c.placement.dropdown_panel) {
             c.clip(bounds);
             c.fill(bounds, palette.surface);
-            if (c.semantics.options.empty()) {
+            if (c.semantics.items.empty()) {
                 paint_lines(c, c.placement.lines, c.placement.text_size, palette.muted);
                 return;
             }
             for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
-                const auto& o = c.semantics.options[c.placement.option_start + i];
+                const auto& o = c.semantics.items[c.placement.option_start + i];
                 const auto& r = c.placement.options[i];
                 if (c.semantics.candidate && *c.semantics.candidate == o.value) marked(c, PaintRole::selection, [&] { c.fill(r, palette.selection); });
                 if (c.hovered(o.value)) c.hover(r);
@@ -1525,11 +1525,11 @@ public:
         c.placement.label_lines = block(c.measure, semantics.name, c.placement.text_size, c.width);
         int top = height_of(c.placement.label_lines);
         if (top) top += scaled(c.scale, c.presentation().gap_small);
-        int count = static_cast<int>(semantics.options.size());
+        int count = static_cast<int>(semantics.items.size());
         for (int i = 0; i < count; ++i) {
             int left = c.width * i / count, right = c.width * (i + 1) / count;
             c.placement.options.push_back({left, top, right - left, height});
-            const auto& option = semantics.options[static_cast<std::size_t>(i)];
+            const auto& option = semantics.items[static_cast<std::size_t>(i)];
             std::u16string prefix = option.invalid ? c.presentation().invalid_tab_marker : u"";
             if (!option.enabled) prefix += c.presentation().disabled_tab_marker;
             auto label = option.label;
@@ -1548,7 +1548,7 @@ public:
         auto palette = c.palette();
         paint_lines(c, c.placement.label_lines, c.placement.text_size, palette.text);
         for (std::size_t i = 0; i < c.placement.options.size(); ++i) {
-            const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
+            const auto& option = c.semantics.items[i]; auto rect = c.placement.options[i];
             // The ring frames the candidate tab; the tab keeps its fill, and the selected tab its underline, inside the ring.
             const Color tab_fill = option.selected ? palette.selection : palette.surface;
             ComponentPaint::RingShape shape{rect, 0, 0};
@@ -1606,7 +1606,7 @@ public:
     int natural_width(const ComponentLayout& c) const override {
         auto semantic = c.ui.describe(c.control.id);
         int width = 0;
-        for (const auto& option : semantic->options) width = std::max(width, static_cast<int>(c.measure.measure(option.label, c.placement.text_size).width));
+        for (const auto& option : semantic->items) width = std::max(width, static_cast<int>(c.measure.measure(option.label, c.placement.text_size).width));
         return std::max(scaled(c.scale, 160), width + scaled(c.scale, 48));
     }
     void arrange(ComponentLayout& c) const override {
@@ -1616,14 +1616,14 @@ public:
         int padding = material ? 32 : 16;
         if (c.ui.presentation().density == Density::compact) padding /= 2;
         int height = std::max({scaled(c.scale, 24), line + scaled(c.scale, padding), line + 2 * focus_ring_width(c.ui, c.appearance, c.scale)});
-        for (std::size_t i = 0; i < semantic.options.size(); ++i) {
+        for (std::size_t i = 0; i < semantic.items.size(); ++i) {
             int y = static_cast<int>(i) * height;
             c.placement.options.push_back({0, y, c.width, height});
-            auto label = semantic.options[i].label;
-            if (!semantic.options[i].enabled) label += u"\uff08\u505c\u7528\uff09";
+            auto label = semantic.items[i].label;
+            if (!semantic.items[i].enabled) label += u"\uff08\u505c\u7528\uff09";
             c.placement.lines.push_back({{scaled(c.scale, 16), y + (height-line)/2, c.width-scaled(c.scale, 32), line}, std::move(label)});
         }
-        c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.options.size())};
+        c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.items.size())};
     }
     void paint(ComponentPaint& c) const override {
         auto palette = c.palette();
@@ -1631,7 +1631,7 @@ public:
         c.fill(c.placement.bounds, material ? palette.surface : palette.panel);
         if (!material) c.fill({c.placement.bounds.x+c.placement.bounds.w-scaled(c.scale,1), c.placement.bounds.y, scaled(c.scale,1), c.placement.bounds.h}, palette.border);
         for (std::size_t i=0; i<c.placement.options.size(); ++i) {
-            const auto& option = c.semantics.options[i]; auto rect = c.placement.options[i];
+            const auto& option = c.semantics.items[i]; auto rect = c.placement.options[i];
             const int radius = material ? rect.h / 2 : scaled(c.scale, 6);
             ComponentPaint::RingShape shape{rect, radius, radius};
             if (option.selected) {

@@ -3008,7 +3008,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                         return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
                                draw.text.find(appearance.component_presentation().disabled_tab_marker) != std::u16string::npos;
                     });
-                    bool rejected = tabs.activate({"v02"}).status == Status::disabled && !sem->options[1].enabled;
+                    bool rejected = tabs.activate({"v02"}).status == Status::disabled && !sem->items[1].enabled;
                     bool pointer = false;
                     if (placed && placed->options.size() > 1) {
                         auto r = intersect(placed->options[1], placed->clip); POINT pt{r.x + r.w / 2, r.y + r.h / 2};
@@ -3062,10 +3062,10 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
                     bool option = previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus());
                     reveal(sem->id); auto option_semantic = radio.describe(); auto* option_item = f.host.frame().find(radio);
-                    bool public_reject = !option_semantic->options[2].enabled && radio.select({"offline"}).status == Status::disabled;
+                    bool public_reject = !option_semantic->items[2].enabled && radio.select({"offline"}).status == Status::disabled;
                     bool cue_option = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
-                            draw.text.find(option_semantic->options[2].label + appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+                            draw.text.find(option_semantic->items[2].label + appearance.component_presentation().disabled_suffix) != std::u16string::npos;
                     });
                     bool pointer_option = false;
                     if (option_item && option_item->options.size() > 2) {
@@ -3321,7 +3321,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
     frame = sample("v02-selection", pixels);
     auto* item = frame.find(list);
     auto semantic = list.describe();
-    bool selected = item && semantic->options.size() > 2 && semantic->options[2].selected && item->options.size() > 2 &&
+    bool selected = item && semantic->items.size() > 2 && semantic->items[2].selected && item->options.size() > 2 &&
         contains_color(pixels, intersect(item->options[2], item->clip), appearance.palette().selection);
     report.check("X04-v02-raster", selected, "T003 is semantically selected and its visible real-host row contains the selection color");
     f.host.paint();

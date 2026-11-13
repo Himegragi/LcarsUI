@@ -150,7 +150,7 @@ struct ComponentSnapshot {
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
-    std::vector<OptionSnapshot> options;
+    std::vector<OptionSnapshot> items;  // every option of a radio group, dropdown or list, every page of tabs or a navigation list, in order
     std::optional<SliderRange> slider_range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox

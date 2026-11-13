@@ -653,10 +653,10 @@ struct Arranger {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == state.anchor_id; });
             if (it != placed.end()) {
                 Rect target = it->bounds;
-                if (!state.anchor_option.empty()) {
+                if (!state.anchor_item.empty()) {
                     auto semantic = ui.describe(it->id);
-                    if (semantic) for (std::size_t i = 0; i < semantic->options.size() && i < it->options.size(); ++i)
-                        if (semantic->options[i].value.id == state.anchor_option) { target = it->options[i]; break; }
+                    if (semantic) for (std::size_t i = 0; i < semantic->items.size() && i < it->options.size(); ++i)
+                        if (semantic->items[i].value.id == state.anchor_item) { target = it->options[i]; break; }
                 }
                 offset = std::clamp(target.y - r.y, 0, region.maximum);
             }
@@ -668,8 +668,8 @@ struct Arranger {
                 if (detail::component_type(it->kind).has_row_cursor()) {
                     auto s = ui.describe(it->id);
                     if (s && s->candidate) {
-                        for (std::size_t i = 0; i < s->options.size() && i < it->options.size(); ++i)
-                            if (s->options[i].value == *s->candidate) { target = it->options[i]; break; }
+                        for (std::size_t i = 0; i < s->items.size() && i < it->options.size(); ++i)
+                            if (s->items[i].value == *s->candidate) { target = it->options[i]; break; }
                     }
                 }
                 int top = target.y - r.y, bottom = top + target.h;
@@ -679,19 +679,19 @@ struct Arranger {
             }
         }
         state.text_size = ui.presentation().text_size;
-        state.anchor_id.clear(); state.anchor_option.clear();
+        state.anchor_id.clear(); state.anchor_item.clear();
         int best = std::numeric_limits<int>::max();
         for (const auto& p : placed) {
             if (detail::component_type(p.kind).has_row_cursor() && !p.options.empty()) {
                 auto semantic = ui.describe(p.id);
-                if (semantic) for (std::size_t i = 0; i < p.options.size() && i < semantic->options.size(); ++i) {
+                if (semantic) for (std::size_t i = 0; i < p.options.size() && i < semantic->items.size(); ++i) {
                     const auto& row = p.options[i];
                     if (row.y + row.h > r.y + offset && row.y < best) {
-                        best = row.y; state.anchor_id = p.id; state.anchor_option = semantic->options[i].value.id;
+                        best = row.y; state.anchor_id = p.id; state.anchor_item = semantic->items[i].value.id;
                     }
                 }
             } else if (p.bounds.y + p.bounds.h > r.y + offset && p.bounds.y < best) {
-                best = p.bounds.y; state.anchor_id = p.id; state.anchor_option.clear();
+                best = p.bounds.y; state.anchor_id = p.id; state.anchor_item.clear();
             }
         }
         // Revealing the focused source during arrangement (resize, DPI change) is layout, not
@@ -838,7 +838,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true; popup.dropdown_panel = true;
         popup.text_size = source.text_size; popup.clip = window;
         int row = std::max(static_cast<int>(std::lround(24 * scale)), measure.line_height(popup.text_size) + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)));
-        int h = std::min(height, row * std::max(1, std::min(10, static_cast<int>(s->options.size()))));
+        int h = std::min(height, row * std::max(1, std::min(10, static_cast<int>(s->items.size()))));
         int w = std::min(width, source.bounds.w);
         int x = std::clamp(source.bounds.x, 0, std::max(0, width - w));
         int below = std::clamp(source.bounds.y + source.bounds.h, 0, height);
@@ -847,13 +847,13 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         if (h > below_space && h > above) h = std::max(below_space, above);
         int y = h <= below_space ? below : above - h;
         popup.bounds = {x, y, w, h};
-        if (s->options.empty()) popup.lines.push_back({{x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), y + (row - measure.line_height(popup.text_size)) / 2, w, measure.line_height(popup.text_size)}, appearance.component_presentation(ui.presentation().density).no_options});
+        if (s->items.empty()) popup.lines.push_back({{x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), y + (row - measure.line_height(popup.text_size)) / 2, w, measure.line_height(popup.text_size)}, appearance.component_presentation(ui.presentation().density).no_options});
         auto& state = detail::access(ui).dropdown_scroll(source.id);
-        int extent = row * static_cast<int>(s->options.size());
+        int extent = row * static_cast<int>(s->items.size());
         int maximum = std::max(0, extent - h);
         state.offset = std::clamp(state.offset, 0, maximum);
         if (detail::access(ui).dropdown_reveal(source.id) && s->candidate) {
-            for (std::size_t i=0; i<s->options.size(); ++i) if (s->options[i].value == *s->candidate) {
+            for (std::size_t i=0; i<s->items.size(); ++i) if (s->items[i].value == *s->candidate) {
                 int top = static_cast<int>(i) * row;
                 if (top < state.offset) state.offset = top;
                 else if (top + row > state.offset + h) state.offset = std::min(maximum, top + row - h);
@@ -864,12 +864,12 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         popup.clip = popup.bounds;
         std::size_t first = state.offset / row;
         if (first) --first;
-        std::size_t last = std::min(s->options.size(), static_cast<std::size_t>((state.offset + h + row - 1) / row + 1));
+        std::size_t last = std::min(s->items.size(), static_cast<std::size_t>((state.offset + h + row - 1) / row + 1));
         popup.option_start = first;
         for (std::size_t i = first; i < last; ++i) {
             Rect r{x, y + static_cast<int>(i) * row - state.offset, w - bar, row};
             popup.options.push_back(r);
-            popup.lines.push_back({{r.x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).body_spacing * scale))), measure.line_height(popup.text_size)}, s->options[i].label});
+            popup.lines.push_back({{r.x + static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).gap * scale)), r.y + (row - measure.line_height(popup.text_size)) / 2, std::max(0, r.w - static_cast<int>(std::lround(appearance.component_presentation(ui.presentation().density).body_spacing * scale))), measure.line_height(popup.text_size)}, s->items[i].label});
         }
         if (maximum) {
             ScrollRegion region; region.state=&state; region.viewport=region.clip=popup.bounds;

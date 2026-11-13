@@ -271,14 +271,14 @@ int ring_px(const Page& page, float scale) { return scaled(scale, page.ui.presen
 std::optional<Rect> expected_outer(const std::string& id, const Placement& item, const ComponentSnapshot& s) {
     auto offset = [](Rect r, Rect origin) { return Rect{r.x + origin.x, r.y + origin.y, r.w, r.h}; };
     // The row of one option, found by its value in the semantic option list.
-    auto row = [&](const char* value) { for (std::size_t i = 0; i < s.options.size(); ++i) if (s.options[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
+    auto row = [&](const char* value) { for (std::size_t i = 0; i < s.items.size(); ++i) if (s.items[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
     if (s.kind == ComponentKind::text) return offset(item.field.surface, item.bounds);
     // radio_none has nothing selected and its first option "a" is disabled: the ring is on "b", the first one that can be chosen.
     // radio_sel has "b" selected. A list and tabs frame their candidate row, navigation its selected row: both are state the
     // semantic layer reports, not a rule of the painter.
     if (id == "radio_none" || id == "radio_sel") return row("b");
     if (s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) return s.candidate ? row(s.candidate->id.c_str()) : Rect{};
-    if (s.kind == ComponentKind::navigation_list) { for (const auto& option : s.options) if (option.selected) return row(option.value.id.c_str()); return Rect{}; }
+    if (s.kind == ComponentKind::navigation_list) { for (const auto& option : s.items) if (option.selected) return row(option.value.id.c_str()); return Rect{}; }
     if (s.kind == ComponentKind::slider) return std::nullopt;
     if (s.kind == ComponentKind::label) return item.clip;
     return item.bounds;  // button, checkbox, dropdown

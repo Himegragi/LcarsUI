@@ -101,7 +101,7 @@ struct ScrollState {
     int offset = 0; // physical pixels, clamped by every arrange
     int text_size = 0;
     std::string anchor_id;
-    std::string anchor_option;
+    std::string anchor_item;
 };
 
 namespace layout {
