@@ -506,7 +506,7 @@ private:
         Source<std::optional<OptionValue>> source;
         std::optional<OptionValue> cursor;
         bool writing = false;
-        std::function<Result(std::optional<OptionValue>)> immediate;
+        std::function<Result(const Change<ListHandle>&)> immediate;
         std::function<void()> disconnect;
     };
     std::map<Id, ListField, std::less<>> lists_;

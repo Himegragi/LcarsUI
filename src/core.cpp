@@ -498,7 +498,7 @@ Result ListHandle::connect_source(Source<std::optional<OptionValue>> source) con
         return {};
     });
 }
-Result ListHandle::connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const {
+Result ListHandle::connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         auto& f = ui_->lists_.at(id_); if (!f.source.read || !write) return {Status::invalid_value, u"A source and write are required"};
@@ -515,9 +515,10 @@ Result ListHandle::select(OptionValue value) const {
         if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
         if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
         if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
-        if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
+        auto origin = f.source.read();
+        if (origin == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
         f.writing = true; Result r;
-        try { r = f.immediate(value); }
+        try { r = f.immediate(Change<ListHandle>{*this, value, std::move(origin)}); }
         catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
         f.writing = false;
         if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
@@ -553,7 +554,7 @@ Result ListHandle::set_items(std::vector<RadioOption> items) const {
         if (selected && !exists(*selected)) {
             if (!f.immediate) return {Status::invalid_value, u"Cannot clear selection without a write connection"};
             f.writing = true; Result result;
-            try { result = f.immediate(std::nullopt); }
+            try { result = f.immediate(Change<ListHandle>{*this, std::nullopt, selected}); }
             catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
             f.writing = false; if (!result) return result;
         }

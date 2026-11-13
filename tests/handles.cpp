@@ -112,7 +112,7 @@ struct World {
                           "add_navigation_list");
         list = made(ui->add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()), "add_list");
         wired(list.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "list.connect_source");
-        wired(list.connect_immediate([](std::optional<OptionValue>) { return Result{}; }), "list.connect_immediate");
+        wired(list.connect_immediate([](const Change<ListHandle>&) { return Result{}; }), "list.connect_immediate");
         // The dialog has its own member and fallback, so the world's button stays free to be removed.
         auto inside = made(ui->add_button({.id = "dialog.ok", .kind = Kind::button, .label = u"OK"}), "add_button dialog.ok");
         auto fallback = made(ui->add_button({.id = "dialog.fallback", .kind = Kind::button, .label = u"Back"}), "add_button dialog.fallback");
@@ -233,7 +233,7 @@ std::vector<Op> list_ops(const World& w) {
     focus_row.gone = u"";  // this one operation of today answers not_found without text
     return {LCARS_OP(h, select({"b"})), LCARS_OP(h, set_items(two_options())), LCARS_OP(h, focus()), std::move(focus_row),
             LCARS_OP(h, enable(true)), LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](std::optional<OptionValue>) { return Result{}; })), LCARS_OP(h, describe())};
+            LCARS_OP(h, connect_immediate([](const Change<ListHandle>&) { return Result{}; })), LCARS_OP(h, describe())};
 }
 std::vector<Op> dialog_ops(const World& w) {
     auto h = w.dialog;

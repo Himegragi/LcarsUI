@@ -1085,7 +1085,7 @@ void list_members_obey_page_scope() {
     std::optional<OptionValue> selected;
     auto list = ui.add_list({.id = "list-scope", .kind = Kind::list}, {{{"T006"}, u"Shared"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     auto tabs = ui.add_tabs({.id = "scope-tabs", .kind = Kind::tabs}, {
         {{"v01"}, u"One", true, {}}, {{"v02"}, u"Two", true, {list}}}).value.value();
     check(list.select({"T006"}).status == Status::hidden && !selected, "A hidden list refuses selection");
@@ -1166,7 +1166,7 @@ void list_selection_uses_stable_identity() {
     auto list = ui.add_list({.id = "list", .kind = Kind::list},
         {{{"T005"}, u"Shared"}, {{"T006"}, u"Shared"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) { selected = std::move(value); return Result{}; });
+    list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     check(bool(list.select({"T006"})) && selected == OptionValue{"T006"}, "Select the second item with a shared name");
     list.set_items({{{"T006"}, u"Shared"}, {{"T005"}, u"Shared"}});
     check(list.describe()->options[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
@@ -1179,7 +1179,7 @@ void list_focus_and_keyboard_use_enabled_items() {
         {{{"T007"}, u"Seven"}, {{"T008"}, u"Eight", false}, {{"T009"}, u"Nine"}}).value.value();
     auto next = ui.add_button({.id = "next", .kind = Kind::button}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     list.focus();
     check(list.describe()->candidate == OptionValue{"T007"} && !selected, "Entry focuses the first enabled item without selecting");
     detail::access(ui).key_down({.key = Key::down, .shift = true, .ctrl = true});
@@ -1195,7 +1195,7 @@ void list_recovers_cursor_when_data_changes() {
     auto list = ui.add_list({.id = "list", .kind = Kind::list},
         {{{"T008"}, u"Eight"}, {{"T009"}, u"Nine"}, {{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) { selected = value; return Result{}; });
+    list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     list.focus(); list.select({"T009"});
     list.set_items({{{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}});
     check(!selected && list.describe()->candidate == OptionValue{"T010"}, "Filtering clears selection and chooses the surviving next neighbor from the old order");
@@ -1205,20 +1205,49 @@ void list_write_cannot_reenter_itself() {
     Ui ui;
     auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) {
-        if (!selected) { selected = value; nested = list.select({"b"}).status; }
+    list.connect_immediate([&](const Change<ListHandle>& change) {
+        if (!selected) { selected = change.value; nested = list.select({"b"}).status; }
         return Result{};
     });
     check(bool(list.select({"a"})) && nested == Status::busy && selected == OptionValue{"a"}, "Reentrant selection is rejected without changing the accepted identity");
 }
 
+// #99: a list's write hands a change record; its origin is the selection the source held just before the write.
+void list_user_selection_hands_a_change_record() {
+    std::optional<OptionValue> selected{OptionValue{"a"}}; std::vector<Change<ListHandle>> changes;
+    Ui ui;
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
+    list.focus(); detail::access(ui).key_down({.key = Key::down});
+    check(changes.size() == 1 && changes[0].field == list && changes[0].value == OptionValue{"b"} && changes[0].origin == OptionValue{"a"},
+          "A keyboard selection hands the list, the new item and the item selected before");
+    auto& host = detail::access(ui);
+    host.pointer_down("list", 2); host.pointer_up("list", 2);
+    check(changes.size() == 2 && changes[1].field == list && changes[1].value == OptionValue{"c"} && changes[1].origin == OptionValue{"b"},
+          "A pointer selection's origin is the selection the source held just before");
+    selected.reset();
+    check(bool(list.select({"a"})) && changes.size() == 3 && changes[2].value == OptionValue{"a"} && !changes[2].origin,
+          "Selecting with nothing selected hands an empty origin");
+}
+void list_items_that_drop_the_selection_hand_an_empty_change() {
+    std::optional<OptionValue> selected{OptionValue{"b"}}; std::vector<Change<ListHandle>> changes;
+    Ui ui;
+    auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+    list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    list.connect_immediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
+    check(bool(list.set_items({{{"a"}, u"A"}, {{"b"}, u"B"}, {{"d"}, u"D"}})) && changes.empty(), "Items that keep the selection write nothing");
+    check(bool(list.set_items({{{"a"}, u"A"}})) && changes.size() == 1 && changes[0].field == list && !changes[0].value &&
+          changes[0].origin == OptionValue{"b"} && !selected,
+          "Items without the selected one hand no selection, with the item that disappeared as origin");
+}
 // #99 keeps these list behaviors as they were.
 void list_selecting_the_selected_item_writes_nothing() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
     Ui ui;
     auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue> value) { ++writes; selected = value; return Result{}; });
+    list.connect_immediate([&](const Change<ListHandle>& change) { ++writes; selected = change.value; return Result{}; });
     check(bool(list.select({"a"})) && writes == 0 && selected == OptionValue{"a"}, "Selecting the selected item writes nothing");
     list.focus(); detail::access(ui).key_down({.key = Key::space});
     check(writes == 0, "Space on the selected row writes nothing either");
@@ -1228,7 +1257,7 @@ void list_rejected_write_keeps_the_selection() {
     Ui ui;
     auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    list.connect_immediate([&](std::optional<OptionValue>) { ++writes; return Result{Status::invalid_value, u"Not now"}; });
+    list.connect_immediate([&](const Change<ListHandle>&) { ++writes; return Result{Status::invalid_value, u"Not now"}; });
     auto result = list.select({"b"});
     check(writes == 1 && result.status == Status::invalid_value && result.message == u"Not now",
           "A rejected write returns the application's result as is");
@@ -1239,7 +1268,7 @@ void list_write_requires_a_source_first() {
     std::optional<OptionValue> selected; int writes = 0;
     Ui ui;
     auto list = ui.add_list({.id = "list", .kind = Kind::list}, {{{"a"}, u"A"}}).value.value();
-    check(list.connect_immediate([&](std::optional<OptionValue>) { ++writes; return Result{}; }).status == Status::invalid_value,
+    check(list.connect_immediate([&](const Change<ListHandle>&) { ++writes; return Result{}; }).status == Status::invalid_value,
           "A list without a read source refuses a write connection");
     list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     check(list.select({"a"}).status == Status::invalid_value && writes == 0, "The refused write was not kept");
@@ -1379,7 +1408,9 @@ int main() {
         {"C08 list focus and keyboard", list_focus_and_keyboard_use_enabled_items},
         {"R11 list neighbor follows old identity order", list_recovers_cursor_when_data_changes},
         {"G07 list write cannot reenter", list_write_cannot_reenter_itself},
-        {"#99 list reselection writes nothing", list_selecting_the_selected_item_writes_nothing},
+        {"#99 list selection hands a change record", list_user_selection_hands_a_change_record},
+        {"#99 list items dropping the selection", list_items_that_drop_the_selection_hand_an_empty_change},
+        {"#99 list reselection writes nothing",list_selecting_the_selected_item_writes_nothing},
         {"#99 list rejection keeps the selection", list_rejected_write_keeps_the_selection},
         {"#99 list write requires a source", list_write_requires_a_source_first},
         {"#99 label read function", label_read_function_is_read_on_demand_and_replaced},
