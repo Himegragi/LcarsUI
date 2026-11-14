@@ -1518,12 +1518,19 @@ void throwing_subscribe_keeps_the_previous_connection() {
         auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
         Ui ui;
         auto probe = kind.make(ui);
+        auto throwing = [](std::function<void()>) -> std::function<void()> { throw std::runtime_error("subscribe failed"); };
+        const auto shows_unconnected = probe.shown();
+        Result first; bool first_escaped = false;
+        try { first = probe.connect([] { return 2; }, throwing); } catch (...) { first_escaped = true; }
+        expect(!first_escaped && first.status == Status::failed && !detail::access(ui).stopped(),
+               "A throwing first subscribe fails the call without escaping or stopping the Ui");
+        expect(probe.shown() == shows_unconnected, "A component whose first subscribe threw stays unconnected");
         int a_value = 0; std::function<void()> notify_a;
         expect(bool(probe.connect([&] { return a_value; }, subscribed_into(notify_a))) && notify_a, "Source A connects");
         const auto shows_a1 = probe.shown();
         Result result; bool escaped = false;
         try {
-            result = probe.connect([] { return 2; }, [](std::function<void()>) -> std::function<void()> { throw std::runtime_error("subscribe failed"); });
+            result = probe.connect([] { return 2; }, throwing);
         } catch (...) { escaped = true; }
         expect(!escaped, "A throwing subscribe does not escape connect_source");
         expect(result.status == Status::failed && !result.message.empty(), "A throwing subscribe fails the call with a message");

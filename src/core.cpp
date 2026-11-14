@@ -2190,11 +2190,14 @@ Result detail::UiState::bind_text(std::string_view id, std::function<std::u16str
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
-    auto& bound = providers_[control->id];
+    auto [entry, added] = providers_.try_emplace(control->id);
+    auto& bound = entry->second;
     if (subscribe) {
         std::weak_ptr<void> weak = lifetime_; auto* state = this;
         auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
-        return replace_source(bound.read, bound.disconnect, std::move(provider), [&](const auto&) { return subscribe(changed); });
+        auto result = replace_source(bound.read, bound.disconnect, std::move(provider), [&](const auto&) { return subscribe(changed); });
+        if (added && !bound.read) providers_.erase(entry);  // a first binding whose subscribe threw leaves the label unbound
+        return result;
     }
     bound.read = std::move(provider);
     if (auto disconnect = std::exchange(bound.disconnect, {})) {
