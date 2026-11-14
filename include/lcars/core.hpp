@@ -230,7 +230,10 @@ bool valid_single_line(std::u16string_view text, std::size_t max_length = defaul
 bool valid_multi_line(std::u16string_view text, std::size_t max_length = default_max_text_length);
 // A read source: the half of a data connection through which a component reads the application's current value and
 // hears that it changed. The application owns the model. Notifications run on the UI thread; the source outlives the
-// connection. Its subscription returns a disconnection function. One template told apart by value type (#95), so a
+// connection. Its subscription returns a disconnection function. Connecting calls the new subscribe before it cancels
+// the previous subscription: a subscribe that throws fails the call (Status::failed) and keeps the previous connection
+// working; a read that throws while connecting fails it too, and stops the Ui once the previous connection is gone
+// (ADR 0003). One template told apart by value type (#95), so a
 // source of one value type never converts to another: Source<std::u16string> (text fields), Source<RichText> (text
 // fields created with ComponentConfig::rich), Source<bool> (checkboxes), Source<int> (sliders, progress displays) and
 // Source<std::optional<OptionValue>> (radio groups, dropdowns, lists). Write one as `{read, subscribe}`.
