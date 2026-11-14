@@ -131,6 +131,22 @@ Result detail::UiState::connect_field_write(Connection& field, std::function<Res
     (immediate ? field.immediate : field.confirmed) = std::move(write);
     return {};
 }
+template <class Installed, class Subscribe>
+Result detail::UiState::replace_source(Installed& installed, std::function<void()>& disconnect, Installed source, Subscribe&& subscribe) {
+    std::function<void()> subscription;
+    try { subscription = subscribe(std::as_const(source)); } catch (...) { return {Status::failed, u"Subscription failed"}; }
+    auto previous = std::exchange(disconnect, std::move(subscription));
+    installed = std::move(source);
+    if (previous) {
+        // The old subscription may still be live after its cancel threw: nothing guarantees valid state any more.
+        try { previous(); } catch (...) { stopped_ = true; return {Status::failed, u"Unsubscription failed"}; }
+    }
+    return {};
+}
+template <class Read> Result detail::UiState::read_installed_source(Read&& read) {
+    try { read(); } catch (...) { stopped_ = true; return {Status::failed, u"Source read failed"}; }
+    return {};
+}
 // The handle's confirm(): hand the draft to the confirmed write; a refusal shows its message on the field and focuses it.
 template <class Handle> Result detail::UiState::confirm_field(const Handle& handle) {
     auto& f = fields_of<Handle>().at(handle.id_);
@@ -340,10 +356,9 @@ Result ProgressHandle::connect_source(Source<int> source) const {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
         auto& field = ui_->progresses_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source);
         auto weak = lifetime_; auto state = ui_;
-        field.disconnect = field.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         if (ui_->invalidate_) ui_->invalidate_();
         return {};
     });
@@ -414,16 +429,19 @@ Result CheckboxHandle::connect_source(Source<bool> source) const {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
         auto& field = ui_->bools_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source); field.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); });
-        ui_->bool_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        field.connected = false;
+        return ui_->read_installed_source([&] { ui_->bool_source_changed(id_); });
     });
 }
+// A notification fired inside the first subscribe arrives before any source is installed: nothing to read yet, and the
+// connecting entry reads the new source once it is installed (replace_source). The other *_source_changed do the same.
 void detail::UiState::bool_source_changed(const Id& id) {
     OperationScope operation(this);
     auto& field = bools_.at(id);
+    if (!field.source.read) return;
     bool value = field.source.read();
     bool clean = !field.connected || field.value == field.source_value;
     field.source_value = value; field.connected = true;
@@ -493,10 +511,9 @@ Result ListHandle::connect_source(Source<std::optional<OptionValue>> source) con
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-        auto& f = ui_->lists_.at(id_); if (f.disconnect) f.disconnect();
-        f.source = std::move(source); auto weak = lifetime_; auto* state = ui_;
-        f.disconnect = f.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
-        return {};
+        auto& f = ui_->lists_.at(id_); auto weak = lifetime_; auto* state = ui_;
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        return ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); });
     });
 }
 Result ListHandle::connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const {
@@ -612,16 +629,17 @@ Result RadioGroupHandle::connect_source(Source<std::optional<OptionValue>> sourc
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
         auto& field = ui_->radios_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source); field.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->option_source_changed(id); });
-        ui_->option_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->option_source_changed(id); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        field.connected = false;
+        return ui_->read_installed_source([&] { ui_->option_source_changed(id_); });
     });
 }
 void detail::UiState::option_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& field = radios_.at(id); auto value = field.source.read();
+    auto& field = radios_.at(id); if (!field.source.read) return;
+    auto value = field.source.read();
     bool clean = !field.connected || field.value == field.source_value;
     field.source_value = value; field.connected = true;
     if (clean && !field.submitting) field.value = field.origin = value;
@@ -740,16 +758,18 @@ Result DropdownHandle::connect_source(Source<std::optional<OptionValue>> source)
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-        auto& f = ui_->dropdowns_.at(id_); if (f.disconnect) f.disconnect();
-        f.source = std::move(source); f.connected = false;
+        auto& f = ui_->dropdowns_.at(id_);
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); });
-        ui_->dropdown_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); };
+        if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        f.connected = false;
+        return ui_->read_installed_source([&] { ui_->dropdown_source_changed(id_); });
     });
 }
 void detail::UiState::dropdown_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& f = dropdowns_.at(id); auto value = f.source.read();
+    auto& f = dropdowns_.at(id); if (!f.source.read) return;
+    auto value = f.source.read();
     bool clean = !f.connected || f.value == f.source_value;
     f.source_value = value; f.connected = true;
     if (clean && !f.submitting) {
@@ -864,18 +884,20 @@ Result SliderHandle::connect_source(Source<int> source) const {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
         auto& f = ui_->numerics_.at(id_);
-        int value = source.read();
+        int value = 0;
+        try { value = source.read(); } catch (...) { return {Status::failed, u"Source read failed"}; }
         if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
-        if (f.disconnect) f.disconnect();
-        f.source = std::move(source); f.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); });
-        ui_->numeric_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); };
+        if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        f.connected = false;
+        return ui_->read_installed_source([&] { ui_->numeric_source_changed(id_); });
     });
 }
 void detail::UiState::numeric_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& f = numerics_.at(id); int value = f.source.read();
+    auto& f = numerics_.at(id); if (!f.source.read) return;
+    int value = f.source.read();
     if (snap_slider(f.range, value) != value) {
         if (!f.source_invalid) { auto it = errors_.find(id); f.error_before_source = it == errors_.end() ? u"" : it->second; }
         f.source_invalid = true; set_error(id, u"Source value is outside the slider's valid values");
@@ -1553,16 +1575,14 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!read) return {Status::invalid_value, u"A label source requires a reader"};
-        ui_->bind_text(id_, std::move(read));
-        return {};
+        return ui_->bind_text(id_, std::move(read));
     });
 }
 Result LabelHandle::connect_source(Source<std::u16string> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A label source requires read and subscribe"};
-        ui_->bind_text(id_, std::move(source.read), std::move(source.subscribe));
-        return {};
+        return ui_->bind_text(id_, std::move(source.read), std::move(source.subscribe));
     });
 }
 Result detail::UiState::writing_support(const Component& control) {
@@ -1862,17 +1882,14 @@ Result detail::UiState::connect_source(const Id& id, TextFieldSource source) {
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
     if (!std::visit([](const auto& s) { return s.read && s.subscribe; }, source))
         return {Status::invalid_value, u"A text source requires read and subscribe"};
-    if (it->second.disconnect) it->second.disconnect();
-    it->second.source = std::move(source);
-    it->second.connected = false;
     auto weak = std::weak_ptr<void>(lifetime_);
-    it->second.disconnect = std::visit([&](const auto& s) {
-        return s.subscribe([weak, this, id] {
-            if (!weak.expired()) source_changed(id);
-        });
-    }, it->second.source);
-    source_changed(id);
-    return {};
+    auto changed = [weak, this, id] { if (!weak.expired()) source_changed(id); };
+    auto& field = it->second;
+    if (auto r = replace_source(field.source, field.disconnect, std::move(source),
+                                [&](const TextFieldSource& next) { return std::visit([&](const auto& s) { return s.subscribe(changed); }, next); }); !r)
+        return r;
+    field.connected = false;
+    return read_installed_source([&] { source_changed(id); });
 }
 void detail::UiState::source_changed(const Id& id) {
     OperationScope operation(this);
@@ -2168,17 +2185,22 @@ std::u16string detail::UiState::text(std::string_view id) const {
     if (auto shown = component_type(control->kind).display_text(*this, *control)) return *shown;
     return control->value;
 }
-void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider,
-                                decltype(Source<std::u16string>::subscribe) subscribe) {
+Result detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider,
+                                  decltype(Source<std::u16string>::subscribe) subscribe) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
     auto& bound = providers_[control->id];
-    if (auto disconnect = std::exchange(bound.disconnect, {})) disconnect();
+    if (subscribe) {
+        std::weak_ptr<void> weak = lifetime_; auto* state = this;
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        return replace_source(bound.read, bound.disconnect, std::move(provider), [&](const auto&) { return subscribe(changed); });
+    }
     bound.read = std::move(provider);
-    if (!subscribe) return;
-    std::weak_ptr<void> weak = lifetime_; auto* state = this;
-    bound.disconnect = subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+    if (auto disconnect = std::exchange(bound.disconnect, {})) {
+        try { disconnect(); } catch (...) { stopped_ = true; return {Status::failed, u"Unsubscription failed"}; }
+    }
+    return {};
 }
 const detail::Component* detail::UiState::find(std::string_view id) const {
     auto it = std::find_if(controls_.begin(), controls_.end(), [&](const auto& control) { return control.id == id; });

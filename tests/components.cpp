@@ -1457,8 +1457,135 @@ void component_type_reports_state_applicability() {
     }
 }
 
+// ADR 0003, PR #103 review item 8: every component kind whose connect_source subscribes to the application's source, driven
+// generically. A probe connects a source that reads one of the kind's three values (A1, A2, B) and shows what the
+// component holds through its description.
+using Subscribe = std::function<std::function<void()>(std::function<void()>)>;
+struct SourceProbe {
+    std::function<Result(std::function<int()> pick, Subscribe subscribe)> connect;
+    std::function<std::u16string()> shown;
+};
+std::u16string shown_by(const Query<ComponentSnapshot>& s) {
+    if (!s) return u"<" + s.message + u">";
+    std::u16string shown = s->value + u"|";
+    if (s->numeric_value) for (char c : std::to_string(*s->numeric_value)) shown += char16_t(c);
+    if (s->checked) shown += *s->checked ? u"|checked" : u"|unchecked";
+    for (const auto& item : s->items) if (item.selected) shown += u"|" + item.label;
+    return shown;
+}
+template <class T, class Handle, class Connect> SourceProbe probe_of(Handle handle, std::array<T, 3> values, Connect connect) {
+    return {[handle, values, connect](std::function<int()> pick, Subscribe subscribe) {
+                return connect(handle, Source<T>{[values, pick] { return values[pick()]; }, std::move(subscribe)});
+            },
+            [handle] { return shown_by(handle.describe()); }};
+}
+template <class T, class Handle> SourceProbe probe_of(Handle handle, std::array<T, 3> values) {
+    return probe_of(handle, values, [](const Handle& h, Source<T> source) { return h.connect_source(std::move(source)); });
+}
+// When connect_source first reads the new source: never (the value is read when shown), before the old connection is
+// replaced (a throwing read keeps it), or after (the old connection is gone, so a throwing read stops the Ui).
+enum class FirstRead { when_shown, before_replacing, after_replacing };
+struct SourceKind {
+    const char* name; FirstRead first_read; SourceProbe (*build)(Ui&);
+    SourceProbe make(Ui& ui) const {
+        try { return build(ui); } catch (const std::exception& e) { throw std::runtime_error(std::string(name) + ": cannot add the component: " + e.what()); }
+    }
+};
+const std::vector<OptionItem> compass{{{"north"}, u"North"}, {{"south"}, u"South"}, {{"east"}, u"East"}};
+using Pick = std::optional<OptionValue>;
+const SourceKind source_kinds[] = {
+    {"progress", FirstRead::when_shown, [](Ui& ui) { return probe_of<int>(ui.add_progress({.id = "probe"}).value.value(), {10, 40, 90}); }},
+    // A boolean has two values: B only has to differ from A1, the value it must not replace.
+    {"checkbox", FirstRead::after_replacing, [](Ui& ui) { return probe_of<bool>(ui.add_checkbox({.id = "probe"}).value.value(), {false, true, true}); }},
+    {"list", FirstRead::when_shown, [](Ui& ui) { return probe_of<Pick>(ui.add_list({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"radio group", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.add_radio_group({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"dropdown", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.add_dropdown({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"slider", FirstRead::before_replacing, [](Ui& ui) { return probe_of<int>(ui.add_slider({.id = "probe"}, {0, 100, 5}).value.value(), {10, 40, 90}); }},
+    {"text", FirstRead::after_replacing, [](Ui& ui) { return probe_of<std::u16string>(ui.add_text({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
+    {"rich text", FirstRead::after_replacing, [](Ui& ui) {
+        return probe_of<RichText>(ui.add_text({.id = "probe", .multiline = true, .rich = true}).value.value(), {RichText{u"alpha"}, RichText{u"beta"}, RichText{u"gamma"}},
+                                  [](const TextHandle& h, Source<RichText> source) { return h.connect_rich_source(std::move(source)); });
+    }},
+    {"label", FirstRead::when_shown, [](Ui& ui) { return probe_of<std::u16string>(ui.add_label({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
+};
+// A subscription the test can see: `slot` holds the framework's callback while the subscription is live.
+Subscribe subscribed_into(std::function<void()>& slot) {
+    return [&slot](std::function<void()> callback) { slot = std::move(callback); return [&slot] { slot = {}; }; };
+}
+void throwing_subscribe_keeps_the_previous_connection() {
+    for (const auto& kind : source_kinds) {
+        const std::string name = kind.name;
+        auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
+        Ui ui;
+        auto probe = kind.make(ui);
+        int a_value = 0; std::function<void()> notify_a;
+        expect(bool(probe.connect([&] { return a_value; }, subscribed_into(notify_a))) && notify_a, "Source A connects");
+        const auto shows_a1 = probe.shown();
+        Result result; bool escaped = false;
+        try {
+            result = probe.connect([] { return 2; }, [](std::function<void()>) -> std::function<void()> { throw std::runtime_error("subscribe failed"); });
+        } catch (...) { escaped = true; }
+        expect(!escaped, "A throwing subscribe does not escape connect_source");
+        expect(result.status == Status::failed && !result.message.empty(), "A throwing subscribe fails the call with a message");
+        expect(!detail::access(ui).stopped(), "The Ui keeps running: the component stayed valid");
+        expect(bool(notify_a) && probe.shown() == shows_a1, "The component keeps source A, its value and its live subscription");
+        a_value = 1; notify_a();
+        const auto shows_a2 = probe.shown();
+        expect(shows_a2 != shows_a1, "Notifying source A still updates the component");
+        expect(bool(probe.connect([] { return 2; }, [](std::function<void()>) { return [] {}; }))  && !notify_a,
+               "A later source still replaces A and cancels its subscription");
+        expect(probe.shown() != shows_a1, "Source B's value was never shown before (it differs from A1)");
+    }
+}
+// A subscribe that notifies before it returns: the first connection and a replacing one both end on the new value.
+void synchronous_notification_during_subscribe_is_safe() {
+    for (const auto& kind : source_kinds) {
+        const std::string name = kind.name;
+        auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
+        auto notifying = [](std::function<void()>& slot) -> Subscribe {
+            return [&slot](std::function<void()> callback) { callback(); slot = std::move(callback); return [&slot] { slot = {}; }; };
+        };
+        Ui ui, reference;
+        auto probe = kind.make(ui), expected = kind.make(reference);
+        std::function<void()> first, second, quiet;
+        expect(bool(probe.connect([] { return 0; }, notifying(first))) && first && !detail::access(ui).stopped(),
+               "A first source that notifies inside subscribe connects");
+        expected.connect([] { return 0; }, subscribed_into(quiet));
+        expect(probe.shown() == expected.shown(), "The first source's value is shown");
+        expect(bool(probe.connect([] { return 1; }, notifying(second))) && second && !first && !detail::access(ui).stopped(),
+               "A replacing source that notifies inside subscribe connects and cancels the old one");
+        expected.connect([] { return 1; }, subscribed_into(quiet));
+        expect(probe.shown() == expected.shown(), "The replacing source's value is shown");
+    }
+}
+// A source whose read throws while connect_source reads it: before the old connection is replaced the call fails and
+// keeps it; after, the call fails and stops the Ui (the established outcome of a callback that threw after state changed).
+void throwing_read_while_connecting() {
+    for (const auto& kind : source_kinds) {
+        if (kind.first_read == FirstRead::when_shown) continue;  // connect_source reads nothing; drawing failures are out of scope
+        const std::string name = kind.name;
+        auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
+        Ui ui;
+        auto probe = kind.make(ui);
+        std::function<void()> notify_a;
+        probe.connect([] { return 0; }, subscribed_into(notify_a));
+        const auto shows_a = probe.shown();
+        Result result; bool escaped = false;
+        try {
+            result = probe.connect([]() -> int { throw std::runtime_error("read failed"); }, [](std::function<void()>) { return [] {}; });
+        } catch (...) { escaped = true; }
+        expect(!escaped && result.status == Status::failed && !result.message.empty(), "A throwing read fails the call and does not escape");
+        if (kind.first_read == FirstRead::before_replacing)
+            expect(!detail::access(ui).stopped() && notify_a && probe.shown() == shows_a, "A read before replacing keeps the old connection and the Ui");
+        else
+            expect(detail::access(ui).stopped(), "A read after replacing stops the Ui");
+    }
+}
 int main() {
     const test::Case cases[] = {
+        {"#103 throwing read while connecting", throwing_read_while_connecting},
+        {"#103 throwing subscribe keeps the connection", throwing_subscribe_keeps_the_previous_connection},
+        {"#103 synchronous notification during subscribe", synchronous_notification_during_subscribe_is_safe},
         {"X04 registered component state applicability", component_type_reports_state_applicability},
         {"G07 revalidate after focus callback", pointer_dispatch_rechecks_a_removed_focus_target},
         {"G07 removal releases confirmation connection", removing_confirmation_button_releases_its_fields},

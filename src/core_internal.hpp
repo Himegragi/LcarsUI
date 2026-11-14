@@ -251,9 +251,9 @@ public:
     void before_focus(std::function<void()> callback) { before_focus_ = std::move(callback); }
     // A label whose text is read from owner data on demand, so the label never holds a copy. With `subscribe`, the
     // owner's notifications ask for a repaint until the Ui ends or the label is bound again; binding again cancels the
-    // previous subscription first.
-    void bind_text(std::string_view id, std::function<std::u16string()> provider,
-                   decltype(Source<std::u16string>::subscribe) subscribe = {});
+    // previous subscription once the new one exists (replace_source: a throwing subscribe keeps the old binding).
+    Result bind_text(std::string_view id, std::function<std::u16string()> provider,
+                     decltype(Source<std::u16string>::subscribe) subscribe = {});
     // Focus. Declaration order is the Tab order; labels and unavailable controls are skipped.
     const Id& focused() const { return focus_; }
     Result focus(std::string_view id);
@@ -610,6 +610,14 @@ private:
     template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
     template <class Handle> Result confirm_field(const Handle& handle);
     template <class FieldType> Result write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change);
+    // The connection swap of every connect_source that subscribes to the application's source (ADR 0003). The new
+    // source's subscribe runs first, before anything changes: if it throws, `installed` and `disconnect` keep the old
+    // source and its live subscription and the call fails without stopping the Ui. Only then is the old subscription
+    // cancelled and the new source installed. A notification the subscribe fires before returning sees the old source.
+    template <class Installed, class Subscribe>
+    Result replace_source(Installed& installed, std::function<void()>& disconnect, Installed source, Subscribe&& subscribe);
+    // The first read of a source replace_source installed. The old connection is gone by then, so a throwing read stops the Ui.
+    template <class Read> Result read_installed_source(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
