@@ -486,7 +486,7 @@ class TextRange final : public ITextRangeProvider {
     unsigned first, last;
     std::u16string version;
     std::uint64_t revision;
-    HRESULT call(std::function<HRESULT(const SemanticNode &)> action) {
+    HRESULT call(std::function<HRESULT(const NodeSnapshot &)> action) {
         AddRef();
         auto hr = owner->ctx->call([this, action = std::move(action)] {
             auto h = owner->check();
@@ -679,7 +679,7 @@ class TextRange final : public ITextRangeProvider {
     }
     // The range cut wherever the style changes, each piece with the attribute's value. An empty range is one
     // piece: the style of the character at the caret (the last one at the end of the text).
-    std::vector<std::tuple<unsigned, unsigned, long>> attribute_runs(const SemanticNode &n, TEXTATTRIBUTEID id) const {
+    std::vector<std::tuple<unsigned, unsigned, long>> attribute_runs(const NodeSnapshot &n, TEXTATTRIBUTEID id) const {
         std::vector<std::tuple<unsigned, unsigned, long>> runs;
         std::vector<unsigned> cuts{first, last};
         if (first == last) {
@@ -705,7 +705,7 @@ class TextRange final : public ITextRangeProvider {
         if (!out)
             return E_POINTER;
         *out = nullptr;
-        return call([&](const SemanticNode &n) {
+        return call([&](const NodeSnapshot &n) {
             if (!n.rich || !rich_attribute(id))
                 return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
             long wanted = 0;
@@ -1127,7 +1127,7 @@ HRESULT Provider::RangeFromPoint(UiaPoint point, ITextRangeProvider **out) {
 }
 } // namespace
 Provider* UiaBridge::Impl::provider(const NodeRef& ref) {
-    auto n = ref.id.empty() ? Query<SemanticNode>{} : ui->semantics().get(ref);
+    auto n = ref.id.empty() ? Query<NodeSnapshot>{} : ui->semantics().get(ref);
     auto generation = n ? n->instance : 0;
     for (auto p : providers) if (p->valid && p->ref == ref && p->instance == generation) return p;
     static std::atomic<int> serial{1}; auto p=new Provider(shared_from_this(),ref,serial++,generation); providers.push_back(p); return p;

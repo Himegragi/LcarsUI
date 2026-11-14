@@ -20,14 +20,14 @@ static void diagnostics(const Appearance& appearance) {
     check(created.desktop && !created.desktop->capabilities().debug_messages, "DG02 hidden debug");
     edit_form::Form debug_form;
     RendererTestHooks debug_hooks; debug_hooks.misuse_once=true;
-    DesktopOptions options; options.debug_context=DebugContext::on;
+    DesktopConfig options; options.debug_context=DebugContext::on;
     std::vector<RenderDiagnostic> events; auto owner=std::this_thread::get_id(); bool right_thread=true;
     options.on_diagnostic=[&](const RenderDiagnostic& event) { right_thread &= std::this_thread::get_id()==owner; events.push_back(event); };
     DesktopHost host(debug_form.ui,appearance,[&]{return debug_form.page();},debug_form.scroll,options,false,true,&debug_hooks);
     check(host.capabilities().debug_messages,"DG01 KHR_debug available");
     host.paint(); host.pump();
     bool found=false;
-    for (const auto& event:events) if (event.category==DiagnosticCategory::api_misuse && event.backend==u"OpenGL" && event.native_code && !event.native_message.empty() && !event.source_time && event.received_at.time_since_epoch().count()) found=true;
+    for (const auto& event:events) if (event.kind==DiagnosticKind::api_misuse && event.backend==u"OpenGL" && event.native_code && !event.native_message.empty() && !event.source_time && event.received_at.time_since_epoch().count()) found=true;
     check(found && right_thread,"DG01 debug event");
 }
 static void startup(const Appearance& appearance) {
@@ -56,7 +56,7 @@ static void startup(const Appearance& appearance) {
 static void close_request(const Appearance& appearance) {
     edit_form::Form form;
     int calls = 0;
-    DesktopOptions options;
+    DesktopConfig options;
     options.on_close_requested = [&](Desktop& desktop) {
         ++calls;
         SendMessageW(static_cast<HWND>(desktop.native_window()), WM_CLOSE, 0, 0);
@@ -81,7 +81,7 @@ static void close_request(const Appearance& appearance) {
     check(bool(automatic.desktop), "default close desktop");
     PostMessageW(static_cast<HWND>(automatic.desktop->native_window()), WM_CLOSE, 0, 0);
     check(automatic.desktop->run().status==Status::ok, "default request closes");
-    edit_form::Form callback_form; DesktopOptions callback_options;
+    edit_form::Form callback_form; DesktopConfig callback_options;
     callback_options.on_close_requested=[](Desktop& desktop) { desktop.close(); return CloseDecision::keep_open; };
     auto callback=Desktop::create(callback_form.ui, appearance, [&]{ return callback_form.page(); }, callback_form.scroll, callback_options);
     check(bool(callback.desktop), "callback close desktop");
@@ -90,7 +90,7 @@ static void close_request(const Appearance& appearance) {
 }
 static void title_updates(const Appearance& appearance) {
     edit_form::Form form;
-    DesktopOptions options; options.title = u"Initial title for test";
+    DesktopConfig options; options.title = u"Initial title for test";
     auto created = Desktop::create(form.ui, appearance, [&]{return form.page();}, form.scroll, options);
     check(bool(created.desktop), "title test desktop");
     auto window = FindWindowW(nullptr, L"Initial title for test");
@@ -109,7 +109,7 @@ static void public_lifecycle(const Appearance& appearance, bool handled) {
     DesktopHost other_host(other.ui,appearance,[&]{return other.page();},other.scroll,{},false,true);
     check(bool(form.handles.name.set_value(u"workstation A")), "prepare public draft");
     RendererTestHooks hooks; hooks.gl_error_at_frame=1; hooks.fail_rebuild_once=handled;
-    DesktopOptions options;
+    DesktopConfig options;
     int callbacks=0, close_calls=0;
     options.on_close_requested=[&](Desktop&) { ++close_calls; return CloseDecision::keep_open; };
     if (handled) options.on_renderer_failed=[&](Desktop& desktop, const RendererFailure& failure) {
@@ -216,7 +216,7 @@ static void frozen_overlays(const Appearance& appearance) {
     check(bool(host.rebuild_renderer()), "overlay test recovery");
     edit_form::Form dropdown_form(edit_form::default_ids(), true);
     RendererTestHooks wheel_hooks; wheel_hooks.gl_error_at_frame = 1;
-    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::control(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
+    DesktopHost wheel_host(dropdown_form.ui, appearance, [&] { return layout::component(dropdown_form.handles.region); }, dropdown_form.scroll, {}, false, true, &wheel_hooks);
     check(bool(dropdown_form.handles.region.open()), "dropdown opened before failure");
     wheel_host.paint();
     check(wheel_host.renderer_failed(), "wheel test failure");
@@ -224,10 +224,10 @@ static void frozen_overlays(const Appearance& appearance) {
     SendMessageW(wheel_host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
     check(dropdown_form.handles.region.describe()->expanded, "wheel preserves dropdown during failure");
     Ui pending_ui;
-    auto button = pending_ui.add_button({.id="pending", .kind=Kind::button, .label=u"Pending"}).value.value();
+    auto button = pending_ui.add_button({.id="pending", .label=u"Pending"}).value.value();
     auto tip = pending_ui.add_tooltip("pending.tip", button, u"Help", 1000).value.value();
     ScrollState pending_scroll; RendererTestHooks pending_hooks; pending_hooks.gl_error_at_frame = 1;
-    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::control(button); }, pending_scroll, {}, false, true, &pending_hooks);
+    DesktopHost pending_host(pending_ui, appearance, [&] { return layout::component(button); }, pending_scroll, {}, false, true, &pending_hooks);
     auto& pending = access(pending_ui); std::uint64_t pending_now = 1000;
     pending.tooltip_clock([&] { return pending_now; }); pending.window_active(true); pending.set_system_keyboard_cues(true);
     check(bool(button.focus()) && pending.tooltip_deadline() == 2000, "pending tooltip starts delay");

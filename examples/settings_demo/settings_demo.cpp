@@ -26,101 +26,101 @@ std::optional<FocusIndicatorMode> focus_mode_from_id(std::string_view id) {
     return std::nullopt;
 }
 Demo::Demo(AboutInfo about) : about_(std::move(about)) {
-    nav = ui.add_navigation_list({.id="app.nav", .kind=Kind::navigation_list, .label=u"設定頁面"},
+    nav = ui.add_navigation_list({.id="app.nav", .label=u"設定頁面"},
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
-    title_ = ui.add_label({.id="app.page_title",.kind=Kind::label}).value.value();
-    name_label_ = ui.add_label({.id="general.name.label",.kind=Kind::label,.value=u"顯示名稱",.target="general.name",.role=TextRole::name}).value.value();
-    name = ui.add_text({.id="general.name",.kind=Kind::text,.value=name_value_,.max_length=64}).value.value();
-    name_help_ = ui.add_label({.id="general.name.help",.kind=Kind::label,.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.role=TextRole::description}).value.value();
-    name_error_ = ui.add_label({.id="general.name.error",.kind=Kind::label,.target="general.name",.role=TextRole::error}).value.value();
-    notices = ui.add_checkbox({.id="general.notices",.kind=Kind::checkbox,.label=u"啟用提示"}).value.value();
-    mode = ui.add_radio_group({.id="general.mode",.kind=Kind::radio_group,.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
-    region = ui.add_dropdown({.id="general.region",.kind=Kind::dropdown,.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
-    volume = ui.add_slider({.id="general.volume",.kind=Kind::slider,.label=u"音量"},{0,100,5}).value.value();
-    items_search = ui.add_text({.id="items.search",.kind=Kind::text,.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
-    items_list = ui.add_list({.id="items.list",.kind=Kind::list,.label=u"\u9805\u76ee"}, {}).value.value();
-    items_count_ = ui.add_label({.id="items.count",.kind=Kind::label}).value.value();
-    items_add = ui.add_button({.id="items.add",.kind=Kind::button,.label=u"\u65b0\u589e\u2026"}).value.value();
-    items_edit = ui.add_button({.id="items.edit",.kind=Kind::button,.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
-    items_delete = ui.add_button({.id="items.delete",.kind=Kind::button,.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    title_ = ui.add_label({.id="app.page_title"}).value.value();
+    name_label_ = ui.add_label({.id="general.name.label",.value=u"顯示名稱",.target="general.name",.label_kind=LabelKind::name}).value.value();
+    name = ui.add_text({.id="general.name",.value=name_value_,.max_length=64}).value.value();
+    name_help_ = ui.add_label({.id="general.name.help",.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.label_kind=LabelKind::description}).value.value();
+    name_error_ = ui.add_label({.id="general.name.error",.target="general.name",.label_kind=LabelKind::error}).value.value();
+    notices = ui.add_checkbox({.id="general.notices",.label=u"啟用提示"}).value.value();
+    mode = ui.add_radio_group({.id="general.mode",.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
+    region = ui.add_dropdown({.id="general.region",.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
+    volume = ui.add_slider({.id="general.volume",.label=u"音量"},{0,100,5}).value.value();
+    items_search = ui.add_text({.id="items.search",.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
+    items_list = ui.add_list({.id="items.list",.label=u"\u9805\u76ee"}, {}).value.value();
+    items_count_ = ui.add_label({.id="items.count"}).value.value();
+    items_add = ui.add_button({.id="items.add",.label=u"\u65b0\u589e\u2026"}).value.value();
+    items_edit = ui.add_button({.id="items.edit",.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
+    items_delete = ui.add_button({.id="items.delete",.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
     // Right-clicking a row selects it, then offers the same Edit and Delete as the buttons and the
     // Enter / Del shortcuts: each item runs the button's own action.
     items_menu = ui.add_context_menu(items_list, {
         {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .access_key=u'E', .shortcut_hint=u"Enter", .action=[this](const MenuContext&) { return items_edit.invoke(); }},
         {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .access_key=u'D', .shortcut_hint=u"Del", .action=[this](const MenuContext&) { return items_delete.invoke(); }},
     }).value.value();
-    font = ui.add_dropdown({.id="appearance.font",.kind=Kind::dropdown,.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
-    font_status_ = ui.add_label({.id="appearance.font.status",.kind=Kind::label}).value.value();
+    font = ui.add_dropdown({.id="appearance.font",.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
+    font_status_ = ui.add_label({.id="appearance.font.status"}).value.value();
     nav.add_member({"appearance"}, font); nav.add_member({"appearance"}, font_status_);
     refresh_fonts();
     font.connect_source({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().font_family; return OptionValue{value.empty() ? "default" : "family:" + lcars::detail::utf8_from_utf16(value)}; }, subscribe_to(font_changed_)});
-    font.connect_immediate([this](const DropdownChange& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
-    text_size = ui.add_slider({.id="appearance.text_size",.kind=Kind::slider,.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
+    font.connect_immediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.font_family = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16_from_utf8(c.value->id.substr(7)); return set_presentation(settings); });
+    text_size = ui.add_slider({.id="appearance.text_size",.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.add_member({"appearance"}, text_size);
     text_size.connect_source({[this] { return ui.presentation().text_size; }, subscribe_to(text_size_changed_)});
-    connect_slider(text_size, "appearance.text_size", [this](const NumericChange& change, bool join) {
+    connect_slider(text_size, "appearance.text_size", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.text_size = change.value;
         return set_presentation(settings, join);
     });
-    dark = ui.add_checkbox({.id="appearance.dark",.kind=Kind::checkbox,.label=u"\u6df1\u8272"}).value.value();
-    compact = ui.add_checkbox({.id="appearance.compact",.kind=Kind::checkbox,.label=u"\u7dca\u6e4a"}).value.value();
+    dark = ui.add_checkbox({.id="appearance.dark",.label=u"\u6df1\u8272"}).value.value();
+    compact = ui.add_checkbox({.id="appearance.compact",.label=u"\u7dca\u6e4a"}).value.value();
     // WCAG 1.4.8: the user can turn justified text off for the whole window.
-    justify_left = ui.add_checkbox({.id="appearance.justify_left",.kind=Kind::checkbox,.label=u"左右對齊文字改為靠左"}).value.value();
-    accent = ui.add_dropdown({.id="appearance.accent",.kind=Kind::dropdown,.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    justify_left = ui.add_checkbox({.id="appearance.justify_left",.label=u"左右對齊文字改為靠左"}).value.value();
+    accent = ui.add_dropdown({.id="appearance.accent",.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     nav.add_member({"appearance"}, accent);
     accent.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{accent_value_}; }, subscribe_to(accent_changed_)});
-    accent.connect_immediate([this](const DropdownChange& c) { return set_accent(c.value ? c.value->id : "default"); });
+    accent.connect_immediate([this](const Change<DropdownHandle>& c) { return set_accent(c.value ? c.value->id : "default"); });
     // The focus ring (#90): one dropdown for when it shows, a thickness slider, a radius (same as the component, or a slider) and a color.
-    focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.kind=Kind::dropdown,.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
-    focus_width = ui.add_slider({.id="appearance.focus_width",.kind=Kind::slider,.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
-    focus_radius_same = ui.add_checkbox({.id="appearance.focus_radius_same",.kind=Kind::checkbox,.label=u"焦點外框圓角跟元件一樣"}).value.value();
-    focus_radius = ui.add_slider({.id="appearance.focus_radius",.kind=Kind::slider,.label=u"焦點外框圓角"},{min_focus_ring_radius,max_focus_ring_radius,1}).value.value();
-    focus_color = ui.add_dropdown({.id="appearance.focus_color",.kind=Kind::dropdown,.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    focus_mode = ui.add_dropdown({.id="appearance.focus_mode",.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
+    focus_width = ui.add_slider({.id="appearance.focus_width",.label=u"焦點外框粗細"},{min_focus_ring_width,max_focus_ring_width,1}).value.value();
+    focus_radius_same = ui.add_checkbox({.id="appearance.focus_radius_same",.label=u"焦點外框圓角跟元件一樣"}).value.value();
+    focus_radius = ui.add_slider({.id="appearance.focus_radius",.label=u"焦點外框圓角"},{min_focus_ring_radius,max_focus_ring_radius,1}).value.value();
+    focus_color = ui.add_dropdown({.id="appearance.focus_color",.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
     for (ComponentHandle member : {ComponentHandle{focus_mode}, ComponentHandle{focus_width}, ComponentHandle{focus_radius_same}, ComponentHandle{focus_radius}, ComponentHandle{focus_color}}) nav.add_member({"appearance"}, member);
     focus_mode.connect_source({[this]() -> std::optional<OptionValue> {
         return OptionValue{focus_mode_id(ui.presentation().focus_indicator)};
     }, subscribe_to(focus_mode_changed_)});
-    focus_mode.connect_immediate([this](const DropdownChange& c) {
+    focus_mode.connect_immediate([this](const Change<DropdownHandle>& c) {
         auto settings = ui.presentation();
         settings.focus_indicator = (c.value ? focus_mode_from_id(c.value->id) : std::nullopt).value_or(FocusIndicatorMode::automatic);
         return set_presentation(settings);
     });
     // 3 DIP is the appearances' own ring thickness (ComponentPresentation::focus): what the slider shows while the setting is empty.
     focus_width.connect_source({[this] { return ui.presentation().focus_ring_width.value_or(3); }, subscribe_to(focus_width_changed_)});
-    connect_slider(focus_width, "appearance.focus_width", [this](const NumericChange& change, bool join) {
+    connect_slider(focus_width, "appearance.focus_width", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_width = change.value;
         return set_presentation(settings, join);
     });
     focus_radius_same.connect_source({[this] { return !ui.presentation().focus_ring_radius.has_value(); }, subscribe_to(focus_radius_same_changed_)});
-    focus_radius_same.connect_immediate([this](const BoolChange& c) {
+    focus_radius_same.connect_immediate([this](const Change<CheckboxHandle>& c) {
         auto settings = ui.presentation();
         settings.focus_ring_radius = c.value ? std::nullopt : std::optional<int>{focus_radius_start()};
         return set_presentation(settings);
     });
     focus_radius.connect_source({[this] { return ui.presentation().focus_ring_radius.value_or(focus_radius_start()); }, subscribe_to(focus_radius_changed_)});
-    connect_slider(focus_radius, "appearance.focus_radius", [this](const NumericChange& change, bool join) {
+    connect_slider(focus_radius, "appearance.focus_radius", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.focus_ring_radius = change.value; focus_radius_memory_ = change.value;
         return set_presentation(settings, join);
     });
     focus_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{focus_color_value_}; }, subscribe_to(focus_color_changed_)});
-    focus_color.connect_immediate([this](const DropdownChange& c) { return set_focus_color(c.value ? c.value->id : "default"); });
+    focus_color.connect_immediate([this](const Change<DropdownHandle>& c) { return set_focus_color(c.value ? c.value->id : "default"); });
     refresh_focus_controls();
-    preview_ = ui.add_label({.id="appearance.preview",.kind=Kind::label,.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
-    reset_appearance_ = ui.add_button({.id="appearance.reset",.kind=Kind::button,.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
+    preview_ = ui.add_label({.id="appearance.preview",.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.text_align=TextAlign::center}).value.value();
+    reset_appearance_ = ui.add_button({.id="appearance.reset",.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justify_left}, ComponentHandle{preview_}, ComponentHandle{reset_appearance_}}) nav.add_member({"appearance"}, member);
     justify_left.connect_source({[this] { return ui.presentation().justify_as_left; }, subscribe_to(justify_left_changed_)});
-    justify_left.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
+    justify_left.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.justify_as_left=c.value; return set_presentation(settings); });
     dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, subscribe_to(dark_changed_)});
     compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, subscribe_to(compact_changed_)});
-    dark.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
-    compact.connect_immediate([this](const BoolChange& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
+    dark.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.variant=c.value ? ThemeVariant::dark() : ThemeVariant::light(); return set_presentation(settings); });
+    compact.connect_immediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.density=c.value ? Density::compact : Density::standard; return set_presentation(settings); });
     reset_appearance_.bind([this] {
         if (auto r = apply_palette("default", "default"); !r) return r;
         accent_value_ = focus_color_value_ = "default"; if (accent_changed_) accent_changed_(); if (focus_color_changed_) focus_color_changed_();
         return set_presentation(PresentationSettings{});
     });
     for (const char* id : {"about.app", "about.framework", "about.build", "about.appearance", "about.renderer", "about.diagnostics", "about.settings_path"}) {
-        about_labels_.push_back(ui.add_label({.id=id,.kind=Kind::label}).value.value());
+        about_labels_.push_back(ui.add_label({.id=id}).value.value());
         nav.add_member({"about"}, about_labels_.back());
     }
     about_labels_[0].connect_source([] { return u"LcarsUI 設定管理示範 0.1.0"; });
@@ -131,14 +131,14 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     about_labels_[5].connect_source([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
     about_labels_[6].connect_source([this] { return about_.settings_path; });
     // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
-    about_vertical_ = ui.add_label({.id="about.vertical",.kind=Kind::label,.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
+    about_vertical_ = ui.add_label({.id="about.vertical",.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writing_mode=WritingMode::vertical}).value.value();
     nav.add_member({"about"}, about_vertical_);
-    std::vector<RadioOption> license_options;
+    std::vector<OptionItem> license_options;
     for (const auto& license : about_.licenses) license_options.push_back({license.id, license.name});
-    licenses = ui.add_list({.id="about.licenses",.kind=Kind::list,.label=u"授權"}, std::move(license_options)).value.value();
-    license_text_ = ui.add_label({.id="about.license_text",.kind=Kind::label,.line_spacing=1.4,.paragraph_spacing=8}).value.value();
+    licenses = ui.add_list({.id="about.licenses",.label=u"授權"}, std::move(license_options)).value.value();
+    license_text_ = ui.add_label({.id="about.license_text",.line_spacing=1.4,.paragraph_spacing=8}).value.value();
     licenses.connect_source({[this] { return license_selection_; }, subscribe_to(license_selection_changed_)});
-    licenses.connect_immediate([this](std::optional<OptionValue> value) { license_selection_ = std::move(value); license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
+    licenses.connect_immediate([this](const Change<ListHandle>& change) { license_selection_ = change.value; license_scroll.offset = 0; if (license_selection_changed_) license_selection_changed_(); return Result{}; });
     license_text_.connect_source([this] { for (const auto& license : about_.licenses) if (license_selection_ && license.id == *license_selection_) return license.text; return std::u16string{}; });
     nav.add_member({"about"}, licenses);
     nav.add_member({"about"}, license_text_);
@@ -147,25 +147,25 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
     items_search.connect_source({[this] { return search_value_; }, subscribe_to(search_changed_)});
-    items_search.connect_immediate([this](const TextChange& c) {
+    items_search.connect_immediate([this](const Change<TextHandle>& c) {
         search_value_=c.value;
         if (auto r=refresh_items(); !r) return r;
         if (search_changed_) search_changed_();
         return Result{};
     });
     items_list.connect_source({[this] { return selection_; }, subscribe_to(selection_changed_)});
-    items_list.connect_immediate([this](std::optional<OptionValue> value) { selection_=std::move(value); items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
+    items_list.connect_immediate([this](const Change<ListHandle>& change) { selection_=change.value; items_edit.enable(selection_.has_value()); items_delete.enable(selection_.has_value()); items_menu.enable_item("items.edit", selection_.has_value()); items_menu.enable_item("items.delete", selection_.has_value()); if (selection_changed_) selection_changed_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{items_search}, ComponentHandle{items_list}, ComponentHandle{items_count_}, ComponentHandle{items_add}, ComponentHandle{items_edit}, ComponentHandle{items_delete}}) nav.add_member({"items"}, member);
     refresh_items();
-    status_ = ui.add_label({.id="app.status",.kind=Kind::label,.value=u"使用預設值，尚未建立設定檔"}).value.value();
-    undo_ = ui.add_button({.id="app.undo",.kind=Kind::button,.label=u"復原",.enabled=false}).value.value();
-    redo_ = ui.add_button({.id="app.redo",.kind=Kind::button,.label=u"重做",.enabled=false}).value.value();
-    revert_ = ui.add_button({.id="app.revert",.kind=Kind::button,.label=u"還原為已儲存",.enabled=false}).value.value();
-    save_ = ui.add_button({.id="app.save",.kind=Kind::button,.label=u"儲存",.enabled=false}).value.value();
+    status_ = ui.add_label({.id="app.status",.value=u"使用預設值，尚未建立設定檔"}).value.value();
+    undo_ = ui.add_button({.id="app.undo",.label=u"復原",.enabled=false}).value.value();
+    redo_ = ui.add_button({.id="app.redo",.label=u"重做",.enabled=false}).value.value();
+    revert_ = ui.add_button({.id="app.revert",.label=u"還原為已儲存",.enabled=false}).value.value();
+    save_ = ui.add_button({.id="app.save",.label=u"儲存",.enabled=false}).value.value();
     for (ComponentHandle member : {ComponentHandle{name_label_}, ComponentHandle{name}, ComponentHandle{name_help_}, ComponentHandle{name_error_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.add_member({"general"}, member);
     title_.connect_source([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
     name.connect_source({[this] { return name_value_; }, subscribe_to(name_changed_)});
-    name.connect_confirmed([this](const TextChange& change) {
+    name.connect_confirmed([this](const Change<TextHandle>& change) {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
     });
@@ -179,31 +179,31 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         name.reset_to_source(); update_history_controls();
     });
     notices.connect_source({[this] { return notices_value_; }, subscribe_to(notices_changed_)});
-    notices.connect_immediate([this](const BoolChange& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
+    notices.connect_immediate([this](const Change<CheckboxHandle>& c) { notices_value_=c.value; if (notices_changed_) notices_changed_(); dirty(); return Result{}; });
     mode.connect_source({[this] { return mode_value_; }, subscribe_to(mode_changed_)});
-    mode.connect_immediate([this](const OptionChange& c) { mode_value_=c.value; if (mode_changed_) mode_changed_(); dirty(); return Result{}; });
+    mode.connect_immediate([this](const Change<RadioGroupHandle>& c) { mode_value_=c.value; if (mode_changed_) mode_changed_(); dirty(); return Result{}; });
     region.connect_source({[this] { return region_value_; }, subscribe_to(region_changed_)});
-    region.connect_immediate([this](const DropdownChange& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
+    region.connect_immediate([this](const Change<DropdownHandle>& c) { region_value_=c.value; if (region_changed_) region_changed_(); dirty(); return Result{}; });
     volume.connect_source({[this] { return volume_value_; }, subscribe_to(volume_changed_)});
-    connect_slider(volume, "general.volume", [this](const NumericChange& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
-    item_title_ = ui.add_label({.id="items.dialog.title",.kind=Kind::label}).value.value();
-    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.kind=Kind::label,.value=u"\u540d\u7a31",.target="items.dialog.name",.role=TextRole::name}).value.value();
-    item_name = ui.add_text({.id="items.dialog.name",.kind=Kind::text,.max_length=64}).value.value();
-    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.kind=Kind::label,.target="items.dialog.name",.role=TextRole::error}).value.value();
-    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.kind=Kind::label,.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.role=TextRole::name}).value.value();
-    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.kind=Kind::button,.label=u"粗體"}).value.value();
-    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.kind=Kind::button,.label=u"斜體"}).value.value();
-    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.kind=Kind::button,.label=u"底線"}).value.value();
-    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.kind=Kind::dropdown,.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
-    item_note = ui.add_text({.id="items.dialog.note",.kind=Kind::text,.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
+    connect_slider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
+    item_title_ = ui.add_label({.id="items.dialog.title"}).value.value();
+    item_name_label_ = ui.add_label({.id="items.dialog.name.label",.value=u"\u540d\u7a31",.target="items.dialog.name",.label_kind=LabelKind::name}).value.value();
+    item_name = ui.add_text({.id="items.dialog.name",.max_length=64}).value.value();
+    item_name_error_ = ui.add_label({.id="items.dialog.name.error",.target="items.dialog.name",.label_kind=LabelKind::error}).value.value();
+    item_note_label_ = ui.add_label({.id="items.dialog.note.label",.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.label_kind=LabelKind::name}).value.value();
+    item_note_bold = ui.add_button({.id="items.dialog.note.bold",.label=u"粗體"}).value.value();
+    item_note_italic = ui.add_button({.id="items.dialog.note.italic",.label=u"斜體"}).value.value();
+    item_note_underline = ui.add_button({.id="items.dialog.note.underline",.label=u"底線"}).value.value();
+    item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
+    item_note = ui.add_text({.id="items.dialog.note",.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
     // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
     item_note.set_colors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
-    item_cancel_ = ui.add_button({.id="items.dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
-    item_ok = ui.add_button({.id="items.dialog.ok",.kind=Kind::button,.label=u"\u78ba\u5b9a"}).value.value();
-    delete_title_ = ui.add_label({.id="items.delete_dialog.title",.kind=Kind::label,.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
-    delete_message_ = ui.add_label({.id="items.delete_dialog.message",.kind=Kind::label}).value.value();
-    delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
-    delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.kind=Kind::button,.label=u"\u522a\u9664"}).value.value();
+    item_cancel_ = ui.add_button({.id="items.dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
+    item_ok = ui.add_button({.id="items.dialog.ok",.label=u"\u78ba\u5b9a"}).value.value();
+    delete_title_ = ui.add_label({.id="items.delete_dialog.title",.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
+    delete_message_ = ui.add_label({.id="items.delete_dialog.message"}).value.value();
+    delete_cancel_ = ui.add_button({.id="items.delete_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
+    delete_confirm_ = ui.add_button({.id="items.delete_dialog.confirm",.label=u"\u522a\u9664"}).value.value();
     item_dialog = ui.add_dialog("items.dialog", {item_title_,item_name_label_,item_name,item_name_error_,item_note_label_,item_note_bold,item_note_italic,item_note_underline,item_note_color,item_note,item_cancel_,item_ok}, item_name, items_add, [](bool) {}).value.value();
     delete_dialog = ui.add_dialog("items.delete_dialog", {delete_title_,delete_message_,delete_cancel_,delete_confirm_}, delete_cancel_, items_add, [](bool) {}).value.value();
     item_name.connect_source({[this] { return item_name_source_; }, subscribe_to(item_name_changed_)});
@@ -214,7 +214,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     };
     style_button(item_note_bold, lcars::StyleAttribute::bold); style_button(item_note_italic, lcars::StyleAttribute::italic); style_button(item_note_underline, lcars::StyleAttribute::underline);
     item_note_color.connect_source({[this]() -> std::optional<OptionValue> { return OptionValue{note_color_value_}; }, subscribe_to(note_color_changed_)});
-    item_note_color.connect_immediate([this](const DropdownChange& c) {
+    item_note_color.connect_immediate([this](const Change<DropdownHandle>& c) {
         note_color_value_ = c.value ? c.value->id : "default"; if (note_color_changed_) note_color_changed_();
         auto result = item_note.apply_style({.color = note_color_value_ == "default" ? std::string{} : note_color_value_});
         item_note.focus();
@@ -236,8 +236,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    ui.connect_mixed_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> MixedConfirmationResult {
-        const auto& value=std::get<TextChange>(changes[0]).value; const auto& rich=std::get<RichTextChange>(changes[1]).value;
+    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> ConfirmationResult {
+        const auto& value=std::get<Change<TextHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextHandle, RichText>>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
@@ -271,23 +271,23 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (auto r=refresh_items(); !r) return r;
         dirty(); return Result{};
     });
-    close_title_ = ui.add_label({.id="app.close_dialog.title",.kind=Kind::label,.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
-    close_message_ = ui.add_label({.id="app.close_dialog.message",.kind=Kind::label,.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
-    close_save = ui.add_button({.id="app.close_dialog.save",.kind=Kind::button,.label=u"\u5132\u5b58"}).value.value();
-    close_discard = ui.add_button({.id="app.close_dialog.discard",.kind=Kind::button,.label=u"\u4e0d\u5132\u5b58"}).value.value();
-    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.kind=Kind::button,.label=u"\u53d6\u6d88"}).value.value();
+    close_title_ = ui.add_label({.id="app.close_dialog.title",.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
+    close_message_ = ui.add_label({.id="app.close_dialog.message",.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
+    close_save = ui.add_button({.id="app.close_dialog.save",.label=u"\u5132\u5b58"}).value.value();
+    close_discard = ui.add_button({.id="app.close_dialog.discard",.label=u"\u4e0d\u5132\u5b58"}).value.value();
+    close_cancel = ui.add_button({.id="app.close_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
     close_dialog = ui.add_dialog("app.close_dialog", {close_title_,close_message_,close_save,close_discard,close_cancel}, close_save, save_, [](bool) {}).value.value();
     close_cancel.bind([this] { return close_dialog.settle(false); });
     close_discard.bind([this] { auto result=close_dialog.settle(true); if (result && close_handler_) close_handler_(); return result; });
     close_save.bind([this] { auto result=close_dialog.settle(true); if (!result) return result; result=save_document(); if (result && close_handler_) close_handler_(); return result; });
-    load_title_ = ui.add_label({.id="app.load_dialog.title",.kind=Kind::label}).value.value();
-    load_message_ = ui.add_label({.id="app.load_dialog.message",.kind=Kind::label}).value.value();
-    load_ok_ = ui.add_button({.id="app.load_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    load_title_ = ui.add_label({.id="app.load_dialog.title"}).value.value();
+    load_message_ = ui.add_label({.id="app.load_dialog.message"}).value.value();
+    load_ok_ = ui.add_button({.id="app.load_dialog.ok",.label=u"確定"}).value.value();
     load_dialog_ = ui.add_dialog("app.load_dialog", {load_title_,load_message_,load_ok_}, load_ok_, save_, [this](bool) { nav.focus(); }).value.value();
     load_ok_.bind([this] { return load_dialog_.settle(true); });
-    error_title_ = ui.add_label({.id="app.error_dialog.title",.kind=Kind::label,.value=u"無法儲存"}).value.value();
-    error_message_ = ui.add_label({.id="app.error_dialog.message",.kind=Kind::label}).value.value();
-    error_ok_ = ui.add_button({.id="app.error_dialog.ok",.kind=Kind::button,.label=u"確定"}).value.value();
+    error_title_ = ui.add_label({.id="app.error_dialog.title",.value=u"無法儲存"}).value.value();
+    error_message_ = ui.add_label({.id="app.error_dialog.message"}).value.value();
+    error_ok_ = ui.add_button({.id="app.error_dialog.ok",.label=u"確定"}).value.value();
     error_dialog_ = ui.add_dialog("app.error_dialog", {error_title_,error_message_,error_ok_}, error_ok_, save_, [](bool) {}).value.value();
     error_ok_.bind([this] { return error_dialog_.settle(true); });
     ui.add_shortcut({.key=Key::enter},items_edit,items_list);
@@ -326,7 +326,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
 }
 Result Demo::refresh_items() {
     auto query = fold_ascii(search_value_);
-    std::vector<RadioOption> visible;
+    std::vector<OptionItem> visible;
     for (const auto& item : items_) if (fold_ascii(item.name).find(query) != std::u16string::npos) visible.push_back({item.id,item.name});
     auto count = visible.size();
     auto old_count = items_count_.describe();
@@ -342,8 +342,8 @@ Result Demo::refresh_items() {
     }
     return items_add.enable(items_.size()<1000);
 }
-void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Result(const NumericChange&, bool join)> change) {
-    slider.connect_immediate([this, &slider, id, change = std::move(change)](const NumericChange& c) {
+void Demo::connect_slider(SliderHandle& slider, const char* id, std::function<Result(const Change<SliderHandle>&, bool join)> change) {
+    slider.connect_immediate([this, &slider, id, change = std::move(change)](const Change<SliderHandle>& c) {
         const bool focused = slider.describe()->focused;
         auto result = change(c, focused && drag_group_ == id); if (!result) return result;
         drag_group_ = focused ? id : "";
@@ -357,7 +357,7 @@ int Demo::focus_radius_start() const {
     return appearance ? appearance->radius() : 6;
 }
 void Demo::refresh_fonts() {
-    std::vector<RadioOption> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
+    std::vector<OptionItem> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
     auto key = ui.presentation().font_family;
     bool found = key.empty();
     for (const auto& family : about_.fonts) {
@@ -365,7 +365,7 @@ void Demo::refresh_fonts() {
         found = found || family.key == key;
     }
     if (!found) options.push_back({{"family:" + lcars::detail::utf8_from_utf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
-    font.set_options(std::move(options));
+    font.set_items(std::move(options));
     auto resolution = about_.resolve_font ? about_.resolve_font(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
     auto status = resolution.requested_available ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
     font_status_.connect_source([status] { return status; });
@@ -536,33 +536,33 @@ std::u16string Demo::save_failed_renderer() {
 }
 layout::Node Demo::page() const {
     using namespace layout;
-    std::vector<Node> content{control(title_,24)};
+    std::vector<Node> content{component(title_,24)};
     if (nav.selected()->id == "general") {
-        content.push_back(control(name)); content.push_back(control(notices)); content.push_back(control(mode)); content.push_back(control(region)); content.push_back(control(volume));
+        content.push_back(component(name)); content.push_back(component(notices)); content.push_back(component(mode)); content.push_back(component(region)); content.push_back(component(volume));
     }
     if (nav.selected()->id == "items") {
-        content.push_back(control(items_search)); content.push_back(control(items_list)); content.push_back(control(items_count_));
-        content.push_back(row({control(items_add),control(items_edit),control(items_delete)},8));
+        content.push_back(component(items_search)); content.push_back(component(items_list)); content.push_back(component(items_count_));
+        content.push_back(row({component(items_add),component(items_edit),component(items_delete)},8));
     }
-    if (nav.selected()->id == "appearance") { content.push_back(control(font)); content.push_back(control(font_status_)); content.push_back(control(text_size)); content.push_back(control(dark)); content.push_back(control(compact)); content.push_back(control(justify_left)); content.push_back(control(accent));
-        content.push_back(control(focus_mode)); content.push_back(control(focus_width)); content.push_back(control(focus_radius_same));
-        if (ui.presentation().focus_ring_radius) content.push_back(control(focus_radius));  // the slider shows once "same as the component" is unchecked
-        content.push_back(control(focus_color)); content.push_back(control(preview_)); content.push_back(control(reset_appearance_)); }
+    if (nav.selected()->id == "appearance") { content.push_back(component(font)); content.push_back(component(font_status_)); content.push_back(component(text_size)); content.push_back(component(dark)); content.push_back(component(compact)); content.push_back(component(justify_left)); content.push_back(component(accent));
+        content.push_back(component(focus_mode)); content.push_back(component(focus_width)); content.push_back(component(focus_radius_same));
+        if (ui.presentation().focus_ring_radius) content.push_back(component(focus_radius));  // the slider shows once "same as the component" is unchecked
+        content.push_back(component(focus_color)); content.push_back(component(preview_)); content.push_back(component(reset_appearance_)); }
     if (nav.selected()->id == "about") {
-        for (auto label : about_labels_) content.push_back(control(label));
+        for (auto label : about_labels_) content.push_back(component(label));
         content.push_back(vertical_text(about_vertical_, 200));
-        content.push_back(control(licenses));
+        content.push_back(component(licenses));
         content.push_back(scroll_text(license_text_, license_scroll, 200));
     }
-    content.push_back(control(status_));
-    content.push_back(row({control(undo_),control(redo_),control(revert_),control(save_)},8));
-    auto background=layout::scroll(row({control(nav),column(std::move(content),12,24)},16));
+    content.push_back(component(status_));
+    content.push_back(row({component(undo_),component(redo_),component(revert_),component(save_)},8));
+    auto background=layout::scroll(row({component(nav),column(std::move(content),12,24)},16));
     return layout::modal(std::move(background), {
-        {item_dialog,column({control(item_title_,24),control(item_name),row({control(item_note_bold),control(item_note_italic),control(item_note_underline),control(item_note_color)},8),control(item_note),row({control(item_cancel_),control(item_ok)},8)},12)},
-        {delete_dialog,column({control(delete_title_,24),control(delete_message_),row({control(delete_cancel_),control(delete_confirm_)},8)},12)},
-        {load_dialog_,column({control(load_title_,24),control(load_message_),control(load_ok_)},12)},
-        {close_dialog,column({control(close_title_,24),control(close_message_),row({control(close_save),control(close_discard),control(close_cancel)},8)},12)},
-        {error_dialog_,column({control(error_title_,24),control(error_message_),control(error_ok_)},12)}
+        {item_dialog,column({component(item_title_,24),component(item_name),row({component(item_note_bold),component(item_note_italic),component(item_note_underline),component(item_note_color)},8),component(item_note),row({component(item_cancel_),component(item_ok)},8)},12)},
+        {delete_dialog,column({component(delete_title_,24),component(delete_message_),row({component(delete_cancel_),component(delete_confirm_)},8)},12)},
+        {load_dialog_,column({component(load_title_,24),component(load_message_),component(load_ok_)},12)},
+        {close_dialog,column({component(close_title_,24),component(close_message_),row({component(close_save),component(close_discard),component(close_cancel)},8)},12)},
+        {error_dialog_,column({component(error_title_,24),component(error_message_),component(error_ok_)},12)}
     });
 }
 }

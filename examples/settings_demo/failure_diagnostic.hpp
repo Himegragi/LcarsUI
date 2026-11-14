@@ -25,7 +25,7 @@ inline lcars::RenderDiagnostic failure_diagnostic(const lcars::RendererFailure& 
     lcars::RenderDiagnostic d;
     d.backend = u"OpenGL";
     d.severity = lcars::DiagnosticSeverity::error;
-    d.category = failure.kind == lcars::RendererFailureKind::device_reset ? lcars::DiagnosticCategory::device_reset : lcars::DiagnosticCategory::other;
+    d.kind = failure.kind == lcars::RendererFailureKind::device_reset ? lcars::DiagnosticKind::device_reset : lcars::DiagnosticKind::other;
     switch (failure.kind) {
     case lcars::RendererFailureKind::frame_error: d.code = "renderer_failed.frame_error"; break;
     case lcars::RendererFailureKind::device_reset: d.code = "renderer_failed.device_reset"; break;

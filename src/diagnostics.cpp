@@ -53,7 +53,7 @@ std::string pack(const RenderDiagnostic& e) {
     for (char16_t c : e.backend) { backend += static_cast<char>(c >> 8); backend += static_cast<char>(c & 255); }
     auto ticks=[](auto t) { return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count(); };
     std::ostringstream s;
-    s << hex(backend) << ' ' << static_cast<int>(e.severity) << ' ' << static_cast<int>(e.category) << ' ' << hex(e.code) << ' ' << e.native_code << ' ' << hex(e.native_message) << ' ' << ticks(e.received_at) << ' ' << (e.source_time ? 1 : 0) << ' ' << (e.source_time ? ticks(*e.source_time) : 0) << ' ' << hex(e.component_id) << ' ' << hex(e.operation_id) << ' ' << hex(e.backend_detail) << ' ' << e.omitted_before;
+    s << hex(backend) << ' ' << static_cast<int>(e.severity) << ' ' << static_cast<int>(e.kind) << ' ' << hex(e.code) << ' ' << e.native_code << ' ' << hex(e.native_message) << ' ' << ticks(e.received_at) << ' ' << (e.source_time ? 1 : 0) << ' ' << (e.source_time ? ticks(*e.source_time) : 0) << ' ' << hex(e.component_id) << ' ' << hex(e.operation_id) << ' ' << hex(e.backend_detail) << ' ' << e.omitted_before;
     return s.str();
 }
 bool unpack(const std::string& line, RenderDiagnostic& e) {
@@ -62,7 +62,7 @@ bool unpack(const std::string& line, RenderDiagnostic& e) {
     std::string backend;
     if (!unhex(b,backend) || backend.size()%2 || !unhex(c,e.code) || !unhex(m,e.native_message) || !unhex(component,e.component_id) || !unhex(operation,e.operation_id) || !unhex(detail,e.backend_detail)) return false;
     for (std::size_t i=0;i<backend.size();i+=2) e.backend += static_cast<char16_t>((static_cast<unsigned char>(backend[i])<<8)|static_cast<unsigned char>(backend[i+1]));
-    e.severity=static_cast<DiagnosticSeverity>(severity); e.category=static_cast<DiagnosticCategory>(category);
+    e.severity=static_cast<DiagnosticSeverity>(severity); e.kind=static_cast<DiagnosticKind>(category);
     e.received_at=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(received)));
     if (has) e.source_time=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(source)));
     e.backend_detail_uninterpreted=!e.backend_detail.empty();

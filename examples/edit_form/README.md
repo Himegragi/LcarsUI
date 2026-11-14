@@ -28,7 +28,7 @@ flowchart LR
 
 V03 starts at 50%. Its 0, 50, 100, -10 and 110 buttons change the application-owned source immediately. The progress bar and percentage clamp the displayed value to 0–100, while the source label keeps the original number visible. Reaching 100% does not imply that a background task succeeded. Reset page restores 50% and its scroll position; other pages are retained.
 
-Applications create a non-focusable `ProgressHandle` with `Ui::add_progress` and connect a read-only `NumericSource`. The source must outlive the connection and deliver change notifications on the UI thread. The handle's semantic value and numeric value report the clamped percentage; the application can read its own source separately. There is no progress write connection, and destroying the UI disconnects the subscription.
+Applications create a non-focusable `ProgressHandle` with `Ui::add_progress` and connect a read-only `Source<int>`. The source must outlive the connection and deliver change notifications on the UI thread. The handle's semantic value and numeric value report the clamped percentage; the application can read its own source separately. There is no progress write connection, and destroying the UI disconnects the subscription.
 
 ## S4: tooltip (#24)
 
@@ -46,13 +46,13 @@ Applications assemble dialog content from typed handles, register its initial an
 
 Region starts at North, with Central and South available. Enter or a click opens the non-editable dropdown; arrows move a candidate without changing the draft. Enter or clicking an option selects the draft, while Escape, Tab and an outside click cancel the candidate. Tab continues to the next component and an outside click still acts on its target. Apply submits the region with the other four drafts. The region fixture clears or restores the options; clearing removes the selection, and restoring requires an explicit new selection. A missing region is reported on the region field, after name in validation focus order. Reset restores North.
 
-Applications create a `DropdownHandle` with stable `OptionValue` identities, connect an `OptionSource`, and choose immediate, confirmed, or group-confirmed writing. `set_options` rejects duplicate or empty identities, clears a draft or candidate whose identity is no longer enabled, and does not revive it when options return. A popup belongs to its source and uses its appearance. The window-level overlay is drawn and hit above normal content and scrollbars; it anchors below the source when possible, otherwise above, and clamps to the window. `layout::stack` places children at one origin with later children above earlier ones.
+Applications create a `DropdownHandle` with stable `OptionValue` identities, connect a `Source<std::optional<OptionValue>>`, and choose immediate, confirmed, or group-confirmed writing. `set_items` rejects duplicate or empty identities, clears a draft or candidate whose identity is no longer enabled, and does not revive it when options return. A popup belongs to its source and uses its appearance. The window-level overlay is drawn and hit above normal content and scrollbars; it anchors below the source when possible, otherwise above, and clamps to the window. `layout::stack` places children at one origin with later children above earlier ones.
 
 ## S2b: volume slider
 
 Volume starts at 40 with range 0-100 and step 5. Drag the track, use arrow keys to move to the next value, or use Home/End for the endpoints. The current value is shown beside the slider. The value is a draft until Apply submits it with the name, notices and mode in one confirmation group; Reset restores 40. When an external source update conflicts with a draft, the slider displays the conflict and its **Use latest volume** action restores the source value.
 
-`SliderHandle` connects an application-owned `NumericSource` to an explicitly immediate, confirmed, or group-confirmed numeric write. The integer slider accepts a minimum below its maximum and a positive step. Programmatic values outside the range return `invalid_value`; in-range values are snapped to the nearest minimum-plus-step value or the maximum, whichever is closest; ties go upward. Thus a non-divisible final interval remains reachable and arrows move between adjacent valid values. Source values must already be valid: an invalid initial source rejects connection, and an invalid notification keeps the last valid source value and shows an error. Source lifetime and UI-thread notification requirements match the other connections.
+`SliderHandle` connects an application-owned `Source<int>` to an explicitly immediate, confirmed, or group-confirmed numeric write. The integer slider accepts a minimum below its maximum and a positive step. Programmatic values outside the range return `invalid_value`; in-range values are snapped to the nearest minimum-plus-step value or the maximum, whichever is closest; ties go upward. Thus a non-divisible final interval remains reachable and arrows move between adjacent valid values. Source values must already be valid: an invalid initial source rejects connection, and an invalid notification keeps the last valid source value and shows an error. Source lifetime and UI-thread notification requirements match the other connections.
 
 ## S2a: checkbox and radio group
 
@@ -89,10 +89,10 @@ The S1-specific descriptions below are historical where they list only the origi
 | --- | --- |
 | 貼上換行 | CRLF 算一個換行，單獨 CR／LF 各算一個，每個換行轉成一個空白；其他控制字元（如 Tab）使整次貼上被拒絕，原文字與歷史不變。 |
 | 歷史粒度 | 一般輸入／刪除每次一筆；一次貼上（含選取取代）、一次剪下、一次 IME 確認各一筆；新編輯清除該欄位的 redo。 |
-| 文字長度上限 | 保留為**公開**的每欄位設定 `Control::max_length`，預設 `lcars::default_max_text_length = 4096` UTF-16 單位。數值沿用 MVP，但現在寫在公開標頭、可由使用端改；超限的整筆編輯被拒絕，不破壞舊文字及歷史。理由：單行欄位需要有界的輸入，S1 不打算為此另訂數值研究。 |
+| 文字長度上限 | 保留為**公開**的每欄位設定 `ComponentConfig::max_length`，預設 `lcars::default_max_text_length = 4096` UTF-16 單位。數值沿用 MVP，但現在寫在公開標頭、可由使用端改；超限的整筆編輯被拒絕，不破壞舊文字及歷史。理由：單行欄位需要有界的輸入，S1 不打算為此另訂數值研究。 |
 | E01 單欄位失焦 | **離焦即提交組字**。依真實微軟注音事件確定：點別的元件或同一欄位，宿主先請 IME 完成組字（`CPS_COMPLETE`），IME 同步送回結果；視窗失去前景時注音自行提交。組字中按 Tab 由 IME 處理（焦點不動、組字保留）；Esc 取消。欄位 Handle 的 `focus()` 在組字中也採同一政策。原型的「離焦取消」不採用。 |
 | E01 close | On WM_CLOSE the host asks the IME to complete preedit using the same policy as focus loss. If the IME does not deliver a result synchronously, the remaining preedit is cancelled. |
-| 文字支援邊界（T01） | 預設單行（`Control::multiline` 建立時可選多行，見根目錄 README「Multi-line text fields」；本表單的欄位都是單行），由左至右。游標與刪除以 Unicode 碼位為單位，不切開 UTF-16 代理對；繪製與命中以 HarfBuzz cluster 為停駐點。字型：Segoe UI 為主，缺字時改用微軟正黑體（逐碼位選字型），兩者都沒有的字形畫成缺字記號。不支援完整 grapheme cluster、RTL、彩色 emoji。 |
+| 文字支援邊界（T01） | 預設單行（`ComponentConfig::multiline` 建立時可選多行，見根目錄 README「Multi-line text fields」；本表單的欄位都是單行），由左至右。游標與刪除以 Unicode 碼位為單位，不切開 UTF-16 代理對；繪製與命中以 HarfBuzz cluster 為停駐點。字型：Segoe UI 為主，缺字時改用微軟正黑體（逐碼位選字型），兩者都沒有的字形畫成缺字記號。不支援完整 grapheme cluster、RTL、彩色 emoji。 |
 | 版面（B01–B03） | 提供本展示頁需要的直排／橫排、依最小欄寬自動決定欄數的格線與巢狀捲動區。清單有固定高度視口；鍵盤目標逐層揭露，滾輪在內層到達邊界時可交給外層。窄窗（640 DIP）時結果區移到表單下方。 |
 
 ## 驗證

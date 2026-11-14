@@ -11,7 +11,7 @@ Result ImmediateSearchConnection::connect(TextHandle field, std::function<Result
         changed_ = std::move(changed); return [this] { changed_ = {}; };
     }});
     if (!source) return source;
-    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const TextChange& change) {
+    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const Change<TextHandle>& change) {
         value_ = change.value; if (changed_) changed_(); return refresh();
     });
     connected_ = bool(write);
@@ -33,29 +33,29 @@ Result ImmediateSearchConnection::reset() {
 Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>()),
       ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
-    handles.title = ui.add_label({.id = prefix + "title", .kind = Kind::label, .value = u"範本清單"}).value.value();
+    handles.title = ui.add_label({.id = prefix + "title", .value = u"範本清單"}).value.value();
     auto title_id = handles.title.describe()->id;
     auto title_text = handles.title.describe()->value;
     handles.title.connect_source([this, title_id, title_text] {
         return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
     });
-    handles.zero = ui.add_button({.id = prefix + "zero", .kind = Kind::button, .label = u"0 筆"}).value.value();
-    handles.one = ui.add_button({.id = prefix + "one", .kind = Kind::button, .label = u"1 筆"}).value.value();
-    handles.twenty = ui.add_button({.id = prefix + "twenty", .kind = Kind::button, .label = u"20 筆"}).value.value();
-    handles.hundred = ui.add_button({.id = prefix + "hundred", .kind = Kind::button, .label = u"100 筆"}).value.value();
-    handles.sort = ui.add_button({.id = prefix + "sort", .kind = Kind::button, .label = u"反轉排序"}).value.value();
-    handles.disable_eight = ui.add_button({.id = prefix + "disable", .kind = Kind::button, .label = u"停用／啟用 T008"}).value.value();
-    handles.reset = ui.add_button({.id = prefix + "reset", .kind = Kind::button, .label = u"重設"}).value.value();
-    handles.search = ui.add_text({.id = prefix + "search", .kind = Kind::text, .label = u"搜尋名稱"}).value.value();
-    handles.list = ui.add_list({.id = prefix + "list", .kind = Kind::list, .label = u"範本"}, {}).value.value();
-    handles.erase = ui.add_button({.id = prefix + "erase", .kind = Kind::button, .label = u"刪除選中項", .enabled = false}).value.value();
-    handles.detail = ui.add_label({.id = prefix + "detail", .kind = Kind::label}).value.value();
+    handles.zero = ui.add_button({.id = prefix + "zero", .label = u"0 筆"}).value.value();
+    handles.one = ui.add_button({.id = prefix + "one", .label = u"1 筆"}).value.value();
+    handles.twenty = ui.add_button({.id = prefix + "twenty", .label = u"20 筆"}).value.value();
+    handles.hundred = ui.add_button({.id = prefix + "hundred", .label = u"100 筆"}).value.value();
+    handles.sort = ui.add_button({.id = prefix + "sort", .label = u"反轉排序"}).value.value();
+    handles.disable_eight = ui.add_button({.id = prefix + "disable", .label = u"停用／啟用 T008"}).value.value();
+    handles.reset = ui.add_button({.id = prefix + "reset", .label = u"重設"}).value.value();
+    handles.search = ui.add_text({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
+    handles.list = ui.add_list({.id = prefix + "list", .label = u"範本"}, {}).value.value();
+    handles.erase = ui.add_button({.id = prefix + "erase", .label = u"刪除選中項", .enabled = false}).value.value();
+    handles.detail = ui.add_label({.id = prefix + "detail"}).value.value();
     search_.connect(handles.search, [this] { return refresh(); });
     handles.list.connect_source({[this] { return selection_; }, [this](auto changed) {
         selection_changed_ = std::move(changed); return [this] { selection_changed_ = {}; };
     }});
-    handles.list.connect_immediate([this](std::optional<OptionValue> value) {
-        selection_ = std::move(value); handles.erase.enable(selection_.has_value());
+    handles.list.connect_immediate([this](const Change<ListHandle>& change) {
+        selection_ = change.value; handles.erase.enable(selection_.has_value());
         if (selection_changed_) selection_changed_(); return Result{};
     });
     auto detail_id = handles.detail.describe()->id;
@@ -100,7 +100,7 @@ Result Page::set_clip_padding(LabelHandle label, std::u16string text) {
 }
 void Page::clear_clip_padding() { clip_padding_id_.clear(); clip_padding_text_.clear(); }
 Result Page::refresh() {
-    std::vector<RadioOption> visible;
+    std::vector<OptionItem> visible;
     for (auto item : items_) {
         if (item.label.find(search_.value()) == std::u16string::npos) continue;
         if (item.value.id == "T008") item.enabled = !disabled_eight_;
@@ -123,11 +123,11 @@ Result Page::sample(int count) {
 }
 layout::Node Page::page() const {
     using namespace lcars::layout;
-    return layout::scroll(column({control(handles.title, 24),
-        row({control(handles.zero), control(handles.one), control(handles.twenty), control(handles.hundred)}, 6),
-        row({control(handles.sort), control(handles.disable_eight), control(handles.reset)}, 6),
-        control(handles.search),
-        grid({layout::scroll(control(handles.list), list_scroll, 220), column({control(handles.detail), control(handles.erase)}, 12)}, 400, 16)
+    return layout::scroll(column({component(handles.title, 24),
+        row({component(handles.zero), component(handles.one), component(handles.twenty), component(handles.hundred)}, 6),
+        row({component(handles.sort), component(handles.disable_eight), component(handles.reset)}, 6),
+        component(handles.search),
+        grid({layout::scroll(component(handles.list), list_scroll, 220), column({component(handles.detail), component(handles.erase)}, 12)}, 400, 16)
     }, 12, 16));
 }
 }

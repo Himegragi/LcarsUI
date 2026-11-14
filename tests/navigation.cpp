@@ -6,7 +6,7 @@ using namespace lcars;
 using test::check;
 void exercise() {
     Ui ui;
-    auto nav = ui.add_navigation_list({.id="nav", .kind=Kind::navigation_list},
+    auto nav = ui.add_navigation_list({.id="nav"},
         {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}, {{"three"}, u"Three", false, {}}}, {"one"});
     check(bool(nav), "navigation list is created");
     auto semantic = ui.semantics().get({"nav"});
@@ -14,7 +14,7 @@ void exercise() {
     check(semantic && semantic->role == Role::list && semantic->selection_required && option && option->role == Role::list_item && option->selected,
           "navigation list exposes list and list-item semantics");
     check(option && std::find(option->verbs.begin(), option->verbs.end(), Verb::select) != option->verbs.end(), "navigation item advertises select");
-    auto field = ui.add_text({.id="field", .kind=Kind::text, .value=u"draft"}).value.value();
+    auto field = ui.add_text({.id="field", .value=u"draft"}).value.value();
     check(bool(nav->add_member({"one"}, field)), "attach member");
     check(nav->selected()->id == "one", "initial page is selected");
     check(bool(ui.semantics().perform({"nav", OptionValue{"two"}}, Verb::select)) && nav->selected()->id == "two", "semantic navigation selects page");
@@ -30,10 +30,10 @@ void exercise() {
     detail::access(ui).key_down({.key=Key::home});
     check(nav->selected()->id == "one", "home selects first page");
     check(nav->enable_page({"one"}, false).status == Status::invalid_value, "cannot disable selected page");
-    check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {}, {"one"}).status == Status::invalid_value, "empty rejected");
-    check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",true,{}},{{"x"},u"Y",true,{}}}, {"x"}).status == Status::invalid_value, "duplicate rejected");
-    check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"x"},u"X",false,{}}}, {"x"}).status == Status::invalid_value, "disabled initial rejected");
-    auto locked_list = ui.add_list({.id="locked", .kind=Kind::list, .read_only=true}, {{{"x"}, u"X", false}}).value.value();
+    check(ui.add_navigation_list({.id="bad"}, {}, {"one"}).status == Status::invalid_value, "empty rejected");
+    check(ui.add_navigation_list({.id="bad"}, {{{"x"},u"X",true,{}},{{"x"},u"Y",true,{}}}, {"x"}).status == Status::invalid_value, "duplicate rejected");
+    check(ui.add_navigation_list({.id="bad"}, {{{"x"},u"X",false,{}}}, {"x"}).status == Status::invalid_value, "disabled initial rejected");
+    auto locked_list = ui.add_list({.id="locked", .read_only=true}, {{{"x"}, u"X", false}}).value.value();
     check(!ui.semantics().get({"locked"})->selection_required, "ordinary list permits no selection");
     check(locked_list.select({"x"}).status == Status::disabled &&
           ui.semantics().perform({"locked", OptionValue{"x"}}, Verb::select).status == Status::disabled,
@@ -51,7 +51,7 @@ void exercise() {
     detail::access(ui).pointer_down("nav", 2);
     detail::access(ui).pointer_up("nav", 2);
     check(detail::access(ui).focused() == "field" && nav->selected()->id == "one", "disabled pointer row does nothing");
-    check(ui.add_navigation_list({.id="bad", .kind=Kind::navigation_list}, {{{"   "},u"X",true,{}}}, {"   "}).status == Status::invalid_value, "blank page identity rejected");
+    check(ui.add_navigation_list({.id="bad"}, {{{"   "},u"X",true,{}}}, {"   "}).status == Status::invalid_value, "blank page identity rejected");
     detail::access(ui).pointer_down("nav", 1);
     detail::access(ui).pointer_up("nav", 1);
     check(nav->selected()->id == "two" && detail::access(ui).focused() == "nav", "enabled pointer row selects and focuses navigation");
@@ -66,8 +66,8 @@ void exercise() {
     check(nav->selected()->id == "one", "up selects preceding page");
     std::u16string value; std::function<void()> notify;
     Ui shortcuts;
-    auto text = shortcuts.add_text({.id="text",.kind=Kind::text}).value.value();
-    auto save = shortcuts.add_button({.id="save",.kind=Kind::button}).value.value();
+    auto text = shortcuts.add_text({.id="text"}).value.value();
+    auto save = shortcuts.add_button({.id="save"}).value.value();
     int saves = 0;
     save.bind([&] { ++saves; return Result{}; });
     check(bool(shortcuts.add_shortcut({.letter=u'S',.ctrl=true}, save)), "register shortcut");
@@ -80,8 +80,8 @@ void exercise() {
     check(shortcuts.add_shortcut({.key=Key::escape}, save).status == Status::invalid_value, "Escape cannot be registered");
     check(shortcuts.add_shortcut({}, save).status == Status::invalid_value, "empty chord cannot be registered");
     check(shortcuts.add_shortcut({.letter=u'S',.ctrl=true}, save).status == Status::invalid_value, "duplicate chord rejected");
-    auto list = shortcuts.add_list({.id="list",.kind=Kind::list}, {}).value.value();
-    auto scoped = shortcuts.add_button({.id="scoped",.kind=Kind::button}).value.value();
+    auto list = shortcuts.add_list({.id="list"}, {}).value.value();
+    auto scoped = shortcuts.add_button({.id="scoped"}).value.value();
     int edits = 0; scoped.bind([&] { ++edits; return Result{}; });
     check(bool(shortcuts.add_shortcut({.key=Key::del}, scoped, list)), "register scoped Delete");
     check(shortcuts.semantics().get({"scoped"})->accelerator_key == u"Delete", "semantic scoped shortcut");
@@ -93,20 +93,20 @@ void exercise() {
     check(detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'}).status == Status::disabled && saves==1, "disabled shortcut target rejected");
     save.enable(true);
     text.connect_source({[&] { return value; }, [&](auto callback) { notify=std::move(callback); return [&] { notify={}; }; }});
-    text.connect_confirmed([](const TextChange&) { return Result{}; });
+    text.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
     check(bool(detail::access(shortcuts).composition_update(u"x",1)), "composition starts");
     detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'});
     check(saves==1, "composition blocks shortcuts");
     detail::access(shortcuts).composition_cancel();
     Ui dialog_ui;
-    auto opener = dialog_ui.add_button({.id="opener",.kind=Kind::button}).value.value();
-    auto backup = dialog_ui.add_button({.id="backup",.kind=Kind::button}).value.value();
-    auto input = dialog_ui.add_text({.id="input",.kind=Kind::text}).value.value();
-    auto cancel = dialog_ui.add_button({.id="cancel",.kind=Kind::button}).value.value();
+    auto opener = dialog_ui.add_button({.id="opener"}).value.value();
+    auto backup = dialog_ui.add_button({.id="backup"}).value.value();
+    auto input = dialog_ui.add_text({.id="input"}).value.value();
+    auto cancel = dialog_ui.add_button({.id="cancel"}).value.value();
     auto text_dialog = dialog_ui.add_dialog("text-dialog", {input,cancel}, input, backup, [](bool) {}).value.value();
     for (int i=0; i<4; ++i) {
         auto id="other"+std::to_string(i);
-        auto button=dialog_ui.add_button({.id=id,.kind=Kind::button}).value.value();
+        auto button=dialog_ui.add_button({.id=id}).value.value();
         check(bool(dialog_ui.add_dialog("dialog"+std::to_string(i), {button}, button, backup, [](bool) {})), "five dialogs register");
     }
     opener.focus();
@@ -117,13 +117,13 @@ void exercise() {
     check(detail::access(dialog_ui).focused()=="input", "Shift-Tab remains in dialog");
     check(bool(opener.remove()), "remove original opener");
     check(bool(text_dialog.settle(false)) && detail::access(dialog_ui).focused()=="backup", "removed opener returns focus to fallback");
-    auto pages = dialog_ui.add_navigation_list({.id="pages",.kind=Kind::navigation_list}, {{{"a"},u"A",true,{}}}, {"a"}).value.value();
+    auto pages = dialog_ui.add_navigation_list({.id="pages"}, {{{"a"},u"A",true,{}}}, {"a"}).value.value();
     check(pages.add_member({"a"},input).status == Status::invalid_value, "dialog member cannot also belong to page");
     Ui reentry;
-    auto source = reentry.add_text({.id="source",.kind=Kind::text}).value.value();
-    auto fallback2 = reentry.add_button({.id="backup",.kind=Kind::button}).value.value();
-    auto a = reentry.add_button({.id="a",.kind=Kind::button}).value.value();
-    auto b = reentry.add_button({.id="b",.kind=Kind::button}).value.value();
+    auto source = reentry.add_text({.id="source"}).value.value();
+    auto fallback2 = reentry.add_button({.id="backup"}).value.value();
+    auto a = reentry.add_button({.id="a"}).value.value();
+    auto b = reentry.add_button({.id="b"}).value.value();
     auto first_dialog = reentry.add_dialog("a-dialog", {a}, a, fallback2, [](bool) {}).value.value();
     auto second_dialog = reentry.add_dialog("b-dialog", {b}, b, fallback2, [](bool) {}).value.value();
     Result nested, hidden_during_transition;
@@ -132,8 +132,8 @@ void exercise() {
     check(bool(first_dialog.open()) && nested.status==Status::busy && !*second_dialog.is_open(), "opening cannot reenter another dialog during blur");
     check(hidden_during_transition.status==Status::hidden, "hidden dialog takes precedence over transition busy");
     Ui rapid_ui;
-    auto rapid_background = rapid_ui.add_button({.id="background",.kind=Kind::button}).value.value();
-    auto rapid_button = rapid_ui.add_button({.id="member",.kind=Kind::button}).value.value();
+    auto rapid_background = rapid_ui.add_button({.id="background"}).value.value();
+    auto rapid_button = rapid_ui.add_button({.id="member"}).value.value();
     auto rapid_dialog = rapid_ui.add_dialog("rapid", {rapid_button}, rapid_button, rapid_background, [](bool) {}).value.value();
     std::vector<bool> visibility_changes;
     auto observer = rapid_ui.semantics().subscribe([&](const SemanticEvent& event) {
@@ -143,11 +143,11 @@ void exercise() {
     rapid_ui.semantics().dispatch_events();
     check(visibility_changes == std::vector<bool>{false, true}, "queued dialog events retain each visibility transition");
     Ui modal_ui;
-    auto first = modal_ui.add_button({.id="first",.kind=Kind::button}).value.value();
-    auto fallback = modal_ui.add_button({.id="fallback",.kind=Kind::button}).value.value();
+    auto first = modal_ui.add_button({.id="first"}).value.value();
+    auto fallback = modal_ui.add_button({.id="fallback"}).value.value();
     auto dialog = modal_ui.add_dialog("dialog", {first}, first, fallback, [](bool) {}).value.value();
-    auto nav2 = modal_ui.add_navigation_list({.id="nav2",.kind=Kind::navigation_list}, {{{"a"},u"A",true,{}},{{"b"},u"B",true,{}}}, {"a"}).value.value();
-    auto second = modal_ui.add_button({.id="second",.kind=Kind::button}).value.value();
+    auto nav2 = modal_ui.add_navigation_list({.id="nav2"}, {{{"a"},u"A",true,{}},{{"b"},u"B",true,{}}}, {"a"}).value.value();
+    auto second = modal_ui.add_button({.id="second"}).value.value();
     auto dialog2 = modal_ui.add_dialog("dialog2", {second}, second, fallback, [](bool) {});
     check(bool(dialog2), "multiple dialogs can be registered");
     auto first_children = modal_ui.semantics().children({"dialog"});
@@ -167,7 +167,7 @@ void exercise() {
           "semantic dialog visibility follows the active dialog");
     check(bool(dialog2->settle(false)) && bool(dialog.open(fallback)), "first dialog can reopen");
     check(nav2.select({"b"}).status == Status::blocked_by_modal && nav2.selected()->id == "a", "modal blocks navigation selection");
-    check(modal_ui.add_navigation_list({.id="nav",.kind=Kind::navigation_list}, {{{"x"},u"X",true,{first}}}, {"x"}).status == Status::invalid_value, "dialog member rejected");
+    check(modal_ui.add_navigation_list({.id="nav"}, {{{"x"},u"X",true,{first}}}, {"x"}).status == Status::invalid_value, "dialog member rejected");
 }
 
 int main() { const test::Case cases[] = {{"navigation", exercise}}; return test::run("navigation", cases); }

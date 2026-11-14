@@ -38,13 +38,13 @@ void DiagnosticQueue::drain() {
 void enqueue_font_diagnostics(DiagnosticQueue& queue,long catalog_error,const FontResolution& resolution) {
     if(catalog_error<0) {
         RenderDiagnostic event; event.backend=u"DirectWrite"; event.code="font.catalog_unavailable";
-        event.severity=DiagnosticSeverity::error; event.category=DiagnosticCategory::resource;
+        event.severity=DiagnosticSeverity::error; event.kind=DiagnosticKind::resource;
         event.native_code=catalog_error; event.native_message="DirectWrite system font catalog unavailable";
         queue.push(std::move(event));
     }
     if(!resolution.requested_available) {
         RenderDiagnostic event; event.backend=u"DirectWrite"; event.code="font.family_unavailable";
-        event.severity=DiagnosticSeverity::warning; event.category=DiagnosticCategory::resource;
+        event.severity=DiagnosticSeverity::warning; event.kind=DiagnosticKind::resource;
         event.native_message="requested="+utf8_from_utf16(resolution.requested)+"; fallback="+utf8_from_utf16(resolution.primary);
         queue.push(std::move(event));
     }

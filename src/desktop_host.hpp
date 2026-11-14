@@ -50,9 +50,9 @@ struct GpuComparison {
 };
 class DesktopHost {
 public:
-    static DesktopCreation create_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions, RendererTestHooks*);
+    static CreateResult create_for_test(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig, RendererTestHooks*);
     DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                const DesktopOptions& options, bool trace = false, bool background = false, RendererTestHooks* hooks = nullptr);
+                const DesktopConfig& options, bool trace = false, bool background = false, RendererTestHooks* hooks = nullptr);
     ~DesktopHost();
     DesktopHost(const DesktopHost&) = delete;
     DesktopHost& operator=(const DesktopHost&) = delete;

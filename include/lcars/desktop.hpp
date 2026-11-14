@@ -18,9 +18,9 @@ struct StartupFailure { StartupFailureKind kind; std::u16string required, actual
 struct RendererCapabilities { std::u16string version, vendor, renderer; bool debug_context = false, debug_messages = false, reset_detection = false; };
 enum class CloseDecision { close, keep_open };
 class Desktop;
-struct DesktopCreation;
+struct CreateResult;
 namespace detail { class DesktopHost; }
-struct DesktopOptions {
+struct DesktopConfig {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
     std::function<void(const RenderDiagnostic&)> on_diagnostic;
@@ -28,12 +28,12 @@ struct DesktopOptions {
     std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;
     std::function<CloseDecision(Desktop&)> on_close_requested;
 };
-struct DesktopCreation;
+struct CreateResult;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
 class Desktop {
 public:
     ~Desktop();
-    static DesktopCreation create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopOptions = {});
+    static CreateResult create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig = {});
     RunResult run();
     Result rebuild_renderer();
     Result close();
@@ -47,7 +47,7 @@ private:
     explicit Desktop(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> impl_;
 };
-struct DesktopCreation { Status status; std::optional<StartupFailure> failure; std::unique_ptr<Desktop> desktop; };
+struct CreateResult { Status status; std::optional<StartupFailure> failure; std::unique_ptr<Desktop> desktop; };
 RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
-                DesktopOptions options = {});
+                DesktopConfig config = {});
 }

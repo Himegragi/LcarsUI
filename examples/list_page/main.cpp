@@ -11,7 +11,7 @@ int wmain() {
 #else
         const auto& appearance = lcars::web_appearance();
 #endif
-        lcars::DesktopOptions options; options.title = u"LcarsUI 範本清單";
+        lcars::DesktopConfig options; options.title = u"LcarsUI 範本清單";
         auto creation = lcars::Desktop::create(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);
         if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }
         return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;

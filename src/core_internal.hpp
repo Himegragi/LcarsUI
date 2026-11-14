@@ -17,8 +17,15 @@ namespace lcars {
 using Id = std::string;
 namespace detail {
 struct TextHit { unsigned offset = 0; bool upstream = false; };
+// A component as the framework keeps it: the application's configuration plus its component type (#96). The public
+// ComponentConfig names no type; Ui::add_x sets it, and a component created as data (the UiState constructor,
+// seed_test_controls) names it here: `{ComponentKind::label, {.id = "intro", .value = u"..."}}`.
+struct Component : ComponentConfig {
+    ComponentKind kind;
+    Component(ComponentKind type, ComponentConfig config) : ComponentConfig(std::move(config)), kind(type) {}
+};
 // Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text and of a field supplied as data).
-bool valid_text_control(const Control& control);
+bool valid_text_control(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
     friend class lcars::SemanticTree;
@@ -56,26 +63,27 @@ public:
         }
         return body();
     }
-    explicit UiState(std::vector<Control> controls);
+    explicit UiState(std::vector<Component> controls);
     ~UiState();
-    TextHandle add_text(Control control);
-    ButtonHandle add_button(Control control);
-    LabelHandle add_label(Control control);
-    CheckboxHandle add_checkbox(Control control);
-    RadioGroupHandle add_radio_group(Control control, std::vector<RadioOption> options);
-    SliderHandle add_slider(Control control, SliderRange range);
-    ProgressHandle add_progress(Control control);
-    DropdownHandle add_dropdown(Control control, std::vector<RadioOption> options);
-    TabsHandle add_tabs(Control control, std::vector<TabPage> pages);
-    NavigationListHandle add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial);
+    // Called only by Ui::add_x (through add_component in core.cpp), which builds `control` with the matching kind (#96).
+    TextHandle add_text(Component control);
+    ButtonHandle add_button(Component control);
+    LabelHandle add_label(Component control);
+    CheckboxHandle add_checkbox(Component control);
+    RadioGroupHandle add_radio_group(Component control, std::vector<OptionItem> options);
+    SliderHandle add_slider(Component control, SliderRange range);
+    ProgressHandle add_progress(Component control);
+    DropdownHandle add_dropdown(Component control, std::vector<OptionItem> options);
+    TabsHandle add_tabs(Component control, std::vector<TabPage> pages);
+    NavigationListHandle add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
     Result enable_page(const Id& id, const OptionValue& page, bool enabled);
     Result on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
     Query<OptionValue> active_page(const Id& id) const;
-    Query<Semantics> handle_describe(std::string_view id) const;
+    Query<ComponentSnapshot> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
-    ListHandle add_list(Control control, std::vector<RadioOption> items);
+    ListHandle add_list(Component control, std::vector<OptionItem> items);
     TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
     void tooltip_time(std::uint64_t now);
     void tooltip_clock(std::function<std::uint64_t()> clock) { tooltip_clock_ = std::move(clock); }
@@ -132,8 +140,8 @@ public:
     std::optional<int> slider_held_x(std::string_view id) const;
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
-    Result connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate);
-    Result connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate);
+    Result connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate);
+    Result connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate);
     bool is_rich(std::string_view id) const;
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
@@ -141,7 +149,7 @@ public:
     bool retired_button(const ComponentHandle& handle) const;
     // What registered component types (src/component_type.cpp) use to act on the state around them.
     // The typed handle of a component of the given handle type; a type's own handle() returns it.
-    template <class Handle> ComponentHandle typed_handle(const Control& control) {
+    template <class Handle> ComponentHandle typed_handle(const Component& control) {
         OperationScope operation(this);
         if constexpr (std::is_same_v<Handle, ButtonHandle>) return Handle(this, button_lifetimes_.at(control.id), control.id);
         else return Handle(this, lifetime_, control.id);
@@ -160,13 +168,11 @@ public:
     // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
     // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
     struct Internals;
-    Result connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit);
-    Result connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit);
+    Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
-    const std::vector<Control>& controls() const { return controls_; }
+    const std::vector<Component>& controls() const { return controls_; }
     // Internal inspection seam for reclamation regressions.
     std::array<std::size_t, 10> storage_counts() const {
         std::size_t members = 0;
@@ -176,13 +182,13 @@ public:
                 tooltips_.size(), button_lifetimes_.size(), confirmation_buttons_.size(),
                 confirmation_members_.size(), pending_removals_.size()};
     }
-    const Control* find(std::string_view id) const;
+    const Component* find(std::string_view id) const;
     bool registerable(std::string_view id);
-    void seed_test_controls(std::vector<Control> controls);
+    void seed_test_controls(std::vector<Component> controls);
     std::map<Id, std::string, std::less<>> overlay_ids_;
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
-    std::optional<Semantics> describe(std::string_view id) const;
+    std::optional<ComponentSnapshot> describe(std::string_view id) const;
     void semantic_frame(const Frame& frame);
     std::string semantic_page(std::string_view id) const;
     bool confirmation_group_contains(std::string_view button, std::string_view field) const {
@@ -212,7 +218,7 @@ public:
     // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
     bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
-    bool draws_focus_indicator(const Semantics& semantics) const;
+    bool draws_focus_indicator(const ComponentSnapshot& semantics) const;
     // A pointer press anywhere in the client area, including empty space and inert components.
     void pointer_pressed();
     // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
@@ -243,8 +249,11 @@ public:
     void on_focus(std::function<void(const Id& from, const Id& to)> callback) { focus_moved_ = std::move(callback); }
     // Native input methods must finalize before core changes the focused editing target.
     void before_focus(std::function<void()> callback) { before_focus_ = std::move(callback); }
-    // A label whose text is read from owner data on demand, so the label never holds a copy.
-    void bind_text(std::string_view id, std::function<std::u16string()> provider);
+    // A label whose text is read from owner data on demand, so the label never holds a copy. With `subscribe`, the
+    // owner's notifications ask for a repaint until the Ui ends or the label is bound again; binding again cancels the
+    // previous subscription once the new one exists (replace_source: a throwing subscribe keeps the old binding).
+    Result bind_text(std::string_view id, std::function<std::u16string()> provider,
+                     decltype(Source<std::u16string>::subscribe) subscribe = {});
     // Focus. Declaration order is the Tab order; labels and unavailable controls are skipped.
     const Id& focused() const { return focus_; }
     Result focus(std::string_view id);
@@ -332,13 +341,13 @@ public:
     void set_read_only(std::string_view id, bool read_only);
     void check(std::string_view id, bool checked);
     // Label owner configuration (vertical writing). A change asks the host for a new frame.
-    static Result writing_support(const Control& control);
+    static Result writing_support(const Component& control);
     void set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits);
     // Owner replaces a field's content: composition, history and display offset start over.
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } hover_clear(); refresh_tooltips(); }
     void replace_rich(std::string_view id, RichText value);  // owner refresh of a rich field: text and spans
-    // Rich text (Control::rich fields; others answer not_supported). Shared by the typed handle, the semantic
+    // Rich text (Component::rich fields; others answer not_supported). Shared by the typed handle, the semantic
     // layer, Ctrl+B/I/U and any menu: they all run these same functions.
     Result set_rich_value(std::string_view id, RichText value);
     Query<RichText> rich_value(std::string_view id) const;
@@ -369,10 +378,10 @@ public:
         std::vector<MenuEntry> entries;
         std::string highlighted;
     };
-    bool has_menu(const Control& control) const;
+    bool has_menu(const Component& control) const;
     bool menu_open() const { return menu_.has_value(); }
     Query<bool> menu_open_query() const;
-    Query<MenuInfo> menu_info() const;
+    Query<MenuSnapshot> menu_info() const;
     Query<ContextMenuHandle> attach_menu(const Id& target, std::vector<MenuItem> items, MenuMode mode);
     std::optional<MenuView> menu_view() const;
     ScrollState* menu_scroll() { return menu_ ? &menu_->scroll : nullptr; }
@@ -390,7 +399,7 @@ public:
     Result menu_key_down(KeyPress key);
     Result menu_text(std::u16string_view text);
     void menu_frame(const Frame& frame);
-    std::optional<Query<SemanticNode>> menu_node(const NodeRef& ref);
+    std::optional<Query<NodeSnapshot>> menu_node(const NodeRef& ref);
     std::optional<std::vector<NodeRef>> menu_children(const NodeRef& parent) const;
 private:
     friend class ::lcars::ContextMenuHandle;
@@ -409,7 +418,9 @@ private:
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
     Result configuration_access(std::string_view id, bool read_only = false) const;
-    Result connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read = {});
+    // A text field's read source: plain, or rich for a field created with Component::rich (#95: one place for both).
+    using TextFieldSource = std::variant<Source<std::u16string>, Source<RichText>>;
+    Result connect_source(const Id& id, TextFieldSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
@@ -417,13 +428,13 @@ private:
     std::vector<PaletteOverride> palette_overrides_;
     const Appearance* bound_appearance_ = nullptr;
     std::thread::id owner_ = std::this_thread::get_id();
-    std::vector<Control> controls_;
+    std::vector<Component> controls_;
     std::map<Id, std::uint64_t, std::less<>> semantic_instances_;
     std::uint64_t next_semantic_instance_ = 0;
     struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     // The data connection of every field that writes back to the application (#94): text field, checkbox, radio group,
     // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, use_latest and
-    // draft keep their names and parameters. Change is the field's public change type (TextChange, BoolChange, ...).
+    // draft keep their names and parameters. Change is the field's public change record (Change<TextHandle>, Change<CheckboxHandle>, ...).
     template <class ChangeType> struct FieldConnection {
         using Change = ChangeType;
         bool connected = false;            // the source has delivered a valid value
@@ -442,7 +453,7 @@ private:
         // Whether the field may join a confirmation group: a source and no write timing yet.
         bool joinable() const { return connected && !has_write_timing(); }
     };
-    struct Field : FieldConnection<TextChange> {
+    struct Field : FieldConnection<Change<TextHandle>> {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
@@ -466,30 +477,29 @@ private:
         WordSegmentation segmentation = WordSegmentation::dictionary;
         // A double or triple click arms a drag that grows by that unit while the selection stays as the click left it.
         struct UnitDrag { enum class Unit { character, word, paragraph } unit = Unit::character; TextSpan origin; Selection last; } drag;
-        TextSource source;
+        TextFieldSource source;                // empty until connected; a rich field's is a Source<RichText>
         std::u16string source_value, origin;
-        bool rich = false;                     // Control::rich
+        bool rich = false;                     // Component::rich
         std::vector<StyleSpan> spans, source_spans, origin_spans;  // committed styles, last source value, last written value
-        std::function<RichText()> rich_read;   // the rich source (the TextSource subscribe half is shared)
         std::optional<TextStyle> typing;       // the temporary typing style, valid while the selection has not moved
         std::uint64_t typing_moves = 0;
         std::vector<NamedColor> colors;
     };
     std::map<Id, Field, std::less<>> edits_;
-    struct BoolField : FieldConnection<BoolChange> {
-        BoolSource source;
+    struct BoolField : FieldConnection<Change<CheckboxHandle>> {
+        Source<bool> source;
         bool value = false, source_value = false, origin = false;
     };
     std::map<Id, BoolField, std::less<>> bools_;
-    struct RadioField : FieldConnection<OptionChange> {
-        OptionSource source;
-        std::vector<RadioOption> options;
+    struct RadioField : FieldConnection<Change<RadioGroupHandle>> {
+        Source<std::optional<OptionValue>> source;
+        std::vector<OptionItem> options;
         std::optional<OptionValue> value, source_value, origin;
     };
     std::map<Id, RadioField, std::less<>> radios_;
-    struct DropdownField : FieldConnection<DropdownChange> {
-        OptionSource source;
-        std::vector<RadioOption> options;
+    struct DropdownField : FieldConnection<Change<DropdownHandle>> {
+        Source<std::optional<OptionValue>> source;
+        std::vector<OptionItem> options;
         std::optional<OptionValue> value, source_value, origin, candidate;
         ScrollState scroll; bool reveal = true;
     };
@@ -503,11 +513,11 @@ private:
     std::map<Id, TabsState, std::less<>> tabs_;
     std::map<Id, std::pair<Id, std::size_t>, std::less<>> page_members_;
     struct ListField {
-        std::vector<RadioOption> items;
-        OptionSource source;
+        std::vector<OptionItem> items;
+        Source<std::optional<OptionValue>> source;
         std::optional<OptionValue> cursor;
         bool writing = false;
-        std::function<Result(std::optional<OptionValue>)> immediate;
+        std::function<Result(const Change<ListHandle>&)> immediate;
         std::function<void()> disconnect;
     };
     std::map<Id, ListField, std::less<>> lists_;
@@ -573,9 +583,9 @@ private:
     bool dialog_member(std::string_view id) const;
     Result select_dropdown(const Id& id, OptionValue value);
     void dropdown_source_changed(const Id& id);
-    struct NumericField : FieldConnection<NumericChange> {
+    struct NumericField : FieldConnection<Change<SliderHandle>> {
         SliderRange range;
-        NumericSource source;
+        Source<int> source;
         bool source_invalid = false;
         std::u16string error_before_source;
         int value, source_value, origin;
@@ -600,7 +610,15 @@ private:
     template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
     template <class Handle> Result confirm_field(const Handle& handle);
     template <class FieldType> Result write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change);
-    struct ProgressField { NumericSource source; std::function<void()> disconnect; };
+    // The connection swap of every connect_source that subscribes to the application's source (ADR 0003). The new
+    // source's subscribe runs first, before anything changes: if it throws, `installed` and `disconnect` keep the old
+    // source and its live subscription and the call fails without stopping the Ui. Only then is the old subscription
+    // cancelled and the new source installed. A notification the subscribe fires before returning sees the old source.
+    template <class Installed, class Subscribe>
+    Result replace_source(Installed& installed, std::function<void()>& disconnect, Installed source, Subscribe&& subscribe);
+    // The first read of a source replace_source installed. The old connection is gone by then, so a throwing read stops the Ui.
+    template <class Read> Result read_installed_source(Read&& read);
+    struct ProgressField { Source<int> source; std::function<void()> disconnect; };
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numeric_source_changed(const Id& id);
     Result select_option(const Id& id, OptionValue value);
@@ -618,12 +636,12 @@ private:
     std::map<std::size_t, std::function<void(const SemanticEvent&)>> semantic_subscribers_;
     std::size_t next_semantic_subscriber_ = 0;
     std::vector<SemanticEvent> semantic_pending_;
-    std::vector<SemanticNode> semantic_before_;
+    std::vector<NodeSnapshot> semantic_before_;
     bool semantic_dispatching_ = false;
     bool semantic_inspecting_ = false;
     std::function<void()> semantic_schedule_;
     std::function<void(const Id&)> reveal_requested_;
-    std::vector<SemanticNode> semantic_snapshot();
+    std::vector<NodeSnapshot> semantic_snapshot();
     void semantic_diff();
     bool committing_removals_ = false;
     void commit_removals();
@@ -654,7 +672,7 @@ private:
     struct ClickRun { Id id; int x = 0, y = 0; std::uint64_t time = 0; unsigned count = 0; } click_run_;
     unsigned count_click(const Id& id, int x, int y);
     Result select_unit(std::string_view id, unsigned offset, Field::UnitDrag::Unit unit, bool arm);
-    Result focusable(const Control& control) const;
+    Result focusable(const Component& control) const;
     Result move_focus(Id next);
     std::vector<std::pair<Id, Id>> pending_focus_;  // focus notifications queued behind the current one
     bool notifying_focus_ = false;
@@ -669,7 +687,7 @@ private:
     bool source_matches(const Field& field) const { return field.session.text == field.source_value && field.spans == field.source_spans; }
     Result finish_edit(std::string_view id, Field& field);
     Result submit_field(std::string_view id, Field& field,
-                        const std::function<Result(const TextChange&)>& write, bool command);
+                        const std::function<Result(const Change<TextHandle>&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);  // the keys a text field takes
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
@@ -687,7 +705,11 @@ private:
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
-    std::map<Id, std::function<std::u16string()>, std::less<>> providers_;
+    // A bound label's read, and the cancellation of its source's subscription (empty for a read function alone). A label
+    // cannot be removed (only ButtonHandle::remove schedules a removal): a subscription ends when its source is replaced
+    // or with ~UiState.
+    struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
+    std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;
 };
 const Placement* find_placement(const Frame& frame, std::string_view id);

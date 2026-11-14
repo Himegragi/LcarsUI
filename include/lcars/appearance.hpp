@@ -18,7 +18,7 @@ inline Rect intersect(Rect a, Rect b) {
     return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
 }
 struct FieldParts { Rect label, surface, editor; bool underline = false; };
-// border: decorative lines and dividers (light). outline: the edge that identifies a control (text field box,
+// border: decorative lines and dividers (light). outline: the edge that identifies a component (text field box,
 // checkbox, radio circle, slider track, scrollbar thumb, ...), >= 3:1 against surface, background and panel.
 struct Palette {
     Color background, panel, surface, text, muted, border, outline, accent, on_accent, selection, error; Color scrim{0,0,0}; unsigned char scrim_alpha = 110;

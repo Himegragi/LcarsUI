@@ -41,33 +41,33 @@ bool valid_text(std::u16string_view text, std::size_t max_length, bool allow_lin
     return true;
 }
 // The value rule for one field: its kind decides whether a line feed is content.
-bool valid_value(const Control& control, std::u16string_view text) { return valid_text(text, control.max_length, control.multiline); }
+bool valid_value(const ComponentConfig& control, std::u16string_view text) { return valid_text(text, control.max_length, control.multiline); }
 // A multi-line box is at least one line tall; the bound only keeps layout arithmetic sane.
 constexpr unsigned max_visible_lines = 1000;
-bool valid_visible_lines(const Control& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
-// What a type says about itself; a Kind no type is registered for says nothing.
-bool supports_text_flow(Kind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
+bool valid_visible_lines(const ComponentConfig& control) { return !control.multiline || (control.visible_lines >= 1 && control.visible_lines <= max_visible_lines); }
+// What a type says about itself; a ComponentKind no type is registered for says nothing.
+bool supports_text_flow(ComponentKind kind) { const auto* type = detail::find_component_type(kind); return type && type->supports_text_flow(); }
 bool valid_text_align(TextAlign align) {
     return align == TextAlign::left || align == TextAlign::center || align == TextAlign::right || align == TextAlign::justify || align == TextAlign::distribute;
 }
 bool valid_justify_method(JustifyMethod method) { return method == JustifyMethod::automatic || method == JustifyMethod::spaces || method == JustifyMethod::per_character; }
 // Distributed alignment (the last line stretched too) is for labels: a field being typed in would respread its only line at every key.
-bool admits_text_align(Kind kind, TextAlign align) {
+bool admits_text_align(ComponentKind kind, TextAlign align) {
     const auto* type = detail::find_component_type(kind);
     return align != TextAlign::distribute || (type && type->admits_distribute());
 }
-bool valid_text_flow(const Control& control) {
+bool valid_text_flow(const detail::Component& control) {
     if (!valid_text_align(control.text_align) || !valid_justify_method(control.justify_method) || !valid_line_spacing(control.line_spacing) || !valid_paragraph_spacing(control.paragraph_spacing)) return false;
     if (!admits_text_align(control.kind, control.text_align)) return false;
     return supports_text_flow(control.kind) || (control.text_align == TextAlign::left && control.justify_method == JustifyMethod::automatic && control.line_spacing == 1.0 && control.paragraph_spacing == 0);
 }
 // A rich field is a multi-line text field; the option exists for no other control.
-bool valid_rich_option(const Control& control) {
+bool valid_rich_option(const detail::Component& control) {
     const auto* type = detail::find_component_type(control.kind);
     return !control.rich || (type && type->supports_rich_text() && control.multiline);
 }
 }
-bool detail::valid_text_control(const Control& control) {
+bool detail::valid_text_control(const Component& control) {
     return valid_value(control, control.value) && valid_visible_lines(control) && valid_rich_option(control);
 }
 bool valid_single_line(std::u16string_view text, std::size_t max_length) { return valid_text(text, max_length, false); }
@@ -100,7 +100,7 @@ std::u16string EditSession::visible() const {
 }
 namespace {
 // A handle query that reads one member of the handle's own description: the description's failure, or the member.
-template <class Value> Query<Value> semantic_property(const Query<Semantics>& semantics, Value Semantics::*member) {
+template <class Value> Query<Value> semantic_property(const Query<ComponentSnapshot>& semantics, Value ComponentSnapshot::*member) {
     if (!semantics) return {semantics.status, semantics.message, std::nullopt};
     return {Status::ok, {}, (*semantics).*member};
 }
@@ -129,6 +129,22 @@ template <class Connection>
 Result detail::UiState::connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate) {
     if (!field.accepts_write(immediate) || !write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
     (immediate ? field.immediate : field.confirmed) = std::move(write);
+    return {};
+}
+template <class Installed, class Subscribe>
+Result detail::UiState::replace_source(Installed& installed, std::function<void()>& disconnect, Installed source, Subscribe&& subscribe) {
+    std::function<void()> subscription;
+    try { subscription = subscribe(std::as_const(source)); } catch (...) { return {Status::failed, u"Subscription failed"}; }
+    auto previous = std::exchange(disconnect, std::move(subscription));
+    installed = std::move(source);
+    if (previous) {
+        // The old subscription may still be live after its cancel threw: nothing guarantees valid state any more.
+        try { previous(); } catch (...) { stopped_ = true; return {Status::failed, u"Unsubscription failed"}; }
+    }
+    return {};
+}
+template <class Read> Result detail::UiState::read_installed_source(Read&& read) {
+    try { read(); } catch (...) { stopped_ = true; return {Status::failed, u"Source read failed"}; }
     return {};
 }
 // The handle's confirm(): hand the draft to the confirmed write; a refusal shows its message on the field and focuses it.
@@ -188,8 +204,8 @@ void detail::UiState::commit_removals() {
         }
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
-        blur_callbacks_.erase(id); providers_.erase(id);
-        std::erase_if(controls_, [&](const Control& control) { return control.id == id; });
+        blur_callbacks_.erase(id);
+        std::erase_if(controls_, [&](const Component& control) { return control.id == id; });
         semantic_instances_.erase(id);
         button_lifetimes_.erase(id);
         retiring_.clear();
@@ -294,7 +310,7 @@ Result detail::UiState::set_palette_overrides(std::vector<PaletteOverride> overr
     if (invalidate_) invalidate_();
     return {};
 }
-detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(controls)) {
+detail::UiState::UiState(std::vector<Component> controls) : controls_(std::move(controls)) {
     OperationScope operation(this);
     std::map<Id, bool> ids;
     for (const auto& control : controls_) {
@@ -310,7 +326,7 @@ detail::UiState::UiState(std::vector<Control> controls) : controls_(std::move(co
         if (!control.target.empty() && (!detail::component_type(control.kind).can_target() || !ids.contains(control.target)))
             throw std::invalid_argument("Only labels may target, and only known controls");
 }
-bool detail::UiState::draws_focus_indicator(const Semantics& semantics) const {
+bool detail::UiState::draws_focus_indicator(const ComponentSnapshot& semantics) const {
     if (presentation_.focus_indicator == FocusIndicatorMode::never) return false;
     return semantics.focused && (focus_indicator_visible() || component_type(semantics.kind).focus_always_visible(semantics));
 }
@@ -324,35 +340,35 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : lists_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : numerics_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
+    for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
-ProgressHandle detail::UiState::add_progress(Control control) {
+ProgressHandle detail::UiState::add_progress(Component control) {
     OperationScope operation(this);
-    if (control.kind != Kind::progress || control.id.empty() || find(control.id))
+    if (control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid progress component");
     Id id = control.id;
     controls_.push_back(std::move(control));
     progresses_.emplace(id, ProgressField{});
     return ProgressHandle(this, lifetime_, std::move(id));
 }
-Result ProgressHandle::connect_source(NumericSource source) const {
+Result ProgressHandle::connect_source(Source<int> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
         auto& field = ui_->progresses_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source);
         auto weak = lifetime_; auto state = ui_;
-        field.disconnect = field.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         if (ui_->invalidate_) ui_->invalidate_();
         return {};
     });
 }
-Query<Semantics> ProgressHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> ProgressHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
-TextHandle detail::UiState::add_text(Control control) {
+TextHandle detail::UiState::add_text(Component control) {
     OperationScope operation(this);
-    if (control.kind != Kind::text || control.id.empty() || find(control.id) || !detail::valid_text_control(control))
+    if (control.id.empty() || find(control.id) || !detail::valid_text_control(control))
         throw std::invalid_argument("Invalid text component");
     Field field;
     field.session.text = control.value; field.rich = control.rich;
@@ -361,9 +377,9 @@ TextHandle detail::UiState::add_text(Control control) {
     edits_.emplace(id, std::move(field));
     return TextHandle(this, lifetime_, std::move(id));
 }
-ButtonHandle detail::UiState::add_button(Control control) {
+ButtonHandle detail::UiState::add_button(Component control) {
     OperationScope operation(this);
-    if (control.kind != Kind::button || control.id.empty() || find(control.id))
+    if (control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid button component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -371,17 +387,17 @@ ButtonHandle detail::UiState::add_button(Control control) {
     button_lifetimes_.emplace(id, token);
     return ButtonHandle(this, token, std::move(id));
 }
-LabelHandle detail::UiState::add_label(Control control) {
+LabelHandle detail::UiState::add_label(Component control) {
     OperationScope operation(this);
-    if (control.kind != Kind::label || control.id.empty() || find(control.id))
+    if (control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid label component");
     Id id = control.id;
     controls_.push_back(std::move(control));
     return LabelHandle(this, lifetime_, std::move(id));
 }
-CheckboxHandle detail::UiState::add_checkbox(Control control) {
+CheckboxHandle detail::UiState::add_checkbox(Component control) {
     OperationScope operation(this);
-    if (control.kind != Kind::checkbox || control.id.empty() || find(control.id))
+    if (control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid checkbox component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -408,34 +424,37 @@ Result CheckboxHandle::enable(bool enabled) const {
         ui_->enable(id_, enabled); return {};
     });
 }
-Result CheckboxHandle::connect_source(BoolSource source) const {
+Result CheckboxHandle::connect_source(Source<bool> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
         auto& field = ui_->bools_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source); field.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); });
-        ui_->bool_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        field.connected = false;
+        return ui_->read_installed_source([&] { ui_->bool_source_changed(id_); });
     });
 }
+// A notification fired inside the first subscribe arrives before any source is installed: nothing to read yet, and the
+// connecting entry reads the new source once it is installed (replace_source). The other *_source_changed do the same.
 void detail::UiState::bool_source_changed(const Id& id) {
     OperationScope operation(this);
     auto& field = bools_.at(id);
+    if (!field.source.read) return;
     bool value = field.source.read();
     bool clean = !field.connected || field.value == field.source_value;
     field.source_value = value; field.connected = true;
     if (clean && !field.submitting) field.value = field.origin = value;
     if (invalidate_) invalidate_();
 }
-Result CheckboxHandle::connect_immediate(std::function<Result(const BoolChange&)> write) const {
+Result CheckboxHandle::connect_immediate(std::function<Result(const Change<CheckboxHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), true);
     });
 }
-Result CheckboxHandle::connect_confirmed(std::function<Result(const BoolChange&)> write) const {
+Result CheckboxHandle::connect_confirmed(std::function<Result(const Change<CheckboxHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->bools_.at(id_), std::move(write), false);
@@ -455,11 +474,11 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = !field.value;
-    BoolChange change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
+    Change<CheckboxHandle> change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
-Query<Semantics> CheckboxHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> CheckboxHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<bool> CheckboxHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<bool> {
@@ -467,9 +486,9 @@ Query<bool> CheckboxHandle::draft() const {
         return {Status::ok, {}, ui_->bools_.at(id_).value};
     });
 }
-RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<RadioOption> options) {
+RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector<OptionItem> options) {
     OperationScope operation(this);
-    if (control.kind != Kind::radio_group || control.id.empty() || find(control.id))
+    if (control.id.empty() || find(control.id))
         throw std::invalid_argument("Invalid radio group");
     std::set<std::string> ids;
     for (const auto& option : options)
@@ -479,26 +498,25 @@ RadioGroupHandle detail::UiState::add_radio_group(Control control, std::vector<R
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
     return RadioGroupHandle(this, lifetime_, std::move(id));
 }
-ListHandle detail::UiState::add_list(Control control, std::vector<RadioOption> items) {
+ListHandle detail::UiState::add_list(Component control, std::vector<OptionItem> items) {
     OperationScope operation(this);
-    if (control.kind != Kind::list || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
+    if (control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid list");
     std::set<std::string> ids;
     for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) throw std::invalid_argument("Invalid list identity");
     auto id = control.id; controls_.push_back(std::move(control));
     ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
     return ListHandle(this, lifetime_, std::move(id));
 }
-Result ListHandle::connect_source(OptionSource source) const {
+Result ListHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-        auto& f = ui_->lists_.at(id_); if (f.disconnect) f.disconnect();
-        f.source = std::move(source); auto weak = lifetime_; auto* state = ui_;
-        f.disconnect = f.source.subscribe([weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); });
-        return {};
+        auto& f = ui_->lists_.at(id_); auto weak = lifetime_; auto* state = ui_;
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        return ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); });
     });
 }
-Result ListHandle::connect_immediate(std::function<Result(std::optional<OptionValue>)> write) const {
+Result ListHandle::connect_immediate(std::function<Result(const Change<ListHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         auto& f = ui_->lists_.at(id_); if (!f.source.read || !write) return {Status::invalid_value, u"A source and write are required"};
@@ -515,9 +533,10 @@ Result ListHandle::select(OptionValue value) const {
         if (ui_->find(id_)->read_only) return {Status::read_only, u"List is read only"};
         if (!f.source.read || !f.immediate) return {Status::invalid_value, u"Connect an immediate write"};
         if (ui_->dispatching_ || f.writing) return {Status::busy, u"Operation is already executing"};
-        if (f.source.read() == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
+        auto origin = f.source.read();
+        if (origin == value) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); return {}; }
         f.writing = true; Result r;
-        try { r = f.immediate(value); }
+        try { r = f.immediate(Change<ListHandle>{*this, value, std::move(origin)}); }
         catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
         f.writing = false;
         if (r) { f.cursor = value; if (ui_->invalidate_) ui_->invalidate_(); auto n = ui_->notify(); if (!n) return n; } return r;
@@ -538,7 +557,7 @@ Result ListHandle::focus(OptionValue value) const {
         return {};
     }, detail::UiState::gone_without_text);
 }
-Result ListHandle::set_items(std::vector<RadioOption> items) const {
+Result ListHandle::set_items(std::vector<OptionItem> items) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         std::set<std::string> ids;
@@ -553,7 +572,7 @@ Result ListHandle::set_items(std::vector<RadioOption> items) const {
         if (selected && !exists(*selected)) {
             if (!f.immediate) return {Status::invalid_value, u"Cannot clear selection without a write connection"};
             f.writing = true; Result result;
-            try { result = f.immediate(std::nullopt); }
+            try { result = f.immediate(Change<ListHandle>{*this, std::nullopt, selected}); }
             catch (...) { f.writing = false; ui_->stopped_ = true; return {Status::failed, u"Modification failed"}; }
             f.writing = false; if (!result) return result;
         }
@@ -577,8 +596,8 @@ Result ListHandle::enable(bool enabled) const {
         if (auto r = ui_->configuration_access(id_); !r) return r; ui_->enable(id_, enabled); return {};
     });
 }
-Query<Semantics> ListHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> ListHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Result RadioGroupHandle::use_latest() const {
     return detail::UiState::operate(*this, [&]() -> Result {
@@ -605,33 +624,34 @@ Result RadioGroupHandle::enable_option(OptionValue value, bool enabled) const {
         it->enabled = enabled; if (ui_->invalidate_) ui_->invalidate_(); return {};
     });
 }
-Result RadioGroupHandle::connect_source(OptionSource source) const {
+Result RadioGroupHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
         auto& field = ui_->radios_.at(id_);
-        if (field.disconnect) field.disconnect();
-        field.source = std::move(source); field.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        field.disconnect = field.source.subscribe([weak, state, id] { if (!weak.expired()) state->option_source_changed(id); });
-        ui_->option_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->option_source_changed(id); };
+        if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        field.connected = false;
+        return ui_->read_installed_source([&] { ui_->option_source_changed(id_); });
     });
 }
 void detail::UiState::option_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& field = radios_.at(id); auto value = field.source.read();
+    auto& field = radios_.at(id); if (!field.source.read) return;
+    auto value = field.source.read();
     bool clean = !field.connected || field.value == field.source_value;
     field.source_value = value; field.connected = true;
     if (clean && !field.submitting) field.value = field.origin = value;
     if (invalidate_) invalidate_();
 }
-Result RadioGroupHandle::connect_immediate(std::function<Result(const OptionChange&)> write) const {
+Result RadioGroupHandle::connect_immediate(std::function<Result(const Change<RadioGroupHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), true);
     });
 }
-Result RadioGroupHandle::connect_confirmed(std::function<Result(const OptionChange&)> write) const {
+Result RadioGroupHandle::connect_confirmed(std::function<Result(const Change<RadioGroupHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->radios_.at(id_), std::move(write), false);
@@ -658,11 +678,11 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     if (field.value == value) return {};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = std::move(value);
-    OptionChange change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
+    Change<RadioGroupHandle> change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
-Query<Semantics> RadioGroupHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> RadioGroupHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -670,9 +690,9 @@ Query<std::optional<OptionValue>> RadioGroupHandle::draft() const {
         return {Status::ok, {}, ui_->radios_.at(id_).value};
     });
 }
-DropdownHandle detail::UiState::add_dropdown(Control control, std::vector<RadioOption> options) {
+DropdownHandle detail::UiState::add_dropdown(Component control, std::vector<OptionItem> options) {
     OperationScope operation(this);
-    if (control.kind != Kind::dropdown || control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
+    if (control.id.empty() || find(control.id)) throw std::invalid_argument("Invalid dropdown");
     std::set<std::string> ids;
     for (const auto& option : options)
         if (option.value.id.empty() || !ids.insert(option.value.id).second) throw std::invalid_argument("Invalid dropdown option");
@@ -718,7 +738,7 @@ Result DropdownHandle::enable(bool enabled) const {
         ui_->enable(id_, enabled); return {};
     });
 }
-Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
+Result DropdownHandle::set_items(std::vector<OptionItem> options) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (ui_->dispatching_) return {Status::busy, u"Operation is already executing"};
@@ -734,20 +754,22 @@ Result DropdownHandle::set_options(std::vector<RadioOption> options) const {
         return ui_->notify();
     });
 }
-Result DropdownHandle::connect_source(OptionSource source) const {
+Result DropdownHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
-        auto& f = ui_->dropdowns_.at(id_); if (f.disconnect) f.disconnect();
-        f.source = std::move(source); f.connected = false;
+        auto& f = ui_->dropdowns_.at(id_);
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); });
-        ui_->dropdown_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); };
+        if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        f.connected = false;
+        return ui_->read_installed_source([&] { ui_->dropdown_source_changed(id_); });
     });
 }
 void detail::UiState::dropdown_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& f = dropdowns_.at(id); auto value = f.source.read();
+    auto& f = dropdowns_.at(id); if (!f.source.read) return;
+    auto value = f.source.read();
     bool clean = !f.connected || f.value == f.source_value;
     f.source_value = value; f.connected = true;
     if (clean && !f.submitting) {
@@ -756,13 +778,13 @@ void detail::UiState::dropdown_source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Result DropdownHandle::connect_immediate(std::function<Result(const DropdownChange&)> write) const {
+Result DropdownHandle::connect_immediate(std::function<Result(const Change<DropdownHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), true);
     });
 }
-Result DropdownHandle::connect_confirmed(std::function<Result(const DropdownChange&)> write) const {
+Result DropdownHandle::connect_confirmed(std::function<Result(const Change<DropdownHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->dropdowns_.at(id_), std::move(write), false);
@@ -800,11 +822,11 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = std::move(value); set_error(id, u"");
     if (invalidate_) invalidate_();
-    DropdownChange change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
+    Change<DropdownHandle> change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
-Query<Semantics> DropdownHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> DropdownHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<std::optional<OptionValue>> DropdownHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::optional<OptionValue>> {
@@ -821,9 +843,9 @@ int snap_slider(SliderRange range, int input) {
     return static_cast<int>(value - lower < upper - value ? lower : upper);
 }
 }
-SliderHandle detail::UiState::add_slider(Control control, SliderRange range) {
+SliderHandle detail::UiState::add_slider(Component control, SliderRange range) {
     OperationScope operation(this);
-    if (control.kind != Kind::slider || control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
+    if (control.id.empty() || find(control.id) || range.minimum >= range.maximum || range.step <= 0)
         throw std::invalid_argument("Invalid slider component or range");
     auto id = control.id;
     controls_.push_back(std::move(control));
@@ -857,23 +879,25 @@ Result SliderHandle::use_latest() const {
         f.value = f.origin = f.source_value; ui_->set_error(id_, u""); return ui_->notify();
     });
 }
-Result SliderHandle::connect_source(NumericSource source) const {
+Result SliderHandle::connect_source(Source<int> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
         auto& f = ui_->numerics_.at(id_);
-        int value = source.read();
+        int value = 0;
+        try { value = source.read(); } catch (...) { return {Status::failed, u"Source read failed"}; }
         if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
-        if (f.disconnect) f.disconnect();
-        f.source = std::move(source); f.connected = false;
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        f.disconnect = f.source.subscribe([weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); });
-        ui_->numeric_source_changed(id_); return {};
+        auto changed = [weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); };
+        if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
+        f.connected = false;
+        return ui_->read_installed_source([&] { ui_->numeric_source_changed(id_); });
     });
 }
 void detail::UiState::numeric_source_changed(const Id& id) {
     OperationScope operation(this);
-    auto& f = numerics_.at(id); int value = f.source.read();
+    auto& f = numerics_.at(id); if (!f.source.read) return;
+    int value = f.source.read();
     if (snap_slider(f.range, value) != value) {
         if (!f.source_invalid) { auto it = errors_.find(id); f.error_before_source = it == errors_.end() ? u"" : it->second; }
         f.source_invalid = true; set_error(id, u"Source value is outside the slider's valid values");
@@ -885,13 +909,13 @@ void detail::UiState::numeric_source_changed(const Id& id) {
     if (clean && !f.submitting) { if (f.value != value) slider_land(id); f.value = f.origin = value; }
     if (invalidate_) invalidate_();
 }
-Result SliderHandle::connect_immediate(std::function<Result(const NumericChange&)> write) const {
+Result SliderHandle::connect_immediate(std::function<Result(const Change<SliderHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), true);
     });
 }
-Result SliderHandle::connect_confirmed(std::function<Result(const NumericChange&)> write) const {
+Result SliderHandle::connect_confirmed(std::function<Result(const Change<SliderHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         return detail::UiState::connect_field_write(ui_->numerics_.at(id_), std::move(write), false);
@@ -915,7 +939,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = value;
     slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
-    NumericChange change{SliderHandle(this, lifetime_, id), f.value, f.origin};
+    Change<SliderHandle> change{SliderHandle(this, lifetime_, id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
 namespace {
@@ -1045,8 +1069,8 @@ Query<bool> detail::UiState::animating() const {
     if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
     return {Status::ok, {}, animation_running()};
 }
-Query<Semantics> SliderHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> SliderHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<int> SliderHandle::draft() const {
     return detail::UiState::operate(*this, [&]() -> Query<int> {
@@ -1072,9 +1096,9 @@ bool detail::UiState::retired_button(const ComponentHandle& handle) const {
     const auto* button = std::get_if<ButtonHandle>(&handle);
     return button && button->ui_ == this && button->lifetime_.expired();
 }
-TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages) {
+TabsHandle detail::UiState::add_tabs(Component control, std::vector<TabPage> pages) {
     OperationScope operation(this);
-    if (control.kind != Kind::tabs || control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
+    if (control.id.empty() || find(control.id) || pages.empty() || !pages.front().enabled)
         throw std::invalid_argument("Invalid tabs component");
     std::set<std::string> values;
     std::set<Id> members;
@@ -1094,9 +1118,9 @@ TabsHandle detail::UiState::add_tabs(Control control, std::vector<TabPage> pages
     bind(id, [this, id] { auto& t = tabs_.at(id); return activate_tab(id, t.pages[t.candidate].value); });
     return TabsHandle(this, lifetime_, std::move(id));
 }
-NavigationListHandle detail::UiState::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
+NavigationListHandle detail::UiState::add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial) {
     OperationScope operation(this);
-    if (control.kind != Kind::navigation_list || control.id.empty() || find(control.id) || pages.empty())
+    if (control.id.empty() || find(control.id) || pages.empty())
         throw std::invalid_argument("Invalid navigation list");
     auto selected = std::find_if(pages.begin(), pages.end(), [&](const auto& p) { return p.value == initial && p.enabled; });
     if (selected == pages.end()) throw std::invalid_argument("Invalid initial page");
@@ -1232,8 +1256,8 @@ bool detail::UiState::hover_admitted(const HoverTarget& target) const {
     if (!target.item) return true;
     auto semantics = describe(target.id);
     if (!semantics) return false;
-    auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *target.item; });
-    return option != semantics->options.end() && option->enabled;
+    auto option = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *target.item; });
+    return option != semantics->items.end() && option->enabled;
 }
 void detail::UiState::hover_set(std::optional<HoverTarget> target) {
     if (hover_ == target) return;
@@ -1256,8 +1280,8 @@ void detail::UiState::hover_from_frame(const Frame& frame, int x, int y) {
         if (auto index = frame.option_at(*hit, x, y)) {
             auto semantics = describe(hit->id);
             // A disabled item hovers nothing: the target keeps the component without the item.
-            if (semantics && *index < semantics->options.size() && semantics->options[*index].enabled)
-                target->item = semantics->options[*index].value;
+            if (semantics && *index < semantics->items.size() && semantics->items[*index].enabled)
+                target->item = semantics->items[*index].value;
         }
         if (!hover_admitted(*target)) target.reset();
     }
@@ -1308,8 +1332,8 @@ Result detail::UiState::simulate_hover(std::string_view id, const std::optional<
     if (item) {
         auto semantics = describe(id);
         if (!semantics) return {Status::not_found, u"Component no longer exists"};
-        auto option = std::find_if(semantics->options.begin(), semantics->options.end(), [&](const auto& o) { return o.value == *item; });
-        if (option == semantics->options.end()) return {Status::not_found, u"Item no longer exists"};
+        auto option = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *item; });
+        if (option == semantics->items.end()) return {Status::not_found, u"Item no longer exists"};
         if (!option->enabled) return {Status::disabled, u"目前無法執行"};
     }
     hover_simulated_ = true;
@@ -1358,7 +1382,7 @@ DialogHandle detail::UiState::add_dialog(std::string id, std::vector<ComponentHa
     dialog.members.assign(unique.begin(), unique.end());
     dialog.initial = *first; dialog.fallback = *backup; dialog.result = std::move(result); dialog.configured = true;
     if (name_id) dialog.name_label = *name_id;
-    for (const auto& member : dialog.members) const_cast<Control*>(find(member))->page = "dialog";
+    for (const auto& member : dialog.members) const_cast<Component*>(find(member))->page = "dialog";
     dialogs_.emplace(id, std::move(dialog));
     return DialogHandle(this, lifetime_, std::move(id));
 }
@@ -1520,8 +1544,8 @@ Result TabsHandle::enable_page(OptionValue page, bool enabled) const {
 Result TabsHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
-Query<Semantics> TabsHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> TabsHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> TabsHandle::active() const {
     return detail::UiState::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
@@ -1541,8 +1565,8 @@ Result NavigationListHandle::enable_page(OptionValue page, bool enabled) const {
 Result NavigationListHandle::on_page_change(std::function<void(OptionValue, OptionValue)> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->on_page_change(id_, std::move(callback)); });
 }
-Query<Semantics> NavigationListHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> NavigationListHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Query<OptionValue> NavigationListHandle::selected() const {
     return detail::UiState::operate(*this, [&]() -> Query<OptionValue> { return ui_->active_page(id_); });
@@ -1551,11 +1575,17 @@ Result LabelHandle::connect_source(std::function<std::u16string()> read) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!read) return {Status::invalid_value, u"A label source requires a reader"};
-        ui_->bind_text(id_, std::move(read));
-        return {};
+        return ui_->bind_text(id_, std::move(read));
     });
 }
-Result detail::UiState::writing_support(const Control& control) {
+Result LabelHandle::connect_source(Source<std::u16string> source) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto result = ui_->configuration_access(id_); !result) return result;
+        if (!source.read || !source.subscribe) return {Status::invalid_value, u"A label source requires read and subscribe"};
+        return ui_->bind_text(id_, std::move(source.read), std::move(source.subscribe));
+    });
+}
+Result detail::UiState::writing_support(const Component& control) {
     if (control.vertical_digits < 0 || control.vertical_digits > max_vertical_digits)
         return {Status::invalid_value, u"The digit limit of vertical writing is 0-3"};
     if (!detail::component_type(control.kind).supports_vertical_writing() && control.writing_mode == WritingMode::vertical)
@@ -1592,7 +1622,7 @@ Query<int> LabelHandle::vertical_digits() const {
 }
 void detail::UiState::set_label_writing(std::string_view id, std::optional<WritingMode> mode, std::optional<int> digits) {
     OperationScope operation(this);
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     bool changed = (mode && *mode != control->writing_mode) || (digits && *digits != control->vertical_digits);
     if (mode) control->writing_mode = *mode;
@@ -1682,7 +1712,7 @@ Result detail::UiState::reset_to_source(const Id& id) {
 Result ButtonHandle::invoke() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->invoke(id_); });
 }
-Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &Semantics::executing); }
+Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &ComponentSnapshot::executing); }
 Result TextHandle::paste(std::u16string_view text) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->paste(id_, text); });
 }
@@ -1708,61 +1738,26 @@ Result detail::UiState::configuration_access(std::string_view id, bool read_only
     if (renderer_failed_ && !read_only) return {Status::renderer_failed, u"Renderer failed"};
     return {};
 }
-Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-                                std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
-    OperationScope operation(this);
-    if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
-        return {Status::invalid_value, u"Invalid confirmation group"};
-    if (auto result = configuration_access(button.id_); !result) return result;
-    if (actions_.contains(button.id_)) return {Status::invalid_value, u"Confirmation button already has an action"};
-    std::set<Id> members;
-    for (const auto& field : fields) {
-        auto it = edits_.find(field.id_);
-        if (field.ui_ != this || field.lifetime_.expired() || it == edits_.end() || !it->second.joinable() || it->second.rich || !members.insert(field.id_).second)
-            return {Status::invalid_value, u"Confirmation fields must be distinct, connected and ungrouped"};
-    }
-    for (const auto& field : fields) edits_.at(field.id_).confirmation_member = true;
-    confirmation_buttons_.insert(button.id_);
-    confirmation_members_[button.id_] = {members.begin(), members.end()};
-    bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
-        std::vector<TextChange> changes;
-        for (const auto& handle : fields) {
-            auto& field = edits_.at(handle.id_);
-            changes.push_back({handle, field.session.text, field.origin});
-            field.submitting = true;
-        }
-        ConfirmationResult outcome;
-        try { outcome = submit(changes); }
-        catch (...) {
-            for (const auto& handle : fields) edits_.at(handle.id_).submitting = false;
-            throw;
-        }
-        for (std::size_t i = 0; i < fields.size(); ++i) {
-            auto& field = edits_.at(fields[i].id_);
-            field.submitting = false;
-            if (outcome.result) {
-                field.origin = changes[i].value;
-                set_error(fields[i].id_, u"");
-            }
-        }
-        if (!outcome.result) {
-            std::optional<std::size_t> first;
-            for (const auto& error : outcome.errors) {
-                auto it = std::find(fields.begin(), fields.end(), error.field);
-                if (it == fields.end()) continue;
-                const auto index = static_cast<std::size_t>(it - fields.begin());
-                set_error(it->id_, error.message);
-                if (!error.message.empty() && (!first || index < *first)) first = index;
-            }
-            if (first) focus_error(fields[*first].id_);
-        }
-        auto notification = notify();
-        return notification ? outcome.result : notification;
-    });
-    return {};
+// A confirmation group member's value and last written value as its change record; a rich text field's carries its styles.
+template <class Handle, class FieldState>
+static FieldChange pending_change(const Handle& handle, const FieldState& f) {
+    if constexpr (std::is_same_v<Handle, TextHandle>) {
+        if (f.rich) return Change<TextHandle, RichText>{handle, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}};
+        return Change<TextHandle>{handle, f.session.text, f.origin};
+    } else return typename FieldState::Change{handle, f.value, f.origin};
 }
-Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
+// After the group's write succeeds: the value its change record handed over becomes the member's origin.
+template <class FieldState>
+static void adopt_written(FieldState& f, const FieldChange& written) {
+    if constexpr (std::is_same_v<typename FieldState::Change, Change<TextHandle>>) {
+        if (const auto* rich = std::get_if<Change<TextHandle, RichText>>(&written)) {
+            f.origin = rich->value.text; f.origin_spans = rich->value.spans; return;
+        }
+    }
+    f.origin = std::get<typename FieldState::Change>(written).value;
+}
+Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
     OperationScope operation(this);
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalid_value, u"Invalid confirmation group"};
@@ -1785,13 +1780,10 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         std::vector<FieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
-            if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                if (f.rich) changes.emplace_back(RichTextChange{h, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}});
-                else changes.emplace_back(TextChange{h, f.session.text, f.origin});
-            } else changes.emplace_back(typename std::decay_t<decltype(f)>::Change{h, f.value, f.origin});
+            changes.push_back(pending_change(h, f));
             f.submitting = true;
         }, member);
-        MixedConfirmationResult outcome;
+        ConfirmationResult outcome;
         try { outcome = submit(changes); }
         catch (...) {
             for (const auto& member : fields) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).submitting = false; }, member);
@@ -1800,13 +1792,7 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
         for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             f.submitting = false;
-            if (outcome.result) {
-                if constexpr (std::is_same_v<std::decay_t<decltype(h)>, TextHandle>) {
-                    if (f.rich) { const auto& rich = std::get<RichTextChange>(changes[i]).value; f.origin = rich.text; f.origin_spans = rich.spans; }
-                    else f.origin = std::get<TextChange>(changes[i]).value;
-                } else f.origin = std::get<typename std::decay_t<decltype(f)>::Change>(changes[i]).value;
-            }
-            if (outcome.result) set_error(h.id_, u"");
+            if (outcome.result) { adopt_written(f, changes[i]); set_error(h.id_, u""); }
         }, fields[i]);
         if (!outcome.result) {
             std::optional<std::size_t> first;
@@ -1824,37 +1810,37 @@ Result detail::UiState::connect_mixed_confirmation(ButtonHandle button, std::vec
     });
     return {};
 }
-Result TextHandle::connect_immediate(std::function<Result(const TextChange&)> write) const {
+Result TextHandle::connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
         return ui_->connect_write(id_, std::move(write), true);
     });
 }
-Result TextHandle::connect_confirmed(std::function<Result(const TextChange&)> write) const {
+Result TextHandle::connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
         return ui_->connect_write(id_, std::move(write), false);
     });
 }
-Result TextHandle::connect_rich_immediate(std::function<Result(const RichTextChange&)> write) const {
+Result TextHandle::connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), true); });
 }
-Result TextHandle::connect_rich_confirmed(std::function<Result(const RichTextChange&)> write) const {
+Result TextHandle::connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), false); });
 }
-// The shared write path hands over plain TextChange; a rich write reads the field's spans at that moment.
-Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const RichTextChange&)> write, bool immediate) {
+// The shared write path hands over a plain Change<TextHandle>; a rich write reads the field's spans at that moment.
+Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
     if (!write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    return connect_write(id, [this, write = std::move(write)](const TextChange& change) {
+    return connect_write(id, [this, write = std::move(write)](const Change<TextHandle>& change) {
         auto& field = edits_.at(change.field.id_);
-        return write(RichTextChange{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
+        return write(Change<TextHandle, RichText>{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
     }, immediate);
 }
-Result detail::UiState::connect_write(const Id& id, std::function<Result(const TextChange&)> write, bool immediate) {
+Result detail::UiState::connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
@@ -1875,52 +1861,48 @@ Result detail::UiState::confirm(const Id& id) {
         return {Status::busy, u"Operation is already executing"};
     return submit_field(id, field, field.confirmed, true);
 }
-Result TextHandle::connect_source(TextSource source) const {
+Result TextHandle::connect_source(Source<std::u16string> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
         return ui_->connect_source(id_, std::move(source));
     });
 }
-Result TextHandle::connect_rich_source(RichTextSource source) const {
+Result TextHandle::connect_rich_source(Source<RichText> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A rich text source requires read and subscribe"};
-        auto read = source.read;
-        // Built before the call: argument order is unspecified, so the lambda must copy `read` before it is moved.
-        TextSource text{[read] { return read().text; }, std::move(source.subscribe)};
-        return ui_->connect_source(id_, std::move(text), std::move(read));
+        return ui_->connect_source(id_, std::move(source));
     });
 }
-Result detail::UiState::connect_source(const Id& id, TextSource source, std::function<RichText()> rich_read) {
+Result detail::UiState::connect_source(const Id& id, TextFieldSource source) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
-    if (!source.read || !source.subscribe) return {Status::invalid_value, u"A text source requires read and subscribe"};
-    if (it->second.disconnect) it->second.disconnect();
-    it->second.source = std::move(source);
-    it->second.rich_read = std::move(rich_read);
-    it->second.connected = false;
+    if (!std::visit([](const auto& s) { return s.read && s.subscribe; }, source))
+        return {Status::invalid_value, u"A text source requires read and subscribe"};
     auto weak = std::weak_ptr<void>(lifetime_);
-    it->second.disconnect = it->second.source.subscribe([weak, this, id] {
-        if (!weak.expired()) source_changed(id);
-    });
-    source_changed(id);
-    return {};
+    auto changed = [weak, this, id] { if (!weak.expired()) source_changed(id); };
+    auto& field = it->second;
+    if (auto r = replace_source(field.source, field.disconnect, std::move(source),
+                                [&](const TextFieldSource& next) { return std::visit([&](const auto& s) { return s.subscribe(changed); }, next); }); !r)
+        return r;
+    field.connected = false;
+    return read_installed_source([&] { source_changed(id); });
 }
 void detail::UiState::source_changed(const Id& id) {
     OperationScope operation(this);
     auto it = edits_.find(id);
-    if (it == edits_.end() || !it->second.source.read) return;
+    if (it == edits_.end() || !std::visit([](const auto& s) { return bool(s.read); }, it->second.source)) return;
     auto& field = it->second;
     RichText latest;
-    if (field.rich_read) {  // a rich source: only a value in normal form (or one that normalizes) is adopted
-        auto read = normalize_rich_text(field.rich_read(), find(id)->max_length);
+    if (const auto* rich = std::get_if<Source<RichText>>(&field.source)) {  // only a value in normal form (or one that normalizes) is adopted
+        auto read = normalize_rich_text(rich->read(), find(id)->max_length);
         if (!read) return;
         latest = std::move(*read);
     } else {
-        latest.text = field.source.read();
+        latest.text = std::get<Source<std::u16string>>(field.source).read();
         if (!valid_value(*find(id), latest.text)) return;
     }
     const bool clean = !field.connected || source_matches(field);
@@ -1934,7 +1916,7 @@ void detail::UiState::source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &Semantics::source_conflict); }
+Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &ComponentSnapshot::source_conflict); }
 Result TextHandle::use_latest() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->use_latest(id_); });
 }
@@ -1986,8 +1968,8 @@ Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
 Query<std::vector<NamedColor>> TextHandle::colors() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::vector<NamedColor>> { return ui_->colors(id_); });
 }
-Query<Semantics> TextHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> TextHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 Result TextHandle::set_visible_lines(unsigned lines) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_visible_lines(id_, lines); });
@@ -2042,7 +2024,7 @@ Result TextHandle::triple_click(unsigned offset) const {
 Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control->multiline) return {Status::not_supported, u"Not a multi-line field"};
     if (lines < 1 || lines > max_visible_lines) return {Status::invalid_value, u"A multi-line field shows at least one line"};
     control->visible_lines = lines;
@@ -2059,7 +2041,7 @@ Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
 Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields align their text"};
     if (!valid_text_align(align)) return {Status::invalid_value, u"Unknown alignment"};
     if (!admits_text_align(control->kind, align)) return {Status::invalid_value, u"Only a label can distribute its text"};
@@ -2071,7 +2053,7 @@ Result detail::UiState::set_text_align(std::string_view id, TextAlign align) {
 Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod method) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields justify their text"};
     if (!valid_justify_method(method)) return {Status::invalid_value, u"Unknown justification method"};
     control->justify_method = method;
@@ -2082,7 +2064,7 @@ Result detail::UiState::set_justify_method(std::string_view id, JustifyMethod me
 Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have line spacing"};
     if (!valid_line_spacing(multiple)) return {Status::invalid_value, u"Line spacing is 1.0 to 3.0 times the line height"};
     control->line_spacing = multiple;
@@ -2093,7 +2075,7 @@ Result detail::UiState::set_line_spacing(std::string_view id, double multiple) {
 Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
     OperationScope operation(this);
     if (auto r = configuration_access(id); !r) return r;
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!supports_text_flow(control->kind)) return {Status::not_supported, u"Only labels and text fields have paragraph spacing"};
     if (!valid_paragraph_spacing(dip)) return {Status::invalid_value, u"Paragraph spacing is 0 to 48 DIP"};
     control->paragraph_spacing = dip;
@@ -2106,35 +2088,35 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
 Result TextHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
-Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
 Result TextHandle::set_justify_method(JustifyMethod method) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
 }
-Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
 Result TextHandle::set_line_spacing(double multiple) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
 }
-Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
 Result TextHandle::set_paragraph_spacing(int dip) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
 }
-Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
+Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
 Result LabelHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
-Query<TextAlign> LabelHandle::text_align() const { return semantic_property(describe(), &Semantics::text_align); }
+Query<TextAlign> LabelHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
 Result LabelHandle::set_justify_method(JustifyMethod method) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
 }
-Query<JustifyMethod> LabelHandle::justify_method() const { return semantic_property(describe(), &Semantics::justify_method); }
+Query<JustifyMethod> LabelHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
 Result LabelHandle::set_line_spacing(double multiple) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
 }
-Query<double> LabelHandle::line_spacing() const { return semantic_property(describe(), &Semantics::line_spacing); }
+Query<double> LabelHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
 Result LabelHandle::set_paragraph_spacing(int dip) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
 }
-Query<int> LabelHandle::paragraph_spacing() const { return semantic_property(describe(), &Semantics::paragraph_spacing); }
+Query<int> LabelHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
 Result detail::UiState::set_scroll_line(std::string_view id, unsigned first) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
@@ -2152,23 +2134,23 @@ Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
     const auto& m = edits_.find(id)->second.multi;
     return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
-Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &Semantics::value); }
-Query<Semantics> ButtonHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &ComponentSnapshot::value); }
+Query<ComponentSnapshot> ButtonHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
-Query<Semantics> LabelHandle::describe() const {
-    return detail::UiState::operate(*this, [&]() -> Query<Semantics> { return ui_->handle_describe(id_); });
+Query<ComponentSnapshot> LabelHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
 // What every component handle's describe() answers once its lifetime has been checked.
-Query<Semantics> detail::UiState::handle_describe(std::string_view id) const {
+Query<ComponentSnapshot> detail::UiState::handle_describe(std::string_view id) const {
     if (auto r = configuration_access(id, true); !r) return {r.status, r.message, std::nullopt};
     return {Status::ok, {}, describe(id)};
 }
-std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
+std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) const {
     const auto* control = find(id);
     if (!control) return std::nullopt;
-    Semantics s;
-    s.id = control->id; s.kind = control->kind; s.target = control->target; s.role = control->role;
+    ComponentSnapshot s;
+    s.id = control->id; s.kind = control->kind; s.target = control->target; s.label_kind = control->label_kind;
     s.enabled = control->enabled; s.read_only = control->read_only;
     if (auto it = visibility_.find(control->id); it != visibility_.end())
         s.visible = it->second && available(id, true).status != Status::hidden;
@@ -2185,8 +2167,8 @@ std::optional<Semantics> detail::UiState::describe(std::string_view id) const {
     for (const auto& other : controls_) {
         if (other.target != id) continue;
         s.labels.push_back(other.id);
-        if (other.role == TextRole::name) s.name = text(other.id);
-        else if (other.role == TextRole::description) s.description = text(other.id);
+        if (other.label_kind == LabelKind::name) s.name = text(other.id);
+        else if (other.label_kind == LabelKind::description) s.description = text(other.id);
     }
     if (auto tip = tooltips_.find(id); tip != tooltips_.end()) {
         if (!s.description.empty()) s.description += u"\n";
@@ -2203,13 +2185,27 @@ std::u16string detail::UiState::text(std::string_view id) const {
     if (auto shown = component_type(control->kind).display_text(*this, *control)) return *shown;
     return control->value;
 }
-void detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider) {
+Result detail::UiState::bind_text(std::string_view id, std::function<std::u16string()> provider,
+                                  decltype(Source<std::u16string>::subscribe) subscribe) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control || !component_type(control->kind).accepts_text_provider() || !provider) throw std::invalid_argument("Text binding requires a label and a provider");
-    providers_.insert_or_assign(control->id, std::move(provider));
+    auto [entry, added] = providers_.try_emplace(control->id);
+    auto& bound = entry->second;
+    if (subscribe) {
+        std::weak_ptr<void> weak = lifetime_; auto* state = this;
+        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        auto result = replace_source(bound.read, bound.disconnect, std::move(provider), [&](const auto&) { return subscribe(changed); });
+        if (added && !bound.read) providers_.erase(entry);  // a first binding whose subscribe threw leaves the label unbound
+        return result;
+    }
+    bound.read = std::move(provider);
+    if (auto disconnect = std::exchange(bound.disconnect, {})) {
+        try { disconnect(); } catch (...) { stopped_ = true; return {Status::failed, u"Unsubscription failed"}; }
+    }
+    return {};
 }
-const Control* detail::UiState::find(std::string_view id) const {
+const detail::Component* detail::UiState::find(std::string_view id) const {
     auto it = std::find_if(controls_.begin(), controls_.end(), [&](const auto& control) { return control.id == id; });
     return it == controls_.end() ? nullptr : &*it;
 }
@@ -2235,8 +2231,8 @@ Result detail::UiState::available_option(std::string_view id, const OptionValue&
     if (result.status == Status::blocked_by_modal) {
         auto snapshot = describe(id);
         if (snapshot) {
-            auto option = std::find_if(snapshot->options.begin(), snapshot->options.end(), [&](const auto& o) { return o.value == value; });
-            if (option != snapshot->options.end() && !option->enabled) return {Status::disabled, {}};
+            auto option = std::find_if(snapshot->items.begin(), snapshot->items.end(), [&](const auto& o) { return o.value == value; });
+            if (option != snapshot->items.end() && !option->enabled) return {Status::disabled, {}};
         }
     }
     return result;
@@ -2456,8 +2452,8 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     return finish_edit(id, *field);
 }
 Result detail::UiState::submit_field(std::string_view id, Field& field,
-        const std::function<Result(const TextChange&)>& write, bool command) {
-    auto change = TextChange{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+        const std::function<Result(const Change<TextHandle>&)>& write, bool command) {
+    auto change = Change<TextHandle>{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
     field.submitting = true;
     if (command) invoking_ = true;
     Result result;
@@ -2800,7 +2796,7 @@ void detail::UiState::bind(Id id, Action action) {
     if (!find(id) || !action) throw std::invalid_argument("Action requires a known ID and a callback");
     actions_.insert_or_assign(std::move(id), std::move(action));
 }
-Result detail::UiState::focusable(const Control& control) const {
+Result detail::UiState::focusable(const Component& control) const {
     if (auto result = available(control.id); !result) return result;
     auto scroll = text_scrolls_.find(control.id);
     if (!component_type(control.kind).can_focus() && (scroll == text_scrolls_.end() || scroll->second.maximum <= 0)) return {Status::not_supported, u"標籤不能取得焦點"};
@@ -3174,7 +3170,7 @@ Result detail::UiState::set_error(std::string_view id, std::u16string message) {
 }
 void detail::UiState::enable(std::string_view id, bool enabled) {
     OperationScope operation(this);
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     control->enabled = enabled;
     if (!enabled && menu_ && menu_->target == id) close_menu();
@@ -3184,18 +3180,18 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
 }
 void detail::UiState::set_read_only(std::string_view id, bool read_only) {
     OperationScope operation(this);
-    if (auto* control = const_cast<Control*>(find(id))) control->read_only = read_only;
+    if (auto* control = const_cast<Component*>(find(id))) control->read_only = read_only;
 }
 void detail::UiState::check(std::string_view id, bool checked) {
     OperationScope operation(this);
-    if (auto* control = const_cast<Control*>(find(id))) control->checked = checked;
+    if (auto* control = const_cast<Component*>(find(id))) control->checked = checked;
 }
 void detail::UiState::replace_text(std::string_view id, std::u16string value) {
     replace_rich(id, RichText{std::move(value), {}});
 }
 void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     OperationScope operation(this);
-    auto* control = const_cast<Control*>(find(id));
+    auto* control = const_cast<Component*>(find(id));
     auto it = edits_.find(id);
     if (!control || it == edits_.end() || !valid_value(*control, rich.text)) throw std::invalid_argument("Invalid owner refresh");
     if (composing_ == control->id) composition_cancel();
@@ -3209,11 +3205,11 @@ void detail::UiState::replace_rich(std::string_view id, RichText rich) {
     field.past.clear(); field.future.clear(); field.offset = 0; field.offset_text_size = 0; field.offset_anchor = 0;
     field.multi.first = field.multi.anchor = 0; field.multi.caret = ~0u; field.multi.pending_first.reset();  // show the caret afresh
 }
-Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<Control>{})), semantics_(new SemanticTree(*state_)) {}
+Ui::Ui() : state_(std::make_unique<detail::UiState>(std::vector<detail::Component>{})), semantics_(new SemanticTree(*state_)) {}
 SemanticTree& Ui::semantics() { return *semantics_; }
 Ui::~Ui() = default;
 // Controls supplied as data after construction: registered exactly as the constructor registers them.
-void detail::UiState::seed_test_controls(std::vector<Control> controls) {
+void detail::UiState::seed_test_controls(std::vector<Component> controls) {
     OperationScope operation(this);
     for (auto& control : controls) {
         const auto& type = detail::component_type(control.kind);
@@ -3243,94 +3239,58 @@ Result detail::UiState::creation_access() const {
     return {};
 }
 const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnostics_; }
-Query<TextHandle> Ui::add_text(Control control) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_text(std::move(control))}; }
+// Every Ui::add_x: one component of `kind`, the same checks in the same order, then `create` (the matching
+// UiState::add_x). `extra` is a check of the type's own parameters (the slider's range), made after the shared ones.
+template <class Handle, class Create>
+static Query<Handle> add_component(detail::UiState& state, ComponentKind kind, ComponentConfig config, Create create, Result extra = {}) {
+    detail::Component component(kind, std::move(config));
+    if (auto access = state.creation_access(); !access) return {access.status, access.message, std::nullopt};
+    if (!state.registerable(component.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
+    if (!valid_text_flow(component)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
+    if (auto support = detail::UiState::writing_support(component); !support) return {support.status, support.message, std::nullopt};
+    if (!extra) return {extra.status, extra.message, std::nullopt};
+    try { return {Status::ok, {}, create(std::move(component))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<ButtonHandle> Ui::add_button(Control control) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_button(std::move(control))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<TextHandle> Ui::add_text(ComponentConfig config) {
+    return add_component<TextHandle>(*state_, ComponentKind::text, std::move(config), [&](auto c) { return state_->add_text(std::move(c)); });
 }
-Query<LabelHandle> Ui::add_label(Control control) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_label(std::move(control))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<ButtonHandle> Ui::add_button(ComponentConfig config) {
+    return add_component<ButtonHandle>(*state_, ComponentKind::button, std::move(config), [&](auto c) { return state_->add_button(std::move(c)); });
 }
-Query<CheckboxHandle> Ui::add_checkbox(Control control) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_checkbox(std::move(control))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<LabelHandle> Ui::add_label(ComponentConfig config) {
+    return add_component<LabelHandle>(*state_, ComponentKind::label, std::move(config), [&](auto c) { return state_->add_label(std::move(c)); });
 }
-Query<RadioGroupHandle> Ui::add_radio_group(Control control, std::vector<RadioOption> options) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_radio_group(std::move(control), std::move(options))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<CheckboxHandle> Ui::add_checkbox(ComponentConfig config) {
+    return add_component<CheckboxHandle>(*state_, ComponentKind::checkbox, std::move(config), [&](auto c) { return state_->add_checkbox(std::move(c)); });
 }
-Query<SliderHandle> Ui::add_slider(Control control, SliderRange range) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    if (range.minimum >= range.maximum || range.step <= 0) return {Status::invalid_value, u"Invalid slider range", std::nullopt};
-    try { return {Status::ok, {}, state_->add_slider(std::move(control), range)}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<RadioGroupHandle> Ui::add_radio_group(ComponentConfig config, std::vector<OptionItem> items) {
+    return add_component<RadioGroupHandle>(*state_, ComponentKind::radio_group, std::move(config),
+        [&](auto c) { return state_->add_radio_group(std::move(c), std::move(items)); });
 }
-Query<ProgressHandle> Ui::add_progress(Control control) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_progress(std::move(control))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<SliderHandle> Ui::add_slider(ComponentConfig config, SliderRange range) {
+    Result valid_range = range.minimum >= range.maximum || range.step <= 0 ? Result{Status::invalid_value, u"Invalid slider range"} : Result{};
+    return add_component<SliderHandle>(*state_, ComponentKind::slider, std::move(config),
+        [&](auto c) { return state_->add_slider(std::move(c), range); }, std::move(valid_range));
 }
-Query<TabsHandle> Ui::add_tabs(Control control, std::vector<TabPage> pages) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_tabs(std::move(control), std::move(pages))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<ProgressHandle> Ui::add_progress(ComponentConfig config) {
+    return add_component<ProgressHandle>(*state_, ComponentKind::progress, std::move(config), [&](auto c) { return state_->add_progress(std::move(c)); });
 }
-Query<NavigationListHandle> Ui::add_navigation_list(Control control, std::vector<NavigationPage> pages, OptionValue initial) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_navigation_list(std::move(control), std::move(pages), std::move(initial))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<TabsHandle> Ui::add_tabs(ComponentConfig config, std::vector<TabPage> pages) {
+    return add_component<TabsHandle>(*state_, ComponentKind::tabs, std::move(config),
+        [&](auto c) { return state_->add_tabs(std::move(c), std::move(pages)); });
 }
-Query<DropdownHandle> Ui::add_dropdown(Control control, std::vector<RadioOption> options) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_dropdown(std::move(control), std::move(options))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<NavigationListHandle> Ui::add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial) {
+    return add_component<NavigationListHandle>(*state_, ComponentKind::navigation_list, std::move(config),
+        [&](auto c) { return state_->add_navigation_list(std::move(c), std::move(pages), std::move(initial)); });
 }
-Query<ListHandle> Ui::add_list(Control control, std::vector<RadioOption> items) {
-    if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
-    if (!state_->registerable(control.id)) return {Status::invalid_value, u"Invalid or duplicate ID", std::nullopt};
-    if (!valid_text_flow(control)) return {Status::invalid_value, u"Invalid text alignment or spacing", std::nullopt};
-    if (auto support = detail::UiState::writing_support(control); !support) return {support.status, support.message, std::nullopt};
-    try { return {Status::ok, {}, state_->add_list(std::move(control), std::move(items))}; }
-    catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
+Query<DropdownHandle> Ui::add_dropdown(ComponentConfig config, std::vector<OptionItem> items) {
+    return add_component<DropdownHandle>(*state_, ComponentKind::dropdown, std::move(config),
+        [&](auto c) { return state_->add_dropdown(std::move(c), std::move(items)); });
+}
+Query<ListHandle> Ui::add_list(ComponentConfig config, std::vector<OptionItem> items) {
+    return add_component<ListHandle>(*state_, ComponentKind::list, std::move(config),
+        [&](auto c) { return state_->add_list(std::move(c), std::move(items)); });
 }
 Query<TooltipHandle> Ui::add_tooltip(std::string id, ComponentHandle source, std::u16string text, unsigned delay_ms) {
     if (auto access=state_->creation_access(); !access) return {access.status,access.message,std::nullopt};
@@ -3355,13 +3315,9 @@ Query<DialogHandle> Ui::add_dialog(std::string id, std::vector<ComponentHandle> 
 Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
     return state_->add_shortcut(chord, std::move(target), std::move(scope));
 }
-Result Ui::connect_confirmation(ButtonHandle button, std::vector<TextHandle> fields,
-        std::function<ConfirmationResult(const std::vector<TextChange>&)> submit) {
+Result Ui::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
-}
-Result Ui::connect_mixed_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<MixedConfirmationResult(const std::vector<FieldChange>&)> submit) {
-    return state_->connect_mixed_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
 Result Ui::set_presentation(const PresentationSettings& settings) { return state_->set_presentation(settings); }
@@ -3406,9 +3362,9 @@ void detail::UiState::semantic_frame(const Frame& frame) {
         for (const auto& control : controls_) {
             if (control.target != p.id) continue;
             const std::vector<Line>* lines = nullptr;
-            if (control.role == TextRole::name) lines = &p.label_lines;
-            else if (control.role == TextRole::description) lines = &p.description_lines;
-            else if (control.role == TextRole::error) lines = &p.error_lines;
+            if (control.label_kind == LabelKind::name) lines = &p.label_lines;
+            else if (control.label_kind == LabelKind::description) lines = &p.description_lines;
+            else if (control.label_kind == LabelKind::error) lines = &p.error_lines;
             if (!lines) continue;
             for (const auto& line : *lines) {
                 auto r = intersect(line.bounds, p.clip);
@@ -3450,7 +3406,7 @@ std::string detail::UiState::semantic_page(std::string_view id) const {
     if (it == page_members_.end()) return "shared";
     return tabs_.at(it->second.first).pages[it->second.second].value.id;
 }
-Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
+Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     auto& u = *state_;
     if (std::this_thread::get_id() != u.owner_) return {Status::wrong_thread, {}, {}};
     if (u.stopped_) return {Status::failed, {}, {}};
@@ -3459,7 +3415,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     if (!c) {
         auto overlay = u.overlay_ids_.find(ref.id);
         if (overlay == u.overlay_ids_.end() || ref.item) return {Status::not_found, {}, {}};
-        SemanticNode n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
+        NodeSnapshot n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
         auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
         if (inserted) instance->second = ++u.next_semantic_instance_;
         n.instance = instance->second;
@@ -3478,7 +3434,7 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
-    auto s = *u.describe(ref.id); SemanticNode n; n.ref = ref; n.role = detail::component_type(c->kind).role();
+    auto s = *u.describe(ref.id); NodeSnapshot n; n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
@@ -3492,17 +3448,17 @@ Query<SemanticNode> SemanticTree::get(const NodeRef& ref) const {
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
     n.visible = n.bounds.has_value();
-    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->role == TextRole::name) n.labelled_by.push_back({id}); else if (label && (label->role == TextRole::description || label->role == TextRole::error)) n.described_by.push_back({id}); }
+    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {
-        auto it = std::find_if(s.options.begin(), s.options.end(), [&](const auto& o) { return o.value == *ref.item; });
-        if (it == s.options.end()) return {Status::not_found, {}, {}};
+        auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *ref.item; });
+        if (it == s.items.end()) return {Status::not_found, {}, {}};
         if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
         n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
-        n.bounds.reset(); auto pos = static_cast<size_t>(it - s.options.begin()); auto rects = u.semantic_options_.find(ref.id);
+        n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
     }
@@ -3535,7 +3491,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
             for (const auto& c : u.controls_)
                 if (std::find(members.begin(), members.end(), c.id) != members.end() && !u.removal_pending(c.id)) result.push_back({c.id});
         } else if (!parent.item) {
-            auto s = u.describe(parent.id); if (s) for (const auto& o : s->options) result.push_back({parent.id, o.value});
+            auto s = u.describe(parent.id); if (s) for (const auto& o : s->items) result.push_back({parent.id, o.value});
             if (u.menu_ && u.menu_->target == parent.id) result.push_back({menu_node_id(parent.id)});
         }
     }
@@ -3581,8 +3537,8 @@ Query<std::u16string> SemanticTree::text(std::string_view id) const {
     if (n->role != Role::text) return {Status::not_supported, {}, {}};
     return {Status::ok, {}, n->value};
 }
-std::vector<SemanticNode> detail::UiState::semantic_snapshot() {
-    SemanticTree tree(*this); std::vector<SemanticNode> nodes;
+std::vector<NodeSnapshot> detail::UiState::semantic_snapshot() {
+    SemanticTree tree(*this); std::vector<NodeSnapshot> nodes;
     auto visit = [&](auto&& self, const NodeRef& parent) -> void {
         auto children = tree.children(parent); if (!children) return;
         for (const auto& ref : *children) {
@@ -3600,7 +3556,7 @@ void detail::UiState::semantic_diff() {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
         if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
     };
-    auto find = [](const auto& nodes, const NodeRef& ref) -> const SemanticNode* {
+    auto find = [](const auto& nodes, const NodeRef& ref) -> const NodeSnapshot* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
         return i == nodes.end() ? nullptr : &*i;
     };

@@ -62,7 +62,7 @@ namespace {
 std::function<std::function<void()>(std::function<void()>)> no_updates() {
     return [](std::function<void()>) { return std::function<void()>([] {}); };
 }
-std::vector<RadioOption> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
+std::vector<OptionItem> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
 std::vector<TabPage> two_pages() { return {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", true, {}}}; }
 MenuItem command(std::string id, std::u16string label) { MenuItem item; item.id = std::move(id); item.label = std::move(label); return item; }
 StyleChange bold() { StyleChange change; change.bold = true; return change; }
@@ -87,35 +87,35 @@ struct World {
     ContextMenuHandle menu;
     World() {
         auto accept = [](const auto&) { return Result{}; };
-        text = made(ui->add_text({.id = "text", .kind = Kind::text, .label = u"Text"}), "add_text");
+        text = made(ui->add_text({.id = "text", .label = u"Text"}), "add_text");
         wired(text.connect_source({[] { return std::u16string(u"x"); }, no_updates()}), "text.connect_source");
         wired(text.connect_immediate(accept), "text.connect_immediate");
-        button = made(ui->add_button({.id = "button", .kind = Kind::button, .label = u"Button"}), "add_button");
+        button = made(ui->add_button({.id = "button", .label = u"Button"}), "add_button");
         wired(button.bind([] { return Result{}; }), "button.bind");
-        label = made(ui->add_label({.id = "label", .kind = Kind::label, .value = u"Label"}), "add_label");
-        checkbox = made(ui->add_checkbox({.id = "checkbox", .kind = Kind::checkbox, .label = u"Check"}), "add_checkbox");
+        label = made(ui->add_label({.id = "label", .value = u"Label"}), "add_label");
+        checkbox = made(ui->add_checkbox({.id = "checkbox", .label = u"Check"}), "add_checkbox");
         wired(checkbox.connect_source({[] { return false; }, no_updates()}), "checkbox.connect_source");
         wired(checkbox.connect_immediate(accept), "checkbox.connect_immediate");
-        radio = made(ui->add_radio_group({.id = "radio", .kind = Kind::radio_group, .label = u"Radio"}, two_options()), "add_radio_group");
+        radio = made(ui->add_radio_group({.id = "radio", .label = u"Radio"}, two_options()), "add_radio_group");
         wired(radio.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "radio.connect_source");
         wired(radio.connect_immediate(accept), "radio.connect_immediate");
-        slider = made(ui->add_slider({.id = "slider", .kind = Kind::slider, .label = u"Slider"}, {0, 100, 10}), "add_slider");
+        slider = made(ui->add_slider({.id = "slider", .label = u"Slider"}, {0, 100, 10}), "add_slider");
         wired(slider.connect_source({[] { return 20; }, no_updates()}), "slider.connect_source");
         wired(slider.connect_immediate(accept), "slider.connect_immediate");
-        progress = made(ui->add_progress({.id = "progress", .kind = Kind::progress, .label = u"Progress"}), "add_progress");
+        progress = made(ui->add_progress({.id = "progress", .label = u"Progress"}), "add_progress");
         wired(progress.connect_source({[] { return 20; }, no_updates()}), "progress.connect_source");
-        dropdown = made(ui->add_dropdown({.id = "dropdown", .kind = Kind::dropdown, .label = u"Drop"}, two_options()), "add_dropdown");
+        dropdown = made(ui->add_dropdown({.id = "dropdown", .label = u"Drop"}, two_options()), "add_dropdown");
         wired(dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "dropdown.connect_source");
         wired(dropdown.connect_immediate(accept), "dropdown.connect_immediate");
-        tabs = made(ui->add_tabs({.id = "tabs", .kind = Kind::tabs, .label = u"Tabs"}, two_pages()), "add_tabs");
-        navigation = made(ui->add_navigation_list({.id = "navigation", .kind = Kind::navigation_list, .label = u"Nav"}, two_pages(), {"a"}),
+        tabs = made(ui->add_tabs({.id = "tabs", .label = u"Tabs"}, two_pages()), "add_tabs");
+        navigation = made(ui->add_navigation_list({.id = "navigation", .label = u"Nav"}, two_pages(), {"a"}),
                           "add_navigation_list");
-        list = made(ui->add_list({.id = "list", .kind = Kind::list, .label = u"List"}, two_options()), "add_list");
+        list = made(ui->add_list({.id = "list", .label = u"List"}, two_options()), "add_list");
         wired(list.connect_source({[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, no_updates()}), "list.connect_source");
-        wired(list.connect_immediate([](std::optional<OptionValue>) { return Result{}; }), "list.connect_immediate");
+        wired(list.connect_immediate([](const Change<ListHandle>&) { return Result{}; }), "list.connect_immediate");
         // The dialog has its own member and fallback, so the world's button stays free to be removed.
-        auto inside = made(ui->add_button({.id = "dialog.ok", .kind = Kind::button, .label = u"OK"}), "add_button dialog.ok");
-        auto fallback = made(ui->add_button({.id = "dialog.fallback", .kind = Kind::button, .label = u"Back"}), "add_button dialog.fallback");
+        auto inside = made(ui->add_button({.id = "dialog.ok", .label = u"OK"}), "add_button dialog.ok");
+        auto fallback = made(ui->add_button({.id = "dialog.fallback", .label = u"Back"}), "add_button dialog.fallback");
         dialog = made(ui->add_dialog("dialog", {inside}, inside, fallback, [](bool) {}), "add_dialog");
         tooltip = made(ui->add_tooltip("tooltip", label, u"Tip"), "add_tooltip");
         menu = made(ui->add_context_menu(text, {command("app.one", u"One")}), "add_context_menu");
@@ -155,11 +155,11 @@ std::vector<Op> text_ops(const World& w) {
             LCARS_OP(h, next_word_stop(0)), LCARS_OP(h, previous_word_stop(0)), LCARS_OP(h, select_word(0)), LCARS_OP(h, select_paragraph(0)),
             LCARS_OP(h, double_click(0)), LCARS_OP(h, triple_click(0)),
             LCARS_OP(h, connect_source({[] { return std::u16string(); }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const TextChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const TextChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<TextHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<TextHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_rich_source({[] { return RichText{}; }, no_updates()})),
-            LCARS_OP(h, connect_rich_immediate([](const RichTextChange&) { return Result{}; })),
-            LCARS_OP(h, connect_rich_confirmed([](const RichTextChange&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_immediate([](const Change<TextHandle, RichText>&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; })),
             LCARS_OP(h, set_rich_value(RichText{u"r", {}})), LCARS_OP(h, rich_value()), LCARS_OP(h, set_style(0, 1, bold())),
             LCARS_OP(h, toggle_style(StyleAttribute::bold)), LCARS_OP(h, apply_style(bold())),
             LCARS_OP(h, typing_style()), LCARS_OP(h, set_typing_style(TextStyle{})), LCARS_OP(h, set_colors({})), LCARS_OP(h, colors()),
@@ -183,8 +183,8 @@ std::vector<Op> checkbox_ops(const World& w) {
     auto h = w.checkbox;
     return {LCARS_OP(h, toggle()), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return true; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const BoolChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const BoolChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<CheckboxHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> radio_ops(const World& w) {
@@ -192,16 +192,16 @@ std::vector<Op> radio_ops(const World& w) {
     return {LCARS_OP(h, select({"b"})), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, enable_option({"b"}, false)),
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const OptionChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const OptionChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> slider_ops(const World& w) {
     auto h = w.slider;
     return {LCARS_OP(h, on_blur([] {})), LCARS_OP(h, set_value(30)), LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return 40; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const NumericChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const NumericChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<SliderHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> progress_ops(const World& w) {
@@ -210,11 +210,11 @@ std::vector<Op> progress_ops(const World& w) {
 }
 std::vector<Op> dropdown_ops(const World& w) {
     auto h = w.dropdown;
-    return {LCARS_OP(h, open()), LCARS_OP(h, cancel()), LCARS_OP(h, select({"b"})), LCARS_OP(h, set_options(two_options())),
+    return {LCARS_OP(h, open()), LCARS_OP(h, cancel()), LCARS_OP(h, select({"b"})), LCARS_OP(h, set_items(two_options())),
             LCARS_OP(h, use_latest()), LCARS_OP(h, focus()), LCARS_OP(h, enable(true)),
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const DropdownChange&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const DropdownChange&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })),
             LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
 }
 std::vector<Op> tabs_ops(const World& w) {
@@ -233,7 +233,7 @@ std::vector<Op> list_ops(const World& w) {
     focus_row.gone = u"";  // this one operation of today answers not_found without text
     return {LCARS_OP(h, select({"b"})), LCARS_OP(h, set_items(two_options())), LCARS_OP(h, focus()), std::move(focus_row),
             LCARS_OP(h, enable(true)), LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](std::optional<OptionValue>) { return Result{}; })), LCARS_OP(h, describe())};
+            LCARS_OP(h, connect_immediate([](const Change<ListHandle>&) { return Result{}; })), LCARS_OP(h, describe())};
 }
 std::vector<Op> dialog_ops(const World& w) {
     auto h = w.dialog;
@@ -381,10 +381,10 @@ void the_same_id_in_another_ui_differs() {
 
 void a_handle_the_framework_hands_back_equals_the_one_from_creation() {
     Ui ui;
-    auto checkbox = ui.add_checkbox({.id = "check", .kind = Kind::checkbox, .label = u"Check"}).value.value();
+    auto checkbox = ui.add_checkbox({.id = "check", .label = u"Check"}).value.value();
     checkbox.connect_source({[] { return false; }, no_updates()});
     std::optional<CheckboxHandle> written;
-    checkbox.connect_immediate([&](const BoolChange& change) { written = change.field; return Result{}; });
+    checkbox.connect_immediate([&](const Change<CheckboxHandle>& change) { written = change.field; return Result{}; });
     check(checkbox.toggle().status == Status::ok && written, "the write ran");
     check(*written == checkbox, "the change names the same checkbox");
     check(ComponentHandle{*written} == ComponentHandle{checkbox}, "and so does a component handle of it");
@@ -394,9 +394,9 @@ void a_handle_the_framework_hands_back_equals_the_one_from_creation() {
 
 void a_recreated_button_is_another_handle() {
     Ui ui;
-    auto old = ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"}).value.value();
+    auto old = ui.add_button({.id = "save", .label = u"Save"}).value.value();
     check(old.remove().status == Status::ok, "the button is removed");
-    auto recreated = ui.add_button({.id = "save", .kind = Kind::button, .label = u"Save"}).value.value();
+    auto recreated = ui.add_button({.id = "save", .label = u"Save"}).value.value();
     check(!(old == recreated) && old != recreated, "the recreated button is not the removed one");
     check(old.invoke().status == Status::not_found, "the old handle still controls nothing");
     check(recreated.focus().status == Status::ok, "the new one controls the new button");
@@ -407,11 +407,11 @@ void a_recreated_button_is_another_handle() {
 // menu handle, as the old handle controls the new attachment today.
 void a_menu_attached_again_is_the_same_handle() {
     Ui ui;
-    auto target = ui.add_button({.id = "target", .kind = Kind::button, .label = u"Target"}).value.value();
+    auto target = ui.add_button({.id = "target", .label = u"Target"}).value.value();
     auto old = ui.add_context_menu(target, {command("app.one", u"One")}).value.value();
     check(target.remove().status == Status::ok, "the target is removed");
     check(old.items().status == Status::not_found, "the old menu is gone with it");
-    auto recreated = ui.add_button({.id = "target", .kind = Kind::button, .label = u"Target"}).value.value();
+    auto recreated = ui.add_button({.id = "target", .label = u"Target"}).value.value();
     auto again = ui.add_context_menu(recreated, {command("app.two", u"Two")}).value.value();
     check(old == again, "the menu attached again to the same id is the same handle");
     auto items = old.items();
@@ -422,10 +422,10 @@ void a_menu_attached_again_is_the_same_handle() {
 // old handle (it answers not_found today), so the two handles do not control the same thing and are not equal.
 void a_tooltip_on_a_recreated_button_is_another_handle() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto source = ui.add_button({.id = "source", .label = u"Source"}).value.value();
     auto old = ui.add_tooltip("tip", source, u"Tip").value.value();
     check(source.remove().status == Status::ok, "the source is removed");
-    auto recreated = ui.add_button({.id = "source", .kind = Kind::button, .label = u"Source"}).value.value();
+    auto recreated = ui.add_button({.id = "source", .label = u"Source"}).value.value();
     auto again = ui.add_tooltip("tip", recreated, u"Tip").value.value();
     auto stale = old.visible();
     check(stale.status == Status::not_found && stale.message == u"UI no longer exists", "the old handle controls nothing");

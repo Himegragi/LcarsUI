@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(LcarsConsumer LANGUAGES CXX)
-find_package(LcarsUI 0.2 REQUIRED COMPONENTS Core AppearanceMaterial OPTIONAL_COMPONENTS Desktop)
+find_package(LcarsUI 0.3 REQUIRED COMPONENTS Core AppearanceMaterial OPTIONAL_COMPONENTS Desktop)
 add_executable(profile_alias main.cpp)
 target_compile_definitions(profile_alias PRIVATE LCARS_PACKAGE_VERSION=u"${LcarsUI_VERSION}")
 target_link_libraries(profile_alias PRIVATE LcarsUI::Core LcarsUI::AppearanceMaterial)
