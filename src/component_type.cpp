@@ -273,6 +273,7 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 }
 class Label final : public ComponentType {
 public:
+    void describe(const UiState&, const Component&, ComponentSnapshot& s) const override { s.name = s.value; }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
         if (c.label_kind == LabelKind::error) {
