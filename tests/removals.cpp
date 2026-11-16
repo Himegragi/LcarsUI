@@ -13,19 +13,23 @@ using namespace lcars;
 using test::check;
 namespace {
 const std::vector<OptionItem> choices{{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}};
-ComponentHandle make(Ui& ui, int kind, std::string id = "removed") {
-    ComponentConfig c{.id = std::move(id), .label = u"Fallback"};
-    switch (kind) {
-    case 0: return ui.addLabel(c).value.value();
-    case 1: return ui.addTextField(c).value.value();
-    case 2: return ui.addCheckbox(c).value.value();
-    case 3: return ui.addRadioGroup(c, choices).value.value();
-    case 4: return ui.addSlider(c, {0, 100, 5}).value.value();
-    case 5: return ui.addProgress(c).value.value();
-    case 6: return ui.addDropdown(c, choices).value.value();
-    case 7: return ui.addList(c, choices).value.value();
-    default: return ui.addButton(c).value.value();
-    }
+struct RemovableKind {
+    ComponentKind kind;
+    ComponentHandle (*create)(Ui&, ComponentConfig);
+};
+const RemovableKind removableKinds[] = {
+    {ComponentKind::label, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addLabel(std::move(c)); }},
+    {ComponentKind::textField, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addTextField(std::move(c)); }},
+    {ComponentKind::checkbox, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addCheckbox(std::move(c)); }},
+    {ComponentKind::radioGroup, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addRadioGroup(std::move(c), choices); }},
+    {ComponentKind::slider, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addSlider(std::move(c), {0, 100, 5}); }},
+    {ComponentKind::progress, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addProgress(std::move(c)); }},
+    {ComponentKind::dropdown, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addDropdown(std::move(c), choices); }},
+    {ComponentKind::list, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addList(std::move(c), choices); }},
+    {ComponentKind::button, [](Ui& ui, ComponentConfig c) -> ComponentHandle { return *ui.addButton(std::move(c)); }},
+};
+ComponentHandle make(Ui& ui, const RemovableKind& kind, std::string id = "removed") {
+    return kind.create(ui, {.id = std::move(id), .label = u"Fallback"});
 }
 Result remove(const ComponentHandle& handle) {
     return std::visit([](const auto& h) -> Result {
@@ -55,8 +59,8 @@ Result connect(const ComponentHandle& handle, bool& changed, int& reads, Subscri
     }, handle);
 }
 void allEightKindsCanBeRemoved() {
-    for (int kind = 0; kind < 9; ++kind) {
-        std::cout << "kind " << kind << '\n';
+    for (const auto& kind : removableKinds) {
+        std::cout << "ComponentKind " << static_cast<int>(kind.kind) << '\n';
         bool changed = false;
         int reads = 0, cancellations = 0, invalidations = 0;
         std::function<void()> notification;
@@ -252,7 +256,7 @@ void nameLabelsFallBackAndOrphansReassociate() {
           "The label automatically names a replacement with the same component id");
 }
 void dialogReferencesCannotBeRemoved() {
-    for (int kind = 0; kind < 9; ++kind) {
+    for (const auto& kind : removableKinds) {
         Ui ui;
         auto member = make(ui, kind);
         auto initial = ui.addTextField({.id = "initial", .label = u"Initial"}).value.value();
