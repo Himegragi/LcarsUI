@@ -26,7 +26,7 @@ ComponentConfig label(std::string id, std::u16string value, TextAlign align = Te
     return {.id = std::move(id), .value = std::move(value), .textAlign = align, .lineSpacing = spacing, .paragraphSpacing = paragraph};
 }
 
-void a_label_aligns_each_line_inside_its_own_width() {
+void aLabelAlignsEachLineInsideItsOwnWidth() {
     struct Case { TextAlign align; int first, second; };
     // "abcd" is 32 px and "ab" 16 px wide in a 200 px label.
     for (const auto& c : {Case{TextAlign::left, 0, 0}, Case{TextAlign::center, 84, 92}, Case{TextAlign::right, 168, 184}}) {
@@ -41,7 +41,7 @@ void a_label_aligns_each_line_inside_its_own_width() {
     }
 }
 
-void line_spacing_multiplies_the_font_line_height_and_centers_the_glyphs() {
+void lineSpacingMultipliesTheFontLineHeightAndCentersTheGlyphs() {
     Ui ui;
     auto handle = *ui.addLabel(label("l", u"ab\ncd", TextAlign::left, 1.5));
     {
@@ -63,7 +63,7 @@ void line_spacing_multiplies_the_font_line_height_and_centers_the_glyphs() {
     check(compact.frame.find(handle)->bounds.h == 126, "Density does not change the line spacing");
 }
 
-void paragraph_spacing_adds_space_only_after_a_line_feed() {
+void paragraphSpacingAddsSpaceOnlyAfterALineFeed() {
     Ui ui;
     // 100 px wide at 16 px text: 12 characters per line, so 20 characters wrap into 12 + 8.
     auto handle = *ui.addLabel(label("l", u"aaaaaaaaaaaaaaaaaaaa\nb", TextAlign::left, 1.0, 8));
@@ -89,7 +89,7 @@ void paragraph_spacing_adds_space_only_after_a_line_feed() {
     check(compact.frame.find(small)->lines[1].bounds.y == 42 + 8, "Density does not change the gap");
 }
 
-void out_of_range_values_are_invalid_and_change_nothing() {
+void outOfRangeValuesAreInvalidAndChangeNothing() {
     Ui ui;
     for (double bad : {0.9, 3.1, -1.0, std::numeric_limits<double>::quiet_NaN()})
         check(ui.addLabel(label("bad", u"x", TextAlign::left, bad)).status == Status::invalidValue, "A label is not created with a bad line spacing");
@@ -101,7 +101,7 @@ void out_of_range_values_are_invalid_and_change_nothing() {
     check(ui.addProgress({.id = "p", .paragraphSpacing = 8}).status == Status::invalidValue, "A progress bar has no paragraph spacing");
     check(bool(ui.addButton({.id = "ok"})), "Defaults are fine everywhere");
 
-    auto label_handle = *ui.addLabel(label("l", u"x"));
+    auto labelHandle = *ui.addLabel(label("l", u"x"));
     auto field = *ui.addTextField({.id = "t"});
     auto exercise = [](auto& h, const char* what) {
         check(*h.textAlign() == TextAlign::left && *h.lineSpacing() == 1.0 && *h.paragraphSpacing() == 0, what);
@@ -115,11 +115,11 @@ void out_of_range_values_are_invalid_and_change_nothing() {
         auto described = h.describe();
         check(described->textAlign == TextAlign::right && described->lineSpacing == 3.0 && described->paragraphSpacing == 48, "describe reports the three properties");
     };
-    exercise(label_handle, "A label starts with the defaults");
+    exercise(labelHandle, "A label starts with the defaults");
     exercise(field, "A text field starts with the defaults");
 }
 
-void a_scrollable_label_steps_one_actual_row() {
+void aScrollableLabelStepsOneActualRow() {
     Ui ui;
     auto handle = *ui.addLabel(label("l", u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10", TextAlign::left, 1.5));
     ScrollState outer, inner;
@@ -128,16 +128,16 @@ void a_scrollable_label_steps_one_actual_row() {
     arrange(page, ui, webAppearance(), measure, 300, 400, 1.f, outer);
     auto& host = detail::access(ui);
     check(bool(host.focus("l")), "The overflowing label takes focus");
-    check(bool(host.key_down({.key = Key::down})) && inner.offset == 36, "Down scrolls by one row: 24 * 1.5");
-    check(bool(host.key_down({.key = Key::down})) && inner.offset == 72, "And again");
-    check(bool(host.key_down({.key = Key::up})) && inner.offset == 36, "Up scrolls back one row");
+    check(bool(host.keyDown({.key = Key::down})) && inner.offset == 36, "Down scrolls by one row: 24 * 1.5");
+    check(bool(host.keyDown({.key = Key::down})) && inner.offset == 72, "And again");
+    check(bool(host.keyDown({.key = Key::up})) && inner.offset == 36, "Up scrolls back one row");
     check(bool(handle.setParagraphSpacing(8)), "Add paragraph spacing");
     arrange(page, ui, webAppearance(), measure, 300, 400, 1.f, outer);
-    check(bool(host.key_down({.key = Key::down})) && inner.offset == 72, "A step is still one row, not a paragraph");
+    check(bool(host.keyDown({.key = Key::down})) && inner.offset == 72, "A step is still one row, not a paragraph");
 }
 
 // A text field, connected so it accepts edits like an application's would.
-TextFieldHandle field_of(Ui& ui, ComponentConfig control) {
+TextFieldHandle fieldOf(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.addTextField(std::move(control));
     check(bool(field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
@@ -150,12 +150,12 @@ ComponentConfig single(std::string id, std::u16string value, TextAlign align = T
 
 // The web appearance puts the editor 12 px in and 176 px wide in a 200 px field; the caret keeps 2 px
 // of room at the right, so text up to 174 px wide is placed by its alignment and longer text scrolls.
-void a_single_line_field_places_short_text_by_its_alignment() {
+void aSingleLineFieldPlacesShortTextByItsAlignment() {
     struct Case { TextAlign align; int start, end; };
     // "abcd" is 32 px wide: centered it starts (176 - 32) / 2 = 72 px into the editor, right-aligned 174 - 32 = 142.
     for (const auto& c : {Case{TextAlign::left, 12, 44}, Case{TextAlign::center, 84, 116}, Case{TextAlign::right, 154, 186}}) {
         Ui ui;
-        auto handle = field_of(ui, single("t", u"abcd", c.align));
+        auto handle = fieldOf(ui, single("t", u"abcd", c.align));
         Laid laid(ui, handle);
         const auto* p = laid.frame.find(handle);
         check(p->caretX(0) == c.start && p->caretX(4) == c.end, "The text starts and ends where its alignment puts it");
@@ -165,25 +165,25 @@ void a_single_line_field_places_short_text_by_its_alignment() {
     }
 }
 
-void an_empty_centered_field_puts_the_caret_in_the_middle() {
+void anEmptyCenteredFieldPutsTheCaretInTheMiddle() {
     Ui ui;
-    auto handle = field_of(ui, single("t", u"", TextAlign::center));
+    auto handle = fieldOf(ui, single("t", u"", TextAlign::center));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     const int middle = p->bounds.x + p->textField.editor.x + p->textField.editor.w / 2;
     check(p->caretX(0) == middle && middle == 100, "The caret is in the middle of the editor");
     auto& host = detail::access(ui);
-    check(bool(host.focus("t")) && bool(host.text_input(u"ab")), "Type two characters");
+    check(bool(host.focus("t")) && bool(host.textInput(u"ab")), "Type two characters");
     Laid typed(ui, handle);
     check(typed.frame.find(handle)->caretX(2) == 108 && typed.frame.find(handle)->caretX(0) == 92, "Typed text grows around the middle");
 }
 
-void text_wider_than_the_field_scrolls_whatever_the_alignment() {
+void textWiderThanTheFieldScrollsWhateverTheAlignment() {
     const std::u16string wide(32, u'a');  // 256 px, wider than the 174 px room
     std::vector<int> ends;
     for (auto align : {TextAlign::left, TextAlign::center, TextAlign::right}) {
         Ui ui;
-        auto handle = field_of(ui, single("t", wide, align));
+        auto handle = fieldOf(ui, single("t", wide, align));
         auto& host = detail::access(ui);
         check(bool(host.focus("t")), "Focus the field");
         host.select("t", 32, 32);
@@ -195,11 +195,11 @@ void text_wider_than_the_field_scrolls_whatever_the_alignment() {
     check(ends[0] == 186 && ends[1] == ends[0] && ends[2] == ends[0], "The caret at the end sits at the right edge, as for a left-aligned field");
 }
 
-void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
-    Ui plain_ui, spaced_ui;
-    auto plain = field_of(plain_ui, single("t", u"abcd"));
-    auto spaced = field_of(spaced_ui, single("t", u"abcd", TextAlign::left, 1.5));
-    Laid a(plain_ui, plain), b(spaced_ui, spaced);
+void lineSpacingMakesASingleLineFieldTallerAndCentersTheText() {
+    Ui plainUi, spacedUi;
+    auto plain = fieldOf(plainUi, single("t", u"abcd"));
+    auto spaced = fieldOf(spacedUi, single("t", u"abcd", TextAlign::left, 1.5));
+    Laid a(plainUi, plain), b(spacedUi, spaced);
     const auto* pa = a.frame.find(plain); const auto* pb = b.frame.find(spaced);
     check(pa->textField.editor.h == 24 && pb->textField.editor.h == 36, "The editor is one 1.5 row tall");
     check(pb->bounds.h == pa->bounds.h + 12, "The field grows by the spare 12 px");
@@ -213,12 +213,12 @@ ComponentConfig multi(std::string id, std::u16string value, unsigned lines = 3, 
 }
 // A 200 px multi-line field: 176 px editor at x = 12, 14 px scrollbar reserve, so the text area is 162 px
 // wide and a line wraps at 160 px (20 characters of 8 px). Centered text starts (162 - w) / 2 in, right-aligned 160 - w.
-void a_multi_line_field_aligns_every_display_line() {
+void aMultiLineFieldAlignsEveryDisplayLine() {
     struct Case { TextAlign align; int line0, line1, line2; };
     // Lines "ab" (16 px), "cde" (24 px), "" (0 px).
     for (const auto& c : {Case{TextAlign::left, 12, 12, 12}, Case{TextAlign::center, 85, 81, 93}, Case{TextAlign::right, 156, 148, 172}}) {
         Ui ui;
-        auto handle = field_of(ui, multi("t", u"ab\ncde\n", 3, c.align));
+        auto handle = fieldOf(ui, multi("t", u"ab\ncde\n", 3, c.align));
         Laid laid(ui, handle);
         const auto* p = laid.frame.find(handle);
         check(p->multiline && p->view.lines.size() == 3, "Three lines");
@@ -228,9 +228,9 @@ void a_multi_line_field_aligns_every_display_line() {
     }
 }
 
-void pointer_hits_follow_the_drawn_position_of_an_aligned_line() {
+void pointerHitsFollowTheDrawnPositionOfAnAlignedLine() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"ab\ncde\n", 3, TextAlign::right));
+    auto handle = fieldOf(ui, multi("t", u"ab\ncde\n", 3, TextAlign::right));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     const int y0 = p->view.text.y + 5, y1 = y0 + 24;
@@ -240,9 +240,9 @@ void pointer_hits_follow_the_drawn_position_of_an_aligned_line() {
     check(laid.frame.textOffset(handle, 172, y0) == 2 && laid.frame.textOffset(handle, 164, y0) == 1 && laid.frame.textOffset(handle, 150, y0) == 0, "Line 0 starts at x = 156");
 }
 
-void vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines() {
+void verticalKeysKeepTheDrawnHorizontalPositionOfAlignedLines() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"abcdefgh\nab", 3, TextAlign::right));
+    auto handle = fieldOf(ui, multi("t", u"abcdefgh\nab", 3, TextAlign::right));
     auto& host = detail::access(ui);
     Laid first(ui, handle);
     check(bool(host.focus("t")), "Focus the field");
@@ -250,36 +250,36 @@ void vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines() {
     Laid laid(ui, handle);
     const int x = laid.frame.find(handle)->caretX(8);   // line 0 is 64 px wide, drawn from 108: the end is at 172
     check(x == 172, "The caret is at the end of the right-aligned line");
-    check(bool(host.key_down({.key = Key::down})), "Down");
+    check(bool(host.keyDown({.key = Key::down})), "Down");
     Laid below(ui, handle);
     const auto caret = host.edit("t")->selection.caret;
     check(caret == 11 && below.frame.find(handle)->caretX(caret) == 172, "The caret lands under the same drawn x, at the end of the shorter line");
-    check(bool(host.key_down({.key = Key::up})), "Up");
+    check(bool(host.keyDown({.key = Key::up})), "Up");
     Laid above(ui, handle);
     check(host.edit("t")->selection.caret == 8 && above.frame.find(handle)->caretX(8) == 172, "And back");
 }
 
 // Code review 2026-11-12 item 9: the lines cursor keys use are the last arrange's. A property change without a
 // host relayout in between must make them stale, so the next key asks the host to arrange again.
-void vertical_keys_after_a_property_change_do_not_use_the_old_lines() {
+void verticalKeysAfterAPropertyChangeDoNotUseTheOldLines() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"abcdefgh\nab"));
+    auto handle = fieldOf(ui, multi("t", u"abcdefgh\nab"));
     auto& host = detail::access(ui);
     std::optional<Laid> latest;
     int relayouts = 0;
-    host.on_relayout([&] { ++relayouts; latest.emplace(ui, handle); });
+    host.onRelayout([&] { ++relayouts; latest.emplace(ui, handle); });
     Laid first(ui, handle);
     check(bool(host.focus("t")), "Focus the field");
     host.select("t", 8, 8);
     Laid placed(ui, handle);
     check(bool(handle.setTextAlign(TextAlign::right)), "Right-align after the last arrange");
-    check(bool(host.key_down({.key = Key::down})), "Down");
+    check(bool(host.keyDown({.key = Key::down})), "Down");
     check(relayouts == 1, "The changed alignment made the old lines stale: one relayout");
     // Line 0 is 64 px wide and drawn from 108, so the caret at its end is at x = 172. Line 1 "ab" is drawn from 144
     // (16 px wide, flush right): x = 172 is past its end, so the caret lands at the end of "ab". Up then returns under
     // the same drawn x, at the end of the long line.
     check(host.edit("t")->selection.caret == 11, "Down lands at the end of the shorter line");
-    check(bool(host.key_down({.key = Key::up})), "Up");
+    check(bool(host.keyDown({.key = Key::up})), "Up");
     check(host.edit("t")->selection.caret == 8, "And back to the end of the long line");
     // The same for every other property that moves lines: each makes the next key relayout exactly once.
     struct Change { const char* name; std::function<Result()> apply; };
@@ -294,22 +294,22 @@ void vertical_keys_after_a_property_change_do_not_use_the_old_lines() {
         latest.emplace(ui, handle);  // an arrange settles the view, so it is fresh again
         const int before = relayouts;
         check(bool(change.apply()), change.name);
-        host.key_down({.key = Key::down});
+        host.keyDown({.key = Key::down});
         check(relayouts == before + 1, (std::string(change.name) + ": a key after the change relays out").c_str());
     }
 }
 
-void multi_line_height_counts_the_spaced_rows_and_paragraph_gaps() {
+void multiLineHeightCountsTheSpacedRowsAndParagraphGaps() {
     Ui ui;
-    auto plain = field_of(ui, multi("plain", u"a\nb\nc\nd"));
-    auto spaced = field_of(ui, multi("spaced", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
-    auto gapped = field_of(ui, multi("gapped", u"a\nb\nc\nd", 3, TextAlign::left, 1.0, 8));
-    auto both = field_of(ui, multi("both", u"a\nb\nc\nd", 3, TextAlign::left, 1.5, 8));
-    auto editor_h = [&](const TextFieldHandle& h) { Laid laid(ui, h); return laid.frame.find(h)->textField.editor.h; };
-    check(editor_h(plain) == 72, "Three rows of 24");
-    check(editor_h(spaced) == 108, "Three rows of 36");
-    check(editor_h(gapped) == 72 + 2 * 8, "Three rows and two paragraph gaps");
-    check(editor_h(both) == 108 + 2 * 8, "Spaced rows and gaps together");
+    auto plain = fieldOf(ui, multi("plain", u"a\nb\nc\nd"));
+    auto spaced = fieldOf(ui, multi("spaced", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
+    auto gapped = fieldOf(ui, multi("gapped", u"a\nb\nc\nd", 3, TextAlign::left, 1.0, 8));
+    auto both = fieldOf(ui, multi("both", u"a\nb\nc\nd", 3, TextAlign::left, 1.5, 8));
+    auto editorH = [&](const TextFieldHandle& h) { Laid laid(ui, h); return laid.frame.find(h)->textField.editor.h; };
+    check(editorH(plain) == 72, "Three rows of 24");
+    check(editorH(spaced) == 108, "Three rows of 36");
+    check(editorH(gapped) == 72 + 2 * 8, "Three rows and two paragraph gaps");
+    check(editorH(both) == 108 + 2 * 8, "Spaced rows and gaps together");
     Laid laid(ui, both);
     const auto* p = laid.frame.find(both);
     check(p->view.rowHeight == 36 && p->view.lineHeight == 24, "The view keeps the font line and the row apart");
@@ -318,9 +318,9 @@ void multi_line_height_counts_the_spaced_rows_and_paragraph_gaps() {
     check(p->caretRect(2).h == 36, "The caret is as tall as the row");
 }
 
-void soft_wrapped_lines_add_no_paragraph_gap_in_a_field() {
+void softWrappedLinesAddNoParagraphGapInAField() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nb", 3, TextAlign::left, 1.0, 8));
+    auto handle = fieldOf(ui, multi("t", u"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nb", 3, TextAlign::left, 1.0, 8));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     // 40 characters wrap into 20 + 20; the LF then starts "b" after one gap.
@@ -329,9 +329,9 @@ void soft_wrapped_lines_add_no_paragraph_gap_in_a_field() {
     check(p->caretRect(0).y == top && p->caretRect(20).y == top + 24 && p->caretRect(41).y == top + 48 + 8, "The gap is only after the LF");
 }
 
-void a_click_between_rows_belongs_to_the_row_above() {
+void aClickBetweenRowsBelongsToTheRowAbove() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"ab\ncd\nef", 3, TextAlign::left, 1.0, 8));
+    auto handle = fieldOf(ui, multi("t", u"ab\ncd\nef", 3, TextAlign::left, 1.0, 8));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     const int top = p->view.text.y;
@@ -339,20 +339,20 @@ void a_click_between_rows_belongs_to_the_row_above() {
     check(laid.frame.textOffset(handle, 12, top + 24 + 8 + 2) == 3 && laid.frame.textOffset(handle, 12, top + 2 * 32 + 4) == 6, "The next rows");
 }
 
-bool has_verb(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
+bool hasVerb(const NodeSnapshot& node, Verb verb) { return std::find(node.verbs.begin(), node.verbs.end(), verb) != node.verbs.end(); }
 
-void the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles() {
+void theSemanticLayerReadsAndWritesTheThreePropertiesLikeTheHandles() {
     Ui ui;
     auto handle = *ui.addLabel(label("l", u"x", TextAlign::center, 1.4, 8));
-    auto field = field_of(ui, multi("t", u"x", 3, TextAlign::right, 2.0, 16));
+    auto field = fieldOf(ui, multi("t", u"x", 3, TextAlign::right, 2.0, 16));
     auto button = *ui.addButton({.id = "b"});
     auto& tree = ui.semantics();
     auto node = tree.get({"l"});
     check(node && node->textAlign == TextAlign::center && node->lineSpacing == 1.4 && node->paragraphSpacing == 8, "A label reports its properties");
-    check(has_verb(*node, Verb::setTextAlign) && has_verb(*node, Verb::setLineSpacing) && has_verb(*node, Verb::setParagraphSpacing), "A label offers the three verbs");
+    check(hasVerb(*node, Verb::setTextAlign) && hasVerb(*node, Verb::setLineSpacing) && hasVerb(*node, Verb::setParagraphSpacing), "A label offers the three verbs");
     auto text = tree.get({"t"});
-    check(text->textAlign == TextAlign::right && text->lineSpacing == 2.0 && text->paragraphSpacing == 16 && has_verb(*text, Verb::setTextAlign), "A text field too");
-    check(!has_verb(*tree.get({"b"}), Verb::setTextAlign) && !has_verb(*tree.get({"b"}), Verb::setLineSpacing), "A button offers none");
+    check(text->textAlign == TextAlign::right && text->lineSpacing == 2.0 && text->paragraphSpacing == 16 && hasVerb(*text, Verb::setTextAlign), "A text field too");
+    check(!hasVerb(*tree.get({"b"}), Verb::setTextAlign) && !hasVerb(*tree.get({"b"}), Verb::setLineSpacing), "A button offers none");
     check(tree.perform({"b"}, Verb::setTextAlign, TextAlign::center).status == Status::notSupported, "A button refuses the verb");
 
     std::vector<std::string> changed;
@@ -377,13 +377,13 @@ void the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles()
 // What a subject lays out, read the same way for every kind: where each display line starts, and the
 // area the alignment works in (a label's own width, a field's editor or text area). Text is "ab" and
 // "cde" at 16 px, so 16 and 24 px wide.
-struct Drawn { std::vector<int> starts; int area_x = 0, area_w = 0, room = 0; Rect bounds; };
+struct Drawn { std::vector<int> starts; int areaX = 0, areaW = 0, room = 0; Rect bounds; };
 struct Subject {
     const char* name;
     bool field;      // fields keep a 2 px caret slack at the right
     Drawn (*lay)(Ui&, TextAlign, const Appearance&);
 };
-Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollable) {
+Drawn drawnLabel(Ui& ui, TextAlign align, const Appearance& look, bool scrollable) {
     auto handle = *ui.addLabel(label("subject", u"ab\ncde", align));
     FakeMeasure measure; ScrollState outer, inner;
     auto node = scrollable ? layout::scroll(layout::column({layout::scrollText(handle, inner, 400)})) : layout::component(handle);
@@ -393,33 +393,33 @@ Drawn drawn_label(Ui& ui, TextAlign align, const Appearance& look, bool scrollab
     for (const auto& line : p->lines) out.starts.push_back(line.bounds.x);  // frame coordinates already
     return out;
 }
-Drawn drawn_field(Ui& ui, ComponentConfig control, const Appearance& look) {
-    auto handle = field_of(ui, std::move(control));
+Drawn drawnField(Ui& ui, ComponentConfig control, const Appearance& look) {
+    auto handle = fieldOf(ui, std::move(control));
     FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Drawn out;
     out.bounds = p->bounds;
     if (p->multiline) {
-        out.area_x = p->view.text.x; out.area_w = p->view.text.w;
+        out.areaX = p->view.text.x; out.areaW = p->view.text.w;
         for (const auto& line : p->view.lines) out.starts.push_back(p->caretX(line.begin));
     } else {
-        out.area_x = p->bounds.x + p->textField.editor.x; out.area_w = p->textField.editor.w;
+        out.areaX = p->bounds.x + p->textField.editor.x; out.areaW = p->textField.editor.w;
         out.starts.push_back(p->caretX(0));
     }
     return out;
 }
 const Subject subjects[] = {
-    {"label", false, [](Ui& ui, TextAlign a, const Appearance& l) { return drawn_label(ui, a, l, false); }},
-    {"scrollable label", false, [](Ui& ui, TextAlign a, const Appearance& l) { return drawn_label(ui, a, l, true); }},
-    {"single-line field", true, [](Ui& ui, TextAlign a, const Appearance& l) { return drawn_field(ui, single("subject", u"cde", a), l); }},
-    {"multi-line field", true, [](Ui& ui, TextAlign a, const Appearance& l) { return drawn_field(ui, multi("subject", u"ab\ncde", 3, a), l); }},
+    {"label", false, [](Ui& ui, TextAlign a, const Appearance& l) { return drawnLabel(ui, a, l, false); }},
+    {"scrollable label", false, [](Ui& ui, TextAlign a, const Appearance& l) { return drawnLabel(ui, a, l, true); }},
+    {"single-line field", true, [](Ui& ui, TextAlign a, const Appearance& l) { return drawnField(ui, single("subject", u"cde", a), l); }},
+    {"multi-line field", true, [](Ui& ui, TextAlign a, const Appearance& l) { return drawnField(ui, multi("subject", u"ab\ncde", 3, a), l); }},
 };
-void every_subject_aligns_in_every_appearance_and_density() {
+void everySubjectAlignsInEveryAppearanceAndDensity() {
     for (const auto& subject : subjects) for (const auto* look : {&webAppearance(), &materialAppearance()}) for (auto density : {Density::standard, Density::compact}) {
-        Ui baseline_ui;
-        check(bool(baseline_ui.setPresentation({.density = density})), "Set the density");
-        const auto baseline = subject.lay(baseline_ui, TextAlign::left, *look);
+        Ui baselineUi;
+        check(bool(baselineUi.setPresentation({.density = density})), "Set the density");
+        const auto baseline = subject.lay(baselineUi, TextAlign::left, *look);
         check(!baseline.starts.empty(), subject.name);
         for (auto align : {TextAlign::left, TextAlign::center, TextAlign::right}) {
             Ui ui;
@@ -428,24 +428,24 @@ void every_subject_aligns_in_every_appearance_and_density() {
             check(drawn.bounds == baseline.bounds, "The component's own bounds do not depend on the alignment");
             check(drawn.starts.size() == baseline.starts.size(), subject.name);
             const int inset = subject.field ? look->componentPresentation(density).inset : 0;
-            const int room = drawn.area_w - inset;
+            const int room = drawn.areaW - inset;
             // Hand-computed widths: "ab" 16 px, "cde" 24 px; a single-line field holds only "cde".
-            const bool single_line = std::string_view(subject.name) == "single-line field";
-            std::vector<int> widths = single_line ? std::vector<int>{24} : std::vector<int>{16, 24};
+            const bool singleLine = std::string_view(subject.name) == "single-line field";
+            std::vector<int> widths = singleLine ? std::vector<int>{24} : std::vector<int>{16, 24};
             for (std::size_t i = 0; i < widths.size(); ++i) {
                 // Centered text sits in the middle of the area, right-aligned text ends at its room (the caret slack).
-                const int expected = align == TextAlign::left ? drawn.area_x
-                    : align == TextAlign::center ? drawn.area_x + (drawn.area_w - widths[i]) / 2 : drawn.area_x + room - widths[i];
+                const int expected = align == TextAlign::left ? drawn.areaX
+                    : align == TextAlign::center ? drawn.areaX + (drawn.areaW - widths[i]) / 2 : drawn.areaX + room - widths[i];
                 check(std::abs(drawn.starts[i] - expected) <= 1, subject.name);
             }
         }
     }
 }
 
-void scrolling_a_spaced_field_moves_whole_lines_and_page_keys_use_the_visible_count() {
+void scrollingASpacedFieldMovesWholeLinesAndPageKeysUseTheVisibleCount() {
     const std::u16string ten = u"0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
     Ui ui;
-    auto handle = field_of(ui, multi("t", ten, 3, TextAlign::center, 1.5, 8));
+    auto handle = fieldOf(ui, multi("t", ten, 3, TextAlign::center, 1.5, 8));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     const ScrollRegion* region = nullptr;
@@ -457,16 +457,16 @@ void scrolling_a_spaced_field_moves_whole_lines_and_page_keys_use_the_visible_co
     auto& host = detail::access(ui);
     check(bool(host.focus("t")), "Focus the field");
     host.select("t", 0, 0);
-    check(bool(host.key_down({.key = Key::pageDown})) && host.edit("t")->selection.caret == 6, "Page Down moves by the three visible lines");
+    check(bool(host.keyDown({.key = Key::pageDown})) && host.edit("t")->selection.caret == 6, "Page Down moves by the three visible lines");
     Laid after(ui, handle);
     check(*handle.scrollLine() == 3, "The first visible line follows the page");
     check(after.frame.find(handle)->caretRect(6).y == after.frame.find(handle)->view.text.y, "The caret's line is now the top row");
-    check(bool(host.key_down({.key = Key::pageUp})) && host.edit("t")->selection.caret == 0, "Page Up goes back");
+    check(bool(host.keyDown({.key = Key::pageUp})) && host.edit("t")->selection.caret == 0, "Page Up goes back");
 }
 
-void a_larger_text_size_scales_the_row_of_a_field_proportionally() {
+void aLargerTextSizeScalesTheRowOfAFieldProportionally() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
+    auto handle = fieldOf(ui, multi("t", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
     {
         Laid laid(ui, handle);
         const auto* p = laid.frame.find(handle);
@@ -481,9 +481,9 @@ void a_larger_text_size_scales_the_row_of_a_field_proportionally() {
     check(compact.frame.find(handle)->view.rowHeight == 63, "Density leaves the spacing alone");
 }
 
-void dragging_selects_by_the_drawn_position_of_aligned_lines() {
+void draggingSelectsByTheDrawnPositionOfAlignedLines() {
     Ui ui;
-    auto handle = field_of(ui, multi("t", u"abcd\nef", 3, TextAlign::right));
+    auto handle = fieldOf(ui, multi("t", u"abcd\nef", 3, TextAlign::right));
     auto& host = detail::access(ui);
     check(bool(host.focus("t")), "Focus the field");
     host.select("t", 0, 0);
@@ -495,13 +495,13 @@ void dragging_selects_by_the_drawn_position_of_aligned_lines() {
     check(laid.frame.selectTo(ui, handle, 20, p->view.text.y + 24 + 5) && host.edit("t")->selection.caret == 5, "Dragging left of the text selects up to its start");
 }
 
-void the_input_method_anchors_at_the_drawn_caret_of_an_aligned_field() {
+void theInputMethodAnchorsAtTheDrawnCaretOfAnAlignedField() {
     for (bool multiline : {false, true}) {
         Ui ui;
-        auto handle = field_of(ui, multiline ? multi("t", u"", 3, TextAlign::center, 1.5) : single("t", u"", TextAlign::center, 1.5));
+        auto handle = fieldOf(ui, multiline ? multi("t", u"", 3, TextAlign::center, 1.5) : single("t", u"", TextAlign::center, 1.5));
         auto& host = detail::access(ui);
         check(bool(host.focus("t")), "Focus the field");
-        check(bool(host.composition_update(u"ㄅ", 1)), "Start composing one wide character (16 px)");
+        check(bool(host.compositionUpdate(u"ㄅ", 1)), "Start composing one wide character (16 px)");
         Laid laid(ui, handle);
         const auto* p = laid.frame.find(handle);
         const auto caret = host.edit("t")->visibleCaret();
@@ -513,7 +513,7 @@ void the_input_method_anchors_at_the_drawn_caret_of_an_aligned_field() {
     }
 }
 
-void a_run_time_change_reflows_the_next_frame() {
+void aRunTimeChangeReflowsTheNextFrame() {
     Ui ui;
     auto handle = *ui.addLabel(label("l", u"abcd"));
     Laid before(ui, handle);
@@ -526,29 +526,29 @@ void a_run_time_change_reflows_the_next_frame() {
 
 int main() {
     const test::Case cases[] = {
-        {"a label aligns each line inside its own width", a_label_aligns_each_line_inside_its_own_width},
-        {"line spacing multiplies the font line height", line_spacing_multiplies_the_font_line_height_and_centers_the_glyphs},
-        {"paragraph spacing adds space only after an LF", paragraph_spacing_adds_space_only_after_a_line_feed},
-        {"out-of-range values are invalid and change nothing", out_of_range_values_are_invalid_and_change_nothing},
-        {"a scrollable label steps one actual row", a_scrollable_label_steps_one_actual_row},
-        {"a single-line field places short text by its alignment", a_single_line_field_places_short_text_by_its_alignment},
-        {"an empty centered field puts the caret in the middle", an_empty_centered_field_puts_the_caret_in_the_middle},
-        {"text wider than the field scrolls whatever the alignment", text_wider_than_the_field_scrolls_whatever_the_alignment},
-        {"line spacing makes a single-line field taller", line_spacing_makes_a_single_line_field_taller_and_centers_the_text},
-        {"a multi-line field aligns every display line", a_multi_line_field_aligns_every_display_line},
-        {"vertical keys after a property change relay out", vertical_keys_after_a_property_change_do_not_use_the_old_lines},
-        {"pointer hits follow the drawn position",pointer_hits_follow_the_drawn_position_of_an_aligned_line},
-        {"vertical keys keep the drawn x of aligned lines", vertical_keys_keep_the_drawn_horizontal_position_of_aligned_lines},
-        {"multi-line height counts spaced rows and gaps", multi_line_height_counts_the_spaced_rows_and_paragraph_gaps},
-        {"wrapped lines add no paragraph gap in a field", soft_wrapped_lines_add_no_paragraph_gap_in_a_field},
-        {"a click between rows belongs to the row above", a_click_between_rows_belongs_to_the_row_above},
-        {"the semantic layer matches the typed handles", the_semantic_layer_reads_and_writes_the_three_properties_like_the_handles},
-        {"every subject aligns in every appearance and density", every_subject_aligns_in_every_appearance_and_density},
-        {"a spaced field scrolls whole lines; page keys use the visible count", scrolling_a_spaced_field_moves_whole_lines_and_page_keys_use_the_visible_count},
-        {"a larger text size scales the row proportionally", a_larger_text_size_scales_the_row_of_a_field_proportionally},
-        {"dragging selects by the drawn position", dragging_selects_by_the_drawn_position_of_aligned_lines},
-        {"the input method anchors at the drawn caret", the_input_method_anchors_at_the_drawn_caret_of_an_aligned_field},
-        {"a run-time change reflows the next frame", a_run_time_change_reflows_the_next_frame},
+        {"a label aligns each line inside its own width", aLabelAlignsEachLineInsideItsOwnWidth},
+        {"line spacing multiplies the font line height", lineSpacingMultipliesTheFontLineHeightAndCentersTheGlyphs},
+        {"paragraph spacing adds space only after an LF", paragraphSpacingAddsSpaceOnlyAfterALineFeed},
+        {"out-of-range values are invalid and change nothing", outOfRangeValuesAreInvalidAndChangeNothing},
+        {"a scrollable label steps one actual row", aScrollableLabelStepsOneActualRow},
+        {"a single-line field places short text by its alignment", aSingleLineFieldPlacesShortTextByItsAlignment},
+        {"an empty centered field puts the caret in the middle", anEmptyCenteredFieldPutsTheCaretInTheMiddle},
+        {"text wider than the field scrolls whatever the alignment", textWiderThanTheFieldScrollsWhateverTheAlignment},
+        {"line spacing makes a single-line field taller", lineSpacingMakesASingleLineFieldTallerAndCentersTheText},
+        {"a multi-line field aligns every display line", aMultiLineFieldAlignsEveryDisplayLine},
+        {"vertical keys after a property change relay out", verticalKeysAfterAPropertyChangeDoNotUseTheOldLines},
+        {"pointer hits follow the drawn position",pointerHitsFollowTheDrawnPositionOfAnAlignedLine},
+        {"vertical keys keep the drawn x of aligned lines", verticalKeysKeepTheDrawnHorizontalPositionOfAlignedLines},
+        {"multi-line height counts spaced rows and gaps", multiLineHeightCountsTheSpacedRowsAndParagraphGaps},
+        {"wrapped lines add no paragraph gap in a field", softWrappedLinesAddNoParagraphGapInAField},
+        {"a click between rows belongs to the row above", aClickBetweenRowsBelongsToTheRowAbove},
+        {"the semantic layer matches the typed handles", theSemanticLayerReadsAndWritesTheThreePropertiesLikeTheHandles},
+        {"every subject aligns in every appearance and density", everySubjectAlignsInEveryAppearanceAndDensity},
+        {"a spaced field scrolls whole lines; page keys use the visible count", scrollingASpacedFieldMovesWholeLinesAndPageKeysUseTheVisibleCount},
+        {"a larger text size scales the row proportionally", aLargerTextSizeScalesTheRowOfAFieldProportionally},
+        {"dragging selects by the drawn position", draggingSelectsByTheDrawnPositionOfAlignedLines},
+        {"the input method anchors at the drawn caret", theInputMethodAnchorsAtTheDrawnCaretOfAnAlignedField},
+        {"a run-time change reflows the next frame", aRunTimeChangeReflowsTheNextFrame},
     };
     return test::run("text_flow", cases);
 }

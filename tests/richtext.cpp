@@ -17,7 +17,7 @@ StyleSpan underline(unsigned start, unsigned length) { return {.start = start, .
 StyleSpan colored(unsigned start, unsigned length, std::string color) { return {.start = start, .length = length, .color = std::move(color)}; }
 using Spans = std::vector<StyleSpan>;
 
-void normalization_merges_sorts_and_drops_empty_spans() {
+void normalizationMergesSortsAndDropsEmptySpans() {
     auto merged = normalizeRichText({u"abcdef", {bold(0, 2), bold(2, 2)}});
     check(bool(merged) && merged->spans == Spans{bold(0, 4)}, "Two adjacent bold spans become one");
     auto sorted = normalizeRichText({u"abcdef", {italic(4, 2), bold(0, 2)}});
@@ -40,7 +40,7 @@ void normalization_merges_sorts_and_drops_empty_spans() {
           "The same content always reads back as the same value");
 }
 
-void normalization_rejects_overlap_and_out_of_range_spans() {
+void normalizationRejectsOverlapAndOutOfRangeSpans() {
     check(normalizeRichText({u"abcdef", {bold(0, 3), italic(2, 2)}}).status == Status::invalidValue, "Overlapping spans are invalid");
     check(normalizeRichText({u"abcdef", {bold(0, 3), bold(2, 2)}}).status == Status::invalidValue, "Overlap is invalid even when the styles are equal");
     check(normalizeRichText({u"abc", {bold(1, 3)}}).status == Status::invalidValue, "A span past the end is invalid");
@@ -59,37 +59,37 @@ struct RichModel {
     RichText value;
     std::function<void()> notify;
     int writes = 0;
-    RichText last_written, last_origin;
+    RichText lastWritten, lastOrigin;
 };
-ComponentConfig rich_control(std::string id, std::u16string value = {}, unsigned lines = 3) {
+ComponentConfig richControl(std::string id, std::u16string value = {}, unsigned lines = 3) {
     return {.id = std::move(id), .value = std::move(value), .multiline = true, .visibleLines = lines, .rich = true};
 }
-TextFieldHandle connect_rich(Ui& ui, ComponentConfig control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
+TextFieldHandle connectRich(Ui& ui, ComponentConfig control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
     if (!model) model = std::make_shared<RichModel>();
     model->value.text = control.value;
     auto query = ui.addTextField(std::move(control));
     check(bool(query), "Create the rich field");
     auto field = *query;
     check(bool(field.connectRichSource({[model] { return model->value; }, [model](std::function<void()> cb) { model->notify = cb; return [] {}; }})), "Connect a rich source");
-    auto write = [model](const Change<TextFieldHandle, RichText>& change) { ++model->writes; model->last_written = change.value; model->last_origin = change.origin; return Result{}; };
+    auto write = [model](const Change<TextFieldHandle, RichText>& change) { ++model->writes; model->lastWritten = change.value; model->lastOrigin = change.origin; return Result{}; };
     check(bool(immediate ? field.connectRichImmediate(write) : field.connectRichConfirmed(write)), "Connect a rich write");
     return field;
 }
-std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }
+std::u16string valueOf(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }
 
-void a_rich_field_is_a_multi_line_option_fixed_at_creation() {
+void aRichFieldIsAMultiLineOptionFixedAtCreation() {
     Ui ui;
-    check(bool(ui.addTextField(rich_control("rich"))), "A multi-line field can be rich");
+    check(bool(ui.addTextField(richControl("rich"))), "A multi-line field can be rich");
     check(ui.addTextField({.id = "single", .rich = true}).status == Status::invalidValue, "A single-line field cannot be rich");
 }
 
-void rich_values_are_read_and_written_in_normal_form() {
+void richValuesAreReadAndWrittenInNormalForm() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note"));
+    auto field = connectRich(ui, richControl("note"));
     check(bool(field.setRichValue({u"abcd", {bold(2, 1), bold(0, 2)}})), "Write a rich value");
     auto value = field.richValue();
     check(bool(value) && value->text == u"abcd" && value->spans == Spans{bold(0, 3)}, "The value reads back normalized");
-    check(field.draft().value.value() == u"abcd" && value_of(ui, "note") == u"abcd", "The plain text is the draft and the semantic value");
+    check(field.draft().value.value() == u"abcd" && valueOf(ui, "note") == u"abcd", "The plain text is the draft and the semantic value");
     check(field.setRichValue({u"xyz", {bold(0, 2), italic(1, 2)}}).status == Status::invalidValue && field.richValue()->text == u"abcd",
           "Overlapping spans are refused and the field is unchanged");
     check(field.setRichValue({u"xyz", {bold(2, 2)}}).status == Status::invalidValue && field.richValue()->spans == Spans{bold(0, 3)},
@@ -107,13 +107,13 @@ void rich_values_are_read_and_written_in_normal_form() {
           "A plain field refuses a rich source");
 }
 
-void styles_apply_to_a_range_and_are_one_undo_entry() {
+void stylesApplyToARangeAndAreOneUndoEntry() {
     Ui ui;
     auto model = std::make_shared<RichModel>();
-    auto field = connect_rich(ui, rich_control("note", u"重要通知內容"), model, true);
+    auto field = connectRich(ui, richControl("note", u"重要通知內容"), model, true);
     auto spans = [&] { return field.richValue()->spans; };
     check(bool(field.setStyle(0, 2, {.bold = true})) && spans() == Spans{bold(0, 2)}, "Bold the first two characters");
-    check(model->writes == 1 && model->last_written.spans == Spans{bold(0, 2)} && model->last_origin.spans.empty(), "An immediate write carries the styled value and the origin");
+    check(model->writes == 1 && model->lastWritten.spans == Spans{bold(0, 2)} && model->lastOrigin.spans.empty(), "An immediate write carries the styled value and the origin");
     check(bool(field.setStyle(1, 4, {.italic = true})) && spans() == Spans{bold(0, 1), {.start = 1, .length = 1, .bold = true, .italic = true}, italic(2, 2)},
           "Italic over a bold edge combines the styles");
     check(bool(field.setStyle(0, 6, {.bold = false, .italic = false})) && spans().empty(), "Removing bold and italic from the whole text leaves no spans");
@@ -130,21 +130,21 @@ void styles_apply_to_a_range_and_are_one_undo_entry() {
     check(field.richValue()->text == u"重要通知內容", "Styling never changes the text");
 }
 
-void read_only_and_unconnected_rich_fields_refuse_style_edits() {
+void readOnlyAndUnconnectedRichFieldsRefuseStyleEdits() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    auto field = connectRich(ui, richControl("note", u"abc"));
     field.readOnly(true);
     check(field.setStyle(0, 1, {.bold = true}).status == Status::readOnly && field.setRichValue({u"x", {}}).status == Status::readOnly,
           "A read-only field refuses style edits like any edit");
-    auto bare = *ui.addTextField(rich_control("bare", u"abc"));
+    auto bare = *ui.addTextField(richControl("bare", u"abc"));
     check(bare.setStyle(0, 1, {.bold = true}).status == Status::invalidValue, "A field without a write timing refuses edits");
 }
 
-void max_length_counts_plain_characters_only() {
+void maxLengthCountsPlainCharactersOnly() {
     Ui ui;
-    auto control = rich_control("note", u"abcd");
+    auto control = richControl("note", u"abcd");
     control.maxLength = 4;
-    auto field = connect_rich(ui, control);
+    auto field = connectRich(ui, control);
     check(bool(field.setStyle(0, 4, {.bold = true, .color = "a-very-long-color-name"})), "Styling a field at its limit is allowed");
     check(bool(field.setRichValue({u"wxyz", {bold(0, 4)}})), "A rich value of exactly the limit is allowed");
     check(field.setRichValue({u"vwxyz", {bold(0, 1)}}).status == Status::invalidValue, "One more character is refused, however it is styled");
@@ -153,114 +153,114 @@ void max_length_counts_plain_characters_only() {
 // ---- Keyboard ------------------------------------------------------------------------------
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
 KeyPress press(Key key, bool shift = false) { return {.key = key, .shift = shift}; }
-Spans spans_of(TextFieldHandle& field) { return field.richValue()->spans; }
+Spans spansOf(TextFieldHandle& field) { return field.richValue()->spans; }
 
-void ctrl_b_toggles_the_selection_and_all_three_shortcuts_work() {
+void ctrlBTogglesTheSelectionAndAllThreeShortcutsWork() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"重要通知內容"));
+    auto field = connectRich(ui, richControl("note", u"重要通知內容"));
     auto& host = detail::access(ui);
     host.focus("note");
     host.select("note", 0, 2);
-    check(bool(host.key_down(ctrl(u'B'))) && spans_of(field) == Spans{bold(0, 2)}, "Ctrl+B bolds the selection");
-    check(bool(host.key_down(ctrl(u'B'))) && spans_of(field).empty(), "A second Ctrl+B removes it");
+    check(bool(host.keyDown(ctrl(u'B'))) && spansOf(field) == Spans{bold(0, 2)}, "Ctrl+B bolds the selection");
+    check(bool(host.keyDown(ctrl(u'B'))) && spansOf(field).empty(), "A second Ctrl+B removes it");
     host.select("note", 0, 2);
-    host.key_down(ctrl(u'I')); host.key_down(ctrl(u'U'));
-    check(spans_of(field) == Spans{{.start = 0, .length = 2, .italic = true, .underline = true}}, "Ctrl+I and Ctrl+U apply italic and underline");
-    check(field.richValue()->text == u"重要通知內容" && value_of(ui, "note") == u"重要通知內容", "Styling never inserts characters");
+    host.keyDown(ctrl(u'I')); host.keyDown(ctrl(u'U'));
+    check(spansOf(field) == Spans{{.start = 0, .length = 2, .italic = true, .underline = true}}, "Ctrl+I and Ctrl+U apply italic and underline");
+    check(field.richValue()->text == u"重要通知內容" && valueOf(ui, "note") == u"重要通知內容", "Styling never inserts characters");
 }
 
-void a_partly_styled_selection_becomes_fully_styled_first() {
+void aPartlyStyledSelectionBecomesFullyStyledFirst() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abcdef"));
+    auto field = connectRich(ui, richControl("note", u"abcdef"));
     auto& host = detail::access(ui);
     field.setStyle(0, 3, {.bold = true});
     host.focus("note");
     host.select("note", 1, 5);
-    host.key_down(ctrl(u'B'));
-    check(spans_of(field) == Spans{bold(0, 5)}, "Half bold, half plain: Ctrl+B makes all of it bold");
-    host.key_down(ctrl(u'B'));
-    check(spans_of(field) == Spans{bold(0, 1)}, "When all of the selection is bold, Ctrl+B removes bold from it");
+    host.keyDown(ctrl(u'B'));
+    check(spansOf(field) == Spans{bold(0, 5)}, "Half bold, half plain: Ctrl+B makes all of it bold");
+    host.keyDown(ctrl(u'B'));
+    check(spansOf(field) == Spans{bold(0, 1)}, "When all of the selection is bold, Ctrl+B removes bold from it");
     field.setValue(u"a\nb");
     field.setStyle(0, 1, {.bold = true});
     field.setStyle(2, 3, {.bold = true});
     host.select("note", 0, 3);
-    host.key_down(ctrl(u'B'));
-    check(spans_of(field).empty(), "A line feed between bold lines does not count as unstyled, so Ctrl+B removes bold from both");
+    host.keyDown(ctrl(u'B'));
+    check(spansOf(field).empty(), "A line feed between bold lines does not count as unstyled, so Ctrl+B removes bold from both");
 }
 
-void without_a_selection_ctrl_b_changes_the_next_typed_text_only() {
+void withoutASelectionCtrlBChangesTheNextTypedTextOnly() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto field = connectRich(ui, richControl("note", u"ab"));
     auto& host = detail::access(ui);
     host.focus("note");
     host.select("note", 2, 2);
-    host.key_down(ctrl(u'B'));
-    check(spans_of(field).empty() && field.typingStyle().value->bold, "Ctrl+B at a caret styles nothing yet but sets the typing style");
-    host.text_input(u"c");
-    check(spans_of(field) == Spans{bold(2, 1)}, "The next typed character is bold");
-    host.text_input(u"d");
-    check(spans_of(field) == Spans{bold(2, 2)}, "The following ones follow the previous character, so they stay bold");
+    host.keyDown(ctrl(u'B'));
+    check(spansOf(field).empty() && field.typingStyle().value->bold, "Ctrl+B at a caret styles nothing yet but sets the typing style");
+    host.textInput(u"c");
+    check(spansOf(field) == Spans{bold(2, 1)}, "The next typed character is bold");
+    host.textInput(u"d");
+    check(spansOf(field) == Spans{bold(2, 2)}, "The following ones follow the previous character, so they stay bold");
     host.select("note", 0, 0);
     check(!field.typingStyle().value->bold, "At the start of a plain paragraph the typing style is plain");
-    host.key_down(ctrl(u'B'));
+    host.keyDown(ctrl(u'B'));
     host.select("note", 1, 1);
-    host.text_input(u"x");
-    check(spans_of(field) == Spans{bold(3, 2)}, "Moving the caret cancels the temporary typing style");
+    host.textInput(u"x");
+    check(spansOf(field) == Spans{bold(3, 2)}, "Moving the caret cancels the temporary typing style");
     host.select("note", 1, 1);
-    host.key_down(ctrl(u'B')); host.key_down(ctrl(u'B'));
-    host.text_input(u"y");
-    check(spans_of(field) == Spans{bold(4, 2)}, "Pressing Ctrl+B twice leaves the style as it was");
+    host.keyDown(ctrl(u'B')); host.keyDown(ctrl(u'B'));
+    host.textInput(u"y");
+    check(spansOf(field) == Spans{bold(4, 2)}, "Pressing Ctrl+B twice leaves the style as it was");
 }
 
-void typed_text_follows_the_previous_character_or_the_next_at_a_paragraph_start() {
+void typedTextFollowsThePreviousCharacterOrTheNextAtAParagraphStart() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto field = connectRich(ui, richControl("note", u"ab"));
     auto& host = detail::access(ui);
     host.focus("note");
     field.setStyle(0, 1, {.bold = true});
-    host.select("note", 1, 1); host.text_input(u"x");
-    check(spans_of(field) == Spans{bold(0, 2)}, "After a bold character, typing is bold");
-    host.select("note", 3, 3); host.text_input(u"y");
-    check(spans_of(field) == Spans{bold(0, 2)}, "After a plain character, typing is plain");
+    host.select("note", 1, 1); host.textInput(u"x");
+    check(spansOf(field) == Spans{bold(0, 2)}, "After a bold character, typing is bold");
+    host.select("note", 3, 3); host.textInput(u"y");
+    check(spansOf(field) == Spans{bold(0, 2)}, "After a plain character, typing is plain");
     field.setRichValue({u"ab\ncd", {bold(0, 2), italic(3, 2)}});
-    host.select("note", 0, 0); host.text_input(u"1");
-    check(spans_of(field) == Spans{bold(0, 3), italic(4, 2)}, "At the start of a paragraph, typing follows the next character");
+    host.select("note", 0, 0); host.textInput(u"1");
+    check(spansOf(field) == Spans{bold(0, 3), italic(4, 2)}, "At the start of a paragraph, typing follows the next character");
     field.setRichValue({u"ab\ncd", {bold(0, 2), italic(3, 2)}});
-    host.select("note", 3, 3); host.text_input(u"2");
-    check(spans_of(field) == Spans{bold(0, 2), italic(3, 3)}, "The second paragraph's start follows its own first character");
+    host.select("note", 3, 3); host.textInput(u"2");
+    check(spansOf(field) == Spans{bold(0, 2), italic(3, 3)}, "The second paragraph's start follows its own first character");
     field.setRichValue({u"ab\n\ncd", {bold(0, 2)}});
-    host.select("note", 3, 3); host.text_input(u"3");
-    check(spans_of(field) == Spans{bold(0, 2)}, "An empty paragraph has no neighbor to follow, so it types plain");
+    host.select("note", 3, 3); host.textInput(u"3");
+    check(spansOf(field) == Spans{bold(0, 2)}, "An empty paragraph has no neighbor to follow, so it types plain");
     field.setRichValue({u"abcd", {bold(0, 4)}});
-    host.select("note", 1, 3); host.text_input(u"z");
-    check(spans_of(field) == Spans{bold(0, 3)}, "Replacing a selection follows the character before it");
+    host.select("note", 1, 3); host.textInput(u"z");
+    check(spansOf(field) == Spans{bold(0, 3)}, "Replacing a selection follows the character before it");
     field.setRichValue({u"abcd", {bold(1, 3)}});
-    host.select("note", 0, 2); host.text_input(u"z");
-    check(spans_of(field) == Spans{bold(0, 3)}, "Replacing from the paragraph start follows the first character after the selection");
+    host.select("note", 0, 2); host.textInput(u"z");
+    check(spansOf(field) == Spans{bold(0, 3)}, "Replacing from the paragraph start follows the first character after the selection");
 }
 
-void each_styled_insertion_is_one_undo_entry() {
+void eachStyledInsertionIsOneUndoEntry() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto field = connectRich(ui, richControl("note", u"ab"));
     auto& host = detail::access(ui);
     host.focus("note");
     host.select("note", 2, 2);
-    host.key_down(ctrl(u'B'));
-    host.text_input(u"c");
-    check(spans_of(field) == Spans{bold(2, 1)}, "A bold character");
-    host.key_down(ctrl(u'Z'));
-    check(field.richValue()->text == u"ab" && spans_of(field).empty(), "One undo removes the character and its style together");
-    host.key_down(ctrl(u'Y'));
-    check(field.richValue()->text == u"abc" && spans_of(field) == Spans{bold(2, 1)}, "Redo restores both");
+    host.keyDown(ctrl(u'B'));
+    host.textInput(u"c");
+    check(spansOf(field) == Spans{bold(2, 1)}, "A bold character");
+    host.keyDown(ctrl(u'Z'));
+    check(field.richValue()->text == u"ab" && spansOf(field).empty(), "One undo removes the character and its style together");
+    host.keyDown(ctrl(u'Y'));
+    check(field.richValue()->text == u"abc" && spansOf(field) == Spans{bold(2, 1)}, "Redo restores both");
     host.select("note", 0, 1);
-    host.key_down(ctrl(u'I'));
-    host.key_down(ctrl(u'Z'));
-    check(spans_of(field) == Spans{bold(2, 1)} && field.richValue()->text == u"abc", "One Ctrl+I is one undo entry");
+    host.keyDown(ctrl(u'I'));
+    host.keyDown(ctrl(u'Z'));
+    check(spansOf(field) == Spans{bold(2, 1)} && field.richValue()->text == u"abc", "One Ctrl+I is one undo entry");
 }
 
-void the_field_takes_ctrl_b_before_an_application_shortcut() {
+void theFieldTakesCtrlBBeforeAnApplicationShortcut() {
     Ui ui;
-    auto rich = connect_rich(ui, rich_control("note", u"abc"));
+    auto rich = connectRich(ui, richControl("note", u"abc"));
     auto plain = *ui.addTextField({.id = "plain", .value = u"abc", .multiline = true});
     auto button = *ui.addButton({.id = "bold", .label = u"Bold"});
     int pressed = 0;
@@ -268,23 +268,23 @@ void the_field_takes_ctrl_b_before_an_application_shortcut() {
     check(bool(ui.addShortcut({.key = Key::other, .letter = u'B', .ctrl = true}, button)), "An application shortcut on Ctrl+B");
     auto& host = detail::access(ui);
     host.focus("note"); host.select("note", 0, 3);
-    host.key_down(ctrl(u'B'));
-    check(pressed == 0 && spans_of(rich) == Spans{bold(0, 3)}, "With the rich field focused, the field takes Ctrl+B");
+    host.keyDown(ctrl(u'B'));
+    check(pressed == 0 && spansOf(rich) == Spans{bold(0, 3)}, "With the rich field focused, the field takes Ctrl+B");
     host.focus("plain");
-    host.key_down(ctrl(u'B'));
+    host.keyDown(ctrl(u'B'));
     check(pressed == 1, "With any other field focused, the application shortcut fires");
     host.focus("bold");
-    host.key_down(ctrl(u'B'));
+    host.keyDown(ctrl(u'B'));
     check(pressed == 2, "With the rich field not focused, the application shortcut fires");
     rich.readOnly(true);
     host.focus("note");
-    check(host.key_down(ctrl(u'B')).status == Status::readOnly && pressed == 2, "A read-only rich field refuses the style but still keeps the key");
+    check(host.keyDown(ctrl(u'B')).status == Status::readOnly && pressed == 2, "A read-only rich field refuses the style but still keeps the key");
 }
 
 // ---- Colors --------------------------------------------------------------------------------
-void a_color_name_resolves_per_theme_and_unknown_names_keep_their_name() {
+void aColorNameResolvesPerThemeAndUnknownNamesKeepTheirName() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    auto field = connectRich(ui, richControl("note", u"abc"));
     auto& host = detail::access(ui);
     check(field.setColors({{"red", {200, 0, 0}, {255, 120, 120}}, {"", {1, 1, 1}, {2, 2, 2}}}).status == Status::invalidValue &&
           field.setColors({{"red", {200, 0, 0}, {255, 120, 120}}, {"red", {1, 1, 1}, {2, 2, 2}}}).status == Status::invalidValue,
@@ -294,16 +294,16 @@ void a_color_name_resolves_per_theme_and_unknown_names_keep_their_name() {
     check(field.colors()->size() == 2 && (*field.colors())[1].name == "green", "The list reads back in order");
     field.setStyle(0, 2, {.color = "red"});
     field.setStyle(2, 3, {.color = "teal"});
-    check(host.named_color("note", "red") == Color{200, 0, 0} && host.named_color("note", "green") == Color{0, 120, 0}, "Light theme uses the light values");
-    check(!host.named_color("note", "").has_value(), "No name means the normal text color");
+    check(host.namedColor("note", "red") == Color{200, 0, 0} && host.namedColor("note", "green") == Color{0, 120, 0}, "Light theme uses the light values");
+    check(!host.namedColor("note", "").has_value(), "No name means the normal text color");
     ui.setPresentation({.variant = ThemeVariant::dark()});
-    check(host.named_color("note", "red") == Color{255, 120, 120}, "Switching theme recolors by name: dark values");
-    check(!host.named_color("note", "teal").has_value(), "A name that is not in the list falls back to the normal color");
+    check(host.namedColor("note", "red") == Color{255, 120, 120}, "Switching theme recolors by name: dark values");
+    check(!host.namedColor("note", "teal").has_value(), "A name that is not in the list falls back to the normal color");
     check(field.richValue()->spans == Spans{colored(0, 2, "red"), colored(2, 1, "teal")}, "The unknown name stays in the value");
     int repaints = 0;
-    host.on_invalidate([&] { ++repaints; });
+    host.onInvalidate([&] { ++repaints; });
     field.setColors({{"teal", {0, 128, 128}, {64, 224, 208}}});
-    check(repaints == 1 && host.named_color("note", "teal") == Color{64, 224, 208} && !host.named_color("note", "red").has_value(),
+    check(repaints == 1 && host.namedColor("note", "teal") == Color{64, 224, 208} && !host.namedColor("note", "red").has_value(),
           "Replacing the list repaints at once and applies to existing text");
     Ui other;
     auto plain = *other.addTextField({.id = "p", .multiline = true});
@@ -311,66 +311,66 @@ void a_color_name_resolves_per_theme_and_unknown_names_keep_their_name() {
 }
 
 // ---- Data connections ---------------------------------------------------------------------
-void external_source_changes_and_conflicts_cover_styles() {
+void externalSourceChangesAndConflictsCoverStyles() {
     Ui ui;
     auto model = std::make_shared<RichModel>();
-    auto field = connect_rich(ui, rich_control("note", u"abc"), model);
+    auto field = connectRich(ui, richControl("note", u"abc"), model);
     model->value = {u"xyz", {bold(0, 1)}}; model->notify();
-    check(field.richValue()->text == u"xyz" && spans_of(field) == Spans{bold(0, 1)}, "An external change brings its text and styles");
+    check(field.richValue()->text == u"xyz" && spansOf(field) == Spans{bold(0, 1)}, "An external change brings its text and styles");
     check(!field.sourceConflict().value.value(), "A clean field follows the source without a conflict");
     field.setStyle(1, 3, {.italic = true});
     check(!field.sourceConflict().value.value(), "A style edit is a local edit, not a conflict");
     model->value = {u"xyz", {bold(0, 2)}}; model->notify();
-    check(spans_of(field) == Spans{bold(0, 1), italic(1, 2)} && field.sourceConflict().value.value(),
+    check(spansOf(field) == Spans{bold(0, 1), italic(1, 2)} && field.sourceConflict().value.value(),
           "A source that changes only styles while the field is edited is a conflict");
-    check(bool(field.useLatest()) && spans_of(field) == Spans{bold(0, 2)} && !field.sourceConflict().value.value(),
+    check(bool(field.useLatest()) && spansOf(field) == Spans{bold(0, 2)} && !field.sourceConflict().value.value(),
           "use_latest adopts the source's styles too");
     field.setStyle(0, 1, {.bold = false});
-    check(bool(field.resetToSource()) && spans_of(field) == Spans{bold(0, 2)}, "reset_to_source restores text and styles");
+    check(bool(field.resetToSource()) && spansOf(field) == Spans{bold(0, 2)}, "reset_to_source restores text and styles");
     model->value = {u"xyz", {bold(0, 5)}}; model->notify();
-    check(spans_of(field) == Spans{bold(0, 2)}, "A source value that is not valid (span past the text) is ignored");
+    check(spansOf(field) == Spans{bold(0, 2)}, "A source value that is not valid (span past the text) is ignored");
 }
 
-void confirmed_and_immediate_writes_carry_the_rich_value() {
+void confirmedAndImmediateWritesCarryTheRichValue() {
     Ui ui;
     auto model = std::make_shared<RichModel>();
-    auto field = connect_rich(ui, rich_control("note", u"abc"), model);
+    auto field = connectRich(ui, richControl("note", u"abc"), model);
     field.setStyle(0, 1, {.bold = true});
     check(model->writes == 0, "A confirmed field writes nothing until confirmed");
-    check(bool(field.confirm()) && model->writes == 1 && model->last_written == RichText{u"abc", {bold(0, 1)}} && model->last_origin == RichText{u"abc", {}},
+    check(bool(field.confirm()) && model->writes == 1 && model->lastWritten == RichText{u"abc", {bold(0, 1)}} && model->lastOrigin == RichText{u"abc", {}},
           "Confirm writes the value with its styles and the origin before the edit");
     field.setStyle(1, 2, {.underline = true});
     field.confirm();
-    check(model->last_origin == RichText{u"abc", {bold(0, 1)}}, "The next write's origin is the value last written, styles included");
+    check(model->lastOrigin == RichText{u"abc", {bold(0, 1)}}, "The next write's origin is the value last written, styles included");
     auto& tree = ui.semantics();
     const auto node = tree.get({"note"});  // one snapshot: iterators of two different temporaries must not be compared
     check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::confirm) != node->verbs.end(), "The semantic layer offers confirm");
 }
 
-void a_confirmation_group_takes_a_rich_field_in_the_mixed_form() {
+void aConfirmationGroupTakesARichFieldInTheMixedForm() {
     Ui ui;
-    auto note_model = std::make_shared<RichModel>();
-    auto name_value = std::make_shared<std::u16string>(u"n");
-    auto note = *ui.addTextField(rich_control("note", u"abc"));
+    auto noteModel = std::make_shared<RichModel>();
+    auto nameValue = std::make_shared<std::u16string>(u"n");
+    auto note = *ui.addTextField(richControl("note", u"abc"));
     auto name = *ui.addTextField({.id = "name", .value = u"n"});
     auto button = *ui.addButton({.id = "ok", .label = u"OK"});
-    note_model->value.text = u"abc";
-    note.connectRichSource({[note_model] { return note_model->value; }, [](std::function<void()>) { return [] {}; }});
-    name.connectSource({[name_value] { return *name_value; }, [](std::function<void()>) { return [] {}; }});
-    RichText got, origin; std::u16string got_name; int calls = 0;
+    noteModel->value.text = u"abc";
+    note.connectRichSource({[noteModel] { return noteModel->value; }, [](std::function<void()>) { return [] {}; }});
+    name.connectSource({[nameValue] { return *nameValue; }, [](std::function<void()>) { return [] {}; }});
+    RichText got, origin; std::u16string gotName; int calls = 0;
     check(bool(ui.connectConfirmation(button, {name, note}, [&](const std::vector<ConfirmFieldChange>& changes) {
         ++calls;
-        got_name = std::get<Change<TextFieldHandle>>(changes[0]).value;
+        gotName = std::get<Change<TextFieldHandle>>(changes[0]).value;
         const auto& rich = std::get<Change<TextFieldHandle, RichText>>(changes[1]);
         got = rich.value; origin = rich.origin;
         return ConfirmationResult{};
     })), "A rich field joins a mixed confirmation group");
     auto& host = detail::access(ui);
     host.focus("note"); host.select("note", 0, 2);
-    host.key_down(ctrl(u'B'));
-    check(bool(host.invoke("ok")) && calls == 1 && got == RichText{u"abc", {bold(0, 2)}} && origin == RichText{u"abc", {}} && got_name == u"n",
+    host.keyDown(ctrl(u'B'));
+    check(bool(host.invoke("ok")) && calls == 1 && got == RichText{u"abc", {bold(0, 2)}} && origin == RichText{u"abc", {}} && gotName == u"n",
           "The group's submit sees the rich value and origin beside the plain field");
-    host.select("note", 2, 3); host.key_down(ctrl(u'I'));
+    host.select("note", 2, 3); host.keyDown(ctrl(u'I'));
     host.invoke("ok");
     check(origin == RichText{u"abc", {bold(0, 2)}} && got == RichText{u"abc", {bold(0, 2), italic(2, 1)}}, "After a successful submit the origin includes the styles that were written");
 }
@@ -399,7 +399,7 @@ struct PlainOnlyClipboard final : Clipboard {  // a host that never learned the 
 };
 
 
-TextFieldHandle connect_plain(Ui& ui, ComponentConfig control) {
+TextFieldHandle connectPlain(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.addTextField(std::move(control));
     field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
@@ -407,128 +407,128 @@ TextFieldHandle connect_plain(Ui& ui, ComponentConfig control) {
     return field;
 }
 
-void copy_and_paste_keep_styles_between_rich_fields() {
+void copyAndPasteKeepStylesBetweenRichFields() {
     Ui ui;
-    auto source = connect_rich(ui, rich_control("source", u"abc\ndef"));
-    auto target = connect_rich(ui, rich_control("target", u"XY"));
+    auto source = connectRich(ui, richControl("source", u"abc\ndef"));
+    auto target = connectRich(ui, richControl("target", u"XY"));
     auto& host = detail::access(ui);
     MemoryClipboard clipboard;
-    host.set_clipboard(&clipboard);
+    host.setClipboard(&clipboard);
     source.setStyle(1, 6, {.bold = true});
     source.setStyle(4, 7, {.color = "teal"});
     host.focus("source"); host.select("source", 1, 6);
-    host.key_down(ctrl(u'C'));
+    host.keyDown(ctrl(u'C'));
     check(clipboard.content == u"bc\r\nde" && clipboard.payload.has_value(), "Copy writes CRLF plain text and the private payload together");
     check(source.richValue()->text == u"abc\ndef", "Copy does not change the field");
     host.focus("target"); host.select("target", 1, 1);
-    host.key_down(ctrl(u'V'));
+    host.keyDown(ctrl(u'V'));
     check(target.richValue()->text == u"Xbc\ndeY", "Paste inserts the text with its line break as LF");
-    check(spans_of(target) == Spans{bold(1, 3), {.start = 4, .length = 2, .bold = true, .color = "teal"}}, "Paste keeps the copied styles, color names included, relative to the insertion");
-    host.key_down(ctrl(u'Z'));
-    check(target.richValue()->text == u"XY" && spans_of(target).empty(), "One paste is one undo entry");
+    check(spansOf(target) == Spans{bold(1, 3), {.start = 4, .length = 2, .bold = true, .color = "teal"}}, "Paste keeps the copied styles, color names included, relative to the insertion");
+    host.keyDown(ctrl(u'Z'));
+    check(target.richValue()->text == u"XY" && spansOf(target).empty(), "One paste is one undo entry");
 }
 
-void a_color_name_missing_from_the_target_list_survives_a_paste() {
+void aColorNameMissingFromTheTargetListSurvivesAPaste() {
     Ui ui;
-    auto source = connect_rich(ui, rich_control("source", u"abc"));
-    auto target = connect_rich(ui, rich_control("target"));
+    auto source = connectRich(ui, richControl("source", u"abc"));
+    auto target = connectRich(ui, richControl("target"));
     source.setColors({{"red", {200, 0, 0}, {255, 120, 120}}});
     source.setStyle(0, 3, {.color = "red"});
     auto& host = detail::access(ui);
-    MemoryClipboard clipboard; host.set_clipboard(&clipboard);
-    host.focus("source"); host.select("source", 0, 3); host.key_down(ctrl(u'C'));
-    host.focus("target"); host.key_down(ctrl(u'V'));
-    check(spans_of(target) == Spans{colored(0, 3, "red")} && !host.named_color("target", "red").has_value(),
+    MemoryClipboard clipboard; host.setClipboard(&clipboard);
+    host.focus("source"); host.select("source", 0, 3); host.keyDown(ctrl(u'C'));
+    host.focus("target"); host.keyDown(ctrl(u'V'));
+    check(spansOf(target) == Spans{colored(0, 3, "red")} && !host.namedColor("target", "red").has_value(),
           "The name is kept in the value; the target (which has no such color) draws it in the normal color");
 }
 
-void external_plain_text_takes_the_typing_style() {
+void externalPlainTextTakesTheTypingStyle() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto field = connectRich(ui, richControl("note", u"ab"));
     auto& host = detail::access(ui);
-    MemoryClipboard clipboard; host.set_clipboard(&clipboard);
+    MemoryClipboard clipboard; host.setClipboard(&clipboard);
     host.focus("note");
     field.setStyle(0, 1, {.bold = true});
     clipboard.write(u"xyz");
     host.select("note", 1, 1);
-    host.key_down(ctrl(u'V'));
-    check(field.richValue()->text == u"axyzb" && spans_of(field) == Spans{bold(0, 4)}, "Plain text pasted after a bold character is bold");
+    host.keyDown(ctrl(u'V'));
+    check(field.richValue()->text == u"axyzb" && spansOf(field) == Spans{bold(0, 4)}, "Plain text pasted after a bold character is bold");
     host.select("note", 5, 5);
-    host.key_down(ctrl(u'V'));
-    check(spans_of(field) == Spans{bold(0, 4)}, "Plain text pasted after a plain character is plain");
+    host.keyDown(ctrl(u'V'));
+    check(spansOf(field) == Spans{bold(0, 4)}, "Plain text pasted after a plain character is plain");
     host.select("note", 5, 5);
-    host.key_down(ctrl(u'B'));
-    host.key_down(ctrl(u'V'));
-    check(spans_of(field) == Spans{bold(0, 4), bold(5, 3)}, "A pending Ctrl+B styles the pasted text");
+    host.keyDown(ctrl(u'B'));
+    host.keyDown(ctrl(u'V'));
+    check(spansOf(field) == Spans{bold(0, 4), bold(5, 3)}, "A pending Ctrl+B styles the pasted text");
     clipboard.content = u"Q\r\nR"; clipboard.payload = std::string("stale payload from another time");
     host.select("note", 0, 0);
-    host.key_down(ctrl(u'V'));
-    check(field.richValue()->text.substr(0, 4) == u"Q\nRa" && spans_of(field)[0] == bold(0, 7),
+    host.keyDown(ctrl(u'V'));
+    check(field.richValue()->text.substr(0, 4) == u"Q\nRa" && spansOf(field)[0] == bold(0, 7),
           "A private payload that does not belong to the plain text is ignored; the text is pasted with the typing style (CRLF becomes LF)");
 }
 
-void other_fields_and_hosts_get_plain_text_only() {
+void otherFieldsAndHostsGetPlainTextOnly() {
     Ui ui;
-    auto source = connect_rich(ui, rich_control("source", u"a\nb"));
-    auto multi = connect_plain(ui, {.id = "multi", .multiline = true, .visibleLines = 2});
-    auto single = connect_plain(ui, {.id = "single"});
+    auto source = connectRich(ui, richControl("source", u"a\nb"));
+    auto multi = connectPlain(ui, {.id = "multi", .multiline = true, .visibleLines = 2});
+    auto single = connectPlain(ui, {.id = "single"});
     auto& host = detail::access(ui);
-    MemoryClipboard clipboard; host.set_clipboard(&clipboard);
+    MemoryClipboard clipboard; host.setClipboard(&clipboard);
     source.setStyle(0, 3, {.bold = true});
-    host.focus("source"); host.select("source", 0, 3); host.key_down(ctrl(u'C'));
-    host.focus("multi"); host.key_down(ctrl(u'V'));
+    host.focus("source"); host.select("source", 0, 3); host.keyDown(ctrl(u'C'));
+    host.focus("multi"); host.keyDown(ctrl(u'V'));
     check(multi.draft().value.value() == u"a\nb", "A plain multi-line field takes the text, with its line feed");
-    host.focus("single"); host.key_down(ctrl(u'V'));
+    host.focus("single"); host.keyDown(ctrl(u'V'));
     check(single.draft().value.value() == u"a b", "A single-line field takes the text by its own rule (breaks become spaces)");
     check(!multi.richValue() && multi.richValue().status == Status::notSupported, "The plain field holds no styles");
-    PlainOnlyClipboard plain_host;
-    host.set_clipboard(&plain_host);
+    PlainOnlyClipboard plainHost;
+    host.setClipboard(&plainHost);
     host.focus("source"); host.select("source", 0, 1);
-    host.key_down(ctrl(u'C'));
-    check(plain_host.content == u"a", "A host that only knows plain text receives plain text");
+    host.keyDown(ctrl(u'C'));
+    check(plainHost.content == u"a", "A host that only knows plain text receives plain text");
     host.focus("single"); host.select("single", 0, 3);
-    host.key_down(ctrl(u'V'));
+    host.keyDown(ctrl(u'V'));
     check(single.draft().value.value() == u"a", "A plain-only clipboard still pastes into a single-line field as before");
 }
 
-void cut_removes_styled_text_and_undo_restores_it() {
+void cutRemovesStyledTextAndUndoRestoresIt() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abcd"));
+    auto field = connectRich(ui, richControl("note", u"abcd"));
     auto& host = detail::access(ui);
-    MemoryClipboard clipboard; host.set_clipboard(&clipboard);
+    MemoryClipboard clipboard; host.setClipboard(&clipboard);
     field.setStyle(0, 2, {.bold = true});
     host.focus("note"); host.select("note", 0, 2);
-    host.key_down(ctrl(u'X'));
-    check(field.richValue()->text == u"cd" && spans_of(field).empty() && clipboard.content == u"ab" && clipboard.payload.has_value(), "Cut removes the text and copies it with its styles");
-    host.key_down(ctrl(u'Z'));
-    check(field.richValue()->text == u"abcd" && spans_of(field) == Spans{bold(0, 2)}, "Undo brings the styled text back");
+    host.keyDown(ctrl(u'X'));
+    check(field.richValue()->text == u"cd" && spansOf(field).empty() && clipboard.content == u"ab" && clipboard.payload.has_value(), "Cut removes the text and copies it with its styles");
+    host.keyDown(ctrl(u'Z'));
+    check(field.richValue()->text == u"abcd" && spansOf(field) == Spans{bold(0, 2)}, "Undo brings the styled text back");
 }
 
-void a_rich_paste_over_the_limit_is_refused_whole() {
+void aRichPasteOverTheLimitIsRefusedWhole() {
     Ui ui;
-    auto source = connect_rich(ui, rich_control("source", u"abcdef"));
-    auto limited = rich_control("target", u"XY");
+    auto source = connectRich(ui, richControl("source", u"abcdef"));
+    auto limited = richControl("target", u"XY");
     limited.maxLength = 4;
-    auto target = connect_rich(ui, limited);
+    auto target = connectRich(ui, limited);
     auto& host = detail::access(ui);
-    MemoryClipboard clipboard; host.set_clipboard(&clipboard);
+    MemoryClipboard clipboard; host.setClipboard(&clipboard);
     source.setStyle(0, 6, {.bold = true});
-    host.focus("source"); host.select("source", 0, 6); host.key_down(ctrl(u'C'));
+    host.focus("source"); host.select("source", 0, 6); host.keyDown(ctrl(u'C'));
     host.focus("target"); host.select("target", 2, 2);
-    check(host.key_down(ctrl(u'V')).status == Status::invalidValue && target.richValue()->text == u"XY" && spans_of(target).empty(),
+    check(host.keyDown(ctrl(u'V')).status == Status::invalidValue && target.richValue()->text == u"XY" && spansOf(target).empty(),
           "A paste past max_length leaves text and styles untouched");
 }
 
 // ---- Semantic layer ------------------------------------------------------------------------
-void the_semantic_layer_reads_and_writes_styles_like_the_typed_calls() {
+void theSemanticLayerReadsAndWritesStylesLikeTheTypedCalls() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abcdef"));
+    auto field = connectRich(ui, richControl("note", u"abcdef"));
     auto& tree = ui.semantics();
     auto node = tree.get({"note"});
     check(bool(node) && node->rich && node->styles.empty() && node->typingStyle.has_value() && node->typingStyle->plain(), "A rich node reports its styles and typing style");
     auto has = [&](Verb verb) { auto n = tree.get({"note"}); return std::find(n->verbs.begin(), n->verbs.end(), verb) != n->verbs.end(); };
     check(has(Verb::setStyle) && has(Verb::setTypingStyle) && has(Verb::setValue), "The style verbs are offered to an editable rich field");
-    check(bool(tree.perform({"note"}, Verb::setStyle, StyleEdit{1, 3, {.bold = true}})) && tree.get({"note"})->styles == Spans{bold(1, 2)} && spans_of(field) == Spans{bold(1, 2)},
+    check(bool(tree.perform({"note"}, Verb::setStyle, StyleEdit{1, 3, {.bold = true}})) && tree.get({"note"})->styles == Spans{bold(1, 2)} && spansOf(field) == Spans{bold(1, 2)},
           "set_style applies a range, as TextFieldHandle::set_style does");
     check(tree.perform({"note"}, Verb::setStyle, StyleEdit{3, 1, {.bold = true}}).status == field.setStyle(3, 1, {.bold = true}).status &&
           tree.perform({"note"}, Verb::setStyle, StyleEdit{3, 1, {.bold = true}}).status == Status::invalidValue, "An invalid range gives the typed call's status");
@@ -548,15 +548,15 @@ void the_semantic_layer_reads_and_writes_styles_like_the_typed_calls() {
     check(tree.perform({"note"}, Verb::setStyle, StyleEdit{0, 1, {.bold = true}}).status == field.setStyle(0, 1, {.bold = true}).status, "A read-only field gives the same status through both doors");
     check(!has(Verb::setStyle) && !has(Verb::setTypingStyle), "A read-only field does not offer the style verbs");
     Ui other;
-    auto plain = connect_plain(other, {.id = "p", .value = u"abc", .multiline = true});
+    auto plain = connectPlain(other, {.id = "p", .value = u"abc", .multiline = true});
     check(!other.semantics().get({"p"})->rich && other.semantics().perform({"p"}, Verb::setStyle, StyleEdit{0, 1, {.bold = true}}).status == Status::notSupported,
           "A plain field is not rich and refuses the style verbs");
 }
 
-void style_changes_raise_a_property_event_and_colors_resolve_for_the_theme() {
+void styleChangesRaiseAPropertyEventAndColorsResolveForTheTheme() {
     Ui ui;
     ui.bindAppearance(&webAppearance());
-    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    auto field = connectRich(ui, richControl("note", u"abc"));
     field.setColors({{"red", {200, 0, 0}, {255, 120, 120}}});
     auto& tree = ui.semantics();
     std::vector<std::string> properties;
@@ -572,7 +572,7 @@ void style_changes_raise_a_property_event_and_colors_resolve_for_the_theme() {
     check(tree.textColor({"note"}, "red").value == std::optional<Color>(Color{255, 120, 120}), "After a theme change it resolves to the dark value");
     check(tree.textColor({"note"}, "").value == std::optional<Color>(webAppearance().palette(ThemeVariant::dark()).text), "...and the normal color to the dark text color");
     Ui other;
-    check(connect_plain(other, {.id = "p", .multiline = true}).describe().value->rich == false && other.semantics().textColor({"p"}, "").status == Status::notSupported,
+    check(connectPlain(other, {.id = "p", .multiline = true}).describe().value->rich == false && other.semantics().textColor({"p"}, "").status == Status::notSupported,
           "Only rich fields resolve colors");
 }
 
@@ -589,22 +589,22 @@ struct Laid {
     }
 };
 using Lines = std::vector<std::pair<unsigned, unsigned>>;
-Lines lines_of(const Placement& p) {
+Lines linesOf(const Placement& p) {
     Lines out;
     for (const auto& line : p.view.lines) out.push_back({line.begin, line.end});
     return out;
 }
 
-void wrapping_and_caret_stops_follow_the_width_of_bold_text() {
-    Ui plain_ui;
-    auto plain = connect_rich(plain_ui, rich_control("note", std::u16string(20, u'a')));
-    Laid unstyled(plain_ui, plain);
-    check(lines_of(*unstyled.field) == Lines{{0, 20}}, "Twenty plain characters fit one 160 px line");
+void wrappingAndCaretStopsFollowTheWidthOfBoldText() {
+    Ui plainUi;
+    auto plain = connectRich(plainUi, richControl("note", std::u16string(20, u'a')));
+    Laid unstyled(plainUi, plain);
+    check(linesOf(*unstyled.field) == Lines{{0, 20}}, "Twenty plain characters fit one 160 px line");
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", std::u16string(20, u'a')));
+    auto field = connectRich(ui, richControl("note", std::u16string(20, u'a')));
     field.setStyle(0, 10, {.bold = true});
     Laid laid(ui, field);
-    check(lines_of(*laid.field) == Lines{{0, 17}, {17, 20}}, "Ten bold (100 px) and seven plain (56 px) characters fill a line; the rest wraps");
+    check(linesOf(*laid.field) == Lines{{0, 17}, {17, 20}}, "Ten bold (100 px) and seven plain (56 px) characters fill a line; the rest wraps");
     check(laid.field->view.lines[0].soft, "The wrapped piece continues into the next line");
     const auto& view = laid.field->view;
     check(laid.field->caretX(5) == view.text.x + 50 && laid.field->caretX(10) == view.text.x + 100 && laid.field->caretX(12) == view.text.x + 116,
@@ -618,14 +618,14 @@ void wrapping_and_caret_stops_follow_the_width_of_bold_text() {
     check(laid.field->bounds.h == unstyled.field->bounds.h, "Styling never changes the field's height");
 }
 
-void a_style_change_alone_re_wraps_the_next_arrange() {
+void aStyleChangeAloneReWrapsTheNextArrange() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", std::u16string(20, u'a')));
+    auto field = connectRich(ui, richControl("note", std::u16string(20, u'a')));
     Laid before(ui, field);
     field.setStyle(0, 20, {.bold = true});
     Laid after(ui, field);
-    check(lines_of(*before.field) == Lines{{0, 20}} && lines_of(*after.field) == Lines{{0, 16}, {16, 20}}, "All bold: 16 characters per 160 px line");
-    check(detail::access(ui).field_view("note")->lines.size() == 2, "Core's copy of the lines (for the cursor keys) is the new wrapping");
+    check(linesOf(*before.field) == Lines{{0, 20}} && linesOf(*after.field) == Lines{{0, 16}, {16, 20}}, "All bold: 16 characters per 160 px line");
+    check(detail::access(ui).fieldView("note")->lines.size() == 2, "Core's copy of the lines (for the cursor keys) is the new wrapping");
 }
 
 // Records what a component paints, so what the host would draw can be compared with expectations.
@@ -638,18 +638,18 @@ struct Recorder final : detail::ComponentPaint {
     void rounded(Rect, int, Color) override {}
     void clip(Rect) override {}
     void text(std::u16string_view value, int, int x, int y, Color color) override { texts.push_back({std::u16string(value), {}, x, y, color}); }
-    void styled_text(std::u16string_view value, int, FontStyle style, int x, int y, Color color) override { texts.push_back({std::u16string(value), style, x, y, color}); }
+    void styledText(std::u16string_view value, int, FontStyle style, int x, int y, Color color) override { texts.push_back({std::u16string(value), style, x, y, color}); }
 };
 Recorder paint(Ui& ui, const Placement& field, std::string_view id) {
     auto semantics = *detail::access(ui).describe(id);
     Recorder recorder(detail::access(ui), field, semantics, webAppearance(), 1.f, true);
-    detail::component_type(ComponentKind::textField).paint(recorder);
+    detail::componentType(ComponentKind::textField).paint(recorder);
     return recorder;
 }
 
-void each_run_is_painted_in_its_face_color_and_underline() {
+void eachRunIsPaintedInItsFaceColorAndUnderline() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abcdef"));
+    auto field = connectRich(ui, richControl("note", u"abcdef"));
     field.setColors({{"red", {200, 0, 0}, {255, 120, 120}}});
     field.setStyle(0, 2, {.bold = true});
     field.setStyle(2, 4, {.italic = true, .underline = true});
@@ -678,18 +678,18 @@ void each_run_is_painted_in_its_face_color_and_underline() {
 // #80 x #81: a centered or right-aligned rich line moves its runs with it, so the caret, the selection, the
 // pointer hits and the drawn text all use the same x. FakeMeasure: "ab" bold is 20 px, "cd" plain 16 px,
 // so line one is 36 px wide and line two ("ef", bold) 20 px.
-void aligned_rich_lines_move_their_runs_with_the_line() {
+void alignedRichLinesMoveTheirRunsWithTheLine() {
     for (auto align : {TextAlign::left, TextAlign::center, TextAlign::right}) {
         Ui ui;
-        auto field = connect_rich(ui, rich_control("note", u"abcd\nef"));
+        auto field = connectRich(ui, richControl("note", u"abcd\nef"));
         field.setStyle(0, 2, {.bold = true});
         field.setStyle(2, 4, {.underline = true});
         field.setStyle(5, 7, {.bold = true});
         check(bool(field.setTextAlign(align)) && bool(field.focus()) && bool(field.select(1, 3)), "align, focus and select inside the first line");
         Laid laid(ui, field);
         const auto& view = laid.field->view;
-        auto shift_of = [&](float width) { return align == TextAlign::left ? 0.f : align == TextAlign::center ? (view.text.w - width) / 2 : 160.f - width; };
-        const float shift0 = shift_of(36), shift1 = shift_of(20);
+        auto shiftOf = [&](float width) { return align == TextAlign::left ? 0.f : align == TextAlign::center ? (view.text.w - width) / 2 : 160.f - width; };
+        const float shift0 = shiftOf(36), shift1 = shiftOf(20);
         const int x0 = view.text.x + static_cast<int>(std::lround(shift0)), x1 = view.text.x + static_cast<int>(std::lround(shift1));
         auto at = [&](float shift, float inside) { return view.text.x + static_cast<int>(std::lround(shift + inside)); };
         check(view.lines.size() == 2 && view.lines[0].shift == shift0 && view.lines[1].shift == shift1, "each line is shifted by its own width");
@@ -705,23 +705,23 @@ void aligned_rich_lines_move_their_runs_with_the_line() {
         auto drawn = paint(ui, *laid.field, "note");
         check(drawn.texts.size() == 3 && drawn.texts[0].text == u"ab" && drawn.texts[0].x == x0 && drawn.texts[1].text == u"cd" &&
               drawn.texts[1].x == at(shift0, 20) && drawn.texts[2].text == u"ef" && drawn.texts[2].x == x1, "the runs are drawn at their moved positions");
-        const int underline_width = at(shift0, 36) - at(shift0, 20);
-        check(std::any_of(drawn.fills.begin(), drawn.fills.end(), [&](const auto& f) { return f.rect == Rect{at(shift0, 20), view.text.y + 20, underline_width, 1}; }),
+        const int underlineWidth = at(shift0, 36) - at(shift0, 20);
+        check(std::any_of(drawn.fills.begin(), drawn.fills.end(), [&](const auto& f) { return f.rect == Rect{at(shift0, 20), view.text.y + 20, underlineWidth, 1}; }),
               "the underline sits under its own run");
-        const int selection_from = laid.field->caretX(1), selection_to = laid.field->caretX(3);
-        check(std::any_of(drawn.fills.begin(), drawn.fills.end(), [&](const auto& f) { return f.rect == Rect{selection_from, view.text.y, selection_to - selection_from, view.rowHeight}; }),
+        const int selectionFrom = laid.field->caretX(1), selectionTo = laid.field->caretX(3);
+        check(std::any_of(drawn.fills.begin(), drawn.fills.end(), [&](const auto& f) { return f.rect == Rect{selectionFrom, view.text.y, selectionTo - selectionFrom, view.rowHeight}; }),
               "the selection fill spans exactly the selected characters as drawn");
         check(bool(field.select(2, 2)), "a caret between the runs");
         Laid caret(ui, field);
-        auto with_caret = paint(ui, *caret.field, "note");
-        check(std::any_of(with_caret.fills.begin(), with_caret.fills.end(), [&](const auto& f) { return f.rect.x == caret.field->caretX(2) && f.rect.x == at(shift0, 20) && f.rect.h == caret.field->view.rowHeight; }),
+        auto withCaret = paint(ui, *caret.field, "note");
+        check(std::any_of(withCaret.fills.begin(), withCaret.fills.end(), [&](const auto& f) { return f.rect.x == caret.field->caretX(2) && f.rect.x == at(shift0, 20) && f.rect.h == caret.field->view.rowHeight; }),
               "the caret is drawn at the seam of the two runs");
     }
 }
 
-void unknown_color_names_and_disabled_fields_use_the_plain_colors() {
+void unknownColorNamesAndDisabledFieldsUseThePlainColors() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"abc"));
+    auto field = connectRich(ui, richControl("note", u"abc"));
     field.setStyle(0, 3, {.color = "missing", .underline = true});
     Laid laid(ui, field);
     const auto palette = detail::access(ui).effectivePalette(webAppearance());
@@ -735,69 +735,69 @@ void unknown_color_names_and_disabled_fields_use_the_plain_colors() {
     check(disabled.texts[0].color == palette.muted, "A disabled field paints in the muted color whatever the colors say");
 }
 
-void a_rich_field_without_styles_lays_out_like_a_plain_one() {
-    Ui rich_ui, plain_ui;
+void aRichFieldWithoutStylesLaysOutLikeAPlainOne() {
+    Ui richUi, plainUi;
     auto text = std::u16string(u"hello world again and more\n中文字\n") + std::u16string(45, u'x');
-    auto rich = connect_rich(rich_ui, rich_control("note", text));
-    auto plain = connect_plain(plain_ui, {.id = "note", .value = text, .multiline = true});
-    Laid a(rich_ui, rich), b(plain_ui, plain);
-    check(lines_of(*a.field) == lines_of(*b.field) && a.field->bounds == b.field->bounds && a.field->view.thumb == b.field->view.thumb,
+    auto rich = connectRich(richUi, richControl("note", text));
+    auto plain = connectPlain(plainUi, {.id = "note", .value = text, .multiline = true});
+    Laid a(richUi, rich), b(plainUi, plain);
+    check(linesOf(*a.field) == linesOf(*b.field) && a.field->bounds == b.field->bounds && a.field->view.thumb == b.field->view.thumb,
           "Wrapping, height and scrollbar match a plain multi-line field");
     for (std::size_t i = 0; i < a.field->view.lines.size(); ++i)
         check(a.field->view.lines[i].run.stops == b.field->view.lines[i].run.stops, "Caret stops match too");
 }
 
-void composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry() {
+void compositionTakesTheTypingStyleAndCommitsAsOneStyledUndoEntry() {
     Ui ui;
-    auto field = connect_rich(ui, rich_control("note", u"ab"));
+    auto field = connectRich(ui, richControl("note", u"ab"));
     auto& host = detail::access(ui);
     host.focus("note");
     field.setStyle(0, 1, {.bold = true});
     host.select("note", 1, 1);
-    check(bool(host.composition_update(u"ㄅ", 1)), "Start composing after a bold character");
-    check(host.visible_style_spans("note") == Spans{bold(0, 2)} && spans_of(field) == Spans{bold(0, 1)},
+    check(bool(host.compositionUpdate(u"ㄅ", 1)), "Start composing after a bold character");
+    check(host.visibleStyleSpans("note") == Spans{bold(0, 2)} && spansOf(field) == Spans{bold(0, 1)},
           "The preedit is shown in the style it will take; the committed styles are untouched while composing");
     Laid laid(ui, field);
     const auto& pieces = laid.field->view.lines[0].pieces;
     check(pieces.size() == 2 && pieces[0].style.bold && pieces[0].end == 2 && !pieces[1].style.bold && pieces[1].begin == 2 && laid.field->view.lines[0].end == 3,
           "The line measures the preedit as a bold run and the rest as plain");
-    check(bool(host.composition_commit(u"你")) && field.richValue()->text == u"a你b" && spans_of(field) == Spans{bold(0, 2)}, "The commit is bold, like typing there");
-    check(bool(field.undo()) && field.richValue()->text == u"ab" && spans_of(field) == Spans{bold(0, 1)}, "One undo removes the committed text and its style");
+    check(bool(host.compositionCommit(u"你")) && field.richValue()->text == u"a你b" && spansOf(field) == Spans{bold(0, 2)}, "The commit is bold, like typing there");
+    check(bool(field.undo()) && field.richValue()->text == u"ab" && spansOf(field) == Spans{bold(0, 1)}, "One undo removes the committed text and its style");
 }
 
 const test::Case cases[] = {
-    {"normalization_merges_sorts_and_drops_empty_spans", normalization_merges_sorts_and_drops_empty_spans},
-    {"normalization_rejects_overlap_and_out_of_range_spans", normalization_rejects_overlap_and_out_of_range_spans},
-    {"a_rich_field_is_a_multi_line_option_fixed_at_creation", a_rich_field_is_a_multi_line_option_fixed_at_creation},
-    {"rich_values_are_read_and_written_in_normal_form", rich_values_are_read_and_written_in_normal_form},
-    {"styles_apply_to_a_range_and_are_one_undo_entry", styles_apply_to_a_range_and_are_one_undo_entry},
-    {"read_only_and_unconnected_rich_fields_refuse_style_edits", read_only_and_unconnected_rich_fields_refuse_style_edits},
-    {"max_length_counts_plain_characters_only", max_length_counts_plain_characters_only},
-    {"ctrl_b_toggles_the_selection_and_all_three_shortcuts_work", ctrl_b_toggles_the_selection_and_all_three_shortcuts_work},
-    {"a_partly_styled_selection_becomes_fully_styled_first", a_partly_styled_selection_becomes_fully_styled_first},
-    {"without_a_selection_ctrl_b_changes_the_next_typed_text_only", without_a_selection_ctrl_b_changes_the_next_typed_text_only},
-    {"typed_text_follows_the_previous_character_or_the_next_at_a_paragraph_start", typed_text_follows_the_previous_character_or_the_next_at_a_paragraph_start},
-    {"each_styled_insertion_is_one_undo_entry", each_styled_insertion_is_one_undo_entry},
-    {"the_field_takes_ctrl_b_before_an_application_shortcut", the_field_takes_ctrl_b_before_an_application_shortcut},
-    {"a_color_name_resolves_per_theme_and_unknown_names_keep_their_name", a_color_name_resolves_per_theme_and_unknown_names_keep_their_name},
-    {"external_source_changes_and_conflicts_cover_styles", external_source_changes_and_conflicts_cover_styles},
-    {"confirmed_and_immediate_writes_carry_the_rich_value", confirmed_and_immediate_writes_carry_the_rich_value},
-    {"a_confirmation_group_takes_a_rich_field_in_the_mixed_form", a_confirmation_group_takes_a_rich_field_in_the_mixed_form},
-    {"copy_and_paste_keep_styles_between_rich_fields", copy_and_paste_keep_styles_between_rich_fields},
-    {"a_color_name_missing_from_the_target_list_survives_a_paste", a_color_name_missing_from_the_target_list_survives_a_paste},
-    {"external_plain_text_takes_the_typing_style", external_plain_text_takes_the_typing_style},
-    {"other_fields_and_hosts_get_plain_text_only", other_fields_and_hosts_get_plain_text_only},
-    {"cut_removes_styled_text_and_undo_restores_it", cut_removes_styled_text_and_undo_restores_it},
-    {"a_rich_paste_over_the_limit_is_refused_whole", a_rich_paste_over_the_limit_is_refused_whole},
-    {"the_semantic_layer_reads_and_writes_styles_like_the_typed_calls", the_semantic_layer_reads_and_writes_styles_like_the_typed_calls},
-    {"style_changes_raise_a_property_event_and_colors_resolve_for_the_theme", style_changes_raise_a_property_event_and_colors_resolve_for_the_theme},
-    {"wrapping_and_caret_stops_follow_the_width_of_bold_text", wrapping_and_caret_stops_follow_the_width_of_bold_text},
-    {"a_style_change_alone_re_wraps_the_next_arrange", a_style_change_alone_re_wraps_the_next_arrange},
-    {"each_run_is_painted_in_its_face_color_and_underline", each_run_is_painted_in_its_face_color_and_underline},
-    {"aligned_rich_lines_move_their_runs_with_the_line", aligned_rich_lines_move_their_runs_with_the_line},
-    {"unknown_color_names_and_disabled_fields_use_the_plain_colors", unknown_color_names_and_disabled_fields_use_the_plain_colors},
-    {"a_rich_field_without_styles_lays_out_like_a_plain_one", a_rich_field_without_styles_lays_out_like_a_plain_one},
-    {"composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry", composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry},
+    {"normalization_merges_sorts_and_drops_empty_spans", normalizationMergesSortsAndDropsEmptySpans},
+    {"normalization_rejects_overlap_and_out_of_range_spans", normalizationRejectsOverlapAndOutOfRangeSpans},
+    {"a_rich_field_is_a_multi_line_option_fixed_at_creation", aRichFieldIsAMultiLineOptionFixedAtCreation},
+    {"rich_values_are_read_and_written_in_normal_form", richValuesAreReadAndWrittenInNormalForm},
+    {"styles_apply_to_a_range_and_are_one_undo_entry", stylesApplyToARangeAndAreOneUndoEntry},
+    {"read_only_and_unconnected_rich_fields_refuse_style_edits", readOnlyAndUnconnectedRichFieldsRefuseStyleEdits},
+    {"max_length_counts_plain_characters_only", maxLengthCountsPlainCharactersOnly},
+    {"ctrl_b_toggles_the_selection_and_all_three_shortcuts_work", ctrlBTogglesTheSelectionAndAllThreeShortcutsWork},
+    {"a_partly_styled_selection_becomes_fully_styled_first", aPartlyStyledSelectionBecomesFullyStyledFirst},
+    {"without_a_selection_ctrl_b_changes_the_next_typed_text_only", withoutASelectionCtrlBChangesTheNextTypedTextOnly},
+    {"typed_text_follows_the_previous_character_or_the_next_at_a_paragraph_start", typedTextFollowsThePreviousCharacterOrTheNextAtAParagraphStart},
+    {"each_styled_insertion_is_one_undo_entry", eachStyledInsertionIsOneUndoEntry},
+    {"the_field_takes_ctrl_b_before_an_application_shortcut", theFieldTakesCtrlBBeforeAnApplicationShortcut},
+    {"a_color_name_resolves_per_theme_and_unknown_names_keep_their_name", aColorNameResolvesPerThemeAndUnknownNamesKeepTheirName},
+    {"external_source_changes_and_conflicts_cover_styles", externalSourceChangesAndConflictsCoverStyles},
+    {"confirmed_and_immediate_writes_carry_the_rich_value", confirmedAndImmediateWritesCarryTheRichValue},
+    {"a_confirmation_group_takes_a_rich_field_in_the_mixed_form", aConfirmationGroupTakesARichFieldInTheMixedForm},
+    {"copy_and_paste_keep_styles_between_rich_fields", copyAndPasteKeepStylesBetweenRichFields},
+    {"a_color_name_missing_from_the_target_list_survives_a_paste", aColorNameMissingFromTheTargetListSurvivesAPaste},
+    {"external_plain_text_takes_the_typing_style", externalPlainTextTakesTheTypingStyle},
+    {"other_fields_and_hosts_get_plain_text_only", otherFieldsAndHostsGetPlainTextOnly},
+    {"cut_removes_styled_text_and_undo_restores_it", cutRemovesStyledTextAndUndoRestoresIt},
+    {"a_rich_paste_over_the_limit_is_refused_whole", aRichPasteOverTheLimitIsRefusedWhole},
+    {"the_semantic_layer_reads_and_writes_styles_like_the_typed_calls", theSemanticLayerReadsAndWritesStylesLikeTheTypedCalls},
+    {"style_changes_raise_a_property_event_and_colors_resolve_for_the_theme", styleChangesRaiseAPropertyEventAndColorsResolveForTheTheme},
+    {"wrapping_and_caret_stops_follow_the_width_of_bold_text", wrappingAndCaretStopsFollowTheWidthOfBoldText},
+    {"a_style_change_alone_re_wraps_the_next_arrange", aStyleChangeAloneReWrapsTheNextArrange},
+    {"each_run_is_painted_in_its_face_color_and_underline", eachRunIsPaintedInItsFaceColorAndUnderline},
+    {"aligned_rich_lines_move_their_runs_with_the_line", alignedRichLinesMoveTheirRunsWithTheLine},
+    {"unknown_color_names_and_disabled_fields_use_the_plain_colors", unknownColorNamesAndDisabledFieldsUseThePlainColors},
+    {"a_rich_field_without_styles_lays_out_like_a_plain_one", aRichFieldWithoutStylesLaysOutLikeAPlainOne},
+    {"composition_takes_the_typing_style_and_commits_as_one_styled_undo_entry", compositionTakesTheTypingStyleAndCommitsAsOneStyledUndoEntry},
 };
 }
 

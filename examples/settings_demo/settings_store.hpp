@@ -1,7 +1,7 @@
 #pragma once
 #include "settings_json.hpp"
 #include <filesystem>
-namespace settings_demo {
+namespace settingsDemo {
 enum class LoadKind { missing, loaded, corrupt, unreadable };
 struct LoadResult { LoadKind kind; std::optional<SettingsDocument> document; std::u16string reason; bool renamed=false; };
 class SettingsStore {

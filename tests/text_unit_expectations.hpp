@@ -1,6 +1,6 @@
 #pragma once
 // One worked example of #83's text units, shared by every seam that asserts it: the core seam (tests/word_select.cpp:
-// word_unit_bounds, double-click words) and the UIA seam (tests/uia_demo_client.cpp: TextUnit_Word / TextUnit_Paragraph).
+// wordUnitBounds, double-click words) and the UIA seam (tests/uia_demo_client.cpp: TextUnit_Word / TextUnit_Paragraph).
 // ASCII only, so no dictionary can change the words. Words are what a double click selects: a word with the spaces after
 // it, each punctuation mark, each line feed, a run of spaces that follows no word. Paragraphs run through their line feed.
 #include <string>

@@ -10,10 +10,10 @@
 #include <iostream>
 #include <stdexcept>
 using namespace lcars;
-using namespace settings_demo;
-static std::ofstream* event_log = nullptr;
-static void check(bool value, const char* message) { if(event_log) *event_log << (value ? "PASS\t" : "FAIL\t") << message << '\n'; if(!value) throw std::runtime_error(message); }
-static bool real_input = false;
+using namespace settingsDemo;
+static std::ofstream* eventLog = nullptr;
+static void check(bool value, const char* message) { if(eventLog) *eventLog << (value ? "PASS\t" : "FAIL\t") << message << '\n'; if(!value) throw std::runtime_error(message); }
+static bool realInput = false;
 static Profiles* profiles = nullptr;
 struct Walk {
     SettingsStore store;
@@ -21,16 +21,16 @@ struct Walk {
     detail::DesktopHost host;
     HWND window;
     bool closed = false;
-    bool observe_close = false, callback_composing = true;
-    std::u16string callback_draft;
+    bool observeClose = false, callbackComposing = true;
+    std::u16string callbackDraft;
     Walk(const Appearance& appearance, const std::filesystem::path& path)
-        : store(path), demo(info()), host(demo.ui,appearance,[this]{return demo.page();},demo.scroll,DesktopConfig{},real_input,!real_input), window(host.window()) {
-        auto loaded=store.load(); if(loaded.document) demo.load_document(*loaded.document);
-        demo.on_save([this](const auto& document) { return store.save(document); });
-        demo.on_dirty_changed([this](bool dirty) { SetWindowTextW(window,dirty ? L"*Demo" : L"Demo"); });
-        host.on_close_request([this] { if (observe_close) { auto* edit=detail::access(demo.ui).edit("general.name"); callback_composing=edit && edit->composing; callback_draft=demo.name.draft().value.value_or(u""); } if (demo.request_close()) { closed=true; return CloseDecision::close; } return CloseDecision::keepOpen; });
-        demo.on_close([this] { closed=true; host.request_quit(); });
-        if (real_input) {
+        : store(path), demo(info()), host(demo.ui,appearance,[this]{return demo.page();},demo.scroll,DesktopConfig{},realInput,!realInput), window(host.window()) {
+        auto loaded=store.load(); if(loaded.document) demo.loadDocument(*loaded.document);
+        demo.onSave([this](const auto& document) { return store.save(document); });
+        demo.onDirtyChanged([this](bool dirty) { SetWindowTextW(window,dirty ? L"*Demo" : L"Demo"); });
+        host.onCloseRequest([this] { if (observeClose) { auto* edit=detail::access(demo.ui).edit("general.name"); callbackComposing=edit && edit->composing; callbackDraft=demo.name.draft().value.value_or(u""); } if (demo.requestClose()) { closed=true; return CloseDecision::close; } return CloseDecision::keepOpen; });
+        demo.onClose([this] { closed=true; host.requestQuit(); });
+        if (realInput) {
             ShowWindow(window,SW_SHOW); SetForegroundWindow(window); wait(300);
             if (GetForegroundWindow()!=window) { ShowWindow(window,SW_MINIMIZE); ShowWindow(window,SW_RESTORE); SetForegroundWindow(window); wait(300); }
             check(GetForegroundWindow()==window,"could not bring test window to foreground");
@@ -38,10 +38,10 @@ struct Walk {
         host.paint();
     }
     ~Walk() {
-        if (event_log) for (const auto& line : host.ime_log()) {
+        if (eventLog) for (const auto& line : host.imeLog()) {
             int n=WideCharToMultiByte(CP_UTF8,0,line.data(),static_cast<int>(line.size()),nullptr,0,nullptr,nullptr);
             std::string utf8(n,'\0'); WideCharToMultiByte(CP_UTF8,0,line.data(),static_cast<int>(line.size()),utf8.data(),n,nullptr,nullptr);
-            *event_log << "IME\t" << utf8 << '\n';
+            *eventLog << "IME\t" << utf8 << '\n';
         }
     }
     static AboutInfo info() {
@@ -56,13 +56,13 @@ struct Walk {
         check(SendInput(1,&in,sizeof(in))==1,"SendInput failed"); wait(60);
     }
     void tap(WPARAM key, bool ctrl=false, bool shift=false) {
-        if (real_input) { if(ctrl) send(VK_CONTROL); if(shift) send(VK_SHIFT); send(WORD(key)); send(WORD(key),KEYEVENTF_KEYUP); if(shift) send(VK_SHIFT,KEYEVENTF_KEYUP); if(ctrl) send(VK_CONTROL,KEYEVENTF_KEYUP); return; }
+        if (realInput) { if(ctrl) send(VK_CONTROL); if(shift) send(VK_SHIFT); send(WORD(key)); send(WORD(key),KEYEVENTF_KEYUP); if(shift) send(VK_SHIFT,KEYEVENTF_KEYUP); if(ctrl) send(VK_CONTROL,KEYEVENTF_KEYUP); return; }
         BYTE original[256]{}, state[256]{}; GetKeyboardState(original); std::copy(original,original+256,state);
         state[VK_CONTROL]=ctrl?0x80:0; state[VK_SHIFT]=shift?0x80:0; SetKeyboardState(state);
         PostMessageW(window,WM_KEYDOWN,key,1); PostMessageW(window,WM_KEYUP,key,0xc0000001); host.pump(); SetKeyboardState(original);
     }
     void text(std::u16string_view value) {
-        if (real_input && value==u"共用範本 A") {
+        if (realInput && value==u"共用範本 A") {
             check(profiles->chinese(),"Microsoft Bopomofo unavailable"); wait(300);
             if (auto imc=ImmGetContext(window)) { DWORD conversion=0,sentence=0; ImmGetConversionStatus(imc,&conversion,&sentence); ImmSetConversionStatus(imc,conversion|IME_CMODE_NATIVE,sentence); ImmReleaseContext(window,imc); }
             // ㄍㄨㄥˋ ㄩㄥˋ ㄈㄢˋ ㄅㄣˇ; Enter commits the composition (the same commit key as the showcase PR01 run).
@@ -70,9 +70,9 @@ struct Walk {
             tap(VK_RETURN); wait(250);
             profiles->us(); wait(200); send(' ',KEYEVENTF_UNICODE); send(' ',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); send('A',KEYEVENTF_UNICODE); send('A',KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); return;
         }
-        for(auto c:value) { if(real_input) { send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); } else { PostMessageW(window,WM_CHAR,c,1); host.pump(); } }
+        for(auto c:value) { if(realInput) { send(c,KEYEVENTF_UNICODE); send(c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP); } else { PostMessageW(window,WM_CHAR,c,1); host.pump(); } }
     }
-    void alt_f4() { if(real_input) { send(VK_MENU); tap(VK_F4); send(VK_MENU,KEYEVENTF_KEYUP); return; } PostMessageW(window,WM_SYSKEYDOWN,VK_F4,0x20000001); PostMessageW(window,WM_SYSKEYUP,VK_F4,0xe0000001); host.pump(); }
+    void altF4() { if(realInput) { send(VK_MENU); tap(VK_F4); send(VK_MENU,KEYEVENTF_KEYUP); return; } PostMessageW(window,WM_SYSKEYDOWN,VK_F4,0x20000001); PostMessageW(window,WM_SYSKEYUP,VK_F4,0xe0000001); host.pump(); }
     void tabs(int count, bool shift=false) { while(count--) tap(VK_TAB,false,shift); }
     bool focused(const char* id) { return detail::access(demo.ui).focused()==id; }
 };
@@ -82,45 +82,45 @@ static void run(const Appearance& appearance, const std::filesystem::path& path)
         check(w.focused("app.nav") && d.nav.selected()->id=="general","step 1: navigation");
         w.tap(VK_TAB); w.tap('A',true); w.text(u"工作站 A"); w.tap(VK_TAB);
         wchar_t title[32]{}; GetWindowTextW(w.window,title,32);
-        check(d.document().name==u"工作站 A" && d.is_dirty() && title[0]==L'*',"step 2: name and dirty title");
+        check(d.document().name==u"工作站 A" && d.isDirty() && title[0]==L'*',"step 2: name and dirty title");
         w.tap(VK_SPACE); w.tap(VK_TAB); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_RETURN); w.tap(VK_DOWN); w.tap(VK_DOWN); w.tap(VK_RETURN); w.tap(VK_TAB); for(int i=0;i<5;i++) w.tap(VK_RIGHT);
         check(!d.document().notices && d.document().mode==OptionValue{"focus"} && d.document().region==OptionValue{"south"} && d.document().volume==65,"step 3: general values");
         w.tap('Z',true); check(d.document().volume==40,"step 4: undo"); w.tap('Y',true); check(d.document().volume==65,"step 4: redo");
-        w.tap('S',true); GetWindowTextW(w.window,title,32); check(!d.is_dirty() && title[0]!=L'*' && w.store.load().document->volume==65,"step 5: save");
+        w.tap('S',true); GetWindowTextW(w.window,title,32); check(!d.isDirty() && title[0]!=L'*' && w.store.load().document->volume==65,"step 5: save");
         w.tabs(5,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.text(u"共用"); w.tap(VK_TAB); w.tap(VK_SPACE); w.tap(VK_RETURN); w.tap('A',true); w.text(u"共用範本 A"); w.tabs(7); w.tap(VK_SPACE);
-        check(!d.item_dialog.isOpen().value.value_or(true) && w.focused("items.list") && d.document().items[4].id==OptionValue{"T005"} && d.document().items[4].name==u"共用範本 A","step 6: edit and focus");
-        w.tap(VK_DELETE); w.tap(VK_ESCAPE); check(!d.delete_dialog.isOpen().value.value_or(true) && d.document().items.size()==20,"step 7: cancel deletion"); w.tap(VK_DELETE); w.tap(VK_TAB); w.tap(VK_SPACE);
+        check(!d.itemDialog.isOpen().value.value_or(true) && w.focused("items.list") && d.document().items[4].id==OptionValue{"T005"} && d.document().items[4].name==u"共用範本 A","step 6: edit and focus");
+        w.tap(VK_DELETE); w.tap(VK_ESCAPE); check(!d.deleteDialog.isOpen().value.value_or(true) && d.document().items.size()==20,"step 7: cancel deletion"); w.tap(VK_DELETE); w.tap(VK_TAB); w.tap(VK_SPACE);
         check(d.document().items.size()==19,"step 7: delete"); w.tap('Z',true);
         check(d.document().items.size()==20 && d.document().items[4].name==u"共用範本 A","step 7: undo deletion");
         w.tabs(2,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_RETURN); w.tap(VK_END); w.tap(VK_RETURN); w.tap(VK_TAB); w.tap(VK_END); w.tap(VK_TAB); w.tap(VK_SPACE);
         check(!d.ui.presentation().fontFamily.empty() && d.ui.presentation().textSize==28 && d.ui.presentation().variant==ThemeVariant::dark(),"step 8: appearance");
         w.tabs(3,true); w.tap(VK_DOWN); w.tap(VK_TAB); w.tap(VK_DOWN); check(d.nav.selected()->id=="about" && d.licenses.describe()->items[1].selected,"step 9: about");
-        w.tap('S',true); check(!d.is_dirty(),"step 10: save"); w.alt_f4(); check(w.closed,"step 10: close");
+        w.tap('S',true); check(!d.isDirty(),"step 10: save"); w.altF4(); check(w.closed,"step 10: close");
     }
     {
         Walk w(appearance,path); auto& d=w.demo; check(d.document().name==u"工作站 A" && !d.document().notices && d.document().mode==OptionValue{"focus"} && d.document().region==OptionValue{"south"} && d.document().volume==65 && d.document().items[4].name==u"共用範本 A" && !d.ui.presentation().fontFamily.empty() && d.ui.presentation().textSize==28 && d.ui.presentation().variant==ThemeVariant::dark(),"step 11: reload");
-        w.tabs(5); w.tap(VK_RIGHT); check(d.document().volume==70,"step 12: edit"); w.alt_f4(); check(d.close_dialog.isOpen().value.value_or(false),"step 12: prompt"); w.tap(VK_ESCAPE); check(!w.closed,"step 12: cancel"); w.alt_f4(); w.tap(VK_TAB); w.tap(VK_SPACE); check(w.closed,"step 12: discard");
+        w.tabs(5); w.tap(VK_RIGHT); check(d.document().volume==70,"step 12: edit"); w.altF4(); check(d.closeDialog.isOpen().value.value_or(false),"step 12: prompt"); w.tap(VK_ESCAPE); check(!w.closed,"step 12: cancel"); w.altF4(); w.tap(VK_TAB); w.tap(VK_SPACE); check(w.closed,"step 12: discard");
     }
     { Walk w(appearance,path); check(w.demo.document().volume==65,"step 12: reload saved volume"); }
 }
 int wmain(int argc,wchar_t** argv) {
     std::filesystem::path evidence; bool com=false, failed=false;
     try {
-        if(argc>1) { check(argc==4 && std::wstring_view(argv[1])==L"--real" && std::wstring_view(argv[2])==L"--evidence","Usage: lcars_demo_keyboard [--real --evidence DIR]"); real_input=true; evidence=argv[3]; std::filesystem::create_directories(evidence); check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,"DPI awareness unavailable"); check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed"); com=true; profiles=new Profiles; profiles->us(); }
+        if(argc>1) { check(argc==4 && std::wstring_view(argv[1])==L"--real" && std::wstring_view(argv[2])==L"--evidence","Usage: lcars_demo_keyboard [--real --evidence DIR]"); realInput=true; evidence=argv[3]; std::filesystem::create_directories(evidence); check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,"DPI awareness unavailable"); check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed"); com=true; profiles=new Profiles; profiles->us(); }
         auto base=std::filesystem::temp_directory_path()/("lcars-keyboard-"+std::to_string(GetCurrentProcessId()));
         std::ofstream kw,cr,events;
-        if(real_input) { kw.open(evidence/"KW02.tsv"); cr.open(evidence/"CR09-real.tsv"); events.open(evidence/"demo-events.log"); event_log=&events; kw<<"case\tappearance\tstatus\tdetail\n"; cr<<"case\tappearance\tstatus\tdetail\n"; wchar_t path[]=L"C:\\Windows\\System32\\IME\\IMETC\\IMTCTIP.DLL"; DWORD ignored=0; DWORD size=GetFileVersionInfoSizeW(path,&ignored); std::vector<char> data(size); VS_FIXEDFILEINFO* info=nullptr; UINT len=0; if(size && GetFileVersionInfoW(path,0,size,data.data()) && VerQueryValueW(data.data(),L"\\",reinterpret_cast<void**>(&info),&len)) events<<"IMTCTIP.DLL "<<HIWORD(info->dwFileVersionMS)<<'.'<<LOWORD(info->dwFileVersionMS)<<'.'<<HIWORD(info->dwFileVersionLS)<<'.'<<LOWORD(info->dwFileVersionLS)<<'\n'; else events<<"IMTCTIP.DLL version unknown\n"; }
+        if(realInput) { kw.open(evidence/"KW02.tsv"); cr.open(evidence/"CR09-real.tsv"); events.open(evidence/"demo-events.log"); eventLog=&events; kw<<"case\tappearance\tstatus\tdetail\n"; cr<<"case\tappearance\tstatus\tdetail\n"; wchar_t path[]=L"C:\\Windows\\System32\\IME\\IMETC\\IMTCTIP.DLL"; DWORD ignored=0; DWORD size=GetFileVersionInfoSizeW(path,&ignored); std::vector<char> data(size); VS_FIXEDFILEINFO* info=nullptr; UINT len=0; if(size && GetFileVersionInfoW(path,0,size,data.data()) && VerQueryValueW(data.data(),L"\\",reinterpret_cast<void**>(&info),&len)) events<<"IMTCTIP.DLL "<<HIWORD(info->dwFileVersionMS)<<'.'<<LOWORD(info->dwFileVersionMS)<<'.'<<HIWORD(info->dwFileVersionLS)<<'.'<<LOWORD(info->dwFileVersionLS)<<'\n'; else events<<"IMTCTIP.DLL version unknown\n"; }
         for(auto* appearance:{&webAppearance(),&materialAppearance()}) {
             auto path=base/appearance->name(); std::filesystem::create_directories(path);
-            try { run(*appearance,path); if(real_input) kw<<"KW02\t"<<appearance->name()<<"\tPASS\t12 steps\n"; }
-            catch(const std::exception& e) { if(!real_input) throw; kw<<"KW02\t"<<appearance->name()<<"\tFAIL\t"<<e.what()<<"\n"; events<<e.what()<<'\n'; failed=true; profiles->us(); }  // real runs record every case in one idle session
-            if(real_input) try {
+            try { run(*appearance,path); if(realInput) kw<<"KW02\t"<<appearance->name()<<"\tPASS\t12 steps\n"; }
+            catch(const std::exception& e) { if(!realInput) throw; kw<<"KW02\t"<<appearance->name()<<"\tFAIL\t"<<e.what()<<"\n"; events<<e.what()<<'\n'; failed=true; profiles->us(); }  // real runs record every case in one idle session
+            if(realInput) try {
                 Walk w(*appearance,base/(std::string(appearance->name())+"-close")); w.demo.name.focus(); w.demo.name.setValue(u"Before"); check(profiles->chinese(),"Microsoft Bopomofo unavailable"); w.wait(300); if(auto imc=ImmGetContext(w.window)) { DWORD c=0,s=0; ImmGetConversionStatus(imc,&c,&s); ImmSetConversionStatus(imc,c|IME_CMODE_NATIVE,s); ImmReleaseContext(w.window,imc); }
-                w.tap('J'); w.tap('I'); w.tap('3'); auto* edit=detail::access(w.demo.ui).edit("general.name"); check(edit && edit->composing && !edit->preedit.empty(),"composition did not start"); w.observe_close=true; w.alt_f4(); // E01: the host asks the IME to complete; Microsoft Bopomofo delivers 我 synchronously, so the handler reads the committed draft.
-                check(!w.callback_composing && w.callback_draft==u"Before我","CR09 E01 result mismatch"); cr<<"CR09-real\t"<<appearance->name()<<"\tPASS\tcomposition completed before callback; draft=Before我\n"; profiles->us();
+                w.tap('J'); w.tap('I'); w.tap('3'); auto* edit=detail::access(w.demo.ui).edit("general.name"); check(edit && edit->composing && !edit->preedit.empty(),"composition did not start"); w.observeClose=true; w.altF4(); // E01: the host asks the IME to complete; Microsoft Bopomofo delivers 我 synchronously, so the handler reads the committed draft.
+                check(!w.callbackComposing && w.callbackDraft==u"Before我","CR09 E01 result mismatch"); cr<<"CR09-real\t"<<appearance->name()<<"\tPASS\tcomposition completed before callback; draft=Before我\n"; profiles->us();
             } catch (const std::exception& e) { cr << "CR09-real\t" << appearance->name() << "\tFAIL\t" << e.what() << "\n"; failed=true; profiles->us(); }
         }
-        std::filesystem::remove_all(base); event_log=nullptr; delete profiles; if(com) CoUninitialize(); return failed ? 1 : 0;
+        std::filesystem::remove_all(base); eventLog=nullptr; delete profiles; if(com) CoUninitialize(); return failed ? 1 : 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; delete profiles; if(com) CoUninitialize(); return 1; }
 }
 

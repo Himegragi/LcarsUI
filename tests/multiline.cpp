@@ -35,9 +35,9 @@ TextFieldHandle connect(Ui& ui, ComponentConfig control) {
 ComponentConfig multi(std::string id, std::u16string value = {}, unsigned lines = 3) {
     return {.id = std::move(id), .value = std::move(value), .multiline = true, .visibleLines = lines};
 }
-std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }
+std::u16string valueOf(Ui& ui, std::string_view id) { return detail::access(ui).text(id); }
 
-void multiline_values_allow_line_feed_and_reject_carriage_return() {
+void multilineValuesAllowLineFeedAndRejectCarriageReturn() {
     Ui ui;
     check(bool(ui.addTextField(multi("ok", u"a\nb"))), "A multi-line field may start with a line feed");
     check(ui.addTextField(multi("cr", u"a\rb")).status == Status::invalidValue, "A carriage return is an invalid initial value");
@@ -50,174 +50,174 @@ void multiline_values_allow_line_feed_and_reject_carriage_return() {
     check(!validSingleLine(u"a\nb"), "valid_single_line is unchanged");
 }
 
-void semantic_and_typed_set_value_share_the_line_feed_rule() {
+void semanticAndTypedSetValueShareTheLineFeedRule() {
     Ui ui;
     auto field = connect(ui, multi("note"));
-    check(bool(field.setValue(u"one\ntwo")) && value_of(ui, "note") == u"one\ntwo", "Typed set_value accepts a line feed");
-    check(field.setValue(u"x\ry").status == Status::invalidValue && value_of(ui, "note") == u"one\ntwo",
+    check(bool(field.setValue(u"one\ntwo")) && valueOf(ui, "note") == u"one\ntwo", "Typed set_value accepts a line feed");
+    check(field.setValue(u"x\ry").status == Status::invalidValue && valueOf(ui, "note") == u"one\ntwo",
           "Typed set_value rejects CR and leaves the field unchanged");
     auto& tree = ui.semantics();
     check(bool(tree.perform({"note"}, Verb::setValue, std::u16string(u"semantic\nvalue"))) && field.draft().value.value() == u"semantic\nvalue",
           "Semantic set_value accepts a line feed");
-    check(tree.perform({"note"}, Verb::setValue, std::u16string(u"bad\r")).status == Status::invalidValue && value_of(ui, "note") == u"semantic\nvalue",
+    check(tree.perform({"note"}, Verb::setValue, std::u16string(u"bad\r")).status == Status::invalidValue && valueOf(ui, "note") == u"semantic\nvalue",
           "Semantic set_value rejects CR with the same status");
     check(tree.get({"note"})->value == u"semantic\nvalue", "The semantic value includes the line feed");
 }
 
-void paste_normalizes_every_line_break_to_one_line_feed() {
+void pasteNormalizesEveryLineBreakToOneLineFeed() {
     Ui ui;
     auto field = connect(ui, multi("note"));
     MemoryClipboard clipboard;
     auto& host = detail::access(ui);
-    host.set_clipboard(&clipboard); host.focus("note");
+    host.setClipboard(&clipboard); host.focus("note");
     clipboard.content = u"a\r\nb\rc\nd";
-    host.key_down(ctrl(u'V'));
-    check(value_of(ui, "note") == u"a\nb\nc\nd", "CRLF, lone CR and lone LF each paste as one LF");
-    host.key_down(ctrl(u'Z'));
-    check(value_of(ui, "note").empty(), "One paste is one undo entry");
-    host.key_down(ctrl(u'Y'));
-    check(value_of(ui, "note") == u"a\nb\nc\nd", "Redo restores the paste");
+    host.keyDown(ctrl(u'V'));
+    check(valueOf(ui, "note") == u"a\nb\nc\nd", "CRLF, lone CR and lone LF each paste as one LF");
+    host.keyDown(ctrl(u'Z'));
+    check(valueOf(ui, "note").empty(), "One paste is one undo entry");
+    host.keyDown(ctrl(u'Y'));
+    check(valueOf(ui, "note") == u"a\nb\nc\nd", "Redo restores the paste");
     check(pasteAsMultiLine(u"x\r\n\r\ny") == u"x\n\ny", "paste_as_multi_line counts CRLF once");
     check(pasteAsSingleLine(u"x\r\ny") == u"x y", "paste_as_single_line is unchanged");
     host.select("note", 0, 3);
-    host.key_down(ctrl(u'C'));
+    host.keyDown(ctrl(u'C'));
     check(clipboard.content == u"a\r\nb", "Copy writes line breaks as CRLF");
-    check(value_of(ui, "note") == u"a\nb\nc\nd", "Copy does not change the value");
-    host.key_down(ctrl(u'X'));
-    check(clipboard.content == u"a\r\nb" && value_of(ui, "note") == u"\nc\nd", "Cut also writes CRLF");
+    check(valueOf(ui, "note") == u"a\nb\nc\nd", "Copy does not change the value");
+    host.keyDown(ctrl(u'X'));
+    check(clipboard.content == u"a\r\nb" && valueOf(ui, "note") == u"\nc\nd", "Cut also writes CRLF");
 }
 
-void single_line_paste_still_turns_breaks_into_spaces() {
+void singleLinePasteStillTurnsBreaksIntoSpaces() {
     Ui ui;
     auto field = connect(ui, {.id = "name", .value = u"x"});
     MemoryClipboard clipboard;
     auto& host = detail::access(ui);
-    host.set_clipboard(&clipboard); host.focus("name");
+    host.setClipboard(&clipboard); host.focus("name");
     clipboard.content = u"a\r\nb\rc\nd";
-    host.key_down(ctrl(u'A'));
-    host.key_down(ctrl(u'V'));
-    check(value_of(ui, "name") == u"a b c d", "A single-line paste converts breaks to spaces");
+    host.keyDown(ctrl(u'A'));
+    host.keyDown(ctrl(u'V'));
+    check(valueOf(ui, "name") == u"a b c d", "A single-line paste converts breaks to spaces");
     host.select("name", 0, 7);
-    host.key_down(ctrl(u'C'));
+    host.keyDown(ctrl(u'C'));
     check(clipboard.content == u"a b c d", "A single-line copy is not converted");
 }
 
-void a_line_feed_counts_as_one_toward_max_length() {
+void aLineFeedCountsAsOneTowardMaxLength() {
     Ui ui;
     auto field = connect(ui, {.id = "note", .maxLength = 5, .multiline = true, .visibleLines = 2});
     check(bool(field.setValue(u"ab\ncd")), "Five characters including a line feed fit a limit of five");
-    check(field.setValue(u"ab\ncde").status == Status::invalidValue && value_of(ui, "note") == u"ab\ncd", "Six characters are rejected whole");
+    check(field.setValue(u"ab\ncde").status == Status::invalidValue && valueOf(ui, "note") == u"ab\ncd", "Six characters are rejected whole");
     auto& host = detail::access(ui);
     host.focus("note");
     host.select("note", 5, 5);
-    check(host.paste("note", u"\r\n").status == Status::invalidValue && value_of(ui, "note") == u"ab\ncd",
+    check(host.paste("note", u"\r\n").status == Status::invalidValue && valueOf(ui, "note") == u"ab\ncd",
           "A pasted CRLF counts once and is rejected at the limit");
     host.select("note", 2, 3);
-    check(bool(host.paste("note", u"\r\n")) && value_of(ui, "note") == u"ab\ncd", "Replacing the line feed with CRLF stays within the limit");
+    check(bool(host.paste("note", u"\r\n")) && valueOf(ui, "note") == u"ab\ncd", "Replacing the line feed with CRLF stays within the limit");
 }
 
-void a_source_value_with_carriage_return_is_ignored() {
+void aSourceValueWithCarriageReturnIsIgnored() {
     Ui ui;
     auto model = std::make_shared<std::u16string>(u"a\nb");
     std::function<void()> notify;
     auto field = *ui.addTextField(multi("note", u"a\nb"));
     check(bool(field.connectSource({[model] { return *model; }, [&](std::function<void()> cb) { notify = cb; return [] {}; }})), "Connect a source");
     *model = u"c\rd"; notify();
-    check(value_of(ui, "note") == u"a\nb", "An invalid source value is ignored like any invalid value");
+    check(valueOf(ui, "note") == u"a\nb", "An invalid source value is ignored like any invalid value");
     *model = u"c\nd"; notify();
-    check(value_of(ui, "note") == u"c\nd", "A valid multi-line source value is adopted");
+    check(valueOf(ui, "note") == u"c\nd", "A valid multi-line source value is adopted");
 }
 
 // A form with a multi-line field, a single-line field and three shortcut targets.
 struct Form {
     Ui ui;
     TextFieldHandle note, name;
-    ButtonHandle plain_enter, ctrl_enter, scoped_enter;
-    int plain = 0, with_ctrl = 0, scoped = 0;
+    ButtonHandle plainEnter, ctrlEnter, scopedEnter;
+    int plain = 0, withCtrl = 0, scoped = 0;
     Form() {
         note = connect(ui, multi("note"));
         name = connect(ui, {.id = "name", .value = u"x"});
-        plain_enter = *ui.addButton({.id = "plain", .label = u"OK"});
-        ctrl_enter = *ui.addButton({.id = "ctrl", .label = u"Apply"});
-        scoped_enter = *ui.addButton({.id = "scoped", .label = u"Edit"});
-        check(bool(plain_enter.bind([this] { ++plain; return Result{}; })), "Bind the global Enter action");
-        check(bool(ctrl_enter.bind([this] { ++with_ctrl; return Result{}; })), "Bind the Ctrl+Enter action");
-        check(bool(scoped_enter.bind([this] { ++scoped; return Result{}; })), "Bind the scoped Enter action");
-        check(bool(ui.addShortcut({.key = Key::enter}, plain_enter)), "Global Enter shortcut");
-        check(bool(ui.addShortcut({.key = Key::enter, .ctrl = true}, ctrl_enter)), "Ctrl+Enter shortcut");
-        check(bool(ui.addShortcut({.key = Key::enter}, scoped_enter, note)), "Enter shortcut scoped to the multi-line field");
-        check(bool(ui.addShortcut({.key = Key::enter}, scoped_enter, name)), "Enter shortcut scoped to the single-line field");
+        plainEnter = *ui.addButton({.id = "plain", .label = u"OK"});
+        ctrlEnter = *ui.addButton({.id = "ctrl", .label = u"Apply"});
+        scopedEnter = *ui.addButton({.id = "scoped", .label = u"Edit"});
+        check(bool(plainEnter.bind([this] { ++plain; return Result{}; })), "Bind the global Enter action");
+        check(bool(ctrlEnter.bind([this] { ++withCtrl; return Result{}; })), "Bind the Ctrl+Enter action");
+        check(bool(scopedEnter.bind([this] { ++scoped; return Result{}; })), "Bind the scoped Enter action");
+        check(bool(ui.addShortcut({.key = Key::enter}, plainEnter)), "Global Enter shortcut");
+        check(bool(ui.addShortcut({.key = Key::enter, .ctrl = true}, ctrlEnter)), "Ctrl+Enter shortcut");
+        check(bool(ui.addShortcut({.key = Key::enter}, scopedEnter, note)), "Enter shortcut scoped to the multi-line field");
+        check(bool(ui.addShortcut({.key = Key::enter}, scopedEnter, name)), "Enter shortcut scoped to the single-line field");
     }
     detail::UiState& host() { return detail::access(ui); }
 };
 
-void enter_inserts_a_line_feed_and_no_enter_shortcut_fires() {
+void enterInsertsALineFeedAndNoEnterShortcutFires() {
     Form form; auto& host = form.host();
     host.focus("note");
-    check(bool(host.key_down(press(Key::enter))) && value_of(form.ui, "note") == u"\n", "Enter inserts a line feed");
-    host.text_input(u"a");
-    check(bool(host.key_down(press(Key::enter, true))) && value_of(form.ui, "note") == u"\na\n", "Shift+Enter inserts a line feed too");
-    check(form.plain == 0 && form.scoped == 0 && form.with_ctrl == 0, "Neither the global nor the scoped Enter shortcut fired");
+    check(bool(host.keyDown(press(Key::enter))) && valueOf(form.ui, "note") == u"\n", "Enter inserts a line feed");
+    host.textInput(u"a");
+    check(bool(host.keyDown(press(Key::enter, true))) && valueOf(form.ui, "note") == u"\na\n", "Shift+Enter inserts a line feed too");
+    check(form.plain == 0 && form.scoped == 0 && form.withCtrl == 0, "Neither the global nor the scoped Enter shortcut fired");
     host.select("note", 1, 1);
-    host.key_down(press(Key::enter));
-    check(value_of(form.ui, "note") == u"\n\na\n", "Enter inserts at the caret");
+    host.keyDown(press(Key::enter));
+    check(valueOf(form.ui, "note") == u"\n\na\n", "Enter inserts at the caret");
     check(host.edit("note")->selection.caret == 2 && host.edit("note")->selection.anchor == 2, "The caret follows the inserted break");
     host.select("note", 0, 3);
-    host.key_down(press(Key::enter));
-    check(value_of(form.ui, "note") == u"\n\n", "Enter replaces the selection (three of four characters) with one break");
+    host.keyDown(press(Key::enter));
+    check(valueOf(form.ui, "note") == u"\n\n", "Enter replaces the selection (three of four characters) with one break");
 }
 
-void ctrl_enter_reaches_the_shortcut_and_tab_moves_focus() {
+void ctrlEnterReachesTheShortcutAndTabMovesFocus() {
     Form form; auto& host = form.host();
     host.focus("note");
-    host.key_down(press(Key::enter, false, true));
-    check(form.with_ctrl == 1 && form.plain == 0 && value_of(form.ui, "note").empty(), "Ctrl+Enter triggers its shortcut and inserts nothing");
-    host.key_down(press(Key::tab));
-    check(host.focused() == "name" && value_of(form.ui, "note").empty(), "Tab moves the focus and inserts no tab character");
-    host.key_down(press(Key::tab, true));
+    host.keyDown(press(Key::enter, false, true));
+    check(form.withCtrl == 1 && form.plain == 0 && valueOf(form.ui, "note").empty(), "Ctrl+Enter triggers its shortcut and inserts nothing");
+    host.keyDown(press(Key::tab));
+    check(host.focused() == "name" && valueOf(form.ui, "note").empty(), "Tab moves the focus and inserts no tab character");
+    host.keyDown(press(Key::tab, true));
     check(host.focused() == "note", "Shift+Tab moves the focus back");
 }
 
-void each_enter_is_one_undo_entry() {
+void eachEnterIsOneUndoEntry() {
     Form form; auto& host = form.host();
     host.focus("note");
-    host.text_input(u"a"); host.key_down(press(Key::enter)); host.text_input(u"b");
-    check(value_of(form.ui, "note") == u"a\nb", "Typed text with a break");
-    host.key_down(ctrl(u'Z'));
-    check(value_of(form.ui, "note") == u"a\n", "Undo removes the last typed character");
-    host.key_down(ctrl(u'Z'));
-    check(value_of(form.ui, "note") == u"a", "Undo removes the break by itself");
-    host.key_down(ctrl(u'Z'));
-    check(value_of(form.ui, "note").empty(), "Undo removes the first character");
-    host.key_down(ctrl(u'Y'));
-    host.key_down(ctrl(u'Y'));
-    check(value_of(form.ui, "note") == u"a\n", "Redo restores the break as one entry");
+    host.textInput(u"a"); host.keyDown(press(Key::enter)); host.textInput(u"b");
+    check(valueOf(form.ui, "note") == u"a\nb", "Typed text with a break");
+    host.keyDown(ctrl(u'Z'));
+    check(valueOf(form.ui, "note") == u"a\n", "Undo removes the last typed character");
+    host.keyDown(ctrl(u'Z'));
+    check(valueOf(form.ui, "note") == u"a", "Undo removes the break by itself");
+    host.keyDown(ctrl(u'Z'));
+    check(valueOf(form.ui, "note").empty(), "Undo removes the first character");
+    host.keyDown(ctrl(u'Y'));
+    host.keyDown(ctrl(u'Y'));
+    check(valueOf(form.ui, "note") == u"a\n", "Redo restores the break as one entry");
 }
 
-void enter_during_composition_does_not_break_the_line() {
+void enterDuringCompositionDoesNotBreakTheLine() {
     Form form; auto& host = form.host();
     host.focus("note");
-    host.text_input(u"a");
-    check(bool(host.composition_update(u"ㄅㄉ", 2)), "Start composing");
-    auto result = host.key_down(press(Key::enter));
+    host.textInput(u"a");
+    check(bool(host.compositionUpdate(u"ㄅㄉ", 2)), "Start composing");
+    auto result = host.keyDown(press(Key::enter));
     check(result.status == Status::busy && host.edit("note")->composing, "Enter during composition is left to the input method");
-    check(value_of(form.ui, "note") == u"a" && form.plain == 0 && form.scoped == 0, "No break and no shortcut");
-    check(bool(host.composition_commit(u"你")) && value_of(form.ui, "note") == u"a你", "The input method commits the chosen text");
-    check(bool(host.key_down(press(Key::enter))) && value_of(form.ui, "note") == u"a你\n", "Enter breaks the line again after the composition");
+    check(valueOf(form.ui, "note") == u"a" && form.plain == 0 && form.scoped == 0, "No break and no shortcut");
+    check(bool(host.compositionCommit(u"你")) && valueOf(form.ui, "note") == u"a你", "The input method commits the chosen text");
+    check(bool(host.keyDown(press(Key::enter))) && valueOf(form.ui, "note") == u"a你\n", "Enter breaks the line again after the composition");
 }
 
-void single_line_enter_still_reaches_its_shortcut() {
+void singleLineEnterStillReachesItsShortcut() {
     Form form; auto& host = form.host();
     host.focus("name");
-    host.key_down(press(Key::enter));
-    check(form.scoped == 1 && form.plain == 0 && value_of(form.ui, "name") == u"x", "A single-line field leaves Enter to its shortcut");
+    host.keyDown(press(Key::enter));
+    check(form.scoped == 1 && form.plain == 0 && valueOf(form.ui, "name") == u"x", "A single-line field leaves Enter to its shortcut");
 }
 
-void read_only_multiline_field_refuses_enter() {
+void readOnlyMultilineFieldRefusesEnter() {
     Form form; auto& host = form.host();
     host.focus("note");
     form.note.readOnly(true);
-    check(host.key_down(press(Key::enter)).status == Status::readOnly && value_of(form.ui, "note").empty() && form.scoped == 0,
+    check(host.keyDown(press(Key::enter)).status == Status::readOnly && valueOf(form.ui, "note").empty() && form.scoped == 0,
           "A read-only multi-line field neither edits nor lets Enter through");
 }
 
@@ -225,11 +225,11 @@ void read_only_multiline_field_refuses_enter() {
 // FakeMeasure at 16 px text: an ASCII character is 8 px wide and a line is 24 px tall. A 200 px
 // field has a 176 px editor, a 14 px scrollbar reserve and a 2 px caret slack, so a line holds
 // (200 - 24 - 14 - 2) / 8 = 20 characters.
-constexpr int field_width = 200;
+constexpr int fieldWidth = 200;
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     const Placement* field = nullptr;
-    Laid(Ui& ui, const TextFieldHandle& handle, int width = field_width) {
+    Laid(Ui& ui, const TextFieldHandle& handle, int width = fieldWidth) {
         frame = arrange(layout::component(handle), ui, webAppearance(), measure, width, 400, 1.f, scroll);
         field = frame.find(handle);
         check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
@@ -242,7 +242,7 @@ std::vector<std::pair<unsigned, unsigned>> spans(const Placement& p) {
 }
 using Spans = std::vector<std::pair<unsigned, unsigned>>;
 
-void a_long_line_wraps_at_the_edge_and_the_height_stays_fixed() {
+void aLongLineWrapsAtTheEdgeAndTheHeightStaysFixed() {
     Ui ui;
     auto field = connect(ui, multi("note", std::u16string(45, u'a')));
     Laid laid(ui, field);
@@ -256,7 +256,7 @@ void a_long_line_wraps_at_the_edge_and_the_height_stays_fixed() {
     check(tall.field->view.lines.size() == 20 && tall.field->view.first == 0, "A long text keeps every line and shows the first ones");
 }
 
-void hard_breaks_make_lines_and_wrapping_prefers_spaces() {
+void hardBreaksMakeLinesAndWrappingPrefersSpaces() {
     Ui ui;
     auto field = connect(ui, multi("note", u"a\n\nb\n"));
     Laid laid(ui, field);
@@ -268,7 +268,7 @@ void hard_breaks_make_lines_and_wrapping_prefers_spaces() {
     check(spans(*wrapped.field) == Spans{{0, 18}, {18, 26}}, "Latin text breaks after the last space that fits (\"hello world again \"), like labels");
 }
 
-void the_scrollbar_width_is_always_reserved() {
+void theScrollbarWidthIsAlwaysReserved() {
     Ui three;
     auto first = connect(three, multi("note", std::u16string(20, u'x') + u"\nb\nc"));
     Laid before(three, first);
@@ -286,7 +286,7 @@ void the_scrollbar_width_is_always_reserved() {
           "The scrollbar track is 10 px and the text width does not change");
 }
 
-void pointer_positions_map_to_line_and_offset() {
+void pointerPositionsMapToLineAndOffset() {
     Ui ui;
     auto field = connect(ui, multi("note", u"abc\ndef\nghi"));
     Laid laid(ui, field);
@@ -300,7 +300,7 @@ void pointer_positions_map_to_line_and_offset() {
     check(laid.field->caretX(5) == view.text.x + 8 && laid.field->caretY(5) == view.text.y + 24, "Caret position of offset 5: column 1, second line");
 }
 
-void a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream() {
+void aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream() {
     Ui ui;
     auto field = connect(ui, multi("note", std::u16string(30, u'a')));
     Laid laid(ui, field);
@@ -317,7 +317,7 @@ void a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream() {
 // The host arranges after every input; so does this fixture, which is what keeps core's copy of the lines fresh.
 struct Editor {
     Ui ui; TextFieldHandle field; FakeMeasure measure; ScrollState scroll; Frame frame;
-    explicit Editor(std::u16string value, unsigned lines = 3, int width = field_width) : width_(width) {
+    explicit Editor(std::u16string value, unsigned lines = 3, int width = fieldWidth) : width_(width) {
         field = connect(ui, multi("note", std::move(value), lines));
         host().focus("note");
         layout();
@@ -325,7 +325,7 @@ struct Editor {
     detail::UiState& host() { return detail::access(ui); }
     void layout() { frame = arrange(layout::component(field), ui, webAppearance(), measure, width_, 400, 1.f, scroll); }
     const Placement& placed() const { return *frame.find(field); }
-    void key(Key k, bool shift = false, bool control = false) { host().key_down(press(k, shift, control)); layout(); }
+    void key(Key k, bool shift = false, bool control = false) { host().keyDown(press(k, shift, control)); layout(); }
     void put(unsigned anchor, unsigned caret) { check(bool(host().select("note", anchor, caret)), "Select"); layout(); }
     unsigned caret() { return host().edit("note")->selection.caret; }
     unsigned anchor() { return host().edit("note")->selection.anchor; }
@@ -333,7 +333,7 @@ struct Editor {
     int width_;
 };
 
-void vertical_keys_move_by_display_line_and_keep_the_column() {
+void verticalKeysMoveByDisplayLineAndKeepTheColumn() {
     Editor e(u"abcdef\nxy\nabcdef");
     e.put(4, 4);
     e.key(Key::down);
@@ -351,7 +351,7 @@ void vertical_keys_move_by_display_line_and_keep_the_column() {
     check(e.caret() == 16, "Down on the last line does not move");
 }
 
-void vertical_keys_follow_wrapped_lines() {
+void verticalKeysFollowWrappedLines() {
     Editor e(std::u16string(30, u'a'));
     e.put(5, 5);
     e.key(Key::down);
@@ -374,7 +374,7 @@ void vertical_keys_follow_wrapped_lines() {
     check(e.caret() == 30 && !e.host().edit("note")->caretUpstream, "End on the last piece is the end of the text");
 }
 
-void home_and_end_use_the_current_line_and_ctrl_uses_the_whole_text() {
+void homeAndEndUseTheCurrentLineAndCtrlUsesTheWholeText() {
     Editor e(u"ab\ncd\nef");
     e.put(4, 4);
     e.key(Key::end);
@@ -394,7 +394,7 @@ void home_and_end_use_the_current_line_and_ctrl_uses_the_whole_text() {
     check(e.anchor() == 4 && e.caret() == 8, "Shift+Ctrl+End extends to the end");
 }
 
-void shift_with_vertical_keys_extends_the_selection() {
+void shiftWithVerticalKeysExtendsTheSelection() {
     Editor e(u"ab\ncd\nef");
     e.put(1, 1);
     e.key(Key::down, true);
@@ -407,7 +407,7 @@ void shift_with_vertical_keys_extends_the_selection() {
     check(e.anchor() == 7 && e.caret() == 7, "Down without Shift collapses to the new caret");
 }
 
-void page_keys_move_by_the_visible_line_count() {
+void pageKeysMoveByTheVisibleLineCount() {
     Editor e(u"0\n1\n2\n3\n4\n5\n6\n7\n8\n9", 3);
     check(e.placed().view.lines.size() == 10 && e.first() == 0, "Ten lines, three visible");
     e.put(0, 0);
@@ -424,19 +424,19 @@ void page_keys_move_by_the_visible_line_count() {
 }
 
 // ---- Scrolling ----------------------------------------------------------------------------
-std::u16string numbered_lines(int count) {
+std::u16string numberedLines(int count) {
     std::u16string text;
     for (int i = 0; i < count; ++i) { if (i) text += u'\n'; text += std::u16string(1, static_cast<char16_t>(u'0' + i % 10)); }
     return text;
 }
-unsigned scroll_line_of(const TextFieldHandle& field) { return field.scrollLine().value.value(); }
+unsigned scrollLineOf(const TextFieldHandle& field) { return field.scrollLine().value.value(); }
 
-void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
+void typingToLineTwentyScrollsTheFieldToTheCaret() {
     Editor e(u"x", 3);
     e.key(Key::end, false, true);
     for (int i = 0; i < 19; ++i) {
         e.key(Key::enter);
-        e.host().text_input(u"y"); e.layout();
+        e.host().textInput(u"y"); e.layout();
     }
     check(e.placed().view.lines.size() == 20 && e.caret() == 39, "Twenty lines, the caret on the last");
     check(e.first() == 17, "The field scrolled so the caret's line is the last visible one");
@@ -446,7 +446,7 @@ void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
     check(e.first() == 16, "Moving the caret above the view scrolls up just enough");
     e.key(Key::home, false, true);
     check(e.first() == 0, "Ctrl+Home returns to the top");
-    check(bool(e.field.setValue(numbered_lines(20))), "Code replaces the value");
+    check(bool(e.field.setValue(numberedLines(20))), "Code replaces the value");
     e.layout();
     check(e.caret() == 39 && e.first() == 17, "A value set from code scrolls to the caret it leaves at the end");
     check(bool(e.host().select("note", 4, 4)), "Code moves the caret");
@@ -454,8 +454,8 @@ void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
     check(e.first() == 2, "A caret moved from code is revealed too: from above the view it lands on the first row");
 }
 
-void scrolling_alone_does_not_move_the_caret_or_snap_back() {
-    Editor e(numbered_lines(10), 3);
+void scrollingAloneDoesNotMoveTheCaretOrSnapBack() {
+    Editor e(numberedLines(10), 3);
     check(bool(e.field.setScrollLine(5)), "Scroll the view");
     e.layout();
     check(e.first() == 5 && e.caret() == 0, "The caret stays where it was, out of view");
@@ -465,32 +465,32 @@ void scrolling_alone_does_not_move_the_caret_or_snap_back() {
     check(e.first() == 0, "Moving the caret reveals it");
 }
 
-void the_wheel_scrolls_the_field_then_the_page() {
+void theWheelScrollsTheFieldThenThePage() {
     Ui ui;
-    auto field = connect(ui, multi("note", numbered_lines(10), 3));
-    auto tall = *ui.addLabel({.id = "tall", .value = numbered_lines(30)});
+    auto field = connect(ui, multi("note", numberedLines(10), 3));
+    auto tall = *ui.addLabel({.id = "tall", .value = numberedLines(30)});
     FakeMeasure measure; ScrollState page, outer;
     auto node = layout::scroll(layout::column({layout::component(field), layout::component(tall)}, 8), outer, 200);
     auto frame = arrange(node, ui, webAppearance(), measure, 300, 400, 1.f, page);
     const auto* placed = frame.find(field);
     check(placed != nullptr && frame.regions.size() == 2 && frame.regions.back().textField == "note", "The field is an inner scroll region of the page");
     const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
-    check(frame.wheel(ui, x, y, -48) && scroll_line_of(field) == 2 && outer.offset == 0, "One notch scrolls two lines of the field, not the page");
-    while (frame.wheel(ui, x, y, -48) && scroll_line_of(field) < 7) {}
-    check(scroll_line_of(field) == 7 && outer.offset == 0, "The field reaches its last page");
-    check(frame.wheel(ui, x, y, -48) && scroll_line_of(field) == 7 && outer.offset > 0, "At the bottom the wheel passes to the page");
-    const int page_offset = outer.offset;
-    check(frame.wheel(ui, x, y, 48) && scroll_line_of(field) == 5 && outer.offset == page_offset, "Scrolling back up moves the field first again");
+    check(frame.wheel(ui, x, y, -48) && scrollLineOf(field) == 2 && outer.offset == 0, "One notch scrolls two lines of the field, not the page");
+    while (frame.wheel(ui, x, y, -48) && scrollLineOf(field) < 7) {}
+    check(scrollLineOf(field) == 7 && outer.offset == 0, "The field reaches its last page");
+    check(frame.wheel(ui, x, y, -48) && scrollLineOf(field) == 7 && outer.offset > 0, "At the bottom the wheel passes to the page");
+    const int pageOffset = outer.offset;
+    check(frame.wheel(ui, x, y, 48) && scrollLineOf(field) == 5 && outer.offset == pageOffset, "Scrolling back up moves the field first again");
     check(!frame.wheel(ui, 5000, 5000, -48), "A pointer outside every region scrolls nothing");
-    check(scroll_line_of(field) == 5, "The field kept its position");
+    check(scrollLineOf(field) == 5, "The field kept its position");
 }
 
-void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
+void aDialogScrollsItsOwnContentAndBlocksThePage() {
     Ui ui;
-    auto background = *ui.addLabel({.id = "background", .value = numbered_lines(40)});
+    auto background = *ui.addLabel({.id = "background", .value = numberedLines(40)});
     auto backup = *ui.addButton({.id = "backup", .label = u"Back"});
     auto cancel = *ui.addButton({.id = "cancel", .label = u"Cancel"});
-    auto note = connect(ui, multi("note", numbered_lines(10), 3));
+    auto note = connect(ui, multi("note", numberedLines(10), 3));
     auto dialog = *ui.addDialog("dlg", {note, cancel}, note, backup, [](bool) {});
     FakeMeasure measure; ScrollState page, outer;
     auto content = layout::column({layout::component(note), layout::component(cancel)}, 8);
@@ -500,39 +500,39 @@ void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
     const auto* placed = frame.find(note);
     check(frame.modal && placed != nullptr, "The dialog's field is placed in the open dialog");
     const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
-    check(frame.wheel(ui, x, y, -48) && scroll_line_of(note) == 2, "The wheel scrolls the field inside the dialog");
+    check(frame.wheel(ui, x, y, -48) && scrollLineOf(note) == 2, "The wheel scrolls the field inside the dialog");
     check(!frame.wheel(ui, 5, 5, -48) && outer.offset == 0, "The page behind the dialog still does not scroll");
     const auto& region = *std::find_if(frame.regions.begin(), frame.regions.end(), [](const ScrollRegion& r) { return r.textField == "note"; });
     check(region.modalContent && region.thumb.h > 0, "The field's scrollbar belongs to the dialog");
     const int travel = region.track.h - region.thumb.h;
-    check(frame.scrollTo(ui, *region.state, region.offsetForThumb(region.track.y + travel)) && scroll_line_of(note) == 7,
+    check(frame.scrollTo(ui, *region.state, region.offsetForThumb(region.track.y + travel)) && scrollLineOf(note) == 7,
           "Dragging the thumb to the bottom scrolls the field to its last page");
-    check(frame.scrollTo(ui, *region.state, region.offsetForThumb(region.track.y + travel / 2)) && scroll_line_of(note) == 4,
+    check(frame.scrollTo(ui, *region.state, region.offsetForThumb(region.track.y + travel / 2)) && scrollLineOf(note) == 4,
           "Dragging the thumb halfway lands on the middle line");
 }
 
-void the_scroll_position_is_one_value_for_code_and_semantics() {
-    Editor e(numbered_lines(10), 3);
+void theScrollPositionIsOneValueForCodeAndSemantics() {
+    Editor e(numberedLines(10), 3);
     auto& tree = e.ui.semantics();
-    check(scroll_line_of(e.field) == 0, "Starts at the top");
-    check(bool(e.field.setScrollLine(4)) && scroll_line_of(e.field) == 4, "Typed set");
+    check(scrollLineOf(e.field) == 0, "Starts at the top");
+    check(bool(e.field.setScrollLine(4)) && scrollLineOf(e.field) == 4, "Typed set");
     e.layout();
     check(e.first() == 4 && e.placed().view.lines[e.first()].begin == 8, "The first visible line is the fifth, which starts at offset 8");
     auto node = tree.get({"note"});
     check(node && node->scroll && node->scroll->firstLine == 4 && node->scroll->visibleLines == 3 && node->scroll->lineCount == 10,
           "The semantic node reports the same position, visible lines and total lines");
     check(std::find(node->verbs.begin(), node->verbs.end(), Verb::scroll) != node->verbs.end(), "The semantic node offers the scroll verb");
-    check(bool(tree.perform({"note"}, Verb::scroll, 6)) && scroll_line_of(e.field) == 6, "Semantic scroll moves the same position");
+    check(bool(tree.perform({"note"}, Verb::scroll, 6)) && scrollLineOf(e.field) == 6, "Semantic scroll moves the same position");
     check(e.field.setScrollLine(8).status == Status::invalidValue && tree.perform({"note"}, Verb::scroll, 8).status == Status::invalidValue &&
-          scroll_line_of(e.field) == 6, "Both entry points reject a line past the last page, with the same status");
+          scrollLineOf(e.field) == 6, "Both entry points reject a line past the last page, with the same status");
     check(tree.perform({"note"}, Verb::scroll, -1).status == Status::invalidValue, "A negative line is invalid");
     check(tree.perform({"note"}, Verb::scroll, std::u16string(u"x")).status == Status::invalidValue, "A scroll needs a number");
-    check(bool(e.field.setScrollLine(7)) && scroll_line_of(e.field) == 7, "The last page is the last valid position");
+    check(bool(e.field.setScrollLine(7)) && scrollLineOf(e.field) == 7, "The last page is the last valid position");
     e.layout();
     check(e.first() == 7, "Arranging keeps a position set from code");
 }
 
-void the_first_visible_line_survives_a_text_size_change() {
+void theFirstVisibleLineSurvivesATextSizeChange() {
     std::u16string text;
     for (int i = 0; i < 6; ++i) { if (i) text += u'\n'; text += u"p" + std::u16string(1, static_cast<char16_t>(u'0' + i)) + std::u16string(37, u'a'); }
     Editor e(text, 3);
@@ -542,26 +542,26 @@ void the_first_visible_line_survives_a_text_size_change() {
     check(e.placed().view.lines[e.first()].begin == 120, "Its first line starts at offset 120");
     check(bool(e.ui.setPresentation({.textSize = 28})), "Raise the text size");
     e.layout();
-    check(e.placed().view.lines.size() > 12 && e.placed().view.lines[e.first()].begin == 120 && scroll_line_of(e.field) == e.first(),
+    check(e.placed().view.lines.size() > 12 && e.placed().view.lines[e.first()].begin == 120 && scrollLineOf(e.field) == e.first(),
           "More lines now, and the first visible line still starts the same paragraph");
     check(e.first() == 12, "At 28 px each paragraph takes four lines");
 }
 
-void the_visible_line_count_can_change_at_run_time() {
-    Editor e(numbered_lines(10), 3);
+void theVisibleLineCountCanChangeAtRunTime() {
+    Editor e(numberedLines(10), 3);
     int invalidations = 0;
-    e.host().on_invalidate([&] { ++invalidations; });
+    e.host().onInvalidate([&] { ++invalidations; });
     const int before = e.placed().bounds.h;
     check(bool(e.field.setVisibleLines(5)) && e.field.visibleLines().value.value() == 5 && invalidations > 0, "Set five lines and ask for a new frame");
     e.layout();
     check(e.placed().view.visible == 5 && e.placed().textField.editor.h == 5 * 24 && e.placed().bounds.h == before + 2 * 24, "The field is two lines taller at once");
     check(e.ui.semantics().get({"note"})->scroll->visibleLines == 5 && e.field.describe()->scroll->visibleLines == 5, "Semantics report the new height");
     check(bool(e.field.setScrollLine(5)), "Five visible lines of ten leave six scroll positions");
-    check(bool(e.field.setVisibleLines(2)) && scroll_line_of(e.field) == 5, "Shrinking keeps the position");
+    check(bool(e.field.setVisibleLines(2)) && scrollLineOf(e.field) == 5, "Shrinking keeps the position");
     e.layout();
     check(e.placed().view.visible == 2 && e.first() == 5, "Two lines are shown from the same first line");
     check(e.field.setVisibleLines(0).status == Status::invalidValue && e.field.visibleLines().value.value() == 2, "At least one line");
-    check(bool(e.field.setVisibleLines(20)) && scroll_line_of(e.field) == 0, "More lines than the text has leaves nothing to scroll");
+    check(bool(e.field.setVisibleLines(20)) && scrollLineOf(e.field) == 0, "More lines than the text has leaves nothing to scroll");
     Ui single;
     auto name = connect(single, {.id = "name"});
     check(name.setVisibleLines(2).status == Status::notSupported && name.setScrollLine(0).status == Status::notSupported &&
@@ -571,52 +571,52 @@ void the_visible_line_count_can_change_at_run_time() {
 }
 
 // ---- Pointer and input method ---------------------------------------------------------------
-void dragging_selects_across_lines_and_scrolls_at_the_edges() {
-    Editor e(numbered_lines(10), 3);
+void draggingSelectsAcrossLinesAndScrollsAtTheEdges() {
+    Editor e(numberedLines(10), 3);
     const auto view = e.placed().view; // a copy: layout() replaces the frame
     const int x = view.text.x, top = view.text.y, bottom = top + 3 * 24;
     check(bool(e.host().select("note", 0, 0)), "Press on the first character");
     check(e.frame.selectTo(e.ui, e.field, x, top + 24 * 2 + 3) && e.anchor() == 0 && e.caret() == 4, "Dragging to the third line selects through it");
     check(e.first() == 0, "Inside the field nothing scrolls");
-    check(e.frame.selectTo(e.ui, e.field, x, bottom + 5) && scroll_line_of(e.field) == 1 && e.anchor() == 0 && e.caret() == 6,
+    check(e.frame.selectTo(e.ui, e.field, x, bottom + 5) && scrollLineOf(e.field) == 1 && e.anchor() == 0 && e.caret() == 6,
           "Below the field it scrolls one line and the caret takes the last visible line (the fourth)");
-    check(e.frame.selectTo(e.ui, e.field, x, bottom + 50) && scroll_line_of(e.field) == 2 && e.caret() == 8,
+    check(e.frame.selectTo(e.ui, e.field, x, bottom + 50) && scrollLineOf(e.field) == 2 && e.caret() == 8,
           "Each call scrolls one more, from the current position rather than the frame's");
     e.layout();
     check(e.first() == 2 && e.caret() == 8, "The next frame keeps the scrolled view");
-    check(e.frame.selectTo(e.ui, e.field, x, top - 5) && scroll_line_of(e.field) == 1 && e.caret() == 2, "Above the field it scrolls back up");
+    check(e.frame.selectTo(e.ui, e.field, x, top - 5) && scrollLineOf(e.field) == 1 && e.caret() == 2, "Above the field it scrolls back up");
     while (e.frame.selectTo(e.ui, e.field, x, bottom + 5)) {}
-    check(scroll_line_of(e.field) == 7 && e.caret() == 18 && !e.frame.selectTo(e.ui, e.field, x, bottom + 5),
+    check(scrollLineOf(e.field) == 7 && e.caret() == 18 && !e.frame.selectTo(e.ui, e.field, x, bottom + 5),
           "At the last page the drag stops scrolling and the caret stays on the last line");
     check(e.anchor() == 0, "The anchor never moved during the drag");
 }
 
-void a_click_past_a_wrapped_line_end_stays_on_that_line() {
+void aClickPastAWrappedLineEndStaysOnThatLine() {
     Editor e(std::u16string(30, u'a'), 3);
     const auto view = e.placed().view; // a copy: layout() replaces the frame
-    auto hit = detail::placement_text_hit(e.frame, "note", view.text.x + 500, view.text.y + 3);
+    auto hit = detail::placementTextHit(e.frame, "note", view.text.x + 500, view.text.y + 3);
     check(hit.offset == 20 && hit.upstream, "Past the end of a wrapped piece: its end, flagged upstream");
-    check(bool(e.host().select_pointer("note", hit.offset, hit.offset, hit.upstream)), "Place the caret there");
+    check(bool(e.host().selectPointer("note", hit.offset, hit.offset, hit.upstream)), "Place the caret there");
     e.layout();
     check(e.placed().caretY(e.caret()) == view.text.y && e.placed().caretX(e.caret()) == view.text.x + 20 * 8, "It is drawn at the end of the first line");
-    auto second = detail::placement_text_hit(e.frame, "note", view.text.x + 500, view.text.y + 24 + 3);
+    auto second = detail::placementTextHit(e.frame, "note", view.text.x + 500, view.text.y + 24 + 3);
     check(second.offset == 30 && !second.upstream, "Past the end of the last line is the end of the text");
 }
 
-void composition_wraps_and_the_candidate_position_follows_the_caret_line() {
+void compositionWrapsAndTheCandidatePositionFollowsTheCaretLine() {
     Editor e(std::u16string(18, u'a'), 3);
     e.put(18, 18);
-    check(bool(e.host().composition_update(u"你好", 2)), "Start composing two wide characters");
+    check(bool(e.host().compositionUpdate(u"你好", 2)), "Start composing two wide characters");
     e.layout();
     const auto& p = e.placed();
     check(spans(p) == Spans{{0, 19}, {19, 20}}, "The composed text wraps like committed text");
     const auto rect = p.caretRect(e.host().edit("note")->visibleCaret());
     check(rect.y == p.view.text.y + 24 && rect.x == p.view.text.x + 16 && rect.h == 24, "The candidate window anchors at the caret's wrapped line");
-    check(bool(e.host().composition_commit(u"你好")) && e.host().text("note") == std::u16string(18, u'a') + u"你好", "Commit it");
+    check(bool(e.host().compositionCommit(u"你好")) && e.host().text("note") == std::u16string(18, u'a') + u"你好", "Commit it");
 
-    Editor s(numbered_lines(3), 2);
+    Editor s(numberedLines(3), 2);
     s.put(2, 2);
-    check(bool(s.host().composition_update(u"x", 1)), "Compose on the second line");
+    check(bool(s.host().compositionUpdate(u"x", 1)), "Compose on the second line");
     s.layout();
     check(s.placed().caretRect(s.host().edit("note")->visibleCaret()).y == s.placed().view.text.y + 24, "On the second row of the view");
     check(bool(s.field.setScrollLine(1)), "Scroll one line while composing");
@@ -628,38 +628,38 @@ void composition_wraps_and_the_candidate_position_follows_the_caret_line() {
 
 int main() {
     const test::Case cases[] = {
-        {"multiline values allow LF and reject CR", multiline_values_allow_line_feed_and_reject_carriage_return},
-        {"semantic and typed set_value share the rule", semantic_and_typed_set_value_share_the_line_feed_rule},
-        {"paste normalizes breaks and copy writes CRLF", paste_normalizes_every_line_break_to_one_line_feed},
-        {"single-line paste still converts to spaces", single_line_paste_still_turns_breaks_into_spaces},
-        {"a line feed counts one toward max_length", a_line_feed_counts_as_one_toward_max_length},
-        {"a source value with CR is ignored", a_source_value_with_carriage_return_is_ignored},
-        {"Enter inserts LF and no Enter shortcut fires", enter_inserts_a_line_feed_and_no_enter_shortcut_fires},
-        {"Ctrl+Enter reaches its shortcut; Tab moves focus", ctrl_enter_reaches_the_shortcut_and_tab_moves_focus},
-        {"each Enter is one undo entry", each_enter_is_one_undo_entry},
-        {"Enter during composition does not break the line", enter_during_composition_does_not_break_the_line},
-        {"single-line Enter still reaches its shortcut", single_line_enter_still_reaches_its_shortcut},
-        {"read-only multi-line field refuses Enter", read_only_multiline_field_refuses_enter},
-        {"a long line wraps and the height stays fixed", a_long_line_wraps_at_the_edge_and_the_height_stays_fixed},
-        {"hard breaks make lines; wrapping prefers spaces", hard_breaks_make_lines_and_wrapping_prefers_spaces},
-        {"the scrollbar width is always reserved", the_scrollbar_width_is_always_reserved},
-        {"pointer positions map to line and offset", pointer_positions_map_to_line_and_offset},
-        {"a wrap-boundary caret belongs to the next line", a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream},
-        {"vertical keys move by display line and keep the column", vertical_keys_move_by_display_line_and_keep_the_column},
-        {"vertical keys follow wrapped lines", vertical_keys_follow_wrapped_lines},
-        {"Home/End use the line, Ctrl the whole text", home_and_end_use_the_current_line_and_ctrl_uses_the_whole_text},
-        {"Shift with vertical keys extends the selection", shift_with_vertical_keys_extends_the_selection},
-        {"page keys move by the visible line count", page_keys_move_by_the_visible_line_count},
-        {"typing to line twenty scrolls to the caret", typing_to_line_twenty_scrolls_the_field_to_the_caret},
-        {"scrolling alone neither moves the caret nor snaps back", scrolling_alone_does_not_move_the_caret_or_snap_back},
-        {"the wheel scrolls the field, then the page", the_wheel_scrolls_the_field_then_the_page},
-        {"a dialog scrolls its own content and blocks the page", a_dialog_scrolls_its_own_content_and_blocks_the_page},
-        {"the scroll position is one value for code and semantics", the_scroll_position_is_one_value_for_code_and_semantics},
-        {"the first visible line survives a text size change", the_first_visible_line_survives_a_text_size_change},
-        {"the visible line count can change at run time", the_visible_line_count_can_change_at_run_time},
-        {"dragging selects across lines and scrolls at the edges", dragging_selects_across_lines_and_scrolls_at_the_edges},
-        {"a click past a wrapped line end stays on that line", a_click_past_a_wrapped_line_end_stays_on_that_line},
-        {"composition wraps and the candidate follows the caret line", composition_wraps_and_the_candidate_position_follows_the_caret_line},
+        {"multiline values allow LF and reject CR", multilineValuesAllowLineFeedAndRejectCarriageReturn},
+        {"semantic and typed set_value share the rule", semanticAndTypedSetValueShareTheLineFeedRule},
+        {"paste normalizes breaks and copy writes CRLF", pasteNormalizesEveryLineBreakToOneLineFeed},
+        {"single-line paste still converts to spaces", singleLinePasteStillTurnsBreaksIntoSpaces},
+        {"a line feed counts one toward max_length", aLineFeedCountsAsOneTowardMaxLength},
+        {"a source value with CR is ignored", aSourceValueWithCarriageReturnIsIgnored},
+        {"Enter inserts LF and no Enter shortcut fires", enterInsertsALineFeedAndNoEnterShortcutFires},
+        {"Ctrl+Enter reaches its shortcut; Tab moves focus", ctrlEnterReachesTheShortcutAndTabMovesFocus},
+        {"each Enter is one undo entry", eachEnterIsOneUndoEntry},
+        {"Enter during composition does not break the line", enterDuringCompositionDoesNotBreakTheLine},
+        {"single-line Enter still reaches its shortcut", singleLineEnterStillReachesItsShortcut},
+        {"read-only multi-line field refuses Enter", readOnlyMultilineFieldRefusesEnter},
+        {"a long line wraps and the height stays fixed", aLongLineWrapsAtTheEdgeAndTheHeightStaysFixed},
+        {"hard breaks make lines; wrapping prefers spaces", hardBreaksMakeLinesAndWrappingPrefersSpaces},
+        {"the scrollbar width is always reserved", theScrollbarWidthIsAlwaysReserved},
+        {"pointer positions map to line and offset", pointerPositionsMapToLineAndOffset},
+        {"a wrap-boundary caret belongs to the next line", aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream},
+        {"vertical keys move by display line and keep the column", verticalKeysMoveByDisplayLineAndKeepTheColumn},
+        {"vertical keys follow wrapped lines", verticalKeysFollowWrappedLines},
+        {"Home/End use the line, Ctrl the whole text", homeAndEndUseTheCurrentLineAndCtrlUsesTheWholeText},
+        {"Shift with vertical keys extends the selection", shiftWithVerticalKeysExtendsTheSelection},
+        {"page keys move by the visible line count", pageKeysMoveByTheVisibleLineCount},
+        {"typing to line twenty scrolls to the caret", typingToLineTwentyScrollsTheFieldToTheCaret},
+        {"scrolling alone neither moves the caret nor snaps back", scrollingAloneDoesNotMoveTheCaretOrSnapBack},
+        {"the wheel scrolls the field, then the page", theWheelScrollsTheFieldThenThePage},
+        {"a dialog scrolls its own content and blocks the page", aDialogScrollsItsOwnContentAndBlocksThePage},
+        {"the scroll position is one value for code and semantics", theScrollPositionIsOneValueForCodeAndSemantics},
+        {"the first visible line survives a text size change", theFirstVisibleLineSurvivesATextSizeChange},
+        {"the visible line count can change at run time", theVisibleLineCountCanChangeAtRunTime},
+        {"dragging selects across lines and scrolls at the edges", draggingSelectsAcrossLinesAndScrollsAtTheEdges},
+        {"a click past a wrapped line end stays on that line", aClickPastAWrappedLineEndStaysOnThatLine},
+        {"composition wraps and the candidate follows the caret line", compositionWrapsAndTheCandidatePositionFollowsTheCaretLine},
     };
     return test::run("multiline", cases);
 }

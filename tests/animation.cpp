@@ -1,6 +1,6 @@
 // #75 shared animation clock and the slider thumb transition, observed through the same paint
-// entry the host uses and a fake time source. Seams: UiState::animation_time (fake clock),
-// UiState::set_system_animations (simulated Windows setting), Ui::animating / SemanticTree::animating.
+// entry the host uses and a fake time source. Seams: UiState::animationTime (fake clock),
+// UiState::setSystemAnimations (simulated Windows setting), Ui::animating / SemanticTree::animating.
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "check.hpp"
@@ -22,7 +22,7 @@ struct ThumbProbe : detail::ComponentPaint {
     void fill(Rect, Color) override {}
     void rounded(Rect rect, int, Color) override {
         if (current == detail::PaintRole::focusIndicator) dots.push_back(rect);
-        else if (focus_marks::is_thumb(rect)) thumbs.push_back(rect);
+        else if (focusMarks::isThumb(rect)) thumbs.push_back(rect);
     }
     void clip(Rect) override {}
     void text(std::u16string_view value, int, int, int, Color) override { texts.emplace_back(value); }
@@ -43,7 +43,7 @@ struct Volume {
         slider = ui.addSlider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connectSource({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
         slider.connectImmediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
-        detail::access(ui).animation_time([this] { return now; });
+        detail::access(ui).animationTime([this] { return now; });
         slider.focus();
         paint();
     }
@@ -56,22 +56,22 @@ struct Volume {
         track = item->sliderTrack;
         auto semantic = state().describe(item->id);
         ThumbProbe probe(state(), *item, *semantic, appearance, 1.f, true);
-        detail::component_type(ComponentKind::slider).paint(probe);
+        detail::componentType(ComponentKind::slider).paint(probe);
         return probe;
     }
     int tick(int value) const { return track.x + static_cast<int>(std::lround(track.w * value / 100.0)); }
-    Result press(Key key) { return state().key_down({.key = key}); }
+    Result press(Key key) { return state().keyDown({.key = key}); }
 };
-bool near_px(int a, int b) { return std::abs(a - b) <= 1; }
+bool nearPx(int a, int b) { return std::abs(a - b) <= 1; }
 
-void keyboard_step_slides_the_thumb() {
+void keyboardStepSlidesTheThumb() {
     Volume v;
     check(bool(v.press(Key::right)), "right arrow accepted");
     auto start = v.paint();
     check(*v.slider.draft() == 50 && v.model == 50, "value is 50 at once");
     check(v.ui.semantics().get({"volume"})->value == u"50", "semantic value is 50 at t=0");
     check(start.titled(u"Volume: 50"), "title shows 50 at t=0");
-    check(near_px(start.center(), v.tick(45)), "thumb is still on the 45 tick at t=0");
+    check(nearPx(start.center(), v.tick(45)), "thumb is still on the 45 tick at t=0");
     check(v.ui.animating().value.value(), "animating at t=0");
     v.now = 75;
     int middle = v.paint().center();
@@ -79,44 +79,44 @@ void keyboard_step_slides_the_thumb() {
     check(middle > (v.tick(45) + v.tick(50)) / 2 && middle < v.tick(50), "t=75ms is between the ticks and past half way");
     check(v.ui.animating().value.value(), "still animating at t=75");
     v.now = 150;
-    check(near_px(v.paint().center(), v.tick(50)), "t=150ms is on the 50 tick");
+    check(nearPx(v.paint().center(), v.tick(50)), "t=150ms is on the 50 tick");
     check(!v.ui.animating().value.value(), "not animating at t=150");
 }
 
 // #72 x #75: the focus dot beside the title and the enlarged thumb belong to the focus-visible state, not to the
 // thumb's position, so they hold while the thumb slides and follow the indicator when it hides and shows again.
-void focus_dot_and_thumb_size_hold_while_the_thumb_slides() {
+void focusDotAndThumbSizeHoldWhileTheThumbSlides() {
     for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         Volume v(*look);
-        const int enlarged = focus_marks::enlarged_thumb(*look), plain = focus_marks::plain_thumb(*look);
+        const int enlarged = focusMarks::enlargedThumb(*look), plain = focusMarks::plainThumb(*look);
         check(enlarged > plain, "the focus-visible thumb is larger than the plain one");
         check(bool(v.press(Key::right)) && v.state().focusIndicatorVisible(), "the arrow key shows the indicator and starts a slide");
         auto start = v.paint();
-        check(v.ui.animating().value.value() && near_px(start.center(), v.tick(45)), "sliding, thumb still on the 45 tick at t=0");
-        check(start.thumbs.size() == 1 && focus_marks::is_one_ring(static_cast<int>(start.dots.size())), "one thumb and one focus ring (two fills) at t=0");
+        check(v.ui.animating().value.value() && nearPx(start.center(), v.tick(45)), "sliding, thumb still on the 45 tick at t=0");
+        check(start.thumbs.size() == 1 && focusMarks::isOneRing(static_cast<int>(start.dots.size())), "one thumb and one focus ring (two fills) at t=0");
         check(start.thumbs.back().w == enlarged, "the thumb is enlarged while focus-visible at t=0");
         v.now = 75;
         auto middle = v.paint();
         check(v.ui.animating().value.value() && middle.center() > v.tick(45) && middle.center() < v.tick(50), "mid-slide");
-        check(focus_marks::is_one_ring(static_cast<int>(middle.dots.size())) && middle.dots.back().x == start.dots.back().x && middle.dots.back().y == start.dots.back().y &&
+        check(focusMarks::isOneRing(static_cast<int>(middle.dots.size())) && middle.dots.back().x == start.dots.back().x && middle.dots.back().y == start.dots.back().y &&
               middle.dots.back().w == start.dots.back().w, "the focus ring stays put while the thumb moves");
         check(middle.thumbs.back().w == enlarged, "the thumb stays enlarged mid-slide");
         // A pointer press elsewhere hides the indicator: dot and enlargement go, the slide goes on.
-        v.state().pointer_pressed();
+        v.state().pointerPressed();
         auto hidden = v.paint();
-        check(v.ui.animating().value.value() && near_px(hidden.center(), middle.center()), "hiding the indicator does not restart or stop the slide");
+        check(v.ui.animating().value.value() && nearPx(hidden.center(), middle.center()), "hiding the indicator does not restart or stop the slide");
         check(hidden.dots.empty() && hidden.thumbs.back().w == plain, "no focus ring and a plain thumb mid-slide once hidden");
         check(bool(v.press(Key::right)) && v.state().focusIndicatorVisible(), "a key shows the indicator again, retargeting the slide");
         auto again = v.paint();
-        check(focus_marks::is_one_ring(static_cast<int>(again.dots.size())) && again.thumbs.back().w == enlarged && again.dots.back().x == start.dots.back().x, "ring and enlarged thumb are back mid-slide");
+        check(focusMarks::isOneRing(static_cast<int>(again.dots.size())) && again.thumbs.back().w == enlarged && again.dots.back().x == start.dots.back().x, "ring and enlarged thumb are back mid-slide");
         v.now = 75 + 150;
         auto done = v.paint();
-        check(!v.ui.animating().value.value() && near_px(done.center(), v.tick(55)), "the slide ends on 55");
-        check(focus_marks::is_one_ring(static_cast<int>(done.dots.size())) && done.thumbs.back().w == enlarged && done.dots.back().x == start.dots.back().x, "ring and enlarged thumb hold when the slide ended");
+        check(!v.ui.animating().value.value() && nearPx(done.center(), v.tick(55)), "the slide ends on 55");
+        check(focusMarks::isOneRing(static_cast<int>(done.dots.size())) && done.thumbs.back().w == enlarged && done.dots.back().x == start.dots.back().x, "ring and enlarged thumb hold when the slide ended");
     }
 }
 
-void held_key_turns_from_the_displayed_position() {
+void heldKeyTurnsFromTheDisplayedPosition() {
     Volume v;
     std::vector<int> centers;
     for (int i = 0; i < 6; ++i) {
@@ -132,21 +132,21 @@ void held_key_turns_from_the_displayed_position() {
     // thumb starts from its displayed position, not from the old target.
     check(centers.back() <= v.tick(70), "the last repeat starts from the displayed position, behind the previous target");
     v.now = 5 * 30 + 150;
-    check(near_px(v.paint().center(), v.tick(75)), "150 ms after the last repeat the thumb is on 75");
+    check(nearPx(v.paint().center(), v.tick(75)), "150 ms after the last repeat the thumb is on 75");
     check(!v.ui.animating().value.value(), "settled");
 }
-void home_and_end_slide() {
+void homeAndEndSlide() {
     Volume v;
     check(bool(v.press(Key::home)), "Home");
     check(*v.slider.draft() == 0, "Home sets the minimum at once");
-    check(near_px(v.paint().center(), v.tick(45)), "Home: the thumb is still on 45 at t=0");
+    check(nearPx(v.paint().center(), v.tick(45)), "Home: the thumb is still on 45 at t=0");
     v.now = 75; int mid = v.paint().center();
     check(mid < v.tick(45) && mid > v.tick(0), "Home: the thumb is between the ticks at t=75");
-    v.now = 150; check(near_px(v.paint().center(), v.tick(0)), "Home: the thumb lands on 0");
+    v.now = 150; check(nearPx(v.paint().center(), v.tick(0)), "Home: the thumb lands on 0");
     v.now = 1000;
     check(bool(v.press(Key::end)) && *v.slider.draft() == 100, "End sets the maximum at once");
-    check(near_px(v.paint().center(), v.tick(0)), "End: the thumb starts at 0");
-    v.now = 1150; check(near_px(v.paint().center(), v.tick(100)), "End: the thumb lands on 100");
+    check(nearPx(v.paint().center(), v.tick(0)), "End: the thumb starts at 0");
+    v.now = 1150; check(nearPx(v.paint().center(), v.tick(100)), "End: the thumb lands on 100");
 }
 }
 
@@ -154,73 +154,73 @@ void home_and_end_slide() {
 struct Pointer {
     Volume& v;
     float scale;
-    explicit Pointer(Volume& volume, float dpi_scale = 1.f) : v(volume), scale(dpi_scale) {}
+    explicit Pointer(Volume& volume, float dpiScale = 1.f) : v(volume), scale(dpiScale) {}
     int at(double share) const { return v.track.x + static_cast<int>(v.track.w * share); }
-    void press(double share) { press_at(at(share)); }
-    void press_at(int x) {
-        check(bool(v.state().pointer_down("volume")), "pointer down");
-        v.state().slider_pointer_down("volume", x, v.track, scale);
+    void press(double share) { pressAt(at(share)); }
+    void pressAt(int x) {
+        check(bool(v.state().pointerDown("volume")), "pointer down");
+        v.state().sliderPointerDown("volume", x, v.track, scale);
     }
-    void move_to(int x) { v.state().slider_pointer("volume", x); }
-    void move(double share) { v.state().slider_pointer("volume", at(share)); }
-    void release() { v.state().pointer_up("volume"); }
+    void moveTo(int x) { v.state().sliderPointer("volume", x); }
+    void move(double share) { v.state().sliderPointer("volume", at(share)); }
+    void release() { v.state().pointerUp("volume"); }
 };
-void track_click_slides_and_release_keeps_the_slide() {
+void trackClickSlidesAndReleaseKeepsTheSlide() {
     Volume v; Pointer p(v);
     v.now = 1000;
     p.press(0.80);
     check(*v.slider.draft() == 80 && v.model == 80, "a track click sets 80 at once");
-    check(near_px(v.paint().center(), v.tick(45)), "t=0: the thumb has not left 45");
+    check(nearPx(v.paint().center(), v.tick(45)), "t=0: the thumb has not left 45");
     v.now = 1040; p.release();
     int released = v.paint().center();
     check(released > v.tick(45) && released < v.tick(80), "releasing mid-slide does not jump");
     v.now = 1075; int mid = v.paint().center();
     check(mid > (v.tick(45) + v.tick(80)) / 2 && mid < v.tick(80), "t=75ms: past half way, not there yet");
     v.now = 1150;
-    check(near_px(v.paint().center(), v.tick(80)), "150 ms after the press the thumb is on 80 (release did not restart the timing)");
+    check(nearPx(v.paint().center(), v.tick(80)), "150 ms after the press the thumb is on 80 (release did not restart the timing)");
     check(!v.ui.animating().value.value(), "the click transition has ended");
 }
-void drag_follows_the_hand_and_release_slides_to_the_tick() {
+void dragFollowsTheHandAndReleaseSlidesToTheTick() {
     Volume v; Pointer p(v);
     v.now = 1000;
     p.press(0.47);
     check(*v.slider.draft() == 45 && !v.ui.animating().value.value(), "pressing on the thumb changes nothing and plays nothing");
     p.move(0.72);
     check(*v.slider.draft() == 70, "dragging sets 70");
-    check(near_px(v.paint().center(), p.at(0.72)), "while dragging the thumb is under the pointer, no animation");
+    check(nearPx(v.paint().center(), p.at(0.72)), "while dragging the thumb is under the pointer, no animation");
     check(!v.ui.animating().value.value(), "dragging is not animating");
     v.now = 1010; p.move(0.52);
-    check(near_px(v.paint().center(), p.at(0.52)), "the thumb keeps following the hand");
+    check(nearPx(v.paint().center(), p.at(0.52)), "the thumb keeps following the hand");
     p.move(0.72);
     v.now = 2000; p.release();
-    check(near_px(v.paint().center(), p.at(0.72)), "t=0 after release: still where the pointer left it");
+    check(nearPx(v.paint().center(), p.at(0.72)), "t=0 after release: still where the pointer left it");
     check(v.ui.animating().value.value(), "release starts the slide");
     v.now = 2075; int mid = v.paint().center();
     check(mid < p.at(0.72) && mid > v.tick(70), "t=75ms after release: between the pointer and the tick");
     v.now = 2150;
-    check(near_px(v.paint().center(), v.tick(70)), "t=150ms after release: on the 70 tick");
+    check(nearPx(v.paint().center(), v.tick(70)), "t=150ms after release: on the 70 tick");
     check(!v.ui.animating().value.value(), "settled after release");
 }
-void press_then_drag_away_follows_the_hand() {
+void pressThenDragAwayFollowsTheHand() {
     Volume v; Pointer p(v);
     v.now = 1000; p.press(0.80);          // starts a click slide toward 80
     v.now = 1030; p.move(0.30);           // far enough to be a drag
-    check(near_px(v.paint().center(), p.at(0.30)), "once it is a drag the thumb is under the pointer");
+    check(nearPx(v.paint().center(), p.at(0.30)), "once it is a drag the thumb is under the pointer");
     check(!v.ui.animating().value.value(), "the click slide was dropped");
     check(*v.slider.draft() == 30, "value follows the drag");
 }
 // Code review 2026-11-12 item 6: only the release of a drag slides; an interruption returns at once.
-void interrupted_drag_returns_to_the_tick_at_once() {
+void interruptedDragReturnsToTheTickAtOnce() {
     Volume v; Pointer p(v);
     v.now = 1000; p.press(0.47); p.move(0.72);
-    v.state().cancel_input();
+    v.state().cancelInput();
     check(!v.ui.animating().value.value(), "an interrupted drag does not slide");
-    check(near_px(v.paint().center(), v.tick(70)), "the thumb is on the tick at once");
+    check(nearPx(v.paint().center(), v.tick(70)), "the thumb is on the tick at once");
     v.now = 1150;
-    check(near_px(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "and stays there");
+    check(nearPx(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "and stays there");
 }
 // Item 5: the held thumb is drawn on the CURRENT track, so the release slide starts from that pixel.
-void release_after_the_track_moved_slides_from_the_drawn_thumb() {
+void releaseAfterTheTrackMovedSlidesFromTheDrawnThumb() {
     Volume v; Pointer p(v);
     v.now = 1000; p.press(0.47); p.move(0.72);
     v.width = 300;  // the layout shifts under the held thumb
@@ -228,33 +228,33 @@ void release_after_the_track_moved_slides_from_the_drawn_thumb() {
     check(drawn >= v.track.x && drawn <= v.track.x + v.track.w, "the held thumb sits on the current track");
     v.now = 2000; p.release();
     check(v.ui.animating().value.value(), "release starts the slide");
-    check(near_px(v.paint().center(), drawn), "t=0 after release: no jump from the drawn thumb");
+    check(nearPx(v.paint().center(), drawn), "t=0 after release: no jump from the drawn thumb");
     v.now = 2075; int mid = v.paint().center();
     check((mid < drawn && mid > v.tick(70)) || (mid > drawn && mid < v.tick(70)), "t=75ms: between the drawn thumb and the tick");
     v.now = 2150;
-    check(near_px(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "t=150ms: on the tick of the current track");
+    check(nearPx(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "t=150ms: on the tick of the current track");
 }
 // Item 7: the 4 px threshold is 4 device-independent pixels, so it grows with the display scale.
-void the_click_drag_threshold_scales_with_dpi() {
+void theClickDragThresholdScalesWithDpi() {
     for (float scale : {1.f, 1.5f, 2.f}) {
         const int threshold = static_cast<int>(std::lround(4 * scale));
         for (int extra : {0, 1}) {
             Volume v; Pointer p(v, scale);
             v.now = 1000;
             const int start = v.track.x + static_cast<int>(v.track.w * 0.80);
-            p.press_at(start);
+            p.pressAt(start);
             check(*v.slider.draft() == 80 && v.ui.animating().value.value(), "a track click slides toward 80");
-            p.move_to(start + threshold + extra);
+            p.moveTo(start + threshold + extra);
             const std::string name = "scale " + std::to_string(scale) + ", " + std::to_string(threshold + extra) + " px";
             if (extra == 0) check(v.ui.animating().value.value(), (name + ": still a click").c_str());
-            else check(!v.ui.animating().value.value() && near_px(v.paint().center(), start + threshold + extra), (name + ": a drag follows the hand").c_str());
+            else check(!v.ui.animating().value.value() && nearPx(v.paint().center(), start + threshold + extra), (name + ": a drag follows the hand").c_str());
         }
     }
 }
 
 // Every way the value changes that is not the user's own input on this slider lands at once,
 // even in the middle of a running slide.
-void other_value_changes_land_at_once() {
+void otherValueChangesLandAtOnce() {
     struct Change { const char* name; void (*apply)(Volume&, int); };
     const Change changes[] = {
         {"application code", [](Volume& v, int value) { check(bool(v.slider.setValue(value)), "set_value"); }},
@@ -269,7 +269,7 @@ void other_value_changes_land_at_once() {
             if (running) { check(bool(v.press(Key::right)), "start a slide"); v.now = 40; }
             change.apply(v, 10);
             check(*v.slider.draft() == 10, change.name);
-            check(near_px(v.paint().center(), v.tick(10)), change.name);
+            check(nearPx(v.paint().center(), v.tick(10)), change.name);
             check(!v.ui.animating().value.value(), change.name);
         }
         // Back to the value a still-live slide was heading to: that is an external change too, so it lands at once.
@@ -278,50 +278,50 @@ void other_value_changes_land_at_once() {
         change.apply(v, 10); v.now = 80;
         change.apply(v, 50);
         check(*v.slider.draft() == 50, change.name);
-        check(near_px(v.paint().center(), v.tick(50)), (std::string(change.name) + ": back on the old target lands at once").c_str());
+        check(nearPx(v.paint().center(), v.tick(50)), (std::string(change.name) + ": back on the old target lands at once").c_str());
         check(!v.ui.animating().value.value(), (std::string(change.name) + ": the old slide does not resume").c_str());
     }
 }
 // Sliders have no edit history: Ctrl+Z / Ctrl+Y change nothing and leave a running slide alone.
-void undo_and_redo_keys_do_not_touch_a_slider() {
+void undoAndRedoKeysDoNotTouchASlider() {
     for (char16_t letter : {u'Z', u'Y'}) {
         Volume v;
         check(bool(v.press(Key::right)), "start a slide"); v.now = 40;
         const int before = v.paint().center();
         KeyPress chord; chord.key = Key::other; chord.ctrl = true; chord.letter = letter;
-        v.state().key_down(chord);
-        check(*v.slider.draft() == 50 && v.ui.animating().value.value() && near_px(v.paint().center(), before), "Ctrl+Z/Y neither change the value nor disturb the slide");
+        v.state().keyDown(chord);
+        check(*v.slider.draft() == 50 && v.ui.animating().value.value() && nearPx(v.paint().center(), before), "Ctrl+Z/Y neither change the value nor disturb the slide");
     }
 }
-void motion_off_and_system_setting_play_nothing() {
+void motionOffAndSystemSettingPlayNothing() {
     for (int source = 0; source < 2; ++source) {
         Volume v;
-        auto switch_off = [&] {
+        auto switchOff = [&] {
             if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::off; check(bool(v.ui.setPresentation(s)), "motion off accepted"); }
-            else v.state().set_system_animations(false);
+            else v.state().setSystemAnimations(false);
         };
-        auto switch_on = [&] {
+        auto switchOn = [&] {
             if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::automatic; check(bool(v.ui.setPresentation(s)), "motion automatic accepted"); }
-            else v.state().set_system_animations(true);
+            else v.state().setSystemAnimations(true);
         };
-        switch_off();
+        switchOff();
         check(bool(v.press(Key::right)), "step with motion off");
-        check(near_px(v.paint().center(), v.tick(50)) && !v.ui.animating().value.value(), "motion off: the thumb is on 50 at once");
+        check(nearPx(v.paint().center(), v.tick(50)) && !v.ui.animating().value.value(), "motion off: the thumb is on 50 at once");
         Pointer p(v); p.press(0.47); p.move(0.72);
-        check(near_px(v.paint().center(), p.at(0.72)), "motion off: the drag follows the hand");
+        check(nearPx(v.paint().center(), p.at(0.72)), "motion off: the drag follows the hand");
         p.release();
-        check(near_px(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "motion off: release snaps at once (#73)");
-        switch_on();
+        check(nearPx(v.paint().center(), v.tick(70)) && !v.ui.animating().value.value(), "motion off: release snaps at once (#73)");
+        switchOn();
         v.now = 500;
         check(bool(v.press(Key::left)), "step with motion back on");
-        check(near_px(v.paint().center(), v.tick(70)) && v.ui.animating().value.value(), "motion on again: the slide plays");
+        check(nearPx(v.paint().center(), v.tick(70)) && v.ui.animating().value.value(), "motion on again: the slide plays");
         // Switching off mid-slide lands the thumb at once.
         v.now = 540;
-        switch_off();
-        check(near_px(v.paint().center(), v.tick(65)) && !v.ui.animating().value.value(), "switching off ends the running slide at its end");
+        switchOff();
+        check(nearPx(v.paint().center(), v.tick(65)) && !v.ui.animating().value.value(), "switching off ends the running slide at its end");
     }
 }
-void presentation_motion_is_validated_and_compared() {
+void presentationMotionIsValidatedAndCompared() {
     Ui ui;
     PresentationSettings settings = ui.presentation();
     check(settings.motion == Motion::automatic, "the default follows the system");
@@ -332,37 +332,37 @@ void presentation_motion_is_validated_and_compared() {
     check(!(settings == ui.presentation()), "motion takes part in settings equality");
     check(bool(ui.setPresentation(settings)) && ui.presentation().motion == Motion::off, "off is accepted");
 }
-void switching_off_asks_for_a_final_frame() {
+void switchingOffAsksForAFinalFrame() {
     Volume v; int invalidations = 0;
-    v.state().on_invalidate([&] { ++invalidations; });
+    v.state().onInvalidate([&] { ++invalidations; });
     check(bool(v.press(Key::right)), "start");
     auto s = v.ui.presentation(); s.motion = Motion::off;
     v.ui.setPresentation(s);
     check(invalidations > 0, "the host is asked to draw the landed frame");
 }
-void hidden_window_ends_and_prevents_slides() {
+void hiddenWindowEndsAndPreventsSlides() {
     Volume v;
     check(bool(v.press(Key::right)), "start");
     v.now = 40;
-    v.state().set_window_hidden(true);
+    v.state().setWindowHidden(true);
     check(!v.ui.animating().value.value(), "minimized: no animation is running");
-    check(near_px(v.paint().center(), v.tick(50)), "minimized: the running slide jumped to its end");
+    check(nearPx(v.paint().center(), v.tick(50)), "minimized: the running slide jumped to its end");
     check(bool(v.press(Key::right)) && !v.ui.animating().value.value(), "no new slide starts while hidden");
-    v.state().set_window_hidden(false);
+    v.state().setWindowHidden(false);
     v.now = 100;
     check(bool(v.press(Key::right)) && v.ui.animating().value.value(), "slides play again once visible");
 }
-void without_a_time_source_changes_are_instant() {
+void withoutATimeSourceChangesAreInstant() {
     Ui ui;
     auto slider = ui.addSlider({.id = "v", .label = u"V"}, {0, 100, 5}).value.value();
     int model = 45; std::function<void()> changed;
     slider.connectSource({[&] { return model; }, [&](std::function<void()> n) { changed = std::move(n); return [] {}; }});
     slider.connectImmediate([&](const Change<SliderHandle>& c) { model = c.value; if (changed) changed(); return Result{}; });
     slider.focus();
-    check(bool(detail::access(ui).key_down({.key = Key::right})) && model == 50, "step");
+    check(bool(detail::access(ui).keyDown({.key = Key::right})) && model == 50, "step");
     check(!ui.animating().value.value(), "a core-only host that gave no clock never animates");
 }
-void animating_query_agrees_between_entries() {
+void animatingQueryAgreesBetweenEntries() {
     Volume v;
     check(v.ui.animating().status == Status::ok && v.ui.semantics().animating().status == Status::ok, "both entries answer");
     check(!v.ui.animating().value.value() && !v.ui.semantics().animating().value.value(), "idle: false from both");
@@ -375,9 +375,9 @@ void animating_query_agrees_between_entries() {
     std::thread([&] { typed = v.ui.animating().status; semantic = v.ui.semantics().animating().status; }).join();
     check(typed == Status::wrongThread && semantic == Status::wrongThread, "the same wrong_thread admission from both");
 }
-void clock_ease_out_and_retarget() {
+void clockEaseOutAndRetarget() {
     detail::AnimationClock clock; std::uint64_t now = 0;
-    clock.time_source([&] { return now; });
+    clock.timeSource([&] { return now; });
     clock.start("a", 10, 20);
     check(clock.value("a").value() == 10, "starts at the from value");
     now = 75; double half = *clock.value("a");
@@ -387,30 +387,30 @@ void clock_ease_out_and_retarget() {
     now = 225; check(!clock.value("a") && !clock.active("a"), "finished after the duration");
     clock.start("b", 0, 1); clock.start("c", 0, 1);
     clock.cancel("b"); check(!clock.active("b") && clock.active("c"), "cancel drops one track");
-    clock.finish_all(); check(!clock.active("c"), "finish_all drops every track");
+    clock.finishAll(); check(!clock.active("c"), "finish_all drops every track");
 }
 
 int main() {
     const test::Case cases[] = {
-        {"keyboard step slides the thumb", keyboard_step_slides_the_thumb},
-        {"focus dot and thumb size hold while sliding", focus_dot_and_thumb_size_hold_while_the_thumb_slides},
-        {"held key turns from the displayed position", held_key_turns_from_the_displayed_position},
-        {"Home and End slide", home_and_end_slide},
-        {"track click slides, release keeps the slide", track_click_slides_and_release_keeps_the_slide},
-        {"drag follows the hand, release slides", drag_follows_the_hand_and_release_slides_to_the_tick},
-        {"press then drag away follows the hand", press_then_drag_away_follows_the_hand},
-        {"interrupted drag returns at once", interrupted_drag_returns_to_the_tick_at_once},
-        {"release after the track moved starts from the drawn thumb", release_after_the_track_moved_slides_from_the_drawn_thumb},
-        {"click-drag threshold scales with dpi", the_click_drag_threshold_scales_with_dpi},
-        {"undo and redo keys do not touch a slider", undo_and_redo_keys_do_not_touch_a_slider},
-        {"other value changes land at once", other_value_changes_land_at_once},
-        {"motion off and system setting play nothing", motion_off_and_system_setting_play_nothing},
-        {"presentation motion is validated", presentation_motion_is_validated_and_compared},
-        {"switching off asks for a final frame", switching_off_asks_for_a_final_frame},
-        {"hidden window ends and prevents slides", hidden_window_ends_and_prevents_slides},
-        {"no time source means instant", without_a_time_source_changes_are_instant},
-        {"animating query agrees between entries", animating_query_agrees_between_entries},
-        {"clock ease-out and retarget", clock_ease_out_and_retarget},
+        {"keyboard step slides the thumb", keyboardStepSlidesTheThumb},
+        {"focus dot and thumb size hold while sliding", focusDotAndThumbSizeHoldWhileTheThumbSlides},
+        {"held key turns from the displayed position", heldKeyTurnsFromTheDisplayedPosition},
+        {"Home and End slide", homeAndEndSlide},
+        {"track click slides, release keeps the slide", trackClickSlidesAndReleaseKeepsTheSlide},
+        {"drag follows the hand, release slides", dragFollowsTheHandAndReleaseSlidesToTheTick},
+        {"press then drag away follows the hand", pressThenDragAwayFollowsTheHand},
+        {"interrupted drag returns at once", interruptedDragReturnsToTheTickAtOnce},
+        {"release after the track moved starts from the drawn thumb", releaseAfterTheTrackMovedSlidesFromTheDrawnThumb},
+        {"click-drag threshold scales with dpi", theClickDragThresholdScalesWithDpi},
+        {"undo and redo keys do not touch a slider", undoAndRedoKeysDoNotTouchASlider},
+        {"other value changes land at once", otherValueChangesLandAtOnce},
+        {"motion off and system setting play nothing", motionOffAndSystemSettingPlayNothing},
+        {"presentation motion is validated", presentationMotionIsValidatedAndCompared},
+        {"switching off asks for a final frame", switchingOffAsksForAFinalFrame},
+        {"hidden window ends and prevents slides", hiddenWindowEndsAndPreventsSlides},
+        {"no time source means instant", withoutATimeSourceChangesAreInstant},
+        {"animating query agrees between entries", animatingQueryAgreesBetweenEntries},
+        {"clock ease-out and retarget", clockEaseOutAndRetarget},
     };
     return test::run("animation", cases);
 }

@@ -13,7 +13,7 @@ public:
     void push(RenderDiagnostic event);
     void drain();
     using Output = std::function<void(const std::wstring&)>;
-    void set_output(Output output) { output_ = std::move(output); }
+    void setOutput(Output output) { output_ = std::move(output); }
 private:
     Callback callback_;
     Output output_;
@@ -23,5 +23,5 @@ private:
     std::size_t omitted_ = 0;
     bool dispatching_ = false;
 };
-void enqueue_font_diagnostics(DiagnosticQueue& queue, long catalog_error, const FontResolution& resolution);
+void enqueueFontDiagnostics(DiagnosticQueue& queue, long catalogError, const FontResolution& resolution);
 }

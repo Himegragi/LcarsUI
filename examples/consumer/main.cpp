@@ -39,14 +39,14 @@ static_assert(!std::is_convertible_v<lcars::Change<lcars::TextFieldHandle, lcars
 // Each field kind's default value type, and the only combinations that can be spelled: those the framework sends (the
 // list's is checked below).
 template <class Field, class... Value> concept SpellsChange = requires { typename lcars::Change<Field, Value...>; };
-template <class Field, class Value> constexpr bool change_holds =
+template <class Field, class Value> constexpr bool changeHolds =
     SpellsChange<Field> && std::same_as<decltype(lcars::Change<Field>::value), Value> && std::same_as<decltype(lcars::Change<Field>::origin), Value> &&
     std::same_as<decltype(lcars::Change<Field>::field), Field> && std::same_as<lcars::Change<Field>, lcars::Change<Field, Value>>;
-static_assert(change_holds<lcars::TextFieldHandle, std::u16string>);
-static_assert(change_holds<lcars::CheckboxHandle, bool>);
-static_assert(change_holds<lcars::RadioGroupHandle, std::optional<lcars::OptionValue>>);
-static_assert(change_holds<lcars::SliderHandle, int>);
-static_assert(change_holds<lcars::DropdownHandle, std::optional<lcars::OptionValue>>);
+static_assert(changeHolds<lcars::TextFieldHandle, std::u16string>);
+static_assert(changeHolds<lcars::CheckboxHandle, bool>);
+static_assert(changeHolds<lcars::RadioGroupHandle, std::optional<lcars::OptionValue>>);
+static_assert(changeHolds<lcars::SliderHandle, int>);
+static_assert(changeHolds<lcars::DropdownHandle, std::optional<lcars::OptionValue>>);
 static_assert(SpellsChange<lcars::TextFieldHandle, lcars::RichText> && std::same_as<decltype(lcars::Change<lcars::TextFieldHandle, lcars::RichText>::value), lcars::RichText>);
 static_assert(!SpellsChange<lcars::ButtonHandle>);
 static_assert(!SpellsChange<lcars::SliderHandle, bool>);
@@ -55,7 +55,7 @@ static_assert(std::same_as<lcars::ConfirmFieldChange, std::variant<lcars::Change
 // A list's write hands a change record too (#99): the seventh combination, written immediately only, so it is in neither
 // ConfirmFieldChange (above) nor ConfirmField. It shares its value type with the radio group and the dropdown and converts into
 // neither; it has no other value type; and the bare-value write callback of 0.2 is no longer accepted.
-static_assert(change_holds<lcars::ListHandle, std::optional<lcars::OptionValue>>);
+static_assert(changeHolds<lcars::ListHandle, std::optional<lcars::OptionValue>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::ListHandle>, lcars::Change<lcars::RadioGroupHandle>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::ListHandle>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::ListHandle>, lcars::Change<lcars::DropdownHandle>>);
@@ -83,20 +83,20 @@ template <class Label> concept LabelTakesBracedFunction = requires(const Label& 
 static_assert(LabelTakesFunction<lcars::LabelHandle> && LabelTakesSource<lcars::LabelHandle> && !LabelTakesBracedFunction<lcars::LabelHandle>);
 // The pre-0.3.0 names are gone without aliases (#95). Unqualified lookup inside a namespace nested in lcars finds lcars's
 // own declaration first and reaches these global stand-ins only when lcars has none, so a check fails while an old name exists.
-namespace removed_in_0_3 { struct Name {}; }
-using TextSource = removed_in_0_3::Name;
-using RichTextSource = removed_in_0_3::Name;
-using BoolSource = removed_in_0_3::Name;
-using NumericSource = removed_in_0_3::Name;
-using OptionSource = removed_in_0_3::Name;
-using TextChange = removed_in_0_3::Name;
-using RichTextChange = removed_in_0_3::Name;
-using BoolChange = removed_in_0_3::Name;
-using OptionChange = removed_in_0_3::Name;
-using NumericChange = removed_in_0_3::Name;
-using DropdownChange = removed_in_0_3::Name;
-namespace lcars::consumer_probe {
-template <class T> concept Removed = std::same_as<T, ::removed_in_0_3::Name>;
+namespace removedIn03 { struct Name {}; }
+using TextSource = removedIn03::Name;
+using RichTextSource = removedIn03::Name;
+using BoolSource = removedIn03::Name;
+using NumericSource = removedIn03::Name;
+using OptionSource = removedIn03::Name;
+using TextChange = removedIn03::Name;
+using RichTextChange = removedIn03::Name;
+using BoolChange = removedIn03::Name;
+using OptionChange = removedIn03::Name;
+using NumericChange = removedIn03::Name;
+using DropdownChange = removedIn03::Name;
+namespace lcars::consumerProbe {
+template <class T> concept Removed = std::same_as<T, ::removedIn03::Name>;
 static_assert(Removed<TextSource> && Removed<RichTextSource> && Removed<BoolSource> && Removed<NumericSource> && Removed<OptionSource>);
 static_assert(Removed<TextChange> && Removed<RichTextChange> && Removed<BoolChange> && Removed<OptionChange> && Removed<NumericChange> && Removed<DropdownChange>);
 }
@@ -165,9 +165,9 @@ template <class T> concept HasLabelledBy = requires(T s) { s.labelledBy; };
 static_assert(!HasOperations<lcars::ComponentSnapshot> && !HasSliderRange<lcars::ComponentSnapshot> && !HasOldScroll<lcars::ComponentSnapshot>);
 static_assert(!HasBounds<lcars::ComponentSnapshot> && !HasInstance<lcars::ComponentSnapshot> && !HasLabelledBy<lcars::ComponentSnapshot>);
 static_assert(HasLabels<lcars::ComponentSnapshot> && !HasLabels<lcars::NodeSnapshot> && HasLabelledBy<lcars::NodeSnapshot>);
-namespace removed_in_0_4 { struct Name {}; }
-using Operation = removed_in_0_4::Name;
-namespace lcars::consumer_probe { static_assert(std::same_as<Operation, ::removed_in_0_4::Name>); }
+namespace removedIn04 { struct Name {}; }
+using Operation = removedIn04::Name;
+namespace lcars::consumerProbe { static_assert(std::same_as<Operation, ::removedIn04::Name>); }
 // A layout node's kind is a Node::Kind, and the node that places one component is made by layout::component.
 static_assert(std::same_as<decltype(lcars::layout::Node::kind), lcars::layout::Node::Kind>);
 static_assert(std::same_as<decltype(lcars::layout::component(lcars::ComponentHandle{})), lcars::layout::Node>);
@@ -175,44 +175,44 @@ template <class T> concept HasType = requires(T node) { node.type; };
 static_assert(!HasType<lcars::layout::Node>);
 template <class T> concept HasMixedConfirmation = requires { &T::connect_mixed_confirmation; };
 static_assert(!HasMixedConfirmation<lcars::Ui>);
-namespace removed_in_0_3 { inline Name control(const lcars::ComponentHandle&, int = 0) { return {}; } }
-using Kind = removed_in_0_3::Name;
-using Control = removed_in_0_3::Name;
-using TextRole = removed_in_0_3::Name;
-using RadioOption = removed_in_0_3::Name;
-using Semantics = removed_in_0_3::Name;
-using OptionSemantics = removed_in_0_3::Name;
-using MenuInfo = removed_in_0_3::Name;
-using MenuItemInfo = removed_in_0_3::Name;
-using SemanticNode = removed_in_0_3::Name;
-using MixedFieldError = removed_in_0_3::Name;
-using MixedConfirmationResult = removed_in_0_3::Name;
-using DesktopOptions = removed_in_0_3::Name;
-using DesktopCreation = removed_in_0_3::Name;
-using DiagnosticCategory = removed_in_0_3::Name;
-using removed_in_0_3::control;
-namespace lcars::consumer_probe {
+namespace removedIn03 { inline Name control(const lcars::ComponentHandle&, int = 0) { return {}; } }
+using Kind = removedIn03::Name;
+using Control = removedIn03::Name;
+using TextRole = removedIn03::Name;
+using RadioOption = removedIn03::Name;
+using Semantics = removedIn03::Name;
+using OptionSemantics = removedIn03::Name;
+using MenuInfo = removedIn03::Name;
+using MenuItemInfo = removedIn03::Name;
+using SemanticNode = removedIn03::Name;
+using MixedFieldError = removedIn03::Name;
+using MixedConfirmationResult = removedIn03::Name;
+using DesktopOptions = removedIn03::Name;
+using DesktopCreation = removedIn03::Name;
+using DiagnosticCategory = removedIn03::Name;
+using removedIn03::control;
+namespace lcars::consumerProbe {
 static_assert(Removed<Kind> && Removed<Control> && Removed<TextRole> && Removed<RadioOption>);
 static_assert(Removed<Semantics> && Removed<OptionSemantics> && Removed<MenuInfo> && Removed<MenuItemInfo> && Removed<SemanticNode>);
 static_assert(Removed<MixedFieldError> && Removed<MixedConfirmationResult>);
 }
-namespace lcars::layout::consumer_probe {
-static_assert(std::same_as<decltype(control(lcars::ComponentHandle{})), ::removed_in_0_3::Name>);
+namespace lcars::layout::consumerProbe {
+static_assert(std::same_as<decltype(control(lcars::ComponentHandle{})), ::removedIn03::Name>);
 }
 // #100 separates writable fields from the text-field component, without keeping the old public names.
 // As above, lookup reaches a global stand-in only after the old declaration has been removed.
-namespace removed_by_100 { struct Name {}; }
-using FieldParts = removed_by_100::Name;
-using FieldText = removed_by_100::Name;
-using FieldLayout = removed_by_100::Name;
-using FieldLine = removed_by_100::Name;
-using FieldView = removed_by_100::Name;
-using FieldChange = removed_by_100::Name;
-using FieldError = removed_by_100::Name;
-using TextHandle = removed_by_100::Name;
-using TextScroll = removed_by_100::Name;
-namespace lcars::consumer_probe {
-template <class T> concept RemovedBy100 = std::same_as<T, ::removed_by_100::Name>;
+namespace removedBy100 { struct Name {}; }
+using FieldParts = removedBy100::Name;
+using FieldText = removedBy100::Name;
+using FieldLayout = removedBy100::Name;
+using FieldLine = removedBy100::Name;
+using FieldView = removedBy100::Name;
+using FieldChange = removedBy100::Name;
+using FieldError = removedBy100::Name;
+using TextHandle = removedBy100::Name;
+using TextScroll = removedBy100::Name;
+namespace lcars::consumerProbe {
+template <class T> concept RemovedBy100 = std::same_as<T, ::removedBy100::Name>;
 static_assert(RemovedBy100<FieldParts> && RemovedBy100<FieldText> && RemovedBy100<FieldLayout>);
 static_assert(RemovedBy100<FieldLine> && RemovedBy100<FieldView> && RemovedBy100<TextHandle> && RemovedBy100<TextScroll>);
 static_assert(RemovedBy100<FieldChange> && RemovedBy100<FieldError>);
@@ -246,14 +246,14 @@ static_assert(std::same_as<decltype(lcars::DesktopConfig::title), std::u16string
 static_assert(std::same_as<decltype(lcars::RenderDiagnostic::kind), lcars::DiagnosticKind>);
 template <class T> concept HasCategory = requires(T value) { value.category; };
 static_assert(!HasCategory<lcars::RenderDiagnostic>);
-namespace lcars::consumer_probe {
+namespace lcars::consumerProbe {
 static_assert(Removed<DesktopOptions> && Removed<DesktopCreation> && Removed<DiagnosticCategory>);
 }
 #endif
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
-static_assert(handle_kinds::equality_holds);
-static_assert(handle_kinds::construction_holds);
-static_assert(std::tuple_size_v<handle_kinds::All> == 14);
+static_assert(handleKinds::equalityHolds);
+static_assert(handleKinds::constructionHolds);
+static_assert(std::tuple_size_v<handleKinds::All> == 14);
 static_assert(std::equality_comparable<lcars::ComponentHandle> && std::equality_comparable<lcars::ConfirmField>);
 static_assert(!std::equality_comparable_with<lcars::TextFieldHandle, lcars::CheckboxHandle>);  // one case of the list's rule, spelled out
 // Applications use typed handles; string operations belong to the semantic layer, not Ui.
@@ -269,13 +269,13 @@ template <class T> concept HasInvoke = requires(T& ui, std::string_view id) { ui
 static_assert(!HasInvoke<lcars::Ui>);
 template <class T> concept HasBind = requires(T& ui, std::string_view id) { ui.bind(std::string(id), [] { return lcars::Result{}; }); };
 static_assert(!HasBind<lcars::Ui>);
-template <class T> concept HasBindText = requires(T& ui, std::string_view id) { ui.bind_text(id, [] { return std::u16string{}; }); };
+template <class T> concept HasBindText = requires(T& ui, std::string_view id) { ui.bindText(id, [] { return std::u16string{}; }); };
 static_assert(!HasBindText<lcars::Ui>);
 template <class T> concept HasFocus = requires(T& ui, std::string_view id) { ui.focus(id); };
 static_assert(!HasFocus<lcars::Ui>);
-template <class T> concept HasPointerDown = requires(T& ui, std::string_view id) { ui.pointer_down(id); };
+template <class T> concept HasPointerDown = requires(T& ui, std::string_view id) { ui.pointerDown(id); };
 static_assert(!HasPointerDown<lcars::Ui>);
-template <class T> concept HasPointerUp = requires(T& ui, std::string_view id) { ui.pointer_up(id); };
+template <class T> concept HasPointerUp = requires(T& ui, std::string_view id) { ui.pointerUp(id); };
 static_assert(!HasPointerUp<lcars::Ui>);
 template <class T> concept HasUndo = requires(T& ui, std::string_view id) { ui.undo(id); };
 static_assert(!HasUndo<lcars::Ui>);
@@ -291,15 +291,15 @@ template <class T> concept HasCut = requires(T& ui, std::string_view id) { ui.cu
 static_assert(!HasCut<lcars::Ui>);
 template <class T> concept HasEnable = requires(T& ui, std::string_view id) { ui.enable(id, true); };
 static_assert(!HasEnable<lcars::Ui>);
-template <class T> concept HasReadOnly = requires(T& ui, std::string_view id) { ui.set_read_only(id, true); };
+template <class T> concept HasReadOnly = requires(T& ui, std::string_view id) { ui.setReadOnly(id, true); };
 static_assert(!HasReadOnly<lcars::Ui>);
 template <class T> concept HasSetError = requires(T& ui, std::string_view id) { ui.setError(id, std::u16string{}); };
 static_assert(!HasSetError<lcars::Ui>);
-template <class T> concept HasReplaceText = requires(T& ui, std::string_view id) { ui.replace_text(id, std::u16string{}); };
+template <class T> concept HasReplaceText = requires(T& ui, std::string_view id) { ui.replaceText(id, std::u16string{}); };
 static_assert(!HasReplaceText<lcars::Ui>);
 template <class T> concept HasAvailable = requires(T& ui, std::string_view id) { ui.available(id); };
 static_assert(!HasAvailable<lcars::Ui>);
-template <class T> concept HasInput = requires(T& ui, std::string_view id) { ui.text_input(std::u16string_view{}); };
+template <class T> concept HasInput = requires(T& ui, std::string_view id) { ui.textInput(std::u16string_view{}); };
 static_assert(!HasInput<lcars::Ui>);
 
 template<class T> concept FindsByString = requires(T& frame, std::string_view id) { frame.find(id); };
@@ -324,7 +324,7 @@ struct Monospace final : lcars::TextMeasure {
     int lineHeight(int pixels) override { return pixels + 4; }
 };
 // The component type a made component reports, or nothing when it was not made.
-template <class Handle> std::optional<lcars::ComponentKind> kind_of(const lcars::Query<Handle>& made) {
+template <class Handle> std::optional<lcars::ComponentKind> kindOf(const lcars::Query<Handle>& made) {
     if (!made) return std::nullopt;
     const auto described = made->describe();
     return described ? std::optional<lcars::ComponentKind>(described->kind) : std::nullopt;
@@ -364,9 +364,9 @@ int main() {
 
     alias.focus();
     alias.setValue(u"ab");
-    auto handle_status = save.invoke().status;
-    auto semantic_status = ui.semantics().perform({"profile.save"}, Verb::invoke).status;
-    expect(handle_status == Status::invalidValue && semantic_status == handle_status && profile.saves == 0, "consumer validation agrees through both interfaces");
+    auto handleStatus = save.invoke().status;
+    auto semanticStatus = ui.semantics().perform({"profile.save"}, Verb::invoke).status;
+    expect(handleStatus == Status::invalidValue && semanticStatus == handleStatus && profile.saves == 0, "consumer validation agrees through both interfaces");
     expect(alias.describe()->error == u"At least three characters", "consumer error is attached to its own field");
     expect(ui.semantics().perform({"profile.alias"}, Verb::setValue, std::u16string(u"abcdef")).status == Status::ok &&
            ui.semantics().text("profile.alias").value == u"abcdef", "semantic editing updates the draft");
@@ -395,17 +395,17 @@ int main() {
     // add_x gives the component its type (#96): no configuration names it, and each component is what its add_x makes.
     Ui typed;
     const std::vector<OptionItem> items = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}};
-    expect(kind_of(typed.addTextField({.id = "typed.text"})) == ComponentKind::textField, "add_text_field makes a text field");
-    expect(kind_of(typed.addButton({.id = "typed.button", .label = u"Go"})) == ComponentKind::button, "add_button makes a button");
-    expect(kind_of(typed.addLabel({.id = "typed.label", .value = u"Note"})) == ComponentKind::label, "add_label makes a label");
-    expect(kind_of(typed.addCheckbox({.id = "typed.checkbox", .label = u"On"})) == ComponentKind::checkbox, "add_checkbox makes a checkbox");
-    expect(kind_of(typed.addRadioGroup({.id = "typed.radio", .label = u"Pick"}, items)) == ComponentKind::radioGroup, "add_radio_group makes a radio group");
-    expect(kind_of(typed.addSlider({.id = "typed.slider", .label = u"Level"}, {0, 10, 1})) == ComponentKind::slider, "add_slider makes a slider");
-    expect(kind_of(typed.addProgress({.id = "typed.progress", .label = u"Done"})) == ComponentKind::progress, "add_progress makes a progress display");
-    expect(kind_of(typed.addDropdown({.id = "typed.dropdown", .label = u"Region"}, items)) == ComponentKind::dropdown, "add_dropdown makes a dropdown");
-    expect(kind_of(typed.addList({.id = "typed.list", .label = u"Rows"}, items)) == ComponentKind::list, "add_list makes a list");
-    expect(kind_of(typed.addTabs({.id = "typed.tabs", .label = u"Pages"}, {{{"one"}, u"One"}})) == ComponentKind::tabs, "add_tabs makes tabs");
-    expect(kind_of(typed.addNavigationList({.id = "typed.navigation", .label = u"Go to"}, {{{"home"}, u"Home"}}, {"home"})) ==
+    expect(kindOf(typed.addTextField({.id = "typed.text"})) == ComponentKind::textField, "add_text_field makes a text field");
+    expect(kindOf(typed.addButton({.id = "typed.button", .label = u"Go"})) == ComponentKind::button, "add_button makes a button");
+    expect(kindOf(typed.addLabel({.id = "typed.label", .value = u"Note"})) == ComponentKind::label, "add_label makes a label");
+    expect(kindOf(typed.addCheckbox({.id = "typed.checkbox", .label = u"On"})) == ComponentKind::checkbox, "add_checkbox makes a checkbox");
+    expect(kindOf(typed.addRadioGroup({.id = "typed.radio", .label = u"Pick"}, items)) == ComponentKind::radioGroup, "add_radio_group makes a radio group");
+    expect(kindOf(typed.addSlider({.id = "typed.slider", .label = u"Level"}, {0, 10, 1})) == ComponentKind::slider, "add_slider makes a slider");
+    expect(kindOf(typed.addProgress({.id = "typed.progress", .label = u"Done"})) == ComponentKind::progress, "add_progress makes a progress display");
+    expect(kindOf(typed.addDropdown({.id = "typed.dropdown", .label = u"Region"}, items)) == ComponentKind::dropdown, "add_dropdown makes a dropdown");
+    expect(kindOf(typed.addList({.id = "typed.list", .label = u"Rows"}, items)) == ComponentKind::list, "add_list makes a list");
+    expect(kindOf(typed.addTabs({.id = "typed.tabs", .label = u"Pages"}, {{{"one"}, u"One"}})) == ComponentKind::tabs, "add_tabs makes tabs");
+    expect(kindOf(typed.addNavigationList({.id = "typed.navigation", .label = u"Go to"}, {{{"home"}, u"Home"}}, {"home"})) ==
            ComponentKind::navigationList, "add_navigation_list makes a navigation list");
     std::printf("%s\n", failures ? "consumer FAILED" : "consumer OK");
     return failures ? 1 : 0;

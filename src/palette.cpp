@@ -7,19 +7,19 @@ namespace {
 struct ColorRole { std::string_view name; Color Palette::* member; };
 // Every named color in Palette. A new Color field must be added here: the static_assert below
 // fails until it is, so new palette colors are overridable without any other change.
-constexpr std::array color_roles{
+constexpr std::array colorRoles{
     ColorRole{"background", &Palette::background}, ColorRole{"panel", &Palette::panel}, ColorRole{"surface", &Palette::surface},
     ColorRole{"text", &Palette::text}, ColorRole{"muted", &Palette::muted}, ColorRole{"border", &Palette::border}, ColorRole{"outline", &Palette::outline},
     ColorRole{"accent", &Palette::accent}, ColorRole{"on_accent", &Palette::onAccent}, ColorRole{"selection", &Palette::selection},
     ColorRole{"error", &Palette::error}, ColorRole{"scrim", &Palette::scrim}, ColorRole{"hover", &Palette::hover},
 };
 // "focus" is a role too, but its field is optional (empty = follows the accent), so it is handled by name beside this list.
-constexpr std::string_view focus_role = "focus";
+constexpr std::string_view focusRole = "focus";
 struct AlphaRole { std::string_view name; unsigned char Palette::* member; };
-constexpr std::array alpha_roles{
+constexpr std::array alphaRoles{
     AlphaRole{"scrim_alpha", &Palette::scrimAlpha}, AlphaRole{"hover_alpha", &Palette::hoverAlpha},
 };
-static_assert(sizeof(Palette) == color_roles.size() * sizeof(Color) + alpha_roles.size() * sizeof(unsigned char) + sizeof(std::optional<Color>),
+static_assert(sizeof(Palette) == colorRoles.size() * sizeof(Color) + alphaRoles.size() * sizeof(unsigned char) + sizeof(std::optional<Color>),
               "Palette gained a field that palette_roles() does not list; add it to color_roles or alpha_roles in palette.cpp");
 
 double linear(unsigned char channel) {
@@ -35,21 +35,21 @@ Color hovered(const Palette& p, Color under) {
 }
 std::vector<std::string_view> paletteRoles() {
     std::vector<std::string_view> names;
-    for (const auto& role : color_roles) names.push_back(role.name);
-    names.push_back(focus_role);
-    for (const auto& role : alpha_roles) names.push_back(role.name);
+    for (const auto& role : colorRoles) names.push_back(role.name);
+    names.push_back(focusRole);
+    for (const auto& role : alphaRoles) names.push_back(role.name);
     return names;
 }
 std::optional<PaletteValue> paletteValue(const Palette& palette, std::string_view role) {
-    for (const auto& entry : alpha_roles)
+    for (const auto& entry : alphaRoles)
         if (entry.name == role) return PaletteValue{static_cast<int>(palette.*entry.member)};
-    for (const auto& entry : color_roles)
+    for (const auto& entry : colorRoles)
         if (entry.name == role) return PaletteValue{palette.*entry.member};
-    if (role == focus_role) return PaletteValue{palette.focusColor()};
+    if (role == focusRole) return PaletteValue{palette.focusColor()};
     return std::nullopt;
 }
 bool setPaletteValue(Palette& palette, std::string_view role, const PaletteValue& value) {
-    for (const auto& entry : alpha_roles) {
+    for (const auto& entry : alphaRoles) {
         if (entry.name != role) continue;
         const int* alpha = std::get_if<int>(&value);
         if (!alpha || *alpha < 0 || *alpha > 255) return false;
@@ -58,9 +58,9 @@ bool setPaletteValue(Palette& palette, std::string_view role, const PaletteValue
     }
     const Color* color = std::get_if<Color>(&value);
     if (!color) return false;
-    for (const auto& entry : color_roles)
+    for (const auto& entry : colorRoles)
         if (entry.name == role) { palette.*entry.member = *color; return true; }
-    if (role == focus_role) { palette.focus = *color; return true; }
+    if (role == focusRole) { palette.focus = *color; return true; }
     return false;
 }
 double contrastRatio(Color a, Color b) {

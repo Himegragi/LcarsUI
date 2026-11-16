@@ -10,7 +10,7 @@ int main() {
     ptr=&queue;
     for (int i=0;i<1000;++i) queue.push({});
     queue.drain(); check(count==256 && omitted==744);
-    int lines=0; DiagnosticQueue output({},nullptr); output.set_output([&](const std::wstring&) { ++lines; }); output.push({}); output.drain();
+    int lines=0; DiagnosticQueue output({},nullptr); output.setOutput([&](const std::wstring&) { ++lines; }); output.push({}); output.drain();
 #ifdef NDEBUG
     check(lines==0);
 #else

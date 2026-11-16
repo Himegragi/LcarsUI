@@ -10,7 +10,7 @@ using namespace lcars;
 namespace {
 int checks=0;
 void check(bool condition,const char* name){++checks;if(!condition)throw std::runtime_error(name);}
-void core_behavior(){
+void coreBehavior(){
     Ui ui;
     auto name = ui.addTextField({.id = "name", .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
     auto locked = ui.addTextField({.id = "locked", .value = u"keep", .readOnly = true}).value.value();
@@ -55,16 +55,16 @@ void core_behavior(){
     Ui bad; bad.addButton({.id="x"}); bool duplicate = bad.addButton({.id="x"}).status == Status::invalidValue;
     check(duplicate,"Duplicate IDs must be rejected");
 }
-void renderer_failure_admission() {
+void rendererFailureAdmission() {
     Ui ui;
     auto name = ui.addTextField({.id="name", .value=u"draft"}).value.value();
     name.connectSource({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
     name.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
     detail::access(ui).rendererFailed(true);
-    check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");
+    check(rendererFailurePreservesDraft(name,u"draft"), "Failure rejects edits and preserves readable draft");
     check(detail::access(ui).setValue("missing", u"x").status == Status::notFound, "Missing ID precedes failure");
-    check(detail::access(ui).key_down({.key=Key::tab}).status == Status::rendererFailed, "Failure rejects focus traversal");
+    check(detail::access(ui).keyDown({.key=Key::tab}).status == Status::rendererFailed, "Failure rejects focus traversal");
     check(name.enable(false).status == Status::rendererFailed, "Failure rejects disabling focused control");
     check(name.resetToSource().status == Status::rendererFailed, "Failure rejects resetting draft");
     check(detail::access(ui).focused() == "name", "Failure freezes focus");
@@ -72,14 +72,14 @@ void renderer_failure_admission() {
     Status background=Status::ok;
     std::thread worker([&] { background=name.setValue(u"x").status; }); worker.join();
     check(background == Status::wrongThread, "Wrong thread precedes renderer failure");
-    check(renderer_failure_omits_interactive_verbs(*name.describe()), "Failure omits focus, editing and selection verbs");
+    check(rendererFailureOmitsInteractiveVerbs(*name.describe()), "Failure omits focus, editing and selection verbs");
     auto settings = ui.presentation(); settings.textSize = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
     check(bool(ui.setPresentation(settings)) && ui.presentation() == settings, "PS10 presentation accepted while failed");
     auto invalid = settings; invalid.textSize = 29;
     check(ui.setPresentation(invalid).status == Status::invalidValue && ui.presentation() == settings, "PS10 invalid presentation stays atomic");
-    Status other_thread = Status::ok;
-    std::thread presentation_worker([&] { other_thread = ui.setPresentation(settings).status; }); presentation_worker.join();
-    check(other_thread == Status::wrongThread, "PS10 presentation remains UI-thread only");
+    Status otherThread = Status::ok;
+    std::thread presentationWorker([&] { otherThread = ui.setPresentation(settings).status; }); presentationWorker.join();
+    check(otherThread == Status::wrongThread, "PS10 presentation remains UI-thread only");
     detail::access(ui).rendererFailed(false);
     check(bool(name.setValue(u"recovered")), "Recovery permits edits");
 }
@@ -99,7 +99,7 @@ void appearances(){
 }
 int main(){
     try {
-        core_behavior(); renderer_failure_admission(); appearances();
+        coreBehavior(); rendererFailureAdmission(); appearances();
         std::cout << "PASS " << checks << " checks: core admission and appearance geometry\n"; return 0;
     } catch (const std::exception& e) {
         std::cerr << "FAIL after " << checks << " checks: " << e.what() << '\n'; return 1;

@@ -20,11 +20,11 @@ public:
 // Rule breakers, always available. Both isolate every punctuation mark, keep a run of spaces together,
 // keep a run of Latin letters and digits together and give each line feed its own word.
 // perCharacter also gives every Chinese or Japanese character its own word; scriptRun keeps a run of them.
-const WordBreaker& per_character_breaker();
-const WordBreaker& script_run_breaker();
+const WordBreaker& perCharacterBreaker();
+const WordBreaker& scriptRunBreaker();
 // The Windows system ICU word BreakIterator for zh_TW, loaded on first use from System32. Fails
 // (boundaries returns false) when icu.dll cannot be loaded or a break iterator cannot be opened.
-const WordBreaker& system_icu_breaker();
+const WordBreaker& systemIcuBreaker();
 // The result of segmenting one text: boundaries start with 0 and end with text.size() (just {0} for empty
 // text), and `used` is the mode that actually produced them. Dictionary falls back to perCharacter when the
 // breaker fails, so a failing dictionary never interrupts an operation.
@@ -32,27 +32,27 @@ struct Words {
     std::vector<unsigned> bounds;
     WordSegmentation used = WordSegmentation::perCharacter;
 };
-// What segment_words reports as `used` for any text: the mode itself, or perCharacter when the dictionary is unusable.
-WordSegmentation segmentation_in_use(WordSegmentation mode, const WordBreaker& dictionary);
-Words segment_words(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
+// What segmentWords reports as `used` for any text: the mode itself, or perCharacter when the dictionary is unusable.
+WordSegmentation segmentationInUse(WordSegmentation mode, const WordBreaker& dictionary);
+Words segmentWords(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 // Whitespace other than a line feed: Ctrl+arrow does not stop on it and a double click takes it along.
-bool is_space_word(std::u16string_view text, unsigned begin, unsigned end);
+bool isSpaceWord(std::u16string_view text, unsigned begin, unsigned end);
 // Caret stops of Ctrl+Left/Right: 0, the start of every word that is not whitespace, and text.size().
-std::vector<unsigned> word_stops(std::u16string_view text, const Words& words);
+std::vector<unsigned> wordStops(std::u16string_view text, const Words& words);
 // The range a double click at the character starting at `offset` selects (see the ticket): a word takes the
 // whitespace after it, a punctuation mark or a run of spaces stands alone, and at the end of a paragraph the
 // last word of that paragraph counts. An empty range means there is nothing to select.
-TextSpan word_span(std::u16string_view text, const Words& words, unsigned offset);
+TextSpan wordSpan(std::u16string_view text, const Words& words, unsigned offset);
 // Where Ctrl+Right (forward) or Ctrl+Left goes from `offset`: the nearest word stop after (before) it, or the end
 // (start) of the text when there is none.
 unsigned nextWordStop(std::u16string_view text, const Words& words, unsigned offset, bool forward);
 // The partition of the text into the words a double click selects, as ascending boundaries starting at 0 and ending at
 // text.size(): a word with the spaces after it, every punctuation mark, every line feed and every run of spaces that
 // follows no word. UIA's word unit uses exactly these, so the two can never disagree.
-std::vector<unsigned> word_unit_bounds(std::u16string_view text, const Words& words);
+std::vector<unsigned> wordUnitBounds(std::u16string_view text, const Words& words);
 // The same for paragraphs: a paragraph runs through its line feed, so the boundaries are 0, every offset after a
 // line feed, and text.size().
-std::vector<unsigned> paragraph_bounds(std::u16string_view text);
+std::vector<unsigned> paragraphBounds(std::u16string_view text);
 // The paragraph (text between line feeds, the line feed excluded) holding the character at `offset`.
-TextSpan paragraph_span(std::u16string_view text, unsigned offset);
+TextSpan paragraphSpan(std::u16string_view text, unsigned offset);
 }

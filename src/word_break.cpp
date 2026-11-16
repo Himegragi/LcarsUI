@@ -11,7 +11,7 @@ namespace lcars::detail {
 namespace {
 enum class Kind { letters, han, space, punctuation, newline };
 
-char32_t code_point(std::u16string_view text, unsigned at, unsigned* width = nullptr) {
+char32_t codePoint(std::u16string_view text, unsigned at, unsigned* width = nullptr) {
     const char16_t first = text[at];
     if (first >= 0xd800 && first <= 0xdbff && at + 1 < text.size() && text[at + 1] >= 0xdc00 && text[at + 1] <= 0xdfff) {
         if (width) *width = 2;
@@ -21,17 +21,17 @@ char32_t code_point(std::u16string_view text, unsigned at, unsigned* width = nul
     return first;
 }
 bool in(char32_t c, char32_t low, char32_t high) { return c >= low && c <= high; }
-bool is_han_or_kana(char32_t c) {
+bool isHanOrKana(char32_t c) {
     return in(c, 0x2e80, 0x2fdf) || c == 0x3005 || c == 0x3007 || in(c, 0x3021, 0x3029) || in(c, 0x3038, 0x303b) ||
            in(c, 0x3041, 0x309f) || (in(c, 0x30a0, 0x30ff) && c != 0x30fb) || in(c, 0x3100, 0x312f) || in(c, 0x31a0, 0x31ff) ||
            in(c, 0x3400, 0x4dbf) || in(c, 0x4e00, 0x9fff) || in(c, 0xf900, 0xfaff) || in(c, 0xff66, 0xff9f) ||
            in(c, 0x1b000, 0x1b16f) || in(c, 0x20000, 0x323af);
 }
-bool is_space(char32_t c) {
+bool isSpace(char32_t c) {
     return c == u' ' || c == u'\t' || c == 0x00a0 || c == 0x1680 || in(c, 0x2000, 0x200a) || c == 0x202f || c == 0x205f || c == 0x3000;
 }
 // Everything that is neither a letter, a digit nor the connector '_' counts as punctuation, symbols included.
-bool is_punctuation(char32_t c) {
+bool isPunctuation(char32_t c) {
     if (c < 0x80) return !((c >= u'0' && c <= u'9') || (c >= u'A' && c <= u'Z') || (c >= u'a' && c <= u'z') || c == u'_');
     if (c < 0x100) return (c >= 0xa1 && c <= 0xbf && c != 0xaa && c != 0xb5 && c != 0xba && c != 0xb2 && c != 0xb3 && c != 0xb9) || c == 0xd7 || c == 0xf7;
     if (in(c, 0x2010, 0x206f) || in(c, 0x2190, 0x2bff) || in(c, 0x2e00, 0x2e7f)) return true;
@@ -41,17 +41,17 @@ bool is_punctuation(char32_t c) {
 }
 Kind classify(char32_t c) {
     if (c == u'\n') return Kind::newline;
-    if (is_space(c)) return Kind::space;
-    if (is_han_or_kana(c)) return Kind::han;
-    if (is_punctuation(c)) return Kind::punctuation;
+    if (isSpace(c)) return Kind::space;
+    if (isHanOrKana(c)) return Kind::han;
+    if (isPunctuation(c)) return Kind::punctuation;
     return Kind::letters;
 }
-bool rule_boundaries(std::u16string_view text, bool han_each, std::vector<unsigned>& out) {
+bool ruleBoundaries(std::u16string_view text, bool hanEach, std::vector<unsigned>& out) {
     Kind previous = Kind::newline;
     for (unsigned at = 0; at < text.size();) {
         unsigned width = 1;
-        const Kind kind = classify(code_point(text, at, &width));
-        const bool joins = at > 0 && kind == previous && (kind == Kind::letters || kind == Kind::space || (kind == Kind::han && !han_each));
+        const Kind kind = classify(codePoint(text, at, &width));
+        const bool joins = at > 0 && kind == previous && (kind == Kind::letters || kind == Kind::space || (kind == Kind::han && !hanEach));
         if (!joins) out.push_back(at);
         previous = kind;
         at += width;
@@ -59,10 +59,10 @@ bool rule_boundaries(std::u16string_view text, bool han_each, std::vector<unsign
     return true;
 }
 struct PerCharacter final : WordBreaker {
-    bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override { return rule_boundaries(text, true, out); }
+    bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override { return ruleBoundaries(text, true, out); }
 };
 struct ScriptRun final : WordBreaker {
-    bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override { return rule_boundaries(text, false, out); }
+    bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override { return ruleBoundaries(text, false, out); }
 };
 
 #ifdef _WIN32
@@ -106,27 +106,27 @@ struct SystemIcu final : WordBreaker {
 };
 #endif
 
-bool surrogate_tail(std::u16string_view text, unsigned at) {
+bool surrogateTail(std::u16string_view text, unsigned at) {
     return at > 0 && at < text.size() && text[at] >= 0xdc00 && text[at] <= 0xdfff && text[at - 1] >= 0xd800 && text[at - 1] <= 0xdbff;
 }
 }  // namespace
 
-const WordBreaker& per_character_breaker() { static const PerCharacter breaker; return breaker; }
-const WordBreaker& script_run_breaker() { static const ScriptRun breaker; return breaker; }
-const WordBreaker& system_icu_breaker() { static const SystemIcu breaker; return breaker; }
+const WordBreaker& perCharacterBreaker() { static const PerCharacter breaker; return breaker; }
+const WordBreaker& scriptRunBreaker() { static const ScriptRun breaker; return breaker; }
+const WordBreaker& systemIcuBreaker() { static const SystemIcu breaker; return breaker; }
 
-WordSegmentation segmentation_in_use(WordSegmentation mode, const WordBreaker& dictionary) {
+WordSegmentation segmentationInUse(WordSegmentation mode, const WordBreaker& dictionary) {
     return mode == WordSegmentation::dictionary && !dictionary.usable() ? WordSegmentation::perCharacter : mode;
 }
-Words segment_words(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
+Words segmentWords(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
     Words words;
     std::vector<unsigned> raw;
-    const WordBreaker* breaker = mode == WordSegmentation::perCharacter ? &per_character_breaker()
-                               : mode == WordSegmentation::scriptRun ? &script_run_breaker() : &dictionary;
+    const WordBreaker* breaker = mode == WordSegmentation::perCharacter ? &perCharacterBreaker()
+                               : mode == WordSegmentation::scriptRun ? &scriptRunBreaker() : &dictionary;
     words.used = mode;
     if (!breaker->boundaries(text, raw)) {
         raw.clear();
-        per_character_breaker().boundaries(text, raw);
+        perCharacterBreaker().boundaries(text, raw);
         words.used = WordSegmentation::perCharacter;
     }
     // Whatever the breaker said: every line feed is a word of its own, no boundary splits a surrogate pair.
@@ -137,36 +137,36 @@ Words segment_words(std::u16string_view text, WordSegmentation mode, const WordB
     std::sort(raw.begin(), raw.end());
     raw.erase(std::unique(raw.begin(), raw.end()), raw.end());
     for (unsigned at : raw)
-        if (at <= text.size() && !surrogate_tail(text, at)) words.bounds.push_back(at);
+        if (at <= text.size() && !surrogateTail(text, at)) words.bounds.push_back(at);
     return words;
 }
 
 namespace {
 // A word proper (letters, digits, Chinese or Japanese characters), as opposed to punctuation, spaces or a line feed.
-bool is_letter_word(std::u16string_view text, unsigned begin, unsigned end) {
+bool isLetterWord(std::u16string_view text, unsigned begin, unsigned end) {
     if (begin >= end) return false;
-    const Kind kind = classify(code_point(text, begin));
+    const Kind kind = classify(codePoint(text, begin));
     return kind == Kind::letters || kind == Kind::han;
 }
 }
-bool is_space_word(std::u16string_view text, unsigned begin, unsigned end) {
+bool isSpaceWord(std::u16string_view text, unsigned begin, unsigned end) {
     if (begin >= end) return false;
     for (unsigned at = begin; at < end;) {
         unsigned width = 1;
-        if (classify(code_point(text, at, &width)) != Kind::space) return false;
+        if (classify(codePoint(text, at, &width)) != Kind::space) return false;
         at += width;
     }
     return true;
 }
-std::vector<unsigned> word_stops(std::u16string_view text, const Words& words) {
+std::vector<unsigned> wordStops(std::u16string_view text, const Words& words) {
     std::vector<unsigned> stops{0};
     for (std::size_t i = 0; i + 1 < words.bounds.size(); ++i)
-        if (words.bounds[i] > 0 && !is_space_word(text, words.bounds[i], words.bounds[i + 1])) stops.push_back(words.bounds[i]);
+        if (words.bounds[i] > 0 && !isSpaceWord(text, words.bounds[i], words.bounds[i + 1])) stops.push_back(words.bounds[i]);
     if (text.size() > 0) stops.push_back(static_cast<unsigned>(text.size()));
     return stops;
 }
 unsigned nextWordStop(std::u16string_view text, const Words& words, unsigned offset, bool forward) {
-    const auto stops = word_stops(text, words);
+    const auto stops = wordStops(text, words);
     if (forward) {
         auto it = std::upper_bound(stops.begin(), stops.end(), offset);
         return it == stops.end() ? static_cast<unsigned>(text.size()) : *it;
@@ -174,52 +174,52 @@ unsigned nextWordStop(std::u16string_view text, const Words& words, unsigned off
     auto it = std::lower_bound(stops.begin(), stops.end(), offset);
     return it == stops.begin() ? 0u : *(it - 1);
 }
-std::vector<unsigned> word_unit_bounds(std::u16string_view text, const Words& words) {
+std::vector<unsigned> wordUnitBounds(std::u16string_view text, const Words& words) {
     const auto& b = words.bounds;
     std::vector<unsigned> out;
     for (std::size_t i = 0; i + 1 < b.size();) {
         out.push_back(b[i]);
-        i += is_letter_word(text, b[i], b[i + 1]) && i + 2 < b.size() && is_space_word(text, b[i + 1], b[i + 2]) ? 2 : 1;
+        i += isLetterWord(text, b[i], b[i + 1]) && i + 2 < b.size() && isSpaceWord(text, b[i + 1], b[i + 2]) ? 2 : 1;
     }
     out.push_back(static_cast<unsigned>(text.size()));
     return out;
 }
-std::vector<unsigned> paragraph_bounds(std::u16string_view text) {
+std::vector<unsigned> paragraphBounds(std::u16string_view text) {
     std::vector<unsigned> out{0};
     for (unsigned at = 0; at < text.size(); ++at)
         if (text[at] == u'\n' && at + 1 < text.size()) out.push_back(at + 1);
     if (text.size() > 0) out.push_back(static_cast<unsigned>(text.size()));
     return out;
 }
-TextSpan paragraph_span(std::u16string_view text, unsigned offset) {
+TextSpan paragraphSpan(std::u16string_view text, unsigned offset) {
     offset = std::min<unsigned>(offset, static_cast<unsigned>(text.size()));
     const auto before = offset == 0 ? std::u16string_view::npos : text.substr(0, offset).rfind(u'\n');
     const auto after = text.find(u'\n', offset);
     return {before == std::u16string_view::npos ? 0u : static_cast<unsigned>(before) + 1,
             after == std::u16string_view::npos ? static_cast<unsigned>(text.size()) : static_cast<unsigned>(after)};
 }
-TextSpan word_span(std::u16string_view text, const Words& words, unsigned offset) {
+TextSpan wordSpan(std::u16string_view text, const Words& words, unsigned offset) {
     const auto& b = words.bounds;
     if (b.size() < 2) return {0, 0};
     offset = std::min<unsigned>(offset, static_cast<unsigned>(text.size()));
-    const auto paragraph = paragraph_span(text, offset);
-    auto segment_at = [&](unsigned at) {  // the index i with b[i] <= at < b[i + 1]
+    const auto paragraph = paragraphSpan(text, offset);
+    auto segmentAt = [&](unsigned at) {  // the index i with b[i] <= at < b[i + 1]
         auto it = std::upper_bound(b.begin(), b.end(), at);
         return static_cast<std::size_t>(it - b.begin()) - 1;
     };
     // Take the whitespace after a word along (Windows behaviour), never past the paragraph.
-    auto with_space = [&](std::size_t i) -> TextSpan {
+    auto withSpace = [&](std::size_t i) -> TextSpan {
         TextSpan span{b[i], b[i + 1]};
-        if (is_letter_word(text, span.begin, span.end) && i + 2 < b.size() && b[i + 1] < paragraph.end && is_space_word(text, b[i + 1], b[i + 2]))
+        if (isLetterWord(text, span.begin, span.end) && i + 2 < b.size() && b[i + 1] < paragraph.end && isSpaceWord(text, b[i + 1], b[i + 2]))
             span.end = b[i + 2];
         return span;
     };
     if (offset >= paragraph.end) {  // past the end of the line: the last word on it
-        std::size_t i = paragraph.end == paragraph.begin ? b.size() - 1 : segment_at(paragraph.end - 1);
+        std::size_t i = paragraph.end == paragraph.begin ? b.size() - 1 : segmentAt(paragraph.end - 1);
         if (paragraph.end == paragraph.begin) return {offset, offset};
-        while (i > 0 && b[i] > paragraph.begin && is_space_word(text, b[i], b[i + 1])) --i;
-        return with_space(i);
+        while (i > 0 && b[i] > paragraph.begin && isSpaceWord(text, b[i], b[i + 1])) --i;
+        return withSpace(i);
     }
-    return with_space(segment_at(offset));
+    return withSpace(segmentAt(offset));
 }
 }  // namespace lcars::detail

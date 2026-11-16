@@ -7,7 +7,7 @@
 
 int wmain() {
     try {
-        edit_form::Form form(edit_form::default_ids(), true, [](std::u16string_view family) {
+        editForm::Form form(editForm::defaultIds(), true, [](std::u16string_view family) {
             lcars::PresentationSettings settings; settings.fontFamily = family;
             return lcars::systemFontCatalog().resolve(settings);
         });
@@ -20,7 +20,7 @@ int wmain() {
         lcars::DesktopConfig options;
         options.title = u"LcarsUI 編輯表單 — " + std::u16string(name.begin(), name.end());
         auto creation = lcars::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
-        if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }
+        if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
         return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << "LcarsUI: " << e.what() << '\n';

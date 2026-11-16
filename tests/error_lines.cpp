@@ -29,13 +29,13 @@ using namespace lcars;
 using test::check;
 namespace {
 // One long message: it wraps to several lines in the narrow column, so line stacking shows.
-const std::u16string long_error = u"This value is not accepted because it is much too long for the field";
+const std::u16string longError = u"This value is not accepted because it is much too long for the field";
 
 // A component with its error and/or conflict state set up. A checkbox has two values, so its draft can
 // never differ from both the confirmed and the latest source value: it has no conflict state.
 struct Subject {
     const char* name;
-    bool has_conflict;
+    bool hasConflict;
     std::function<layout::Node(Ui&, const std::string& id, bool conflict, bool error)> add;
 };
 // A source the test can move: `model` is what the source reads, `notify` tells the component it changed.
@@ -46,17 +46,17 @@ struct Source {
     std::function<void()> notify;
 };
 std::vector<std::unique_ptr<Source>>& sources() { static std::vector<std::unique_ptr<Source>> all; return all; }
-Source& new_source() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
+Source& newSource() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
 
 const std::vector<OptionItem> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}, {{"c"}, u"Gamma"}};
 ComponentConfig control(const std::string& id, const char16_t* label) { ComponentConfig c; c.id = id; c.label = label; return c; }
 
-void put_error(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).setError(id, long_error)), "an error is set"); }
+void putError(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).setError(id, longError)), "an error is set"); }
 
 const Subject subjects[] = {
     {"text", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto field = ui.addTextField(control(id, u"Name")).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::u16string>(u"original");
+        auto& source = newSource(); auto model = std::make_shared<std::u16string>(u"original");
         if (conflict) {
             field.connectSource({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
@@ -65,61 +65,61 @@ const Subject subjects[] = {
             field.setValue(u"draft"); *model = u"newest"; source.notify();
             check(field.describe()->sourceConflict, "the text field reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(field);
     }},
     {"checkbox", false, [](Ui& ui, const std::string& id, bool, bool error) -> layout::Node {
         auto checkbox = ui.addCheckbox(control(id, u"Remember me")).value.value();
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(checkbox);
     }},
     {"radio", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto group = ui.addRadioGroup(control(id, u"Mode"), options).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
+        auto& source = newSource(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             group.connectSource({[model] { return *model; }, source.subscribe()});
             check(bool(group.connectConfirmed([](const Change<RadioGroupHandle>&) { return Result{}; })), "the radio group holds a draft");
             group.select({"b"}); *model = OptionValue{"c"}; source.notify();
             check(group.describe()->sourceConflict, "the radio group reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(group);
     }},
     {"dropdown", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto box = ui.addDropdown(control(id, u"Region"), options).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
+        auto& source = newSource(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
             box.connectSource({[model] { return *model; }, source.subscribe()});
             check(bool(box.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; })), "the dropdown holds a draft");
             box.select({"b"}); *model = OptionValue{"c"}; source.notify();
             check(box.describe()->sourceConflict, "the dropdown reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(box);
     }},
     {"slider", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
         auto slider = ui.addSlider(control(id, u"Volume"), {0, 100, 5}).value.value();
-        auto& source = new_source(); auto model = std::make_shared<int>(0);
+        auto& source = newSource(); auto model = std::make_shared<int>(0);
         if (conflict) {
             slider.connectSource({[model] { return *model; }, source.subscribe()});
             check(bool(slider.connectConfirmed([](const Change<SliderHandle>&) { return Result{}; })), "the slider holds a draft");
             slider.setValue(10); *model = 20; source.notify();
             check(slider.describe()->sourceConflict, "the slider reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(slider);
     }},
 };
 struct State { const char* name; bool conflict, error; };
 const State states[] = {{"error", false, true}, {"conflict", true, false}, {"both", true, true}};
 
-struct Run { const Appearance& appearance; const char* appearance_name; Density density; const char* density_name; float scale; const char* scale_name; };
+struct Run { const Appearance& appearance; const char* appearanceName; Density density; const char* densityName; float scale; const char* scaleName; };
 std::vector<Run> runs() {
     std::vector<Run> out;
     for (const auto& [appearance, name] : {std::pair<const Appearance*, const char*>{&webAppearance(), "web"}, {&materialAppearance(), "material"}})
-        for (const auto& [density, density_name] : {std::pair<Density, const char*>{Density::standard, "standard"}, {Density::compact, "compact"}})
-            for (const auto& [scale, scale_name] : {std::pair<float, const char*>{1.f, "1"}, {1.5f, "1.5"}})
-                out.push_back({*appearance, name, density, density_name, scale, scale_name});
+        for (const auto& [density, densityName] : {std::pair<Density, const char*>{Density::standard, "standard"}, {Density::compact, "compact"}})
+            for (const auto& [scale, scaleName] : {std::pair<float, const char*>{1.f, "1"}, {1.5f, "1.5"}})
+                out.push_back({*appearance, name, density, densityName, scale, scaleName});
     return out;
 }
 
@@ -150,7 +150,7 @@ std::map<std::string, std::string> record() {
         std::vector<layout::Node> nodes; std::vector<std::string> ids;
         for (const auto& subject : subjects)
             for (const auto& state : states) {
-                if (state.conflict && !subject.has_conflict) continue;
+                if (state.conflict && !subject.hasConflict) continue;
                 const std::string id = std::string(subject.name) + "." + state.name;
                 nodes.push_back(subject.add(ui, id, state.conflict, state.error));
                 auto handle = detail::access(ui).describe(id);
@@ -163,15 +163,15 @@ std::map<std::string, std::string> record() {
         for (const auto& id : ids) {
             auto found = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
             check(found != frame.items.end(), ("arranged: " + id).c_str());
-            all[std::string(run.appearance_name) + " " + run.density_name + " " + run.scale_name + " w" + std::to_string(width) + " " + id] = describe(*found);
+            all[std::string(run.appearanceName) + " " + run.densityName + " " + run.scaleName + " w" + std::to_string(width) + " " + id] = describe(*found);
         }
     }
     return all;
 }
 
-void every_error_and_conflict_layout_is_unchanged() {
+void everyErrorAndConflictLayoutIsUnchanged() {
     const auto actual = record();
-    check(actual.size() == expected_count, "the recorded set has the expected number of entries");
+    check(actual.size() == expectedCount, "the recorded set has the expected number of entries");
     std::string failures;
     for (const auto& entry : expected) {
         auto it = actual.find(entry.key);
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     static const test::Case cases[] = {
-        {"every_error_and_conflict_layout_is_unchanged", every_error_and_conflict_layout_is_unchanged},
+        {"every_error_and_conflict_layout_is_unchanged", everyErrorAndConflictLayoutIsUnchanged},
     };
     return test::run("error_lines", cases);
 }

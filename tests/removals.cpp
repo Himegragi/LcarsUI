@@ -54,7 +54,7 @@ Result connect(const ComponentHandle& handle, bool& changed, int& reads, Subscri
         else return {Status::notSupported, {}};
     }, handle);
 }
-void all_eight_kinds_can_be_removed() {
+void allEightKindsCanBeRemoved() {
     for (int kind = 0; kind < 9; ++kind) {
         std::cout << "kind " << kind << '\n';
         bool changed = false;
@@ -62,7 +62,7 @@ void all_eight_kinds_can_be_removed() {
         std::function<void()> notification;
         Ui ui;
         auto handle = make(ui, kind);
-        const bool reads_source = std::visit([](const auto& h) {
+        const bool readsSource = std::visit([](const auto& h) {
             return requires { h.connectSource(Source<std::u16string>{}); } || requires { h.connectSource(Source<bool>{}); } ||
                    requires { h.connectSource(Source<int>{}); } || requires { h.connectSource(Source<std::optional<OptionValue>>{}); };
         }, handle);
@@ -70,44 +70,44 @@ void all_eight_kinds_can_be_removed() {
             notification = std::move(callback);
             return [&] { ++cancellations; notification(); };
         });
-        check(!reads_source || bool(connected), "Every source-bearing kind connects");
-        auto saved_notification = notification;
-        if (saved_notification) {
+        check(!readsSource || bool(connected), "Every source-bearing kind connects");
+        auto savedNotification = notification;
+        if (savedNotification) {
             auto initial = describe(handle);
             changed = true;
-            saved_notification();
+            savedNotification();
             check(*describe(handle) != *initial, "A live source notification changes the displayed component snapshot");
             changed = false;
-            saved_notification();
+            savedNotification();
         }
         auto first = ui.addTextField({.id = "first", .label = u"First"}).value.value();
         auto last = ui.addTextField({.id = "last", .label = u"Last"}).value.value();
         test::FakeMeasure measure;
-        auto tree = [&](int mode, bool include_removed) {
+        auto tree = [&](int mode, bool includeRemoved) {
             std::vector<layout::Node> children{layout::component(first)};
-            if (include_removed) children.push_back(layout::component(handle));
+            if (includeRemoved) children.push_back(layout::component(handle));
             children.push_back(layout::component(last));
             auto content = mode == 0 ? layout::column(std::move(children), 13) :
                            mode == 1 ? layout::row(std::move(children), 13) : layout::grid(std::move(children), 120, 13);
             return layout::scroll(std::move(content));
         };
-        auto frame = [&](int mode, bool include_removed) {
+        auto frame = [&](int mode, bool includeRemoved) {
             ScrollState scroll;
-            return arrange(tree(mode, include_removed), ui, webAppearance(), measure, 300, 900, 1, scroll);
+            return arrange(tree(mode, includeRemoved), ui, webAppearance(), measure, 300, 900, 1, scroll);
         };
         check(frame(0, true).items.size() == 3, "The original page includes the component");
         const bool focused = describe(handle)->focusable;
         if (focused) check(bool(ui.semantics().perform({"removed"}, Verb::focus)), "A focusable component receives focus");
-        int blurs = 0, focus_moves = 0;
+        int blurs = 0, focusMoves = 0;
         std::visit([&](const auto& h) {
             if constexpr (requires { h.onBlur([] {}); }) h.onBlur([&] { ++blurs; });
         }, handle);
-        detail::access(ui).on_focus([&](const auto& from, const auto& to) { if (from == "removed" && to.empty()) ++focus_moves; });
+        detail::access(ui).onFocus([&](const auto& from, const auto& to) { if (from == "removed" && to.empty()) ++focusMoves; });
         std::vector<SemanticEvent> events;
         auto subscription = ui.semantics().subscribe([&](const auto& e) { events.push_back(e); });
         check(bool(describe(handle)), "The component starts alive");
         auto trigger = ui.addButton({.id = "trigger", .label = u"Remove"}).value.value();
-        auto group_button = ui.addButton({.id = "group", .label = u"Group"}).value.value();
+        auto groupButton = ui.addButton({.id = "group", .label = u"Group"}).value.value();
         trigger.bind([&] {
             check(bool(remove(handle)), "Owner removal is accepted inside a callback");
             check(cancellations == 0, "Physical teardown waits for the safe point");
@@ -115,16 +115,16 @@ void all_eight_kinds_can_be_removed() {
                   "Both interfaces refuse the pending component");
             std::visit([&](const auto& h) {
                 if constexpr (std::is_constructible_v<ConfirmField, decltype(h)>)
-                    check(ui.connectConfirmation(group_button, {h}, [](const auto&) { return ConfirmationResult{}; }).status == Status::invalidValue,
+                    check(ui.connectConfirmation(groupButton, {h}, [](const auto&) { return ConfirmationResult{}; }).status == Status::invalidValue,
                           "A pending field cannot enter a new confirmation group");
             }, handle);
-            const int before_reads = reads;
+            const int beforeReads = reads;
             invalidations = 0;
-            detail::access(ui).on_invalidate([&] { ++invalidations; });
+            detail::access(ui).onInvalidate([&] { ++invalidations; });
             changed = true;
-            if (saved_notification) saved_notification();
-            check(reads == before_reads && invalidations == 0, "Pending source notifications neither read nor repaint");
-            detail::access(ui).on_invalidate({});
+            if (savedNotification) savedNotification();
+            check(reads == beforeReads && invalidations == 0, "Pending source notifications neither read nor repaint");
+            detail::access(ui).onInvalidate({});
             for (int mode = 0; mode < 3; ++mode) {
                 auto pending = frame(mode, true), compact = frame(mode, false);
                 check(pending.items.size() == 2 && pending.extent == compact.extent &&
@@ -133,8 +133,8 @@ void all_eight_kinds_can_be_removed() {
             return Result{};
         });
         check(bool(trigger.invoke()), "The callback returns safely");
-        check(blurs == 0 && focus_moves == (focused ? 1 : 0), "Removal skips field blur callbacks and keeps the host focus notification");
-        check(cancellations == (reads_source ? 1 : 0), "Removal cancels the source once when present");
+        check(blurs == 0 && focusMoves == (focused ? 1 : 0), "Removal skips field blur callbacks and keeps the host focus notification");
+        check(cancellations == (readsSource ? 1 : 0), "Removal cancels the source once when present");
         check(describe(handle).status == Status::notFound, "A removed handle is invalid");
         check(remove(handle).status == Status::notFound, "Removal cannot be repeated");
         ui.semantics().dispatchEvents();
@@ -149,12 +149,12 @@ void all_eight_kinds_can_be_removed() {
         }
         auto replacement = make(ui, kind);
         check(handle != replacement && describe(handle).status == Status::notFound, "Reusing an id never revives the old handle");
-        const auto replacement_before = describe(replacement);
+        const auto replacementBefore = describe(replacement);
         invalidations = 0;
-        detail::access(ui).on_invalidate([&] { ++invalidations; });
-        if (saved_notification) saved_notification();
-        check(invalidations == 0 && *describe(replacement) == *replacement_before, "A late callback cannot reach the replacement");
-        detail::access(ui).on_invalidate({});
+        detail::access(ui).onInvalidate([&] { ++invalidations; });
+        if (savedNotification) savedNotification();
+        check(invalidations == 0 && *describe(replacement) == *replacementBefore, "A late callback cannot reach the replacement");
+        detail::access(ui).onInvalidate({});
         check(bool(first.remove()) && bool(last.remove()), "The surviving layout entries can also be removed");
         for (int mode = 0; mode < 3; ++mode) {
             auto empty = frame(mode, true);
@@ -162,7 +162,7 @@ void all_eight_kinds_can_be_removed() {
         }
     }
 }
-void confirmation_loses_removed_drafts_and_dissolves() {
+void confirmationLosesRemovedDraftsAndDissolves() {
     Ui ui;
     auto first = ui.addTextField({.id = "first", .label = u"First"}).value.value();
     auto second = ui.addCheckbox({.id = "second", .label = u"Second"}).value.value();
@@ -195,11 +195,11 @@ void confirmation_loses_removed_drafts_and_dissolves() {
     apply.enable(true);
     check(bool(apply.bind([&] { ++batches; return Result{}; })) && bool(apply.invoke()) && batches == 2, "The former confirmation button can be rebound");
 }
-void removal_discards_composition_and_skips_blur() {
+void removalDiscardsCompositionAndSkipsBlur() {
     for (bool rich : {false, true}) {
         Ui ui;
         auto field = ui.addTextField({.id = "field", .label = u"Field", .multiline = rich, .rich = rich}).value.value();
-        int writes = 0, blurs = 0, before_focus = 0, moved = 0;
+        int writes = 0, blurs = 0, beforeFocus = 0, moved = 0;
         auto subscribe = [](auto) { return [] {}; };
         if (rich) {
             field.connectRichSource({[] { return RichText{u"Initial", {}}; }, subscribe});
@@ -211,16 +211,16 @@ void removal_discards_composition_and_skips_blur() {
         field.onBlur([&] { ++blurs; });
         auto& host = detail::access(ui);
         field.focus();
-        host.before_focus([&] { ++before_focus; });
-        host.on_focus([&](const auto& from, const auto& to) { if (from == "field" && to.empty()) ++moved; });
-        check(bool(host.composition_update(u"Uncommitted", 11)), "IME preedit starts through the existing host seam");
+        host.beforeFocus([&] { ++beforeFocus; });
+        host.onFocus([&](const auto& from, const auto& to) { if (from == "field" && to.empty()) ++moved; });
+        check(bool(host.compositionUpdate(u"Uncommitted", 11)), "IME preedit starts through the existing host seam");
         check(bool(field.remove()), "A composing field can be removed");
-        check(writes == 0 && blurs == 0 && before_focus == 0 && moved == 1,
+        check(writes == 0 && blurs == 0 && beforeFocus == 0 && moved == 1,
               "Removal discards composition and blur validation, but reports host focus movement");
-        check(host.composition_commit(u"Late").status != Status::ok && writes == 0, "A late IME result lands nowhere");
+        check(host.compositionCommit(u"Late").status != Status::ok && writes == 0, "A late IME result lands nowhere");
     }
 }
-void name_labels_fall_back_and_orphans_reassociate() {
+void nameLabelsFallBackAndOrphansReassociate() {
     Ui ui;
     auto field = ui.addTextField({.id = "field", .label = u"Fallback"}).value.value();
     auto label = ui.addLabel({.id = "name", .value = u"Name", .target = "field", .labelKind = LabelKind::name}).value.value();
@@ -228,11 +228,11 @@ void name_labels_fall_back_and_orphans_reassociate() {
     auto subscription = ui.semantics().subscribe([&](const auto& e) { events.push_back(e); });
     check(field.describe()->name == u"Name", "The name label supplies the accessible name");
     auto trigger = ui.addButton({.id = "trigger", .label = u"Remove"}).value.value();
-    std::u16string label_text = u"Name";
-    label.connectSource([&] { return label_text; });
+    std::u16string labelText = u"Name";
+    label.connectSource([&] { return labelText; });
     trigger.bind([&] {
         check(bool(label.remove()), "Name label removal is accepted");
-        label_text = u"Must not appear";
+        labelText = u"Must not appear";
         check(field.describe()->name == u"Fallback", "Pending name labels no longer supply text to their target");
         return Result{};
     });
@@ -251,7 +251,7 @@ void name_labels_fall_back_and_orphans_reassociate() {
     check(replacement.describe()->name == u"Name" && ui.semantics().get({"field"})->labelledBy == std::vector<NodeRef>{{"name"}},
           "The label automatically names a replacement with the same component id");
 }
-void dialog_references_cannot_be_removed() {
+void dialogReferencesCannotBeRemoved() {
     for (int kind = 0; kind < 9; ++kind) {
         Ui ui;
         auto member = make(ui, kind);
@@ -269,11 +269,11 @@ void dialog_references_cannot_be_removed() {
 }
 int main() {
     const test::Case cases[] = {
-        {"#104 eight removable kinds", all_eight_kinds_can_be_removed},
-        {"#104 confirmation membership removal", confirmation_loses_removed_drafts_and_dissolves},
-        {"#104 composing field removal", removal_discards_composition_and_skips_blur},
-        {"#104 name label and orphan removal", name_labels_fall_back_and_orphans_reassociate},
-        {"#104 dialog removal protection", dialog_references_cannot_be_removed},
+        {"#104 eight removable kinds", allEightKindsCanBeRemoved},
+        {"#104 confirmation membership removal", confirmationLosesRemovedDraftsAndDissolves},
+        {"#104 composing field removal", removalDiscardsCompositionAndSkipsBlur},
+        {"#104 name label and orphan removal", nameLabelsFallBackAndOrphansReassociate},
+        {"#104 dialog removal protection", dialogReferencesCannotBeRemoved},
     };
     return test::run("removals", cases);
 }

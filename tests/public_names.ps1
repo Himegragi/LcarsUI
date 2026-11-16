@@ -36,6 +36,7 @@ foreach ($header in $Headers) {
     $privateMembers = @{}
     $candidates = [Collections.Generic.List[object]]::new()
     $pendingClass = $null
+    $nextClass = 0
     $standard = $false
     for ($i = 0; $i -lt $tokens.Count; ++$i) {
         $token = $tokens[$i].Value
@@ -45,7 +46,8 @@ foreach ($header in $Headers) {
                 $pendingClass = if ($token -eq 'class') { 'private' } else { 'public' }
             }
         } elseif ($token -eq '{') {
-            $scopes.Add(@{ Access = $pendingClass })
+            $classId = if ($pendingClass) { $nextClass += 1; $nextClass } else { 0 }
+            $scopes.Add(@{ Access = $pendingClass; ClassId = $classId })
             $pendingClass = $null
         } elseif ($token -eq '}') {
             if ($scopes.Count) { $scopes.RemoveAt($scopes.Count - 1) }
@@ -67,19 +69,24 @@ foreach ($header in $Headers) {
         # also leaves standard container members (value_or, push_back) alone.
         if ($i -gt 0 -and $tokens[$i - 1].Value -in @('.', '->')) { continue }
         $access = $null
+        $classId = 0
         for ($scope = $scopes.Count - 1; $scope -ge 0; --$scope) {
-            if ($scopes[$scope].Access) { $access = $scopes[$scope].Access; break }
+            if ($scopes[$scope].ClassId) {
+                $access = $scopes[$scope].Access
+                $classId = $scopes[$scope].ClassId
+                break
+            }
         }
         if ($access -in @('private', 'protected') -and $token -match '^[a-z][a-zA-Z0-9]*_$') {
-            $privateMembers[$token] = $true
+            $privateMembers["${classId}:$token"] = $true
             continue
         }
         $line = 1 + [regex]::Matches($source.Substring(0, $tokens[$i].Index), "`n").Count
-        $candidates.Add(@{ Name = $token; Line = $line })
+        $candidates.Add(@{ Name = $token; Line = $line; ClassId = $classId })
     }
     foreach ($candidate in $candidates) {
         # A public inline method can refer to a private field declared later.
-        if ($privateMembers.ContainsKey($candidate.Name)) { continue }
+        if ($privateMembers.ContainsKey("$($candidate.ClassId):$($candidate.Name)")) { continue }
         $problems.Add("${header}:$($candidate.Line): snake_case public name '$($candidate.Name)'")
     }
 }

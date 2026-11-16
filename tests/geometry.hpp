@@ -14,7 +14,7 @@ struct PopupCheck {
     explicit operator bool() const { return popup && inside && hit; }
 };
 // Overlays may extend over the scroll viewport, but must fit in the window client area.
-inline PopupCheck popup_in_client(const lcars::Frame& frame, lcars::Rect client, std::string_view id) {
+inline PopupCheck popupInClient(const lcars::Frame& frame, lcars::Rect client, std::string_view id) {
     auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const auto& p) {
         return p.popup && !p.tooltip && p.id == id;
     });

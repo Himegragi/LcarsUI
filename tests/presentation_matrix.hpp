@@ -6,20 +6,20 @@
 #include <functional>
 
 // The same dimension and component drivers run against fake and native text measurement.
-namespace presentation_matrix {
+namespace presentationMatrix {
 struct Driver {
     std::function<lcars::Frame(int, int, float, std::string_view)> arrange;
     std::function<bool(int, int, float)> compare;
 };
 template<class Layout, class Check>
-void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Check check) {
+void run(const editForm::Ids& ids, const lcars::Appearance&, Layout layout, Check check) {
     using namespace lcars;
     for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()})
     for (auto density : {Density::standard, Density::compact})
     for (int size : {12, 16, 28})
     for (auto dimensions : {std::pair{960, 720}, std::pair{640, 480}})
     for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true);
+        editForm::Form form(ids, true);
         auto driver = layout(form);
         auto settings = form.ui.presentation(); settings.variant = variant; settings.density = density; settings.textSize = size;
         check(bool(form.ui.setPresentation(settings)), "MX01 settings accepted");
@@ -28,18 +28,18 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
         for (const auto& entry : entries) {
             bool modal = entry.page == "modal";
             if (modal) {
-                check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "MX01 dialog opened");
+                check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialogOpen.invoke()), "MX01 dialog opened");
             } else if (entry.page != "shared") check(bool(form.handles.tabs.activate({entry.page})), "MX01 page activated");
             driver.arrange(width, height, scale, {});
             auto semantic = x04::describe(entry.handle);
-            if (!semantic || !x04::focus_applicable(*semantic)) {
-                if (modal) form.handles.dialog_cancel.invoke();
+            if (!semantic || !x04::focusApplicable(*semantic)) {
+                if (modal) form.handles.dialogCancel.invoke();
                 continue;
             }
             check(x04::focus(form.ui, entry.handle), "MX01 focus accepted: " + semantic->id);
             auto frame = driver.arrange(width, height, scale, semantic->id);
             auto item = x04::placement(frame, entry.handle);
-            bool inside = item && x04::inside_client(*item, width, height);
+            bool inside = item && x04::insideClient(*item, width, height);
             bool tall = item && item->bounds.w > 0 && item->bounds.h > item->clip.h && item->clip.h > 0 &&
                 intersect(item->bounds, item->clip).h == item->clip.h && intersect(item->bounds, item->clip).w == item->bounds.w;
             auto context = semantic->id + " size=" + std::to_string(size) + " scale=" + std::to_string(scale);
@@ -48,7 +48,7 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
                 auto hit = frame.hit(item->bounds.x + item->bounds.w / 2, item->bounds.y + item->bounds.h / 2);
                 check(hit && hit->id == item->id, "MX01 hit and placement agree: " + context);
             }
-            if (modal) check(bool(form.handles.dialog_cancel.invoke()), "MX01 dialog closed");
+            if (modal) check(bool(form.handles.dialogCancel.invoke()), "MX01 dialog closed");
         }
         for (const auto& page : x04::pages(form)) {
             check(bool(form.handles.tabs.activate({page})), "MX01 overlap page activated");
@@ -63,7 +63,7 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
         }
         check(bool(form.handles.tabs.activate({"v01"})) && bool(form.handles.region.focus()) && bool(form.handles.region.open()), "MX01 dropdown opens");
         auto popup = driver.arrange(width, height, scale, form.ids().region);
-        check(bool(test::popup_in_client(popup, {0, 0, width, height}, form.ids().region)), "MX01 popup fits and hits");
+        check(bool(test::popupInClient(popup, {0, 0, width, height}, form.ids().region)), "MX01 popup fits and hits");
     }
 }
 }

@@ -3,7 +3,7 @@
 #include <UIAutomation.h>
 #include <atomic>
 struct Search { DWORD pid; HWND window = nullptr; };
-inline BOOL CALLBACK find_window(HWND window, LPARAM data) {
+inline BOOL CALLBACK findWindow(HWND window, LPARAM data) {
     auto& search = *reinterpret_cast<Search*>(data);
     DWORD pid = 0; GetWindowThreadProcessId(window, &pid);
     if (pid == search.pid && IsWindowVisible(window) && GetWindow(window, GW_OWNER) == nullptr) {
@@ -11,7 +11,7 @@ inline BOOL CALLBACK find_window(HWND window, LPARAM data) {
     }
     return TRUE;
 }
-inline IUIAutomationElement* find_id(IUIAutomation* automation, IUIAutomationElement* root, const wchar_t* id) {
+inline IUIAutomationElement* findId(IUIAutomation* automation, IUIAutomationElement* root, const wchar_t* id) {
     if (!root) return nullptr;
     VARIANT value; VariantInit(&value); value.vt = VT_BSTR; value.bstrVal = SysAllocString(id);
     IUIAutomationCondition* condition = nullptr; IUIAutomationElement* element = nullptr;
@@ -20,13 +20,13 @@ inline IUIAutomationElement* find_id(IUIAutomation* automation, IUIAutomationEle
     }
     VariantClear(&value); return element;
 }
-inline HRESULT invoke_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationInvokePattern* p = nullptr;
+inline HRESULT invokeId(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
+    auto e = findId(uia, root, id); IUIAutomationInvokePattern* p = nullptr;
     HRESULT hr = e ? e->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p)) : E_FAIL;
     if (SUCCEEDED(hr) && p) hr = p->Invoke(); if (p) p->Release(); if (e) e->Release(); return hr;
 }
-inline HRESULT select_id(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
-    auto e = find_id(uia, root, id); IUIAutomationSelectionItemPattern* p = nullptr;
+inline HRESULT selectId(IUIAutomation* uia, IUIAutomationElement* root, const wchar_t* id) {
+    auto e = findId(uia, root, id); IUIAutomationSelectionItemPattern* p = nullptr;
     HRESULT hr = e ? e->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&p)) : E_FAIL;
     if (SUCCEEDED(hr) && p) hr = p->Select(); if (p) p->Release(); if (e) e->Release(); return hr;
 }

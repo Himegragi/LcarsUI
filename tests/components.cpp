@@ -20,7 +20,7 @@ void populate(Ui& ui, std::vector<detail::Component> controls) {
         else ui.addLabel(std::move(control)).value.value();
     }
 }
-std::vector<detail::Component> name_form() {
+std::vector<detail::Component> nameForm() {
     return {
         {ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .labelKind = LabelKind::name}},
         {ComponentKind::textField, {.id = "name", .value = u"測試使用者"}},
@@ -30,8 +30,8 @@ std::vector<detail::Component> name_form() {
     };
 }
 
-void labels_associate_by_target_id() {
-    Ui ui; populate(ui, name_form());
+void labelsAssociateByTargetId() {
+    Ui ui; populate(ui, nameForm());
     auto field = detail::access(ui).describe("name");
     check(field && field->name == u"顯示名稱", "Field name comes from its name label");
     check(field->description == u"單行文字", "Description label is queryable from the field");
@@ -42,8 +42,8 @@ void labels_associate_by_target_id() {
     check(detail::access(ui).describe("note")->value == u"第一行\n第二行", "Plain labels keep multi-line display text");
 }
 
-void field_error_has_one_source() {
-    Ui ui; populate(ui, name_form());
+void fieldErrorHasOneSource() {
+    Ui ui; populate(ui, nameForm());
     check(bool(detail::access(ui).setError("name", u"請填寫顯示名稱")), "Owner sets a field error");
     auto field = detail::access(ui).describe("name");
     check(field->invalid && field->error == u"請填寫顯示名稱", "Field reports invalid with its message");
@@ -54,97 +54,97 @@ void field_error_has_one_source() {
           "Empty message clears the error and its label");
 }
 
-std::vector<detail::Component> form_with_buttons() {
-    auto controls = name_form();
+std::vector<detail::Component> formWithButtons() {
+    auto controls = nameForm();
     controls.push_back({ComponentKind::button, {.id = "apply", .label = u"套用"}});
     controls.push_back({ComponentKind::button, {.id = "reset", .label = u"重設"}});
     return controls;
 }
 KeyPress press(Key key, bool shift = false) { return {.key = key, .shift = shift}; }
 
-void tab_order_skips_labels_and_disabled() {
-    Ui ui; populate(ui, form_with_buttons());
+void tabOrderSkipsLabelsAndDisabled() {
+    Ui ui; populate(ui, formWithButtons());
     check(detail::access(ui).focused().empty(), "Nothing focused initially");
     std::vector<Id> forward;
-    for (int i = 0; i < 4; ++i) { detail::access(ui).key_down(press(Key::tab)); forward.push_back(detail::access(ui).focused()); }
+    for (int i = 0; i < 4; ++i) { detail::access(ui).keyDown(press(Key::tab)); forward.push_back(detail::access(ui).focused()); }
     check(forward == std::vector<Id>{"name", "apply", "reset", "name"}, "Tab walks fields and buttons, wraps, skips labels");
-    detail::access(ui).key_down(press(Key::tab, true));
+    detail::access(ui).keyDown(press(Key::tab, true));
     check(detail::access(ui).focused() == "reset", "Shift+Tab walks backwards and wraps");
     check(detail::access(ui).describe("reset")->focused && !detail::access(ui).describe("name")->focused, "Focus is queryable");
     detail::access(ui).enable("apply", false);
     detail::access(ui).focus("name");
-    detail::access(ui).key_down(press(Key::tab));
+    detail::access(ui).keyDown(press(Key::tab));
     check(detail::access(ui).focused() == "reset", "Disabled button leaves the Tab order");
     check(detail::access(ui).focus("apply").status == Status::disabled && detail::access(ui).focused() == "reset", "Disabled control refuses focus");
     check(detail::access(ui).focus("note").status == Status::notSupported, "Labels never take focus");
     check(detail::access(ui).focus("missing").status == Status::notFound, "Unknown focus target is reported");
 }
 
-void button_activates_once_per_press() {
-    Ui ui; populate(ui, form_with_buttons());
+void buttonActivatesOncePerPress() {
+    Ui ui; populate(ui, formWithButtons());
     int applies = 0, resets = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).bind("reset", [&] { ++resets; return Result{}; });
     detail::access(ui).focus("apply");
-    detail::access(ui).key_down(press(Key::enter));
-    detail::access(ui).key_down({.key = Key::enter, .repeat = true});
-    detail::access(ui).key_up(Key::enter);
+    detail::access(ui).keyDown(press(Key::enter));
+    detail::access(ui).keyDown({.key = Key::enter, .repeat = true});
+    detail::access(ui).keyUp(Key::enter);
     check(applies == 1, "Enter activates on press; auto-repeat does not repeat it");
-    detail::access(ui).key_down(press(Key::space));
-    detail::access(ui).key_down({.key = Key::space, .repeat = true});
+    detail::access(ui).keyDown(press(Key::space));
+    detail::access(ui).keyDown({.key = Key::space, .repeat = true});
     check(applies == 1, "Space arms on press");
-    detail::access(ui).key_up(Key::space);
-    detail::access(ui).key_up(Key::space);
+    detail::access(ui).keyUp(Key::space);
+    detail::access(ui).keyUp(Key::space);
     check(applies == 2, "Space activates once on release; a stray release does nothing");
-    detail::access(ui).pointer_down("apply");
-    detail::access(ui).pointer_up("reset");
+    detail::access(ui).pointerDown("apply");
+    detail::access(ui).pointerUp("reset");
     check(applies == 2 && resets == 0, "Pointer released outside cancels and does not activate the other button");
-    detail::access(ui).pointer_down("apply");
-    detail::access(ui).pointer_up("apply");
+    detail::access(ui).pointerDown("apply");
+    detail::access(ui).pointerUp("apply");
     check(applies == 3, "Pointer pressed and released inside activates once");
-    detail::access(ui).key_down(press(Key::space));
-    detail::access(ui).cancel_input();
-    detail::access(ui).key_up(Key::space);
-    detail::access(ui).pointer_down("apply");
-    detail::access(ui).cancel_input();
-    detail::access(ui).pointer_up("apply");
+    detail::access(ui).keyDown(press(Key::space));
+    detail::access(ui).cancelInput();
+    detail::access(ui).keyUp(Key::space);
+    detail::access(ui).pointerDown("apply");
+    detail::access(ui).cancelInput();
+    detail::access(ui).pointerUp("apply");
     check(applies == 3, "Window deactivation or capture loss leaves nothing armed");
-    detail::access(ui).key_down(press(Key::space));
+    detail::access(ui).keyDown(press(Key::space));
     detail::access(ui).focus("reset");
-    detail::access(ui).key_up(Key::space);
+    detail::access(ui).keyUp(Key::space);
     check(applies == 3 && resets == 0, "Moving focus drops the armed press; the release is not delivered to the new focus");
     detail::access(ui).enable("apply", false);
-    check(detail::access(ui).pointer_down("apply").status == Status::disabled, "Disabled button refuses pointer press");
-    detail::access(ui).pointer_up("apply");
+    check(detail::access(ui).pointerDown("apply").status == Status::disabled, "Disabled button refuses pointer press");
+    detail::access(ui).pointerUp("apply");
     check(detail::access(ui).invoke("apply").status == Status::disabled && applies == 3, "Disabled button never activates");
 }
 
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
-std::vector<detail::Component> two_fields() {
-    auto controls = form_with_buttons();
+std::vector<detail::Component> twoFields() {
+    auto controls = formWithButtons();
     controls.push_back({ComponentKind::textField, {.id = "alias", .value = u"別名"}});
     return controls;
 }
 
-void typing_records_one_history_entry_per_input() {
-    Ui ui; populate(ui, two_fields());
+void typingRecordsOneHistoryEntryPerInput() {
+    Ui ui; populate(ui, twoFields());
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 5, 5);
-    for (auto ch : std::u16string(u"AB")) detail::access(ui).text_input(std::u16string(1, ch));
-    detail::access(ui).text_input(u"\r");
+    for (auto ch : std::u16string(u"AB")) detail::access(ui).textInput(std::u16string(1, ch));
+    detail::access(ui).textInput(u"\r");
     check(detail::access(ui).text("name") == u"測試使用者AB", "Committed characters insert at the caret; control characters are ignored");
     detail::access(ui).focus("alias");
-    detail::access(ui).text_input(u"X");
+    detail::access(ui).textInput(u"X");
     detail::access(ui).focus("name");
-    detail::access(ui).key_down(ctrl(u'Z'));
+    detail::access(ui).keyDown(ctrl(u'Z'));
     check(detail::access(ui).text("name") == u"測試使用者A" && detail::access(ui).text("alias") == u"X別名", "Ctrl+Z undoes one input of the focused field only");
-    detail::access(ui).key_down(ctrl(u'Z', true));
+    detail::access(ui).keyDown(ctrl(u'Z', true));
     check(detail::access(ui).text("name") == u"測試使用者AB", "Ctrl+Shift+Z redoes");
-    detail::access(ui).key_down(ctrl(u'Z'));
-    detail::access(ui).key_down(ctrl(u'Z'));
-    detail::access(ui).key_down(ctrl(u'Y'));
+    detail::access(ui).keyDown(ctrl(u'Z'));
+    detail::access(ui).keyDown(ctrl(u'Z'));
+    detail::access(ui).keyDown(ctrl(u'Y'));
     check(detail::access(ui).text("name") == u"測試使用者A", "Ctrl+Y redoes");
-    detail::access(ui).text_input(u"C");
+    detail::access(ui).textInput(u"C");
     check(detail::access(ui).redo("name").status == Status::emptyHistory && detail::access(ui).text("name") == u"測試使用者AC", "A new edit clears the field's redo");
     check(detail::access(ui).undo("alias") && detail::access(ui).text("alias") == u"別名", "Each field keeps its own history");
 }
@@ -155,27 +155,27 @@ bool at(Ui& ui, unsigned anchor, unsigned caret) {
     return s.anchor == anchor && s.caret == caret;
 }
 
-void caret_moves_by_code_point_and_extends_with_shift() {
+void caretMovesByCodePointAndExtendsWithShift() {
     // "A", U+20000 (two UTF-16 units), "B", "中": UTF-16 length 5.
     Ui ui; populate(ui, {{ComponentKind::textField, {.id = "t", .value = u"A\U00020000B中"}}});
     detail::access(ui).focus("t");
-    detail::access(ui).key_down(press(Key::home));
+    detail::access(ui).keyDown(press(Key::home));
     check(at(ui, 0, 0), "Home puts the caret at the start");
-    detail::access(ui).key_down(press(Key::right));
-    detail::access(ui).key_down(press(Key::right));
+    detail::access(ui).keyDown(press(Key::right));
+    detail::access(ui).keyDown(press(Key::right));
     check(at(ui, 3, 3), "Right steps over a surrogate pair as one character");
-    detail::access(ui).key_down(press(Key::right, true));
-    detail::access(ui).key_down(press(Key::end, true));
+    detail::access(ui).keyDown(press(Key::right, true));
+    detail::access(ui).keyDown(press(Key::end, true));
     check(at(ui, 3, 5), "Shift extends from the anchor; Shift+End reaches the end");
-    detail::access(ui).key_down(press(Key::left));
+    detail::access(ui).keyDown(press(Key::left));
     check(at(ui, 3, 3), "Left without Shift collapses to the selection start");
-    detail::access(ui).key_down(press(Key::backspace));
+    detail::access(ui).keyDown(press(Key::backspace));
     check(detail::access(ui).text("t") == u"AB中" && at(ui, 1, 1), "Backspace removes the whole surrogate pair");
-    detail::access(ui).key_down(press(Key::del));
+    detail::access(ui).keyDown(press(Key::del));
     check(detail::access(ui).text("t") == u"A中", "Delete removes the next character");
-    detail::access(ui).key_down(ctrl(u'A'));
+    detail::access(ui).keyDown(ctrl(u'A'));
     check(at(ui, 0, 2), "Ctrl+A selects all");
-    detail::access(ui).key_down(press(Key::backspace));
+    detail::access(ui).keyDown(press(Key::backspace));
     check(detail::access(ui).text("t").empty(), "Backspace removes a selection");
     detail::access(ui).undo("t"); detail::access(ui).undo("t"); detail::access(ui).undo("t");
     check(detail::access(ui).text("t") == u"A\U00020000B中", "Each deletion was one undo entry");
@@ -184,45 +184,45 @@ void caret_moves_by_code_point_and_extends_with_shift() {
 
 struct MemoryClipboard final : Clipboard {
     std::optional<std::u16string> content;
-    bool fail_read = false;
+    bool failRead = false;
     bool write(std::u16string_view text) override { content = std::u16string(text); return true; }
     Query<std::u16string> read() override {
-        if (fail_read) return {Status::failed, u"Clipboard unavailable", std::nullopt};
+        if (failRead) return {Status::failed, u"Clipboard unavailable", std::nullopt};
         if (!content) return {Status::notSupported, u"Clipboard has no text", std::nullopt};
         return {Status::ok, {}, content};
     }
 };
 
-void clipboard_reports_unavailable_separately_from_empty() {
-    Ui ui; populate(ui, name_form());
+void clipboardReportsUnavailableSeparatelyFromEmpty() {
+    Ui ui; populate(ui, nameForm());
     MemoryClipboard clipboard;
     auto& host = detail::access(ui);
-    host.set_clipboard(&clipboard); host.focus("name");
-    check(host.key_down(ctrl(u'V')).status == Status::notSupported, "An open clipboard with no text is reported as empty");
-    clipboard.fail_read = true;
-    check(host.key_down(ctrl(u'V')).status == Status::failed && host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005",
+    host.setClipboard(&clipboard); host.focus("name");
+    check(host.keyDown(ctrl(u'V')).status == Status::notSupported, "An open clipboard with no text is reported as empty");
+    clipboard.failRead = true;
+    check(host.keyDown(ctrl(u'V')).status == Status::failed && host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005",
           "A clipboard that cannot be opened reports failure without editing the draft");
 }
 
-void paste_turns_each_line_break_into_one_space() {
-    Ui ui; populate(ui, name_form());
+void pasteTurnsEachLineBreakIntoOneSpace() {
+    Ui ui; populate(ui, nameForm());
     MemoryClipboard clipboard;
-    detail::access(ui).set_clipboard(&clipboard);
+    detail::access(ui).setClipboard(&clipboard);
     detail::access(ui).focus("name");
     clipboard.content = u"Alpha\r\nBeta";
-    detail::access(ui).key_down(ctrl(u'A'));
-    detail::access(ui).key_down(ctrl(u'V'));
+    detail::access(ui).keyDown(ctrl(u'A'));
+    detail::access(ui).keyDown(ctrl(u'V'));
     check(detail::access(ui).text("name") == u"Alpha Beta", "CRLF pastes as one space");
-    detail::access(ui).key_down(ctrl(u'Z'));
+    detail::access(ui).keyDown(ctrl(u'Z'));
     check(detail::access(ui).text("name") == u"測試使用者", "Select-all plus paste is one undo entry");
-    detail::access(ui).key_down(ctrl(u'Y'));
+    detail::access(ui).keyDown(ctrl(u'Y'));
     check(detail::access(ui).text("name") == u"Alpha Beta", "Redo restores the paste");
     check(detail::access(ui).paste("name", u"a\rb\nc\r\n\nd") && detail::access(ui).text("name") == u"Alpha Betaa b c  d",
           "Lone CR and LF each become one space; semantic paste inserts at the caret");
     detail::access(ui).select("name", 0, 5);
-    detail::access(ui).key_down(ctrl(u'C'));
+    detail::access(ui).keyDown(ctrl(u'C'));
     check(clipboard.content == u"Alpha" && detail::access(ui).text("name") == u"Alpha Betaa b c  d", "Copy writes the selection only");
-    detail::access(ui).key_down(ctrl(u'X'));
+    detail::access(ui).keyDown(ctrl(u'X'));
     check(clipboard.content == u"Alpha" && detail::access(ui).text("name") == u" Betaa b c  d", "Cut writes then removes the selection");
     detail::access(ui).undo("name");
     check(detail::access(ui).text("name") == u"Alpha Betaa b c  d", "Cut is one undo entry");
@@ -230,83 +230,83 @@ void paste_turns_each_line_break_into_one_space() {
           "Other control characters reject the whole paste and keep the text");
 }
 
-void read_only_allows_viewing_and_copying_only() {
-    Ui ui; populate(ui, form_with_buttons());
+void readOnlyAllowsViewingAndCopyingOnly() {
+    Ui ui; populate(ui, formWithButtons());
     MemoryClipboard clipboard;
-    detail::access(ui).set_clipboard(&clipboard);
+    detail::access(ui).setClipboard(&clipboard);
     detail::access(ui).focus("name");
-    detail::access(ui).text_input(u"!");
-    detail::access(ui).set_read_only("name", true);
+    detail::access(ui).textInput(u"!");
+    detail::access(ui).setReadOnly("name", true);
     check(detail::access(ui).describe("name")->readOnly && detail::access(ui).focus("name"), "Read-only field stays focusable and reports its state");
-    detail::access(ui).key_down(ctrl(u'A'));
-    detail::access(ui).key_down(ctrl(u'C'));
+    detail::access(ui).keyDown(ctrl(u'A'));
+    detail::access(ui).keyDown(ctrl(u'C'));
     check(clipboard.content == u"!測試使用者", "Read-only text can be selected and copied");
     clipboard.content = u"貼上";
     std::vector<Status> refused;
-    refused.push_back(detail::access(ui).text_input(u"Y").status);
-    refused.push_back(detail::access(ui).key_down(ctrl(u'X')).status);
-    refused.push_back(detail::access(ui).key_down(ctrl(u'V')).status);
-    refused.push_back(detail::access(ui).key_down(press(Key::backspace)).status);
-    refused.push_back(detail::access(ui).key_down(ctrl(u'Z')).status);
+    refused.push_back(detail::access(ui).textInput(u"Y").status);
+    refused.push_back(detail::access(ui).keyDown(ctrl(u'X')).status);
+    refused.push_back(detail::access(ui).keyDown(ctrl(u'V')).status);
+    refused.push_back(detail::access(ui).keyDown(press(Key::backspace)).status);
+    refused.push_back(detail::access(ui).keyDown(ctrl(u'Z')).status);
     refused.push_back(detail::access(ui).setValue("name", u"semantic").status);
     check(refused == std::vector<Status>(6, Status::readOnly), "Every modifying path reports read_only");
     check(detail::access(ui).text("name") == u"!測試使用者" && clipboard.content == u"貼上", "Text and clipboard are untouched");
-    detail::access(ui).set_read_only("name", false);
+    detail::access(ui).setReadOnly("name", false);
     check(detail::access(ui).undo("name") && detail::access(ui).text("name") == u"測試使用者", "History position survived the read-only period");
 }
 
-void disabled_field_refuses_every_entry_and_keeps_data() {
-    Ui ui; populate(ui, form_with_buttons());
+void disabledFieldRefusesEveryEntryAndKeepsData() {
+    Ui ui; populate(ui, formWithButtons());
     int applies = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).focus("name");
-    detail::access(ui).text_input(u"!");
+    detail::access(ui).textInput(u"!");
     detail::access(ui).enable("name", false);
     detail::access(ui).enable("apply", false);
     check(detail::access(ui).focused().empty(), "Disabling the focused control releases focus");
     std::vector<Status> refused{
-        detail::access(ui).focus("name").status, detail::access(ui).pointer_down("name").status, detail::access(ui).select("name", 0, 1).status,
+        detail::access(ui).focus("name").status, detail::access(ui).pointerDown("name").status, detail::access(ui).select("name", 0, 1).status,
         detail::access(ui).copy("name").status, detail::access(ui).paste("name", u"x").status, detail::access(ui).undo("name").status,
-        detail::access(ui).setValue("name", u"x").status, detail::access(ui).invoke("apply").status, detail::access(ui).pointer_down("apply").status};
+        detail::access(ui).setValue("name", u"x").status, detail::access(ui).invoke("apply").status, detail::access(ui).pointerDown("apply").status};
     check(refused == std::vector<Status>(refused.size(), Status::disabled), "Pointer, keyboard and semantic entries all refuse");
-    check(detail::access(ui).focus_order() == std::vector<Id>{"reset"}, "Only the recovery entry stays in the Tab order");
+    check(detail::access(ui).focusOrder() == std::vector<Id>{"reset"}, "Only the recovery entry stays in the Tab order");
     detail::access(ui).enable("name", true);
     detail::access(ui).enable("apply", true);
     check(detail::access(ui).text("name") == u"!測試使用者" && applies == 0 && detail::access(ui).undo("name"), "Re-enabling keeps text and history");
 }
 
-void composition_commits_once_and_never_applies() {
-    Ui ui; populate(ui, form_with_buttons());
+void compositionCommitsOnceAndNeverApplies() {
+    Ui ui; populate(ui, formWithButtons());
     int applies = 0;
     detail::access(ui).bind("apply", [&] { ++applies; return Result{}; });
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 5, 5);
-    detail::access(ui).composition_update(u"ㄨㄛˇ", 3);
+    detail::access(ui).compositionUpdate(u"ㄨㄛˇ", 3);
     check(detail::access(ui).edit("name")->visible() == u"測試使用者ㄨㄛˇ" && detail::access(ui).text("name") == u"測試使用者",
           "Preedit is shown but not committed");
-    check(detail::access(ui).key_down(ctrl(u'Z')).status == Status::busy && detail::access(ui).key_down(press(Key::backspace)).status == Status::busy,
+    check(detail::access(ui).keyDown(ctrl(u'Z')).status == Status::busy && detail::access(ui).keyDown(press(Key::backspace)).status == Status::busy,
           "Editing keys belong to the IME while composing");
     check(detail::access(ui).invoke("apply").status == Status::busy && applies == 0, "No command runs while composing");
     check(detail::access(ui).select("name", 0, 0).status == Status::busy && detail::access(ui).edit("name")->composing,
           "Moving the selection cannot silently drop a composition the IME still holds");
-    detail::access(ui).composition_update(u"我", 1);
-    detail::access(ui).composition_commit(u"我");
-    detail::access(ui).key_down(press(Key::enter));
+    detail::access(ui).compositionUpdate(u"我", 1);
+    detail::access(ui).compositionCommit(u"我");
+    detail::access(ui).keyDown(press(Key::enter));
     check(detail::access(ui).text("name") == u"測試使用者我" && !detail::access(ui).edit("name")->composing && applies == 0,
           "Commit inserts once; neither commit nor a later Enter applies");
     detail::access(ui).undo("name");
     check(detail::access(ui).text("name") == u"測試使用者", "One commit is one undo entry");
     detail::access(ui).select("name", 0, 2);
-    detail::access(ui).composition_update(u"工作", 2);
-    detail::access(ui).composition_commit(u"工作");
+    detail::access(ui).compositionUpdate(u"工作", 2);
+    detail::access(ui).compositionCommit(u"工作");
     check(detail::access(ui).text("name") == u"工作使用者", "Commit replaces the selection");
     detail::access(ui).undo("name");
-    detail::access(ui).composition_update(u"ㄅ", 1);
-    detail::access(ui).composition_cancel();
+    detail::access(ui).compositionUpdate(u"ㄅ", 1);
+    detail::access(ui).compositionCancel();
     check(detail::access(ui).text("name") == u"測試使用者" && detail::access(ui).redo("name") && detail::access(ui).text("name") == u"工作使用者",
           "Cancel keeps committed text and history, including redo");
     detail::access(ui).select("name", 5, 5);
-    detail::access(ui).composition_update(u"我", 1);
+    detail::access(ui).compositionUpdate(u"我", 1);
     detail::access(ui).focus("apply");
     check(detail::access(ui).text("name") == u"工作使用者我" && !detail::access(ui).edit("name")->composing && applies == 0,
           "E01: focus leaving commits the preedit once, the same default the native IME showed");
@@ -314,18 +314,18 @@ void composition_commits_once_and_never_applies() {
     detail::access(ui).undo("name");
     check(detail::access(ui).text("name") == u"工作使用者", "The blur commit is one undo entry");
     detail::access(ui).focus("apply");
-    check(detail::access(ui).composition_commit(u"遲到").status == Status::invalidValue && detail::access(ui).text("name") == u"工作使用者",
+    check(detail::access(ui).compositionCommit(u"遲到").status == Status::invalidValue && detail::access(ui).text("name") == u"工作使用者",
           "A commit with no composition and no focused field lands nowhere");
 }
 
-void composition_page_switch_pointer() {
-    Ui ui; populate(ui, form_with_buttons());
+void compositionPageSwitchPointer() {
+    Ui ui; populate(ui, formWithButtons());
     auto tabs = ui.addTabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     auto& host = detail::access(ui);
     host.focus("name"); host.select("name", 5, 5);
-    host.composition_update(u"\u6211", 1);
-    check(bool(host.pointer_down("tabs", 1)) && bool(host.pointer_up("tabs", 1)), "Tab pointer press succeeds during composition");
+    host.compositionUpdate(u"\u6211", 1);
+    check(bool(host.pointerDown("tabs", 1)) && bool(host.pointerUp("tabs", 1)), "Tab pointer press succeeds during composition");
     check(*tabs.active() == OptionValue{"two"} && tabs.describe()->focused &&
           host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" && !host.edit("name")->composing,
           "Tab click commits composition once and switches page");
@@ -333,11 +333,11 @@ void composition_page_switch_pointer() {
     check(host.text("name") == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "Composition is one undo entry");
 }
 
-void focus_notifications_queue_instead_of_recursing() {
-    Ui ui; populate(ui, form_with_buttons());
+void focusNotificationsQueueInsteadOfRecursing() {
+    Ui ui; populate(ui, formWithButtons());
     std::vector<std::pair<Id, Id>> heard;
     int depth = 0, deepest = 0;
-    detail::access(ui).on_focus([&](const Id& from, const Id& to) {
+    detail::access(ui).onFocus([&](const Id& from, const Id& to) {
         deepest = std::max(deepest, ++depth);
         heard.emplace_back(from, to);
         if (to == "apply") check(bool(detail::access(ui).focus("reset")) && detail::access(ui).focused() == "reset", "A write inside the callback is readable at once");
@@ -347,39 +347,39 @@ void focus_notifications_queue_instead_of_recursing() {
     check(deepest == 1, "The focus callback is never re-entered");
     check((heard == std::vector<std::pair<Id, Id>>{{"", "apply"}, {"apply", "reset"}}) && detail::access(ui).focused() == "reset",
           "The nested move is delivered after the current notification, in order");
-    detail::access(ui).on_focus([](const Id&, const Id&) { throw std::runtime_error("owner bug"); });
+    detail::access(ui).onFocus([](const Id&, const Id&) { throw std::runtime_error("owner bug"); });
     check(detail::access(ui).focus("name").status == Status::failed && detail::access(ui).stopped(), "A throwing focus callback is reported, not hidden");
 }
 
-void keyboard_editing_obeys_the_same_admission() {
-    Ui ui; populate(ui, form_with_buttons());
+void keyboardEditingObeysTheSameAdmission() {
+    Ui ui; populate(ui, formWithButtons());
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 2, 2);
     detail::access(ui).modal(true);
-    check(detail::access(ui).key_down(press(Key::right)).status == Status::blockedByModal && at(ui, 2, 2), "Caret keys respect the modal block");
-    check(detail::access(ui).key_down(ctrl(u'A')).status == Status::blockedByModal && at(ui, 2, 2), "Select-all respects the modal block");
+    check(detail::access(ui).keyDown(press(Key::right)).status == Status::blockedByModal && at(ui, 2, 2), "Caret keys respect the modal block");
+    check(detail::access(ui).keyDown(ctrl(u'A')).status == Status::blockedByModal && at(ui, 2, 2), "Select-all respects the modal block");
     detail::access(ui).modal(false);
     MemoryClipboard clipboard;
-    detail::access(ui).set_clipboard(&clipboard);
-    detail::access(ui).text_input(u"!");
+    detail::access(ui).setClipboard(&clipboard);
+    detail::access(ui).textInput(u"!");
     detail::access(ui).undo("name");
-    detail::access(ui).set_read_only("name", true);
+    detail::access(ui).setReadOnly("name", true);
     clipboard.content = u"x";
-    std::vector<Status> refused{detail::access(ui).key_down(ctrl(u'Y')).status, detail::access(ui).key_down(press(Key::del)).status,
+    std::vector<Status> refused{detail::access(ui).keyDown(ctrl(u'Y')).status, detail::access(ui).keyDown(press(Key::del)).status,
                                 detail::access(ui).paste("name", u"x").status, detail::access(ui).cut("name").status, detail::access(ui).undo("name").status, detail::access(ui).redo("name").status};
     check(refused == std::vector<Status>(refused.size(), Status::readOnly), "Read-only refuses redo, Delete and semantic edits alike");
-    detail::access(ui).set_read_only("name", false);
+    detail::access(ui).setReadOnly("name", false);
     check(detail::access(ui).redo("name") && detail::access(ui).text("name") == u"測試!使用者", "The redo position survived");
 }
 
-void over_limit_edit_is_rejected_whole() {
+void overLimitEditIsRejectedWhole() {
     Ui ui; populate(ui, {{ComponentKind::textField, {.id = "code", .value = u"AB", .maxLength = 4}}});
     check(ComponentConfig{.id = "x"}.maxLength == defaultMaxTextLength && defaultMaxTextLength == 4096,
           "The default limit is public");
     detail::access(ui).focus("code");
     detail::access(ui).select("code", 2, 2);
-    detail::access(ui).text_input(u"CD");
-    check(detail::access(ui).text_input(u"E").status == Status::invalidValue, "Typing past the limit is rejected");
+    detail::access(ui).textInput(u"CD");
+    check(detail::access(ui).textInput(u"E").status == Status::invalidValue, "Typing past the limit is rejected");
     check(detail::access(ui).paste("code", u"XYZ").status == Status::invalidValue, "Pasting past the limit is rejected");
     check(detail::access(ui).setValue("code", u"12345").status == Status::invalidValue, "Semantic writes obey the same limit");
     check(detail::access(ui).text("code") == u"ABCD" && detail::access(ui).undo("code") && detail::access(ui).text("code") == u"AB" && !detail::access(ui).undo("code"),
@@ -393,40 +393,40 @@ bool has(const std::vector<Verb>& actions, Verb operation) {
     return std::find(actions.begin(), actions.end(), operation) != actions.end();
 }
 
-void owner_hears_focus_moves_and_semantics_list_actions() {
-    Ui ui; populate(ui, form_with_buttons());
+void ownerHearsFocusMovesAndSemanticsListActions() {
+    Ui ui; populate(ui, formWithButtons());
     std::vector<std::pair<Id, Id>> moves;
-    detail::access(ui).on_focus([&](const Id& from, const Id& to) {
+    detail::access(ui).onFocus([&](const Id& from, const Id& to) {
         moves.emplace_back(from, to);
         if (from == "name") detail::access(ui).setError("name", detail::access(ui).text("name").empty() ? u"必填" : u"");
     });
     detail::access(ui).focus("name");
-    detail::access(ui).key_down(ctrl(u'A'));
-    detail::access(ui).key_down(press(Key::backspace));
-    detail::access(ui).key_down(press(Key::tab));
+    detail::access(ui).keyDown(ctrl(u'A'));
+    detail::access(ui).keyDown(press(Key::backspace));
+    detail::access(ui).keyDown(press(Key::tab));
     check((moves == std::vector<std::pair<Id, Id>>{{"", "name"}, {"name", "apply"}}), "Owner hears each focus move once");
     check(detail::access(ui).describe("name")->error == u"必填", "Owner can validate on blur");
     auto field = detail::access(ui).describe("name")->verbs;
     check(has(field, Verb::focus) && has(field, Verb::setValue) && has(field, Verb::paste) && has(field, Verb::undo) &&
           !has(field, Verb::redo) && !has(field, Verb::invoke), "Editable field lists what it can do now");
-    detail::access(ui).set_read_only("name", true);
+    detail::access(ui).setReadOnly("name", true);
     field = detail::access(ui).describe("name")->verbs;
     check(has(field, Verb::select) && has(field, Verb::copy) && !has(field, Verb::setValue) && !has(field, Verb::undo),
           "Read-only field lists only viewing actions");
     check((detail::access(ui).describe("apply")->verbs == std::vector<Verb>{Verb::focus}), "An unbound button only offers focus");
-    std::get<ButtonHandle>(detail::access(ui).layout_handle("apply")).bind([] { return Result{}; });
+    std::get<ButtonHandle>(detail::access(ui).layoutHandle("apply")).bind([] { return Result{}; });
     check(has(detail::access(ui).describe("apply")->verbs, Verb::invoke), "A bound button offers invoke");
     detail::access(ui).enable("apply", false);
     check(detail::access(ui).describe("apply")->verbs.empty() &&
           has(detail::access(ui).describe("note")->verbs, Verb::setTextAlign), "Disabled buttons offer nothing; labels offer their configuration verbs");
     int count = 0;
-    detail::access(ui).bind_text("note", [&] { return u"套用 " + std::u16string(1, char16_t(u'0' + count)) + u" 次"; });
+    detail::access(ui).bindText("note", [&] { return u"套用 " + std::u16string(1, char16_t(u'0' + count)) + u" 次"; });
     count = 2;
     check(detail::access(ui).text("note") == u"套用 2 次" && detail::access(ui).describe("note")->value == u"套用 2 次", "Bound label reads the owner's data on demand");
 }
 }
 
-void confirmed_field_respects_shared_command_guard() {
+void confirmedFieldRespectsSharedCommandGuard() {
     Ui ui;
     auto field = ui.addTextField({.id = "guard.field"}).value.value();
     auto button = ui.addButton({.id = "guard.button"}).value.value();
@@ -442,8 +442,8 @@ void confirmed_field_respects_shared_command_guard() {
           "Standalone confirmation works and blocks nested commands");
 }
 
-void public_text_operations_obey_restrictions() {
-    Ui ui; MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
+void publicTextOperationsObeyRestrictions() {
+    Ui ui; MemoryClipboard clipboard; detail::access(ui).setClipboard(&clipboard);
     auto field = ui.addTextField({.id = "public.text"}).value.value();
     field.connectSource({[] { return std::u16string(u"alpha"); }, [](std::function<void()>) { return [] {}; }});
     field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
@@ -455,7 +455,7 @@ void public_text_operations_obey_restrictions() {
           "Read-only public operations share admission rules");
 }
 
-void handle_queries_report_expiry() {
+void handleQueriesReportExpiry() {
     TextFieldHandle field; ButtonHandle button; LabelHandle label;
     {
         Ui ui;
@@ -470,7 +470,7 @@ void handle_queries_report_expiry() {
           label.describe().status == Status::notFound, "Expired queries return an explicit error");
 }
 
-void configuration_requires_ui_thread() {
+void configurationRequiresUiThread() {
     Ui ui;
     auto field = ui.addTextField({.id = "thread.field"}).value.value();
     auto label = ui.addLabel({.id = "thread.label"}).value.value();
@@ -489,7 +489,7 @@ void configuration_requires_ui_thread() {
           "Stopped UI rejects both configuration paths");
 }
 
-void group_action_cannot_be_replaced() {
+void groupActionCannotBeReplaced() {
     Ui ui;
     auto field = ui.addTextField({.id = "group.field"}).value.value();
     auto button = ui.addButton({.id = "group.button"}).value.value();
@@ -501,7 +501,7 @@ void group_action_cannot_be_replaced() {
     check(bool(button.invoke()) && submitted == 1 && replacement == 0, "The original confirmation still runs");
 }
 
-void unconnected_text_rejects_edits() {
+void unconnectedTextRejectsEdits() {
     Ui ui;
     auto field = ui.addTextField({.id = "unconnected", .value = u"initial"}).value.value();
     auto snapshot = field.describe();
@@ -509,7 +509,7 @@ void unconnected_text_rejects_edits() {
           !has(snapshot->verbs, Verb::setValue), "An unconnected field rejects edits and does not advertise editing");
 }
 
-void handles_expire_with_their_component_tree() {
+void handlesExpireWithTheirComponentTree() {
     TextFieldHandle field;
     {
         Ui ui;
@@ -525,7 +525,7 @@ void handles_expire_with_their_component_tree() {
           "Configuration operations also report an expired component");
 }
 
-void source_updates_follow_the_component_lifetime() {
+void sourceUpdatesFollowTheComponentLifetime() {
     std::u16string model = u"first";
     std::function<void()> changed;
     TextFieldHandle field;
@@ -544,7 +544,7 @@ void source_updates_follow_the_component_lifetime() {
     check(!changed, "Ending the component tree disconnects its source subscription");
 }
 
-void source_conflict_keeps_draft_until_cancelled() {
+void sourceConflictKeepsDraftUntilCancelled() {
     std::u16string model = u"original";
     std::function<void()> changed;
     Ui ui;
@@ -566,7 +566,7 @@ void source_conflict_keeps_draft_until_cancelled() {
           "Choosing the latest value discards the draft and clears the conflict");
 }
 
-void confirmation_submits_draft_and_origin_and_keeps_history() {
+void confirmationSubmitsDraftAndOriginAndKeepsHistory() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
@@ -575,29 +575,29 @@ void confirmation_submits_draft_and_origin_and_keeps_history() {
     field.connectSource({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
-    std::u16string received_origin;
+    std::u16string receivedOrigin;
     ui.connectConfirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
-        received_origin = std::get<Change<TextFieldHandle>>(changes.at(0)).origin;
+        receivedOrigin = std::get<Change<TextFieldHandle>>(changes.at(0)).origin;
         model = std::get<Change<TextFieldHandle>>(changes.at(0)).value;
         changed();
         return ConfirmationResult{};
     });
     field.setValue(u"draft");
-    check(bool(apply.invoke()) && model == u"draft" && received_origin == u"before",
+    check(bool(apply.invoke()) && model == u"draft" && receivedOrigin == u"before",
           "One application entry receives the draft and its origin");
     check(bool(field.undo()) && field.describe()->value == u"before" && model == u"draft",
           "Undo after apply creates a draft without undoing the model change");
 }
 
-void rejected_group_keeps_drafts_and_focuses_first_error() {
+void rejectedGroupKeepsDraftsAndFocusesFirstError() {
     std::u16string a = u"one", b = u"two";
-    std::function<void()> changed_a, changed_b;
+    std::function<void()> changedA, changedB;
     Ui ui;
     auto first = ui.addTextField({.id = "reject.first"}).value.value();
     auto second = ui.addTextField({.id = "reject.second"}).value.value();
     auto apply = ui.addButton({.id = "reject.apply"}).value.value();
-    first.connectSource({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
-    second.connectSource({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
+    first.connectSource({[&] { return a; }, [&](std::function<void()> f) { changedA = std::move(f); return [&] { changedA = {}; }; }});
+    second.connectSource({[&] { return b; }, [&](std::function<void()> f) { changedB = std::move(f); return [&] { changedB = {}; }; }});
     ui.connectConfirmation(apply, {first, second}, [&](const std::vector<ConfirmFieldChange>& changes) {
         check(changes.size() == 2 && std::get<Change<TextFieldHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextFieldHandle>>(changes[1]).value == u"bad two",
               "Both drafts arrive together");
@@ -611,7 +611,7 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
           "Rejection labels each field and focuses the first field in group order");
 }
 
-void confirmation_blocks_reentry_but_preserves_new_edits() {
+void confirmationBlocksReentryButPreservesNewEdits() {
     std::u16string model = u"start";
     std::function<void()> changed;
     Ui ui;
@@ -619,13 +619,13 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     auto apply = ui.addButton({.id = "busy.apply"}).value.value();
     field.connectSource({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int calls = 0;
-    std::u16string second_origin;
+    std::u16string secondOrigin;
     ui.connectConfirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
         ++calls;
         if (calls == 1) {
             check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
             check(bool(field.setValue(u"newer")), "The field remains editable while the action executes");
-        } else second_origin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
+        } else secondOrigin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
         model = std::get<Change<TextFieldHandle>>(changes[0]).value;
         changed();
         return ConfirmationResult{};
@@ -636,11 +636,11 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     check(!apply.executing().value.value_or(false) && calls == 1, "Execution state resets and callback runs once");
     check(model == u"sent", "The submitted value reaches the model");
     check(field.describe()->value == u"newer", "Edits during execution stay in the field");
-    check(bool(apply.invoke()) && model == u"newer" && second_origin == u"sent",
+    check(bool(apply.invoke()) && model == u"newer" && secondOrigin == u"sent",
           "The new draft starts from the submitted value");
 }
 
-void connected_text_requires_explicit_write_timing() {
+void connectedTextRequiresExplicitWriteTiming() {
     std::u16string model = u"source";
     std::function<void()> changed;
     Ui ui;
@@ -650,7 +650,7 @@ void connected_text_requires_explicit_write_timing() {
           "A connected editable field without explicit write timing rejects editing");
 }
 
-void source_update_during_composition_keeps_preedit() {
+void sourceUpdateDuringCompositionKeepsPreedit() {
     std::u16string model = u"one";
     std::function<void()> changed;
     Ui ui;
@@ -659,26 +659,26 @@ void source_update_during_composition_keeps_preedit() {
     field.connectSource({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     ui.connectConfirmation(apply, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; });
     field.focus();
-    detail::access(ui).composition_update(u"preedit", 7);
+    detail::access(ui).compositionUpdate(u"preedit", 7);
     model = u"external";
     changed();
     check(detail::access(ui).edit("ime.source")->composing && detail::access(ui).edit("ime.source")->preedit == u"preedit",
           "Source updates never discard an active composition");
-    detail::access(ui).composition_commit(u"text");
+    detail::access(ui).compositionCommit(u"text");
     check(field.describe()->value == u"textone" && field.sourceConflict().value.value_or(false),
           "The committed composition remains a conflicting draft");
 }
 
-void editing_again_after_matching_the_source_uses_the_new_origin() {
+void editingAgainAfterMatchingTheSourceUsesTheNewOrigin() {
     std::u16string model = u"old";
     std::function<void()> changed;
     Ui ui;
     auto field = ui.addTextField({.id = "origin.field"}).value.value();
     auto apply = ui.addButton({.id = "origin.apply"}).value.value();
     field.connectSource({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    std::u16string sent_origin;
+    std::u16string sentOrigin;
     ui.connectConfirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
-        sent_origin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
+        sentOrigin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
         return ConfirmationResult{};
     });
     field.setValue(u"draft");
@@ -686,10 +686,10 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     field.setValue(u"latest");
     field.setValue(u"another draft");
     apply.invoke();
-    check(sent_origin == u"latest", "A fresh draft starts from the current source, not an older conflict origin");
+    check(sentOrigin == u"latest", "A fresh draft starts from the current source, not an older conflict origin");
 }
 
-void explicit_immediate_write_keeps_a_rejected_draft() {
+void explicitImmediateWriteKeepsARejectedDraft() {
     std::u16string model = u"initial";
     std::function<void()> changed;
     Ui ui;
@@ -707,7 +707,7 @@ void explicit_immediate_write_keeps_a_rejected_draft() {
           "A rejected immediate write keeps the draft and its reason");
 }
 
-void cancelling_a_rejected_draft_clears_its_error_without_writing() {
+void cancellingARejectedDraftClearsItsErrorWithoutWriting() {
     std::u16string model = u"saved";
     std::function<void()> changed;
     Ui ui;
@@ -720,21 +720,21 @@ void cancelling_a_rejected_draft_clears_its_error_without_writing() {
           "Cancelling restores the source, clears its rejection, and makes no new write");
 }
 
-void source_notifications_request_a_repaint() {
+void sourceNotificationsRequestARepaint() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
     auto field = ui.addTextField({.id = "paint.field"}).value.value();
     field.connectSource({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int invalidations = 0;
-    detail::access(ui).on_invalidate([&] { ++invalidations; });
+    detail::access(ui).onInvalidate([&] { ++invalidations; });
     model = u"after";
     changed();
     check(invalidations == 1 && field.describe()->value == u"after",
           "An external model update makes the new value visible to the host");
 }
 
-void ungrouped_confirmed_connection_writes_only_on_confirm() {
+void ungroupedConfirmedConnectionWritesOnlyOnConfirm() {
     std::u16string model = u"before", origin;
     std::function<void()> changed;
     Ui ui;
@@ -750,7 +750,7 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
     check(bool(ui.semantics().perform({"single.field"}, Verb::confirm)) && model == u"draft" && origin == u"before", "Semantic confirm submits the draft and its origin");
 }
 
-void checkbox_toggles_a_connected_boolean() {
+void checkboxTogglesAConnectedBoolean() {
     bool model = true;
     Ui ui;
     auto box = ui.addCheckbox({.id = "notice", .label = u"Notices"}).value.value();
@@ -760,21 +760,21 @@ void checkbox_toggles_a_connected_boolean() {
           "Toggling changes the connected boolean and its semantic value exactly once");
 }
 
-void checkbox_input_and_disabled_state_agree() {
+void checkboxInputAndDisabledStateAgree() {
     bool model = false;
     Ui ui;
     auto box = ui.addCheckbox({.id = "notice", .label = u"Notices"}).value.value();
     box.connectSource({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
     box.connectImmediate([&](const Change<CheckboxHandle>& change) { model = change.value; return Result{}; });
     auto& host = detail::access(ui);
-    box.focus(); host.key_down({.key = Key::space}); host.key_down({.key = Key::space, .repeat = true}); host.key_up(Key::space);
+    box.focus(); host.keyDown({.key = Key::space}); host.keyDown({.key = Key::space, .repeat = true}); host.keyUp(Key::space);
     check(model && box.describe()->checked == true, "Space changes the value and check mark once");
     box.enable(false);
     check(box.toggle().status == Status::disabled && model && box.describe()->checked == true,
           "A disabled checkbox keeps its value and check mark");
 }
 
-void radio_can_start_empty_and_skip_disabled_options() {
+void radioCanStartEmptyAndSkipDisabledOptions() {
     std::optional<OptionValue> model;
     Ui ui;
     auto group = ui.addRadioGroup({.id = "mode", .label = u"Mode"},
@@ -784,13 +784,13 @@ void radio_can_start_empty_and_skip_disabled_options() {
     check(!group.draft()->has_value(), "A radio group can initially have no selection");
     check(group.select({"normal"}).status == Status::disabled && !model, "Disabled options cannot be selected");
     group.focus();
-    detail::access(ui).key_down({.key = Key::right});
+    detail::access(ui).keyDown({.key = Key::right});
     check(model == OptionValue{"focus"} && *group.draft() == model, "Direction selects the first enabled option");
-    detail::access(ui).key_down({.key = Key::right});
+    detail::access(ui).keyDown({.key = Key::right});
     check(model == OptionValue{"focus"}, "At the end navigation does not wrap");
 }
 
-void mixed_confirmation_submits_one_batch() {
+void mixedConfirmationSubmitsOneBatch() {
     std::u16string name = u"before";
     bool enabled = true;
     std::optional<OptionValue> mode = OptionValue{"normal"};
@@ -816,7 +816,7 @@ void mixed_confirmation_submits_one_batch() {
           "Apply submits one batch containing all three value types");
 }
 
-void mixed_rejection_marks_each_field_and_focuses_first() {
+void mixedRejectionMarksEachFieldAndFocusesFirst() {
     Ui ui;
     auto text = ui.addTextField({.id = "text"}).value.value();
     auto box = ui.addCheckbox({.id = "box"}).value.value();
@@ -836,7 +836,7 @@ void mixed_rejection_marks_each_field_and_focuses_first() {
     check(*text.draft() == u"draft" && *box.draft() && *radio.draft() == OptionValue{"a"}, "Rejected drafts are retained");
 }
 
-void radio_all_disabled_remains_empty_and_tab_can_leave() {
+void radioAllDisabledRemainsEmptyAndTabCanLeave() {
     Ui ui;
     auto radio = ui.addRadioGroup({.id = "radio"},
         {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
@@ -844,14 +844,14 @@ void radio_all_disabled_remains_empty_and_tab_can_leave() {
     radio.connectSource({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     radio.connectImmediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     radio.focus();
-    detail::access(ui).key_down({.key = Key::right});
-    detail::access(ui).key_down({.key = Key::left});
+    detail::access(ui).keyDown({.key = Key::right});
+    detail::access(ui).keyDown({.key = Key::left});
     check(!radio.draft()->has_value(), "No direction selects a disabled option");
-    detail::access(ui).key_down({.key = Key::tab});
+    detail::access(ui).keyDown({.key = Key::tab});
     check(next.describe()->focused, "Tab leaves an all-disabled group");
 }
 
-void radio_source_conflict_can_be_resolved() {
+void radioSourceConflictCanBeResolved() {
     std::optional<OptionValue> model = OptionValue{"a"};
     std::function<void()> changed;
     Ui ui;
@@ -865,7 +865,7 @@ void radio_source_conflict_can_be_resolved() {
           "The latest source can replace the draft explicitly");
 }
 
-void standalone_boolean_and_option_confirmation() {
+void standaloneBooleanAndOptionConfirmation() {
     bool enabled = false;
     std::optional<OptionValue> mode = OptionValue{"a"};
     Ui ui;
@@ -880,7 +880,7 @@ void standalone_boolean_and_option_confirmation() {
     check(bool(box.confirm()) && bool(radio.confirm()) && enabled && mode == OptionValue{"b"}, "Each explicit confirm writes its typed draft");
 }
 
-void unconnected_selection_controls_do_not_advertise_writes() {
+void unconnectedSelectionControlsDoNotAdvertiseWrites() {
     Ui ui;
     auto box = ui.addCheckbox({.id = "box"}).value.value();
     auto radio = ui.addRadioGroup({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
@@ -896,7 +896,7 @@ void unconnected_selection_controls_do_not_advertise_writes() {
           "Connected editable controls advertise their available modifications");
 }
 
-void slider_connected_draft_is_confirmed_as_a_number() {
+void sliderConnectedDraftIsConfirmedAsANumber() {
     int model = 40;
     Ui ui;
     auto slider = ui.addSlider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
@@ -911,7 +911,7 @@ void slider_connected_draft_is_confirmed_as_a_number() {
     check(bool(apply.invoke()) && model == 55, "Apply submits the numeric draft through the application callback");
 }
 
-void slider_non_divisible_range_and_keyboard() {
+void sliderNonDivisibleRangeAndKeyboard() {
     Ui ui;
     auto slider = ui.addSlider({.id = "level"}, {-3, 8, 4}).value.value();
     slider.connectSource({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
@@ -924,31 +924,31 @@ void slider_non_divisible_range_and_keyboard() {
     slider.setValue(7);
     check(*slider.draft() == 8, "The shorter final interval snaps to the maximum");
     slider.focus();
-    detail::access(ui).key_down({.key = Key::left});
+    detail::access(ui).keyDown({.key = Key::left});
     check(*slider.draft() == 5, "Left from the maximum reaches the last regular step");
-    detail::access(ui).key_down({.key = Key::right});
-    detail::access(ui).key_down({.key = Key::right});
+    detail::access(ui).keyDown({.key = Key::right});
+    detail::access(ui).keyDown({.key = Key::right});
     check(*slider.draft() == 8, "Right reaches and stops at the maximum");
-    detail::access(ui).key_down({.key = Key::home});
+    detail::access(ui).keyDown({.key = Key::home});
     check(*slider.draft() == -3, "Home reaches the minimum");
-    detail::access(ui).key_down({.key = Key::end});
+    detail::access(ui).keyDown({.key = Key::end});
     check(*slider.draft() == 8, "End reaches the non-divisible maximum");
     slider.enable(false);
     check(slider.setValue(1).status == Status::disabled && *slider.draft() == 8, "Disabled edits are rejected");
 }
 
-void slider_rejects_invalid_ranges() {
+void sliderRejectsInvalidRanges() {
     Ui ui; int rejected = 0;
     for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}}) {
         if (ui.addSlider({.id = "invalid"}, range).status == Status::invalidValue) ++rejected;
     }
     check(rejected == 4, "Empty or reversed ranges and non-positive steps are rejected");
-    bool missing_range = false;
-    missing_range = ui.addSlider({.id = "missing"}, {0, 0, 1}).status == Status::invalidValue;
-    check(missing_range, "A slider without a range cannot be created through the untyped constructor");
+    bool missingRange = false;
+    missingRange = ui.addSlider({.id = "missing"}, {0, 0, 1}).status == Status::invalidValue;
+    check(missingRange, "A slider without a range cannot be created through the untyped constructor");
 }
 
-void progress_source_is_read_only_and_disconnects() {
+void progressSourceIsReadOnlyAndDisconnects() {
     int source = -10;
     std::function<void()> changed;
     ProgressHandle saved;
@@ -968,7 +968,7 @@ void progress_source_is_read_only_and_disconnects() {
     check(!changed && saved.describe().status == Status::notFound, "Destroying the tree disconnects and expires the handle");
 }
 
-void slider_source_conflict_and_invalid_updates() {
+void sliderSourceConflictAndInvalidUpdates() {
     int model = 40; std::function<void()> changed; int origin = -1;
     SliderHandle saved;
     {
@@ -993,8 +993,8 @@ void slider_source_conflict_and_invalid_updates() {
     check(!changed && saved.draft().status == Status::notFound, "Destroying the tree disconnects the numeric source and expires the handle");
 }
 
-void slider_group_preserves_edits_during_submission() {
-    int model = 40, submitted_origin = -1; std::function<void()> changed;
+void sliderGroupPreservesEditsDuringSubmission() {
+    int model = 40, submittedOrigin = -1; std::function<void()> changed;
     Ui ui;
     auto slider = ui.addSlider({.id = "volume"}, {0, 100, 5}).value.value();
     auto apply = ui.addButton({.id = "apply"}).value.value();
@@ -1002,7 +1002,7 @@ void slider_group_preserves_edits_during_submission() {
     int calls = 0;
     ui.connectConfirmation(apply, {slider}, [&](const std::vector<ConfirmFieldChange>& changes) {
         const auto change = std::get<Change<SliderHandle>>(changes[0]);
-        ++calls; submitted_origin = change.origin;
+        ++calls; submittedOrigin = change.origin;
         if (calls == 1) {
             check(apply.invoke().status == Status::busy, "A running confirmation cannot be reentered");
             slider.setValue(65);
@@ -1013,10 +1013,10 @@ void slider_group_preserves_edits_during_submission() {
     slider.setValue(55); apply.invoke();
     check(model == 55 && *slider.draft() == 65, "An edit during submission survives as a new draft");
     apply.invoke();
-    check(model == 65 && submitted_origin == 55, "The next submission starts from the accepted value");
+    check(model == 65 && submittedOrigin == 55, "The next submission starts from the accepted value");
 }
 
-void dropdown_candidate_is_not_a_draft_until_confirmed() {
+void dropdownCandidateIsNotADraftUntilConfirmed() {
     std::optional<OptionValue> model = OptionValue{"north"};
     Ui ui;
     auto region = ui.addDropdown({.id = "region"},
@@ -1024,16 +1024,16 @@ void dropdown_candidate_is_not_a_draft_until_confirmed() {
     check(bool(region.connectSource({[&] { return model; }, [](std::function<void()>) { return [] {}; }})), "Connect region source");
     check(bool(region.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; })), "Connect confirmed write");
     check(bool(region.focus()) && bool(region.open()), "Open the dropdown");
-    detail::access(ui).key_down({.key = Key::down});
+    detail::access(ui).keyDown({.key = Key::down});
     check(*region.draft() == OptionValue{"north"} && region.describe()->candidate == OptionValue{"south"},
           "Arrow changes the candidate only");
-    detail::access(ui).key_down({.key = Key::escape});
+    detail::access(ui).keyDown({.key = Key::escape});
     check(*region.draft() == OptionValue{"north"} && !region.describe()->expanded, "Escape cancels the candidate");
-    region.open(); detail::access(ui).key_down({.key = Key::down}); detail::access(ui).key_down({.key = Key::enter});
+    region.open(); detail::access(ui).keyDown({.key = Key::down}); detail::access(ui).keyDown({.key = Key::enter});
     check(*region.draft() == OptionValue{"south"} && model == OptionValue{"north"}, "Enter confirms only the draft");
 }
 
-void dropdown_leaving_and_replaced_options_are_safe() {
+void dropdownLeavingAndReplacedOptionsAreSafe() {
     Ui ui;
     auto dropdown = ui.addDropdown({.id = "region"},
         {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
@@ -1042,13 +1042,13 @@ void dropdown_leaving_and_replaced_options_are_safe() {
     dropdown.connectSource({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     dropdown.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
     auto& host = detail::access(ui);
-    dropdown.open(); host.key_down({.key = Key::down}); host.key_down({.key = Key::tab});
+    dropdown.open(); host.keyDown({.key = Key::down}); host.keyDown({.key = Key::tab});
     check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && next.describe()->focused, "Tab cancels and advances");
-    dropdown.open(); host.key_down({.key = Key::down}); host.pointer_down("next"); host.pointer_up("next");
+    dropdown.open(); host.keyDown({.key = Key::down}); host.pointerDown("next"); host.pointerUp("next");
     check(!dropdown.describe()->expanded && *dropdown.draft() == OptionValue{"north"} && clicks == 1 && next.describe()->focused, "Outside click cancels and preserves the clicked action");
-    dropdown.open(); host.pointer_down("region", 1);
+    dropdown.open(); host.pointerDown("region", 1);
     dropdown.setItems({{{"south"}, u"South"}, {{"north"}, u"North"}});
-    host.pointer_up("region", 1);
+    host.pointerUp("region", 1);
     check(*dropdown.draft() == OptionValue{"north"}, "Reordered options cannot turn a press into a different selection");
     dropdown.setItems({});
     check(!*dropdown.draft() && !dropdown.describe()->candidate, "Empty options clear value and candidate");
@@ -1060,7 +1060,7 @@ void dropdown_leaving_and_replaced_options_are_safe() {
     check(dropdown.open().status == Status::blockedByModal && dropdown.select({"north"}).status == Status::blockedByModal, "Modal state blocks opening and selection");
 }
 
-void dropdown_option_changes_do_not_recurse_into_notifications() {
+void dropdownOptionChangesDoNotRecurseIntoNotifications() {
     Ui ui;
     auto field = ui.addDropdown({.id = "region"}, {{{"north"}, u"North"}}).value.value();
     field.connectSource({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
@@ -1072,19 +1072,19 @@ void dropdown_option_changes_do_not_recurse_into_notifications() {
           "An option update during a notification is refused without recursion or mutation");
 }
 
-void dropdown_programmatic_edits_request_a_frame() {
+void dropdownProgrammaticEditsRequestAFrame() {
     Ui ui;
     auto field = ui.addDropdown({.id = "region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
     field.connectSource({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
     field.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
-    int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
+    int frames = 0; detail::access(ui).onInvalidate([&] { ++frames; });
     field.select({"south"});
     check(frames > 0, "A public selection requests repaint");
     frames = 0; field.useLatest();
     check(frames > 0, "Restoring the source requests repaint");
 }
 
-void list_members_obey_page_scope() {
+void listMembersObeyPageScope() {
     Ui ui;
     std::optional<OptionValue> selected;
     auto list = ui.addList({.id = "list-scope"}, {{{"T006"}, u"Shared"}}).value.value();
@@ -1099,7 +1099,7 @@ void list_members_obey_page_scope() {
     check(list.focus().status == Status::hidden && selected == OptionValue{"T006"}, "Leaving the list retains its selection and blocks focus");
 }
 
-void tabs_require_explicit_activation_and_guard_hidden_pages() {
+void tabsRequireExplicitActivationAndGuardHiddenPages() {
     Ui ui;
     auto first = ui.addButton({.id = "first"}).value.value();
     auto second = ui.addButton({.id = "second"}).value.value();
@@ -1111,14 +1111,14 @@ void tabs_require_explicit_activation_and_guard_hidden_pages() {
     auto& host = detail::access(ui);
     check(second.invoke().status == Status::hidden, "Hidden page refuses public activation");
     check(tabs.activate({"blocked"}).status == Status::disabled, "Disabled tab refuses activation");
-    tabs.focus(); host.key_down({.key = Key::right});
+    tabs.focus(); host.keyDown({.key = Key::right});
     check(*tabs.active() == OptionValue{"one"} && tabs.describe()->candidate == OptionValue{"two"}, "Arrow skips disabled tab without activating");
-    host.key_down({.key = Key::enter});
+    host.keyDown({.key = Key::enter});
     check(*tabs.active() == OptionValue{"two"} && bool(second.invoke()) && clicks == 1, "Enter activates the focused page");
     check(first.invoke().status == Status::hidden, "Previous page is hidden");
 }
 
-void tab_change_notifications_do_not_recurse() {
+void tabChangeNotificationsDoNotRecurse() {
     Ui ui;
     auto tabs = ui.addTabs({.id = "tabs"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     int calls = 0; Status nested = Status::ok;
@@ -1127,17 +1127,17 @@ void tab_change_notifications_do_not_recurse() {
           "A nested page switch is rejected while the change is being delivered");
 }
 
-void tabs_respect_modal_and_disabled_pointer_targets() {
+void tabsRespectModalAndDisabledPointerTargets() {
     Ui ui;
     auto page = ui.addButton({.id = "page"}).value.value();
     auto tabs = ui.addTabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {page}}, {{"disabled"}, u"Disabled", false, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     auto& host = detail::access(ui);
-    host.pointer_down("tabs", 1);
-    check(host.pointer_up("tabs", 1).status == Status::disabled && *tabs.active() == OptionValue{"one"}, "Disabled pointer target cannot activate");
-    tabs.focus(); host.key_down({.key = Key::right}); host.key_down({.key = Key::space});
+    host.pointerDown("tabs", 1);
+    check(host.pointerUp("tabs", 1).status == Status::disabled && *tabs.active() == OptionValue{"one"}, "Disabled pointer target cannot activate");
+    tabs.focus(); host.keyDown({.key = Key::right}); host.keyDown({.key = Key::space});
     check(*tabs.active() == OptionValue{"one"}, "Space waits for release");
-    host.key_up(Key::space);
+    host.keyUp(Key::space);
     check(*tabs.active() == OptionValue{"two"}, "Space release activates candidate");
     host.modal(true);
     check(tabs.activate({"one"}).status == Status::blockedByModal && page.invoke().status != Status::ok,
@@ -1146,7 +1146,7 @@ void tabs_respect_modal_and_disabled_pointer_targets() {
     check(tabs.enablePage({"two"}, false).status == Status::invalidValue, "The active page cannot be disabled");
 }
 
-void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
+void crossPageConfirmationRevealsFirstErrorAndMarksOtherPages() {
     Ui ui;
     auto first = ui.addTextField({.id = "first-field"}).value.value();
     auto second = ui.addTextField({.id = "second-field"}).value.value();
@@ -1164,7 +1164,7 @@ void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
           "Errors on the other page remain discoverable from its tab");
 }
 
-void list_selection_uses_stable_identity() {
+void listSelectionUsesStableIdentity() {
     std::optional<OptionValue> selected;
     Ui ui;
     auto list = ui.addList({.id = "list"},
@@ -1176,7 +1176,7 @@ void list_selection_uses_stable_identity() {
     check(list.describe()->items[0].selected && selected == OptionValue{"T006"}, "Reordering preserves the selected identity");
 }
 
-void list_focus_and_keyboard_use_enabled_items() {
+void listFocusAndKeyboardUseEnabledItems() {
     std::optional<OptionValue> selected;
     Ui ui;
     auto list = ui.addList({.id = "list"},
@@ -1186,14 +1186,14 @@ void list_focus_and_keyboard_use_enabled_items() {
     list.connectImmediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
     list.focus();
     check(list.describe()->candidate == OptionValue{"T007"} && !selected, "Entry focuses the first enabled item without selecting");
-    detail::access(ui).key_down({.key = Key::down, .shift = true, .ctrl = true});
+    detail::access(ui).keyDown({.key = Key::down, .shift = true, .ctrl = true});
     check(selected == OptionValue{"T009"} && list.describe()->candidate == selected, "Down skips disabled rows and modifiers do not add selections");
     check(list.select({"T008"}).status == Status::disabled && selected == OptionValue{"T009"}, "Disabled rows reject public selection");
-    detail::access(ui).key_down({.key = Key::tab});
+    detail::access(ui).keyDown({.key = Key::tab});
     check(next.describe()->focused, "Tab exits the list");
 }
 
-void list_recovers_cursor_when_data_changes() {
+void listRecoversCursorWhenDataChanges() {
     std::optional<OptionValue> selected;
     Ui ui;
     auto list = ui.addList({.id = "list"},
@@ -1204,7 +1204,7 @@ void list_recovers_cursor_when_data_changes() {
     list.setItems({{{"T010"}, u"Ten"}, {{"T018"}, u"Eighteen"}});
     check(!selected && list.describe()->candidate == OptionValue{"T010"}, "Filtering clears selection and chooses the surviving next neighbor from the old order");
 }
-void list_write_cannot_reenter_itself() {
+void listWriteCannotReenterItself() {
     std::optional<OptionValue> selected; Status nested = Status::ok;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
@@ -1218,65 +1218,65 @@ void list_write_cannot_reenter_itself() {
 
 // #99: a list's write hands a change record; its origin is the selection the source held just before the write. The one
 // predicate every seam asserts: `count` writes so far, the last handing this list, the new item and that origin.
-bool last_list_change_is(const std::vector<Change<ListHandle>>& changes, std::size_t count, const ListHandle& list,
+bool lastListChangeIs(const std::vector<Change<ListHandle>>& changes, std::size_t count, const ListHandle& list,
                          const std::optional<OptionValue>& value, const std::optional<OptionValue>& origin) {
     return count > 0 && changes.size() == count && changes.back().field == list && changes.back().value == value &&
            changes.back().origin == origin;
 }
-void list_user_selection_hands_a_change_record() {
+void listUserSelectionHandsAChangeRecord() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}, {{"c"}, u"C"}}).value.value();
     list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connectImmediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
-    list.focus(); detail::access(ui).key_down({.key = Key::down});
-    check(last_list_change_is(changes, 1, list, OptionValue{"b"}, OptionValue{"a"}),
+    list.focus(); detail::access(ui).keyDown({.key = Key::down});
+    check(lastListChangeIs(changes, 1, list, OptionValue{"b"}, OptionValue{"a"}),
           "A keyboard selection hands the list, the new item and the item selected before");
     auto& host = detail::access(ui);
-    host.pointer_down("list", 2); host.pointer_up("list", 2);
-    check(last_list_change_is(changes, 2, list, OptionValue{"c"}, OptionValue{"b"}),
+    host.pointerDown("list", 2); host.pointerUp("list", 2);
+    check(lastListChangeIs(changes, 2, list, OptionValue{"c"}, OptionValue{"b"}),
           "A pointer selection's origin is the selection the source held just before");
     selected.reset();
-    check(bool(list.select({"a"})) && last_list_change_is(changes, 3, list, OptionValue{"a"}, std::nullopt),
+    check(bool(list.select({"a"})) && lastListChangeIs(changes, 3, list, OptionValue{"a"}, std::nullopt),
           "Selecting with nothing selected hands an empty origin");
 }
-void list_items_that_drop_the_selection_hand_an_empty_change() {
+void listItemsThatDropTheSelectionHandAnEmptyChange() {
     std::optional<OptionValue> selected{OptionValue{"b"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connectImmediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     check(bool(list.setItems({{{"a"}, u"A"}, {{"b"}, u"B"}, {{"d"}, u"D"}})) && changes.empty(), "Items that keep the selection write nothing");
-    check(bool(list.setItems({{{"a"}, u"A"}})) && last_list_change_is(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
+    check(bool(list.setItems({{{"a"}, u"A"}})) && lastListChangeIs(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
           "Items without the selected one hand no selection, with the item that disappeared as origin");
 }
 // #99 Q1, kept as it was: a selected item that stays listed but disabled counts as dropped, so the write hands no
 // selection with that still-listed item as origin.
-void list_items_that_disable_the_selection_hand_an_empty_change() {
+void listItemsThatDisableTheSelectionHandAnEmptyChange() {
     std::optional<OptionValue> selected{OptionValue{"b"}}; std::vector<Change<ListHandle>> changes;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connectImmediate([&](const Change<ListHandle>& change) { changes.push_back(change); selected = change.value; return Result{}; });
     check(bool(list.setItems({{{"a"}, u"A"}, {{"b"}, u"B", false}})) &&
-          last_list_change_is(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
+          lastListChangeIs(changes, 1, list, std::nullopt, OptionValue{"b"}) && !selected,
           "Disabling the selected item hands no selection, with that item as origin");
     auto s = list.describe();
     check(s->items.size() == 2 && s->items[1].value == OptionValue{"b"} && !s->items[1].enabled && !s->items[1].selected,
           "The disabled item stays listed, unselected");
 }
 // #99 keeps these list behaviors as they were.
-void list_selecting_the_selected_item_writes_nothing() {
+void listSelectingTheSelectedItemWritesNothing() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
     list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
     list.connectImmediate([&](const Change<ListHandle>& change) { ++writes; selected = change.value; return Result{}; });
     check(bool(list.select({"a"})) && writes == 0 && selected == OptionValue{"a"}, "Selecting the selected item writes nothing");
-    list.focus(); detail::access(ui).key_down({.key = Key::space});
+    list.focus(); detail::access(ui).keyDown({.key = Key::space});
     check(writes == 0, "Space on the selected row writes nothing either");
 }
-void list_rejected_write_keeps_the_selection() {
+void listRejectedWriteKeepsTheSelection() {
     std::optional<OptionValue> selected{OptionValue{"a"}}; int writes = 0;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
@@ -1288,7 +1288,7 @@ void list_rejected_write_keeps_the_selection() {
     auto s = list.describe();
     check(selected == OptionValue{"a"} && s->items[0].selected && !s->items[1].selected, "A rejected write leaves the selection unchanged");
 }
-void list_write_requires_a_source_first() {
+void listWriteRequiresASourceFirst() {
     std::optional<OptionValue> selected; int writes = 0;
     Ui ui;
     auto list = ui.addList({.id = "list"}, {{{"a"}, u"A"}}).value.value();
@@ -1298,43 +1298,43 @@ void list_write_requires_a_source_first() {
     check(list.select({"a"}).status == Status::invalidValue && writes == 0, "The refused write was not kept");
 }
 // #99: a label also takes a full read source; a notification asks for a repaint and the text is read again when drawn.
-void label_source_notification_repaints_the_new_text() {
+void labelSourceNotificationRepaintsTheNewText() {
     std::u16string clock = u"10:00"; std::function<void()> changed;
     Ui ui;
     auto label = ui.addLabel({.id = "clock"}).value.value();
-    int frames = 0; detail::access(ui).on_invalidate([&] { ++frames; });
+    int frames = 0; detail::access(ui).onInvalidate([&] { ++frames; });
     check(bool(label.connectSource({[&] { return clock; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }})) && label.describe()->value == u"10:00", "A label reads its text from the source");
     clock = u"10:01"; frames = 0; changed();
     check(frames == 1 && label.describe()->value == u"10:01", "A notification asks for a repaint that shows the new text");
 }
-void label_source_is_replaced_and_rejects_incomplete_sources() {
+void labelSourceIsReplacedAndRejectsIncompleteSources() {
     std::function<void()> first, second;
     Ui ui;
     auto label = ui.addLabel({.id = "status"}).value.value();
-    auto subscribe_to = [](std::function<void()>& slot) {
+    auto subscribeTo = [](std::function<void()>& slot) {
         return [&slot](std::function<void()> callback) { slot = std::move(callback); return [&slot] { slot = {}; }; };
     };
-    label.connectSource({[] { return std::u16string(u"one"); }, subscribe_to(first)});
-    check(bool(label.connectSource({[] { return std::u16string(u"two"); }, subscribe_to(second)})) && !first && second &&
+    label.connectSource({[] { return std::u16string(u"one"); }, subscribeTo(first)});
+    check(bool(label.connectSource({[] { return std::u16string(u"two"); }, subscribeTo(second)})) && !first && second &&
           label.describe()->value == u"two", "Connecting again replaces the source and cancels the old subscription");
     check(bool(label.connectSource([] { return std::u16string(u"three"); })) && !second && label.describe()->value == u"three",
           "The short form also cancels the subscription it replaces");
-    label.connectSource({[] { return std::u16string(u"four"); }, subscribe_to(first)});
+    label.connectSource({[] { return std::u16string(u"four"); }, subscribeTo(first)});
     std::function<std::u16string()> read = [] { return std::u16string(u"five"); };
     check(label.connectSource({{}, {}}).status == Status::invalidValue && label.connectSource({read, {}}).status == Status::invalidValue &&
-          label.connectSource({{}, subscribe_to(second)}).status == Status::invalidValue,
+          label.connectSource({{}, subscribeTo(second)}).status == Status::invalidValue,
           "A source without read or subscribe is refused");
     check(first && !second && label.describe()->value == u"four", "A refused source keeps the current connection");
 }
-void label_source_notifications_end_with_the_ui() {
+void labelSourceNotificationsEndWithTheUi() {
     std::function<void()> changed, kept; int frames = 0;
     LabelHandle label;
     {
         Ui ui;
         label = ui.addLabel({.id = "progress-text"}).value.value();
-        detail::access(ui).on_invalidate([&] { ++frames; });
+        detail::access(ui).onInvalidate([&] { ++frames; });
         label.connectSource({[] { return std::u16string(u"busy"); }, [&](std::function<void()> callback) {
             changed = callback; kept = std::move(callback); return [&] { changed = {}; };
         }});
@@ -1344,7 +1344,7 @@ void label_source_notifications_end_with_the_ui() {
     check(frames == 0 && label.describe().status == Status::notFound, "A notification after the Ui is gone is ignored");
 }
 // #99 keeps the label's short form (a read function only) as it was.
-void label_read_function_is_read_on_demand_and_replaced() {
+void labelReadFunctionIsReadOnDemandAndReplaced() {
     std::u16string first = u"first", second = u"second";
     Ui ui;
     auto label = ui.addLabel({.id = "label"}).value.value();
@@ -1355,16 +1355,16 @@ void label_read_function_is_read_on_demand_and_replaced() {
     check(label.connectSource(std::function<std::u16string()>{}).status == Status::invalidValue, "An empty function is refused");
 }
 
-void pointer_dispatch_rechecks_a_removed_focus_target() {
+void pointerDispatchRechecksARemovedFocusTarget() {
     Ui ui;
     auto button = ui.addButton({.id = "button"}).value.value();
     auto& host = detail::access(ui);
-    host.on_focus([&](const auto&, const auto& to) { if (to == "button") button.remove(); });
-    check(host.pointer_down("button").status == Status::notFound, "A target removed by focus notification is rejected before pointer dispatch");
+    host.onFocus([&](const auto&, const auto& to) { if (to == "button") button.remove(); });
+    check(host.pointerDown("button").status == Status::notFound, "A target removed by focus notification is rejected before pointer dispatch");
     check(button.describe().status == Status::notFound, "The accepted removal commits after pointer handling");
 }
 
-void removing_confirmation_button_releases_its_fields() {
+void removingConfirmationButtonReleasesItsFields() {
     Ui ui;
     auto field = ui.addTextField({.id = "field"}).value.value();
     field.connectSource({[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }});
@@ -1379,13 +1379,13 @@ void removing_confirmation_button_releases_its_fields() {
           "Removed group releases the field for another connection");
 }
 
-void repeated_removal_reclaims_component_storage() {
+void repeatedRemovalReclaimsComponentStorage() {
     Ui ui;
     auto tabs = ui.addTabs({.id = "tabs"}, {{{"page"}, u"Page", true, {}}}).value.value();
     auto& host = detail::access(ui);
-    const auto baseline = host.storage_counts();
+    const auto baseline = host.storageCounts();
     ButtonHandle stale;
-    TooltipHandle old_tip;
+    TooltipHandle oldTip;
     for (int i = 0; i < 1000; ++i) {
         auto button = ui.addButton({.id = "temporary"}).value.value();
         check(bool(tabs.addMember({"page"}, button)), "Attach replacement");
@@ -1395,15 +1395,15 @@ void repeated_removal_reclaims_component_storage() {
         button.bind([capture] { return Result{}; });
         capture.reset();
         host.setError("temporary", u"error");
-        if (i == 0) { stale = button; old_tip = tip; }
+        if (i == 0) { stale = button; oldTip = tip; }
         check(bool(button.remove()), "Remove replacement");
-        check(host.storage_counts() == baseline && released.expired(), "All structural entries and action captures are reclaimed");
-        check(stale.describe().status == Status::notFound && old_tip.visible().status == Status::notFound,
+        check(host.storageCounts() == baseline && released.expired(), "All structural entries and action captures are reclaimed");
+        check(stale.describe().status == Status::notFound && oldTip.visible().status == Status::notFound,
               "Old button and tooltip remain invalid after ID reuse");
     }
 }
 
-void page_accepts_new_members_of_different_types() {
+void pageAcceptsNewMembersOfDifferentTypes() {
     Ui ui, other;
     auto tabs = ui.addTabs({.id = "tabs"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}).value.value();
     auto label = ui.addLabel({.id = "label", .value = u"Label"}).value.value();
@@ -1416,20 +1416,20 @@ void page_accepts_new_members_of_different_types() {
     check(bool(tabs.activate({"two"})) && bool(detail::access(ui).available("button")), "New members follow activation");
 }
 
-void removal_waits_for_action_and_stale_handle_stays_invalid() {
+void removalWaitsForActionAndStaleHandleStaysInvalid() {
     Ui ui;
     auto button = ui.addButton({.id = "temporary"}).value.value();
     auto& host = detail::access(ui);
-    bool alive_in_callback = false, denied_in_callback = false;
+    bool aliveInCallback = false, deniedInCallback = false;
     Status requested = Status::failed;
     button.bind([&] {
         requested = button.remove().status;
-        alive_in_callback = host.find("temporary") != nullptr;
-        denied_in_callback = button.invoke().status == Status::notFound;
+        aliveInCallback = host.find("temporary") != nullptr;
+        deniedInCallback = button.invoke().status == Status::notFound;
         return Result{};
     });
     check(bool(button.invoke()), "The action finishes normally");
-    check(requested == Status::ok && alive_in_callback && denied_in_callback, "Removal is accepted, dispatch is denied, and storage survives the callback");
+    check(requested == Status::ok && aliveInCallback && deniedInCallback, "Removal is accepted, dispatch is denied, and storage survives the callback");
     check(!host.find("temporary") && button.invoke().status == Status::notFound, "Removal commits after dispatch");
     auto replacement = ui.addButton({.id = "temporary"}).value.value();
     check(bool(replacement.describe()) && button.describe().status == Status::notFound,
@@ -1437,7 +1437,7 @@ void removal_waits_for_action_and_stale_handle_stays_invalid() {
 }
 
 // Applicability belongs to the registered type, independently of a snapshot's current state.
-void component_type_reports_state_applicability() {
+void componentTypeReportsStateApplicability() {
     using S = detail::ComponentState;
     struct Row { ComponentKind kind; std::vector<S> states; };
     const Row rows[] = {
@@ -1456,7 +1456,7 @@ void component_type_reports_state_applicability() {
     constexpr S all[] = {S::normal, S::disabled, S::readOnly, S::selected, S::candidate, S::error, S::conflict, S::executing};
     for (const auto& row : rows) for (auto state : all) {
         bool expected = std::find(row.states.begin(), row.states.end(), state) != row.states.end();
-        check(detail::component_type(row.kind).supports_state(state) == expected,
+        check(detail::componentType(row.kind).supportsState(state) == expected,
               "The registered component type reports its applicable states");
     }
 }
@@ -1469,7 +1469,7 @@ struct SourceProbe {
     std::function<Result(std::function<int()> pick, Subscribe subscribe)> connect;
     std::function<std::u16string()> shown;
 };
-std::u16string shown_by(const Query<ComponentSnapshot>& s) {
+std::u16string shownBy(const Query<ComponentSnapshot>& s) {
     if (!s) return u"<" + s.message + u">";
     std::u16string shown = s->value + u"|";
     if (s->numericValue) for (char c : std::to_string(*s->numericValue)) shown += char16_t(c);
@@ -1477,62 +1477,62 @@ std::u16string shown_by(const Query<ComponentSnapshot>& s) {
     for (const auto& item : s->items) if (item.selected) shown += u"|" + item.label;
     return shown;
 }
-template <class T, class Handle, class Connect> SourceProbe probe_of(Handle handle, std::array<T, 3> values, Connect connect) {
+template <class T, class Handle, class Connect> SourceProbe probeOf(Handle handle, std::array<T, 3> values, Connect connect) {
     return {[handle, values, connect](std::function<int()> pick, Subscribe subscribe) {
                 return connect(handle, Source<T>{[values, pick] { return values[pick()]; }, std::move(subscribe)});
             },
-            [handle] { return shown_by(handle.describe()); }};
+            [handle] { return shownBy(handle.describe()); }};
 }
-template <class T, class Handle> SourceProbe probe_of(Handle handle, std::array<T, 3> values) {
-    return probe_of(handle, values, [](const Handle& h, Source<T> source) { return h.connectSource(std::move(source)); });
+template <class T, class Handle> SourceProbe probeOf(Handle handle, std::array<T, 3> values) {
+    return probeOf(handle, values, [](const Handle& h, Source<T> source) { return h.connectSource(std::move(source)); });
 }
 // When connectSource first reads the new source: never (the value is read when shown), before the old connection is
 // replaced (a throwing read keeps it), or after (the old connection is gone, so a throwing read stops the Ui).
-enum class FirstRead { when_shown, before_replacing, after_replacing };
+enum class FirstRead { whenShown, beforeReplacing, afterReplacing };
 struct SourceKind {
-    const char* name; FirstRead first_read; SourceProbe (*build)(Ui&);
+    const char* name; FirstRead firstRead; SourceProbe (*build)(Ui&);
     SourceProbe make(Ui& ui) const {
         try { return build(ui); } catch (const std::exception& e) { throw std::runtime_error(std::string(name) + ": cannot add the component: " + e.what()); }
     }
 };
 const std::vector<OptionItem> compass{{{"north"}, u"North"}, {{"south"}, u"South"}, {{"east"}, u"East"}};
 using Pick = std::optional<OptionValue>;
-const SourceKind source_kinds[] = {
-    {"progress", FirstRead::when_shown, [](Ui& ui) { return probe_of<int>(ui.addProgress({.id = "probe"}).value.value(), {10, 40, 90}); }},
+const SourceKind sourceKinds[] = {
+    {"progress", FirstRead::whenShown, [](Ui& ui) { return probeOf<int>(ui.addProgress({.id = "probe"}).value.value(), {10, 40, 90}); }},
     // A boolean has two values: B only has to differ from A1, the value it must not replace.
-    {"checkbox", FirstRead::after_replacing, [](Ui& ui) { return probe_of<bool>(ui.addCheckbox({.id = "probe"}).value.value(), {false, true, true}); }},
-    {"list", FirstRead::when_shown, [](Ui& ui) { return probe_of<Pick>(ui.addList({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
-    {"radio group", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.addRadioGroup({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
-    {"dropdown", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.addDropdown({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
-    {"slider", FirstRead::before_replacing, [](Ui& ui) { return probe_of<int>(ui.addSlider({.id = "probe"}, {0, 100, 5}).value.value(), {10, 40, 90}); }},
-    {"text", FirstRead::after_replacing, [](Ui& ui) { return probe_of<std::u16string>(ui.addTextField({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
-    {"rich text", FirstRead::after_replacing, [](Ui& ui) {
-        return probe_of<RichText>(ui.addTextField({.id = "probe", .multiline = true, .rich = true}).value.value(), {RichText{u"alpha"}, RichText{u"beta"}, RichText{u"gamma"}},
+    {"checkbox", FirstRead::afterReplacing, [](Ui& ui) { return probeOf<bool>(ui.addCheckbox({.id = "probe"}).value.value(), {false, true, true}); }},
+    {"list", FirstRead::whenShown, [](Ui& ui) { return probeOf<Pick>(ui.addList({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"radio group", FirstRead::afterReplacing, [](Ui& ui) { return probeOf<Pick>(ui.addRadioGroup({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"dropdown", FirstRead::afterReplacing, [](Ui& ui) { return probeOf<Pick>(ui.addDropdown({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
+    {"slider", FirstRead::beforeReplacing, [](Ui& ui) { return probeOf<int>(ui.addSlider({.id = "probe"}, {0, 100, 5}).value.value(), {10, 40, 90}); }},
+    {"text", FirstRead::afterReplacing, [](Ui& ui) { return probeOf<std::u16string>(ui.addTextField({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
+    {"rich text", FirstRead::afterReplacing, [](Ui& ui) {
+        return probeOf<RichText>(ui.addTextField({.id = "probe", .multiline = true, .rich = true}).value.value(), {RichText{u"alpha"}, RichText{u"beta"}, RichText{u"gamma"}},
                                   [](const TextFieldHandle& h, Source<RichText> source) { return h.connectRichSource(std::move(source)); });
     }},
-    {"label", FirstRead::when_shown, [](Ui& ui) { return probe_of<std::u16string>(ui.addLabel({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
+    {"label", FirstRead::whenShown, [](Ui& ui) { return probeOf<std::u16string>(ui.addLabel({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
 };
 // A subscription the test can see: `slot` holds the framework's callback while the subscription is live. The slot
 // must outlive the Ui, whose end cancels the subscription it still holds.
-Subscribe subscribed_into(std::function<void()>& slot) {
+Subscribe subscribedInto(std::function<void()>& slot) {
     return [&slot](std::function<void()> callback) { slot = std::move(callback); return [&slot] { slot = {}; }; };
 }
-void throwing_subscribe_keeps_the_previous_connection() {
-    for (const auto& kind : source_kinds) {
+void throwingSubscribeKeepsThePreviousConnection() {
+    for (const auto& kind : sourceKinds) {
         const std::string name = kind.name;
         auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
-        int a_value = 0; std::function<void()> notify_a;
+        int aValue = 0; std::function<void()> notifyA;
         Ui ui;
         auto probe = kind.make(ui);
         auto throwing = [](std::function<void()>) -> std::function<void()> { throw std::runtime_error("subscribe failed"); };
-        const auto shows_unconnected = probe.shown();
-        Result first; bool first_escaped = false;
-        try { first = probe.connect([] { return 2; }, throwing); } catch (...) { first_escaped = true; }
-        expect(!first_escaped && first.status == Status::failed && !detail::access(ui).stopped(),
+        const auto showsUnconnected = probe.shown();
+        Result first; bool firstEscaped = false;
+        try { first = probe.connect([] { return 2; }, throwing); } catch (...) { firstEscaped = true; }
+        expect(!firstEscaped && first.status == Status::failed && !detail::access(ui).stopped(),
                "A throwing first subscribe fails the call without escaping or stopping the Ui");
-        expect(probe.shown() == shows_unconnected, "A component whose first subscribe threw stays unconnected");
-        expect(bool(probe.connect([&] { return a_value; }, subscribed_into(notify_a))) && notify_a, "Source A connects");
-        const auto shows_a1 = probe.shown();
+        expect(probe.shown() == showsUnconnected, "A component whose first subscribe threw stays unconnected");
+        expect(bool(probe.connect([&] { return aValue; }, subscribedInto(notifyA))) && notifyA, "Source A connects");
+        const auto showsA1 = probe.shown();
         Result result; bool escaped = false;
         try {
             result = probe.connect([] { return 2; }, throwing);
@@ -1540,18 +1540,18 @@ void throwing_subscribe_keeps_the_previous_connection() {
         expect(!escaped, "A throwing subscribe does not escape connect_source");
         expect(result.status == Status::failed && !result.message.empty(), "A throwing subscribe fails the call with a message");
         expect(!detail::access(ui).stopped(), "The Ui keeps running: the component stayed valid");
-        expect(bool(notify_a) && probe.shown() == shows_a1, "The component keeps source A, its value and its live subscription");
-        a_value = 1; notify_a();
-        const auto shows_a2 = probe.shown();
-        expect(shows_a2 != shows_a1, "Notifying source A still updates the component");
-        expect(bool(probe.connect([] { return 2; }, [](std::function<void()>) { return [] {}; }))  && !notify_a,
+        expect(bool(notifyA) && probe.shown() == showsA1, "The component keeps source A, its value and its live subscription");
+        aValue = 1; notifyA();
+        const auto showsA2 = probe.shown();
+        expect(showsA2 != showsA1, "Notifying source A still updates the component");
+        expect(bool(probe.connect([] { return 2; }, [](std::function<void()>) { return [] {}; }))  && !notifyA,
                "A later source still replaces A and cancels its subscription");
-        expect(probe.shown() != shows_a1, "Source B's value was never shown before (it differs from A1)");
+        expect(probe.shown() != showsA1, "Source B's value was never shown before (it differs from A1)");
     }
 }
 // A subscribe that notifies before it returns: the first connection and a replacing one both end on the new value.
-void synchronous_notification_during_subscribe_is_safe() {
-    for (const auto& kind : source_kinds) {
+void synchronousNotificationDuringSubscribeIsSafe() {
+    for (const auto& kind : sourceKinds) {
         const std::string name = kind.name;
         auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
         auto notifying = [](std::function<void()>& slot) -> Subscribe {
@@ -1562,121 +1562,121 @@ void synchronous_notification_during_subscribe_is_safe() {
         auto probe = kind.make(ui), expected = kind.make(reference);
         expect(bool(probe.connect([] { return 0; }, notifying(first))) && first && !detail::access(ui).stopped(),
                "A first source that notifies inside subscribe connects");
-        expected.connect([] { return 0; }, subscribed_into(quiet));
+        expected.connect([] { return 0; }, subscribedInto(quiet));
         expect(probe.shown() == expected.shown(), "The first source's value is shown");
         expect(bool(probe.connect([] { return 1; }, notifying(second))) && second && !first && !detail::access(ui).stopped(),
                "A replacing source that notifies inside subscribe connects and cancels the old one");
-        expected.connect([] { return 1; }, subscribed_into(quiet));
+        expected.connect([] { return 1; }, subscribedInto(quiet));
         expect(probe.shown() == expected.shown(), "The replacing source's value is shown");
     }
 }
 // A source whose read throws while connectSource reads it: before the old connection is replaced the call fails and
 // keeps it; after, the call fails and stops the Ui (the established outcome of a callback that threw after state changed).
-void throwing_read_while_connecting() {
-    for (const auto& kind : source_kinds) {
-        if (kind.first_read == FirstRead::when_shown) continue;  // connectSource reads nothing; drawing failures are out of scope
+void throwingReadWhileConnecting() {
+    for (const auto& kind : sourceKinds) {
+        if (kind.firstRead == FirstRead::whenShown) continue;  // connectSource reads nothing; drawing failures are out of scope
         const std::string name = kind.name;
         auto expect = [&](bool condition, const char* what) { check(condition, (name + ": " + what).c_str()); };
-        std::function<void()> notify_a;
+        std::function<void()> notifyA;
         Ui ui;
         auto probe = kind.make(ui);
-        probe.connect([] { return 0; }, subscribed_into(notify_a));
-        const auto shows_a = probe.shown();
+        probe.connect([] { return 0; }, subscribedInto(notifyA));
+        const auto showsA = probe.shown();
         Result result; bool escaped = false;
         try {
             result = probe.connect([]() -> int { throw std::runtime_error("read failed"); }, [](std::function<void()>) { return [] {}; });
         } catch (...) { escaped = true; }
         expect(!escaped && result.status == Status::failed && !result.message.empty(), "A throwing read fails the call and does not escape");
-        if (kind.first_read == FirstRead::before_replacing)
-            expect(!detail::access(ui).stopped() && notify_a && probe.shown() == shows_a, "A read before replacing keeps the old connection and the Ui");
+        if (kind.firstRead == FirstRead::beforeReplacing)
+            expect(!detail::access(ui).stopped() && notifyA && probe.shown() == showsA, "A read before replacing keeps the old connection and the Ui");
         else
             expect(detail::access(ui).stopped(), "A read after replacing stops the Ui");
     }
 }
 int main() {
     const test::Case cases[] = {
-        {"#103 throwing read while connecting", throwing_read_while_connecting},
-        {"#103 throwing subscribe keeps the connection", throwing_subscribe_keeps_the_previous_connection},
-        {"#103 synchronous notification during subscribe", synchronous_notification_during_subscribe_is_safe},
-        {"X04 registered component state applicability", component_type_reports_state_applicability},
-        {"G07 revalidate after focus callback", pointer_dispatch_rechecks_a_removed_focus_target},
-        {"G07 removal releases confirmation connection", removing_confirmation_button_releases_its_fields},
-        {"G07 bounded removal storage", repeated_removal_reclaims_component_storage},
-        {"General page membership", page_accepts_new_members_of_different_types},
-        {"G07 deferred removal and stale identity", removal_waits_for_action_and_stale_handle_stays_invalid},
-        {"C08 C09 list page admission", list_members_obey_page_scope},
-        {"G07 page changes do not recurse", tab_change_notifications_do_not_recurse},
-        {"C09 disabled and modal admission", tabs_respect_modal_and_disabled_pointer_targets},
-        {"G11 cross-page rejection", cross_page_confirmation_reveals_first_error_and_marks_other_pages},
-        {"C09 manual tabs and hidden admission", tabs_require_explicit_activation_and_guard_hidden_pages},
-        {"L03 list selection survives reorder", list_selection_uses_stable_identity},
-        {"C08 list focus and keyboard", list_focus_and_keyboard_use_enabled_items},
-        {"R11 list neighbor follows old identity order", list_recovers_cursor_when_data_changes},
-        {"G07 list write cannot reenter", list_write_cannot_reenter_itself},
-        {"#99 list selection hands a change record", list_user_selection_hands_a_change_record},
-        {"#99 list items dropping the selection", list_items_that_drop_the_selection_hand_an_empty_change},
-        {"#99 list items disabling the selection", list_items_that_disable_the_selection_hand_an_empty_change},
-        {"#99 list reselection writes nothing",list_selecting_the_selected_item_writes_nothing},
-        {"#99 list rejection keeps the selection", list_rejected_write_keeps_the_selection},
-        {"#99 list write requires a source", list_write_requires_a_source_first},
-        {"#99 label source repaints", label_source_notification_repaints_the_new_text},
-        {"#99 label source replaced and validated", label_source_is_replaced_and_rejects_incomplete_sources},
-        {"#99 label source ends with the Ui", label_source_notifications_end_with_the_ui},
-        {"#99 label read function",label_read_function_is_read_on_demand_and_replaced},
-        {"C06 candidate and draft are separate", dropdown_candidate_is_not_a_draft_until_confirmed},
-        {"F07 dropdown exit and option identity", dropdown_leaving_and_replaced_options_are_safe},
-        {"G07 dropdown changes do not recurse", dropdown_option_changes_do_not_recurse_into_notifications},
-        {"G07 dropdown programmatic edits repaint", dropdown_programmatic_edits_request_a_frame},
-        {"G11 edits during numeric submission", slider_group_preserves_edits_during_submission},
-        {"C12 progress source lifecycle", progress_source_is_read_only_and_disconnects},
-        {"G10 numeric source and conflict lifecycle", slider_source_conflict_and_invalid_updates},
-        {"N04 non-divisible steps and keys", slider_non_divisible_range_and_keyboard},
-        {"N04 invalid slider ranges", slider_rejects_invalid_ranges},
-        {"C07 numeric draft and confirmation", slider_connected_draft_is_confirmed_as_a_number},
-        {"G04 selection operations reflect write admission", unconnected_selection_controls_do_not_advertise_writes},
-        {"G10 standalone typed confirmations", standalone_boolean_and_option_confirmation},
-        {"G11 radio conflict and latest", radio_source_conflict_can_be_resolved},
-        {"G11 mixed rejection", mixed_rejection_marks_each_field_and_focuses_first},
-        {"N03 all disabled options", radio_all_disabled_remains_empty_and_tab_can_leave},
-        {"G11 mixed confirmation batch", mixed_confirmation_submits_one_batch},
-        {"C05 empty selection and disabled options", radio_can_start_empty_and_skip_disabled_options},
-        {"C04 keyboard and disabled semantics", checkbox_input_and_disabled_state_agree},
-        {"C04 connected checkbox toggles", checkbox_toggles_a_connected_boolean},
-        {"Standalone confirmation shares command guard", confirmed_field_respects_shared_command_guard},
-        {"Public text operations obey restrictions", public_text_operations_obey_restrictions},
-        {"Handle queries report expiry", handle_queries_report_expiry},
-        {"Configuration requires UI thread", configuration_requires_ui_thread},
-        {"G11 confirmation action cannot be replaced", group_action_cannot_be_replaced},
-        {"G10 unconnected text rejects edits", unconnected_text_rejects_edits},
-        {"G10 standalone confirmed connection", ungrouped_confirmed_connection_writes_only_on_confirm},
-        {"G10 source notifications request a repaint", source_notifications_request_a_repaint},
-        {"G10 cancel clears rejection without writing", cancelling_a_rejected_draft_clears_its_error_without_writing},
-        {"G10 explicit immediate write retains rejected draft", explicit_immediate_write_keeps_a_rejected_draft},
-        {"G11 a fresh draft starts at the current source", editing_again_after_matching_the_source_uses_the_new_origin},
-        {"G11 source updates preserve composition", source_update_during_composition_keeps_preedit},
-        {"G10 connected text requires explicit write timing", connected_text_requires_explicit_write_timing},
-        {"G11 confirmation blocks reentry but preserves new edits", confirmation_blocks_reentry_but_preserves_new_edits},
-        {"G11 rejected group retains drafts and focuses first error", rejected_group_keeps_drafts_and_focuses_first_error},
-        {"G11 confirmation submits draft and origin and keeps history", confirmation_submits_draft_and_origin_and_keeps_history},
-        {"G11 source conflicts preserve drafts until cancel", source_conflict_keeps_draft_until_cancelled},
-        {"G10 source updates follow component lifetime", source_updates_follow_the_component_lifetime},
-        {"G10 typed handles expire with their component tree", handles_expire_with_their_component_tree},
-        {"C01 labels associate by target id", labels_associate_by_target_id},
-        {"C01 field error has one source", field_error_has_one_source},
-        {"AC11 tab order skips labels and disabled", tab_order_skips_labels_and_disabled},
-        {"AC06 button activates once per press", button_activates_once_per_press},
-        {"AC09 typing records one history entry per input", typing_records_one_history_entry_per_input},
-        {"AC08 caret moves by code point and extends with Shift", caret_moves_by_code_point_and_extends_with_shift},
-        {"Clipboard unavailable differs from no text", clipboard_reports_unavailable_separately_from_empty},
-        {"AC09 paste turns each line break into one space", paste_turns_each_line_break_into_one_space},
-        {"AC10 read-only allows viewing and copying only", read_only_allows_viewing_and_copying_only},
-        {"AC10 disabled field refuses every entry and keeps data", disabled_field_refuses_every_entry_and_keeps_data},
-        {"AC14 composition commits once and never applies", composition_commits_once_and_never_applies},
-        {"E01 composition page switch by pointer", composition_page_switch_pointer},
-        {"G07 focus notifications queue instead of recursing", focus_notifications_queue_instead_of_recursing},
-        {"AC10 keyboard editing obeys the same admission", keyboard_editing_obeys_the_same_admission},
-        {"AC08 over-limit edit is rejected whole", over_limit_edit_is_rejected_whole},
-        {"AC11 owner hears focus moves and semantics list actions", owner_hears_focus_moves_and_semantics_list_actions},
+        {"#103 throwing read while connecting", throwingReadWhileConnecting},
+        {"#103 throwing subscribe keeps the connection", throwingSubscribeKeepsThePreviousConnection},
+        {"#103 synchronous notification during subscribe", synchronousNotificationDuringSubscribeIsSafe},
+        {"X04 registered component state applicability", componentTypeReportsStateApplicability},
+        {"G07 revalidate after focus callback", pointerDispatchRechecksARemovedFocusTarget},
+        {"G07 removal releases confirmation connection", removingConfirmationButtonReleasesItsFields},
+        {"G07 bounded removal storage", repeatedRemovalReclaimsComponentStorage},
+        {"General page membership", pageAcceptsNewMembersOfDifferentTypes},
+        {"G07 deferred removal and stale identity", removalWaitsForActionAndStaleHandleStaysInvalid},
+        {"C08 C09 list page admission", listMembersObeyPageScope},
+        {"G07 page changes do not recurse", tabChangeNotificationsDoNotRecurse},
+        {"C09 disabled and modal admission", tabsRespectModalAndDisabledPointerTargets},
+        {"G11 cross-page rejection", crossPageConfirmationRevealsFirstErrorAndMarksOtherPages},
+        {"C09 manual tabs and hidden admission", tabsRequireExplicitActivationAndGuardHiddenPages},
+        {"L03 list selection survives reorder", listSelectionUsesStableIdentity},
+        {"C08 list focus and keyboard", listFocusAndKeyboardUseEnabledItems},
+        {"R11 list neighbor follows old identity order", listRecoversCursorWhenDataChanges},
+        {"G07 list write cannot reenter", listWriteCannotReenterItself},
+        {"#99 list selection hands a change record", listUserSelectionHandsAChangeRecord},
+        {"#99 list items dropping the selection", listItemsThatDropTheSelectionHandAnEmptyChange},
+        {"#99 list items disabling the selection", listItemsThatDisableTheSelectionHandAnEmptyChange},
+        {"#99 list reselection writes nothing",listSelectingTheSelectedItemWritesNothing},
+        {"#99 list rejection keeps the selection", listRejectedWriteKeepsTheSelection},
+        {"#99 list write requires a source", listWriteRequiresASourceFirst},
+        {"#99 label source repaints", labelSourceNotificationRepaintsTheNewText},
+        {"#99 label source replaced and validated", labelSourceIsReplacedAndRejectsIncompleteSources},
+        {"#99 label source ends with the Ui", labelSourceNotificationsEndWithTheUi},
+        {"#99 label read function",labelReadFunctionIsReadOnDemandAndReplaced},
+        {"C06 candidate and draft are separate", dropdownCandidateIsNotADraftUntilConfirmed},
+        {"F07 dropdown exit and option identity", dropdownLeavingAndReplacedOptionsAreSafe},
+        {"G07 dropdown changes do not recurse", dropdownOptionChangesDoNotRecurseIntoNotifications},
+        {"G07 dropdown programmatic edits repaint", dropdownProgrammaticEditsRequestAFrame},
+        {"G11 edits during numeric submission", sliderGroupPreservesEditsDuringSubmission},
+        {"C12 progress source lifecycle", progressSourceIsReadOnlyAndDisconnects},
+        {"G10 numeric source and conflict lifecycle", sliderSourceConflictAndInvalidUpdates},
+        {"N04 non-divisible steps and keys", sliderNonDivisibleRangeAndKeyboard},
+        {"N04 invalid slider ranges", sliderRejectsInvalidRanges},
+        {"C07 numeric draft and confirmation", sliderConnectedDraftIsConfirmedAsANumber},
+        {"G04 selection operations reflect write admission", unconnectedSelectionControlsDoNotAdvertiseWrites},
+        {"G10 standalone typed confirmations", standaloneBooleanAndOptionConfirmation},
+        {"G11 radio conflict and latest", radioSourceConflictCanBeResolved},
+        {"G11 mixed rejection", mixedRejectionMarksEachFieldAndFocusesFirst},
+        {"N03 all disabled options", radioAllDisabledRemainsEmptyAndTabCanLeave},
+        {"G11 mixed confirmation batch", mixedConfirmationSubmitsOneBatch},
+        {"C05 empty selection and disabled options", radioCanStartEmptyAndSkipDisabledOptions},
+        {"C04 keyboard and disabled semantics", checkboxInputAndDisabledStateAgree},
+        {"C04 connected checkbox toggles", checkboxTogglesAConnectedBoolean},
+        {"Standalone confirmation shares command guard", confirmedFieldRespectsSharedCommandGuard},
+        {"Public text operations obey restrictions", publicTextOperationsObeyRestrictions},
+        {"Handle queries report expiry", handleQueriesReportExpiry},
+        {"Configuration requires UI thread", configurationRequiresUiThread},
+        {"G11 confirmation action cannot be replaced", groupActionCannotBeReplaced},
+        {"G10 unconnected text rejects edits", unconnectedTextRejectsEdits},
+        {"G10 standalone confirmed connection", ungroupedConfirmedConnectionWritesOnlyOnConfirm},
+        {"G10 source notifications request a repaint", sourceNotificationsRequestARepaint},
+        {"G10 cancel clears rejection without writing", cancellingARejectedDraftClearsItsErrorWithoutWriting},
+        {"G10 explicit immediate write retains rejected draft", explicitImmediateWriteKeepsARejectedDraft},
+        {"G11 a fresh draft starts at the current source", editingAgainAfterMatchingTheSourceUsesTheNewOrigin},
+        {"G11 source updates preserve composition", sourceUpdateDuringCompositionKeepsPreedit},
+        {"G10 connected text requires explicit write timing", connectedTextRequiresExplicitWriteTiming},
+        {"G11 confirmation blocks reentry but preserves new edits", confirmationBlocksReentryButPreservesNewEdits},
+        {"G11 rejected group retains drafts and focuses first error", rejectedGroupKeepsDraftsAndFocusesFirstError},
+        {"G11 confirmation submits draft and origin and keeps history", confirmationSubmitsDraftAndOriginAndKeepsHistory},
+        {"G11 source conflicts preserve drafts until cancel", sourceConflictKeepsDraftUntilCancelled},
+        {"G10 source updates follow component lifetime", sourceUpdatesFollowTheComponentLifetime},
+        {"G10 typed handles expire with their component tree", handlesExpireWithTheirComponentTree},
+        {"C01 labels associate by target id", labelsAssociateByTargetId},
+        {"C01 field error has one source", fieldErrorHasOneSource},
+        {"AC11 tab order skips labels and disabled", tabOrderSkipsLabelsAndDisabled},
+        {"AC06 button activates once per press", buttonActivatesOncePerPress},
+        {"AC09 typing records one history entry per input", typingRecordsOneHistoryEntryPerInput},
+        {"AC08 caret moves by code point and extends with Shift", caretMovesByCodePointAndExtendsWithShift},
+        {"Clipboard unavailable differs from no text", clipboardReportsUnavailableSeparatelyFromEmpty},
+        {"AC09 paste turns each line break into one space", pasteTurnsEachLineBreakIntoOneSpace},
+        {"AC10 read-only allows viewing and copying only", readOnlyAllowsViewingAndCopyingOnly},
+        {"AC10 disabled field refuses every entry and keeps data", disabledFieldRefusesEveryEntryAndKeepsData},
+        {"AC14 composition commits once and never applies", compositionCommitsOnceAndNeverApplies},
+        {"E01 composition page switch by pointer", compositionPageSwitchPointer},
+        {"G07 focus notifications queue instead of recursing", focusNotificationsQueueInsteadOfRecursing},
+        {"AC10 keyboard editing obeys the same admission", keyboardEditingObeysTheSameAdmission},
+        {"AC08 over-limit edit is rejected whole", overLimitEditIsRejectedWhole},
+        {"AC11 owner hears focus moves and semantics list actions", ownerHearsFocusMovesAndSemanticsListActions},
     };
     return test::run("components", cases);
 }

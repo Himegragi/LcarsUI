@@ -21,12 +21,12 @@ int main() {
     sample.backendDetail="future-format"; sample.componentId="button\t1"; sample.operationId="op";
     sample.nativeCode=123; sample.sourceTime=std::chrono::system_clock::time_point(std::chrono::seconds(42));
     details.record(sample);
-    std::stringstream detail_stream; if (!details.save(detail_stream)) return EXIT_FAILURE;
-    auto detail_loaded=lcars::Diagnostics::load(detail_stream);
-    if (detail_loaded.incomplete || detail_loaded.records.size()!=1) return EXIT_FAILURE;
-    auto copy=detail_loaded.records[0];
+    std::stringstream detailStream; if (!details.save(detailStream)) return EXIT_FAILURE;
+    auto detailLoaded=lcars::Diagnostics::load(detailStream);
+    if (detailLoaded.incomplete || detailLoaded.records.size()!=1) return EXIT_FAILURE;
+    auto copy=detailLoaded.records[0];
     if (copy.backend!=sample.backend || copy.nativeMessage!=sample.nativeMessage || copy.componentId!=sample.componentId || copy.operationId!=sample.operationId || copy.nativeCode!=sample.nativeCode || copy.sourceTime!=sample.sourceTime || copy.backendDetail!=sample.backendDetail || !copy.backendDetailUninterpreted) return EXIT_FAILURE;
-    auto corrupted=detail_stream.str(); corrupted[corrupted.find("future") == std::string::npos ? 18 : corrupted.find("future")]='X';
+    auto corrupted=detailStream.str(); corrupted[corrupted.find("future") == std::string::npos ? 18 : corrupted.find("future")]='X';
     std::istringstream bad(corrupted); if (!lcars::Diagnostics::load(bad).incomplete) return EXIT_FAILURE;
     std::stringstream stream;
     if (!log.save(stream)) return EXIT_FAILURE;

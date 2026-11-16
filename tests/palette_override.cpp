@@ -15,12 +15,12 @@ using test::check;
 namespace {
 const Appearance* const builtins[] = {&webAppearance(), &materialAppearance()};
 const ThemeVariant variants[] = {ThemeVariant::light(), ThemeVariant::dark()};
-std::string name_of(const Appearance& a) { return std::string(a.name()); }
+std::string nameOf(const Appearance& a) { return std::string(a.name()); }
 // Ui::effectivePalette settles an empty `focus` to the accent; a palette straight from an appearance has not been settled yet.
 Palette settled(Palette p) { p.focus = p.focusColor(); return p; }
 Color gray(unsigned char v) { return {v, v, v}; }
 PaletteOverride entry(const Appearance& a, ThemeVariant v, std::string role, PaletteValue value) {
-    return {name_of(a), std::move(v), std::move(role), std::move(value)};
+    return {nameOf(a), std::move(v), std::move(role), std::move(value)};
 }
 bool contains(const std::u16string& text, std::u16string_view part) { return text.find(part) != std::u16string::npos; }
 const Color green{20, 120, 60};
@@ -35,7 +35,7 @@ struct ColorProbe : detail::ComponentPaint {
     bool has(Color c) const { return std::any_of(colors.begin(), colors.end(), [c](Color x) { return x == c; }); }
 };
 // Paints every placement of a checked checkbox page with the appearance and the Ui's current variant.
-std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const CheckboxHandle& box) {
+std::vector<Color> paintColors(Ui& ui, const Appearance& appearance, const CheckboxHandle& box) {
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::column({layout::component(box)}), ui, appearance, measure, 400, 300, 1.f, scroll);
     auto& state = detail::access(ui);
@@ -43,7 +43,7 @@ std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const Chec
     for (const auto& item : frame.items) {
         auto semantics = state.describe(item.id);
         ColorProbe probe(state, item, *semantics, appearance, 1.f, true);
-        detail::component_type(semantics->kind).paint(probe);
+        detail::componentType(semantics->kind).paint(probe);
         all.insert(all.end(), probe.colors.begin(), probe.colors.end());
     }
     return all;
@@ -51,7 +51,7 @@ std::vector<Color> paint_colors(Ui& ui, const Appearance& appearance, const Chec
 // Not std::find: Color is 3 bytes, and MSVC 14.51 sends std::find to a vectorized path that static_asserts on that size.
 bool has(const std::vector<Color>& colors, Color c) { return std::any_of(colors.begin(), colors.end(), [c](Color x) { return x == c; }); }
 
-void contrast_ratio_matches_wcag_reference_values() {
+void contrastRatioMatchesWcagReferenceValues() {
     check(std::fabs(contrastRatio({0, 0, 0}, {255, 255, 255}) - 21.0) < 0.001, "black on white is 21:1");
     check(std::fabs(contrastRatio({255, 255, 255}, {0, 0, 0}) - 21.0) < 0.001, "ratio is symmetric");
     check(std::fabs(contrastRatio(gray(0x76), gray(255)) - 4.54) < 0.005, "#767676 on white is 4.54:1");
@@ -60,14 +60,14 @@ void contrast_ratio_matches_wcag_reference_values() {
     check(std::fabs(contrastRatio(gray(0x40), gray(0x40)) - 1.0) < 1e-9, "equal colors are 1:1");
 }
 
-void builtin_palettes_pass_the_contrast_rules() {
+void builtinPalettesPassTheContrastRules() {
     for (const auto* appearance : builtins)
         for (const auto& variant : variants)
-            check(checkPaletteContrast(appearance->palette(variant)).empty(), (name_of(*appearance) + " " + variant.name + " passes").c_str());
+            check(checkPaletteContrast(appearance->palette(variant)).empty(), (nameOf(*appearance) + " " + variant.name + " passes").c_str());
 }
 
 // The ticket's proposed values (literals) and the WCAG 1.4.11 floor, independent of checkPaletteContrast.
-void builtin_outline_meets_three_to_one_on_every_surface() {
+void builtinOutlineMeetsThreeToOneOnEverySurface() {
     struct Expected { const Appearance* appearance; ThemeVariant variant; Color outline; };
     const Expected expected[] = {
         {&webAppearance(), ThemeVariant::light(), {118, 128, 145}}, {&webAppearance(), ThemeVariant::dark(), {128, 138, 156}},
@@ -75,7 +75,7 @@ void builtin_outline_meets_three_to_one_on_every_surface() {
     };
     for (const auto& e : expected) {
         auto p = e.appearance->palette(e.variant);
-        auto label = name_of(*e.appearance) + " " + e.variant.name;
+        auto label = nameOf(*e.appearance) + " " + e.variant.name;
         check(p.outline == e.outline, (label + " outline value").c_str());
         for (auto [name, surface] : {std::pair{"surface", p.surface}, {"background", p.background}, {"panel", p.panel}})
             check(contrastRatio(p.outline, surface) >= 3.0, (label + " outline on " + name + " >= 3:1").c_str());
@@ -83,7 +83,7 @@ void builtin_outline_meets_three_to_one_on_every_surface() {
     }
 }
 
-void without_overrides_every_palette_is_the_builtin_value() {
+void withoutOverridesEveryPaletteIsTheBuiltinValue() {
     Ui ui;
     check(ui.paletteOverrides().empty(), "no overrides initially");
     for (const auto* appearance : builtins)
@@ -93,7 +93,7 @@ void without_overrides_every_palette_is_the_builtin_value() {
         }
 }
 
-void overriding_web_light_accent_changes_only_that_combination() {
+void overridingWebLightAccentChangesOnlyThatCombination() {
     Ui ui;
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "accent", green)})), "override accepted");
     for (const auto* appearance : builtins)
@@ -101,13 +101,13 @@ void overriding_web_light_accent_changes_only_that_combination() {
             auto expected = appearance->palette(variant);
             if (appearance == &webAppearance() && variant == ThemeVariant::light()) expected.accent = green;
             auto effective = ui.effectivePalette(*appearance, variant);
-            check(effective && *effective == settled(expected), (name_of(*appearance) + " " + variant.name + " effective palette").c_str());
+            check(effective && *effective == settled(expected), (nameOf(*appearance) + " " + variant.name + " effective palette").c_str());
         }
     check(ui.paletteOverrides().size() == 1 && ui.paletteOverrides()[0].role == "accent", "override list is readable");
 }
 
 // One driver over every palette role: each override changes exactly its own field.
-void every_palette_role_is_overridable_and_isolated() {
+void everyPaletteRoleIsOverridableAndIsolated() {
     auto roles = paletteRoles();
     check(roles.size() == 16 && std::find(roles.begin(), roles.end(), "outline") != roles.end() && std::find(roles.begin(), roles.end(), "focus") != roles.end(), "eleven core colors (incl. outline), scrim, hover, focus and the scrim_alpha and hover_alpha values are roles");
     check(std::find(roles.begin(), roles.end(), "scrim_alpha") != roles.end() && std::find(roles.begin(), roles.end(), "border") != roles.end(), "known role names present");
@@ -121,7 +121,7 @@ void every_palette_role_is_overridable_and_isolated() {
                     : PaletteValue{Color{static_cast<unsigned char>(std::get<Color>(original).r == 255 ? 254 : std::get<Color>(original).r + 1), std::get<Color>(original).g, std::get<Color>(original).b}};
                 Ui ui;
                 auto result = ui.setPaletteOverrides({entry(*appearance, variant, std::string(role), changed)});
-                auto label = name_of(*appearance) + " " + variant.name + " " + std::string(role);
+                auto label = nameOf(*appearance) + " " + variant.name + " " + std::string(role);
                 check(bool(result), (label + " accepted").c_str());
                 auto effective = ui.effectivePalette(*appearance, variant);
                 check(effective.value.has_value(), (label + " readable").c_str());
@@ -131,14 +131,14 @@ void every_palette_role_is_overridable_and_isolated() {
                     check(*paletteValue(*effective, other) == expected, (label + " field " + std::string(other)).c_str());
                 }
                 // The same list leaves every other appearance and variant at its built-in value.
-                for (const auto* other_appearance : builtins)
-                    for (const auto& other_variant : variants)
-                        if (other_appearance != appearance || !(other_variant == variant))
-                            check(*ui.effectivePalette(*other_appearance, other_variant) == settled(other_appearance->palette(other_variant)), (label + " leaves others untouched").c_str());
+                for (const auto* otherAppearance : builtins)
+                    for (const auto& otherVariant : variants)
+                        if (otherAppearance != appearance || !(otherVariant == variant))
+                            check(*ui.effectivePalette(*otherAppearance, otherVariant) == settled(otherAppearance->palette(otherVariant)), (label + " leaves others untouched").c_str());
             }
 }
 
-void role_helpers_reject_unknown_roles_and_wrong_kinds() {
+void roleHelpersRejectUnknownRolesAndWrongKinds() {
     Palette p = webAppearance().palette();
     check(!paletteValue(p, "glow").has_value(), "unknown role has no value");
     check(!setPaletteValue(p, "glow", Color{1, 2, 3}), "unknown role is refused");
@@ -150,19 +150,19 @@ void role_helpers_reject_unknown_roles_and_wrong_kinds() {
     check(p == [&] { auto q = webAppearance().palette(); q.scrimAlpha = 0; return q; }(), "only scrim_alpha changed");
 }
 
-// hover_off: the case sets hoverAlpha to 0 so only the un-hovered rule decides (the hovered rows leave the default overlay on).
-struct ContrastCase { const char* pair; std::vector<std::pair<std::string, Color>> passing, failing; bool hover_off = false; };
+// hoverOff: the case sets hoverAlpha to 0 so only the un-hovered rule decides (the hovered rows leave the default overlay on).
+struct ContrastCase { const char* pair; std::vector<std::pair<std::string, Color>> passing, failing; bool hoverOff = false; };
 // Web light. "passing" sits just above the threshold (4.54:1 or 3.03:1), "failing" just below it.
-std::vector<ContrastCase> contrast_cases() {
+std::vector<ContrastCase> contrastCases() {
     std::vector<std::pair<std::string, Color>> surfaces{{"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}, {"selection", gray(255)}, {"text", gray(0x76)}};
     auto with = [&](std::string role, Color c) { auto list = surfaces; for (auto& e : list) if (e.first == role) e.second = c; return list; };
     std::vector<std::pair<std::string, Color>> outlined{{"outline", gray(0x94)}, {"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}};
-    auto with_outline = [&](std::string role, Color c) { auto list = outlined; for (auto& e : list) if (e.first == role) e.second = c; return list; };
-    auto hovered_outline = outlined;
-    for (auto& e : hovered_outline) if (e.first == "outline") e.second = gray(0x8A);
-    auto with_hovered = [&](std::string role, Color c) { auto list = hovered_outline; for (auto& e : list) if (e.first == role) e.second = c; return list; };
+    auto withOutline = [&](std::string role, Color c) { auto list = outlined; for (auto& e : list) if (e.first == role) e.second = c; return list; };
+    auto hoveredOutline = outlined;
+    for (auto& e : hoveredOutline) if (e.first == "outline") e.second = gray(0x8A);
+    auto withHovered = [&](std::string role, Color c) { auto list = hoveredOutline; for (auto& e : list) if (e.first == role) e.second = c; return list; };
     std::vector<std::pair<std::string, Color>> ringed{{"focus", gray(0x94)}, {"background", gray(255)}, {"panel", gray(255)}, {"surface", gray(255)}};
-    auto with_ring = [&](std::string role, Color c) { auto list = ringed; for (auto& e : list) if (e.first == role) e.second = c; return list; };
+    auto withRing = [&](std::string role, Color c) { auto list = ringed; for (auto& e : list) if (e.first == role) e.second = c; return list; };
     return {
         {"text/background", surfaces, with("background", gray(250))},
         {"text/panel", surfaces, with("panel", gray(250))},
@@ -175,31 +175,31 @@ std::vector<ContrastCase> contrast_cases() {
         {"accent/surface", {{"accent", gray(0x94)}, {"on_accent", gray(0)}, {"background", gray(255)}}, {{"accent", gray(0x95)}, {"on_accent", gray(0)}, {"background", gray(255)}}},
         // outline: 3:1 (#949494 on white is 3.03:1) on each of surface, background and panel; the surfaces are lightened to white so only the one varied surface decides.
         // focus (the ring): 3:1 on each of surface, background and panel, same literals as outline (#949494 is 3.03:1 on white, 2.91:1 on 250).
-        {"focus/surface", ringed, with_ring("surface", gray(250))},
-        {"focus/background", ringed, with_ring("background", gray(250))},
-        {"focus/panel", ringed, with_ring("panel", gray(250))},
-        {"outline/surface", outlined, with_outline("surface", gray(250)), true},
-        {"outline/background", outlined, with_outline("background", gray(250)), true},
-        {"outline/panel", outlined, with_outline("panel", gray(250)), true},
+        {"focus/surface", ringed, withRing("surface", gray(250))},
+        {"focus/background", ringed, withRing("background", gray(250))},
+        {"focus/panel", ringed, withRing("panel", gray(250))},
+        {"outline/surface", outlined, withOutline("surface", gray(250)), true},
+        {"outline/background", outlined, withOutline("background", gray(250)), true},
+        {"outline/panel", outlined, withOutline("panel", gray(250)), true},
         // outline on the hovered surfaces (Web light hover = 6% black, so white becomes 240): #8A8A8A is 3.03:1 on 240, and a surface of 250 hovers to 235 (2.90:1) while staying above 3:1 un-hovered.
-        {"outline/hovered surface", hovered_outline, with_hovered("surface", gray(250))},
-        {"outline/hovered background", hovered_outline, with_hovered("background", gray(250))},
-        {"outline/hovered panel", hovered_outline, with_hovered("panel", gray(250))},
+        {"outline/hovered surface", hoveredOutline, withHovered("surface", gray(250))},
+        {"outline/hovered background", hoveredOutline, withHovered("background", gray(250))},
+        {"outline/hovered panel", hoveredOutline, withHovered("panel", gray(250))},
     };
 }
-std::vector<PaletteOverride> web_light(const std::vector<std::pair<std::string, Color>>& list, bool hover_off = false) {
+std::vector<PaletteOverride> webLight(const std::vector<std::pair<std::string, Color>>& list, bool hoverOff = false) {
     std::vector<PaletteOverride> out;
     for (const auto& [role, color] : list) out.push_back(entry(webAppearance(), ThemeVariant::light(), role, color));
-    if (hover_off) out.push_back(entry(webAppearance(), ThemeVariant::light(), "hover_alpha", 0));
+    if (hoverOff) out.push_back(entry(webAppearance(), ThemeVariant::light(), "hover_alpha", 0));
     return out;
 }
-void each_contrast_rule_has_a_passing_and_a_failing_case() {
-    for (const auto& c : contrast_cases()) {
+void eachContrastRuleHasAPassingAndAFailingCase() {
+    for (const auto& c : contrastCases()) {
         Ui ui;
-        auto good = ui.setPaletteOverrides(web_light(c.passing, c.hover_off));
+        auto good = ui.setPaletteOverrides(webLight(c.passing, c.hoverOff));
         check(bool(good), (std::string(c.pair) + " just-passing case is accepted").c_str());
         auto before = ui.paletteOverrides();
-        auto bad = ui.setPaletteOverrides(web_light(c.failing, c.hover_off));
+        auto bad = ui.setPaletteOverrides(webLight(c.failing, c.hoverOff));
         check(bad.status == Status::invalidValue, (std::string(c.pair) + " just-failing case is rejected").c_str());
         std::u16string pair(c.pair, c.pair + std::string(c.pair).size());
         check(contains(bad.message, pair), (std::string(c.pair) + " message names the pair").c_str());
@@ -210,16 +210,16 @@ void each_contrast_rule_has_a_passing_and_a_failing_case() {
         check(effective && *effective != webAppearance().palette(ThemeVariant::light()), "active overrides still apply");
     }
 }
-void rejection_message_reports_the_actual_ratio() {
+void rejectionMessageReportsTheActualRatio() {
     Ui ui;
     auto bad = ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "muted", gray(0x77))});
     check(bad.status == Status::invalidValue && contains(bad.message, u"4.47:1"), "#777777 on white reports 4.47:1 (truncated)");
     Ui ui2;
-    auto near_surface = ui2.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "text", Color{250, 250, 250})});
-    check(near_surface.status == Status::invalidValue && contains(near_surface.message, u"text/surface") && contains(near_surface.message, u"text/panel"), "a text color close to the surfaces fails every surface pair");
+    auto nearSurface = ui2.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "text", Color{250, 250, 250})});
+    check(nearSurface.status == Status::invalidValue && contains(nearSurface.message, u"text/surface") && contains(nearSurface.message, u"text/panel"), "a text color close to the surfaces fails every surface pair");
 }
 
-void invalid_entries_are_rejected_and_keep_the_active_list() {
+void invalidEntriesAreRejectedAndKeepTheActiveList() {
     Ui ui;
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "accent", green)})), "baseline");
     auto active = ui.paletteOverrides();
@@ -242,9 +242,9 @@ void invalid_entries_are_rejected_and_keep_the_active_list() {
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "scrim_alpha", 255), entry(materialAppearance(), ThemeVariant::dark(), "scrim_alpha", 0)})), "scrim_alpha bounds 0 and 255 are accepted");
 }
 
-void replacing_and_clearing_the_list_takes_effect_immediately() {
+void replacingAndClearingTheListTakesEffectImmediately() {
     Ui ui;
-    int invalidations = 0; detail::access(ui).on_invalidate([&] { ++invalidations; });
+    int invalidations = 0; detail::access(ui).onInvalidate([&] { ++invalidations; });
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "accent", green)})) && invalidations == 1, "setting requests a repaint");
     auto orange = Color{150, 70, 0};
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "accent", orange)})) && invalidations == 2, "replacing requests a repaint");
@@ -254,13 +254,13 @@ void replacing_and_clearing_the_list_takes_effect_immediately() {
     check(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "glow", green)}).status == Status::invalidValue && invalidations == 3, "a rejected list does not repaint");
 }
 
-void off_thread_calls_report_wrong_thread() {
+void offThreadCallsReportWrongThread() {
     Ui ui; Status status = Status::ok;
     std::thread([&] { status = ui.setPaletteOverrides({}).status; }).join();
     check(status == Status::wrongThread, "setting needs the UI thread");
 }
 
-void a_custom_appearance_is_never_overridden() {
+void aCustomAppearanceIsNeverOverridden() {
     struct Custom final : Appearance {
         std::string_view name() const override { return "Minimal Web"; }  // same name, different object
         Palette palette() const override { return webAppearance().palette(); }
@@ -275,25 +275,25 @@ void a_custom_appearance_is_never_overridden() {
     check(effective && *effective == settled(custom.palette()), "a custom appearance keeps its own palette even when it reuses a built-in name");
 }
 
-void painting_uses_the_overridden_colors_for_the_current_combination() {
+void paintingUsesTheOverriddenColorsForTheCurrentCombination() {
     Ui ui;
     auto box = ui.addCheckbox({.id = "box", .label = u"Box"}).value.value();
     box.connectSource({[] { return true; }, [](std::function<void()>) { return [] {}; }});  // a checked box
-    auto web_accent = webAppearance().palette().accent, web_dark_accent = webAppearance().palette(ThemeVariant::dark()).accent;
-    auto material_accent = materialAppearance().palette().accent;
-    check(has(paint_colors(ui, webAppearance(), box), web_accent), "built-in accent paints without overrides");
+    auto webAccent = webAppearance().palette().accent, webDarkAccent = webAppearance().palette(ThemeVariant::dark()).accent;
+    auto materialAccent = materialAppearance().palette().accent;
+    check(has(paintColors(ui, webAppearance(), box), webAccent), "built-in accent paints without overrides");
     check(bool(ui.setPaletteOverrides({entry(webAppearance(), ThemeVariant::light(), "accent", green)})), "override accepted");
-    auto light = paint_colors(ui, webAppearance(), box);
-    check(has(light, green) && !has(light, web_accent), "web light paints green instead of the built-in accent");
-    check(has(paint_colors(ui, materialAppearance(), box), material_accent), "material light is unchanged");
+    auto light = paintColors(ui, webAppearance(), box);
+    check(has(light, green) && !has(light, webAccent), "web light paints green instead of the built-in accent");
+    check(has(paintColors(ui, materialAppearance(), box), materialAccent), "material light is unchanged");
     auto settings = ui.presentation(); settings.variant = ThemeVariant::dark();
     check(bool(ui.setPresentation(settings)), "switch to dark");
-    auto dark = paint_colors(ui, webAppearance(), box);
-    check(has(dark, web_dark_accent) && !has(dark, green), "web dark keeps its built-in accent");
+    auto dark = paintColors(ui, webAppearance(), box);
+    check(has(dark, webDarkAccent) && !has(dark, green), "web dark keeps its built-in accent");
     settings.variant = ThemeVariant::light(); check(bool(ui.setPresentation(settings)), "back to light");
-    check(has(paint_colors(ui, webAppearance(), box), green), "light shows the override again");
+    check(has(paintColors(ui, webAppearance(), box), green), "light shows the override again");
     check(bool(ui.setPaletteOverrides({})), "clear");
-    check(has(paint_colors(ui, webAppearance(), box), web_accent), "clearing restores the built-in accent on the next frame");
+    check(has(paintColors(ui, webAppearance(), box), webAccent), "clearing restores the built-in accent on the next frame");
 }
 
 // Records which color each rect gets, so the field scrollbar (track and thumb) can be told apart from other fills.
@@ -305,10 +305,10 @@ struct RectProbe : detail::ComponentPaint {
     void clip(Rect) override {}
     void text(std::u16string_view, int, int, int, Color c) override { shapes.push_back({{}, c}); }
     bool colored(Color c) const { return std::any_of(shapes.begin(), shapes.end(), [&](const auto& s) { return s.second == c; }); }
-    bool rect_has(Rect r, Color c) const { return std::any_of(shapes.begin(), shapes.end(), [&](const auto& s) { return s.first.x == r.x && s.first.y == r.y && s.first.w == r.w && s.first.h == r.h && s.second == c; }); }
+    bool rectHas(Rect r, Color c) const { return std::any_of(shapes.begin(), shapes.end(), [&](const auto& s) { return s.first.x == r.x && s.first.y == r.y && s.first.w == r.w && s.first.h == r.h && s.second == c; }); }
 };
 
-void a_multiline_field_paints_with_the_overridden_palette() {
+void aMultilineFieldPaintsWithTheOverriddenPalette() {
     Ui ui;
     auto field = ui.addTextField({.id = "note", .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visibleLines = 2}).value.value();
     detail::access(ui).focus("note");
@@ -321,21 +321,21 @@ void a_multiline_field_paints_with_the_overridden_palette() {
         const auto& item = frame.items.front();
         auto semantics = state.describe(item.id);
         auto probe = std::make_unique<RectProbe>(state, item, *semantics, web, 1.f, true);
-        detail::component_type(semantics->kind).paint(*probe);
+        detail::componentType(semantics->kind).paint(*probe);
         return std::make_pair(std::move(probe), item.view);
     };
     auto [before, view] = paint();
     check(view.thumb.h > 0, "the content overflows, so the field draws its own scrollbar");
-    check(before->rect_has(view.track, web.palette().panel) && before->rect_has(view.thumb, web.palette().outline), "without overrides the scrollbar uses the built-in panel and outline colors (#86)");
+    check(before->rectHas(view.track, web.palette().panel) && before->rectHas(view.thumb, web.palette().outline), "without overrides the scrollbar uses the built-in panel and outline colors (#86)");
     check(before->colored(web.palette().accent), "without overrides the focused field draws the built-in accent");
     check(bool(ui.setPaletteOverrides({entry(web, ThemeVariant::light(), "panel", track), entry(web, ThemeVariant::light(), "outline", thumb), entry(web, ThemeVariant::light(), "accent", green)})), "overrides accepted");
     auto [after, overridden] = paint();
-    check(after->rect_has(overridden.track, track) && !after->rect_has(overridden.track, web.palette().panel), "the scrollbar track follows the panel override");
-    check(after->rect_has(overridden.thumb, thumb) && !after->rect_has(overridden.thumb, web.palette().outline), "the scrollbar thumb follows the outline override");
+    check(after->rectHas(overridden.track, track) && !after->rectHas(overridden.track, web.palette().panel), "the scrollbar track follows the panel override");
+    check(after->rectHas(overridden.thumb, thumb) && !after->rectHas(overridden.thumb, web.palette().outline), "the scrollbar thumb follows the outline override");
     check(after->colored(green) && !after->colored(web.palette().accent), "the focused field's accent (caret and edge) follows the accent override");
 }
 
-void the_semantic_layer_reads_the_effective_palette_read_only() {
+void theSemanticLayerReadsTheEffectivePaletteReadOnly() {
     Ui ui;
     check(ui.semantics().effectivePalette().status == Status::notFound, "no appearance bound yet");
     ui.bindAppearance(&webAppearance());
@@ -358,22 +358,22 @@ void the_semantic_layer_reads_the_effective_palette_read_only() {
 }
 int main() {
     static const test::Case cases[] = {
-        {"contrast_ratio_matches_wcag_reference_values", contrast_ratio_matches_wcag_reference_values},
-        {"builtin_palettes_pass_the_contrast_rules", builtin_palettes_pass_the_contrast_rules},
-        {"builtin_outline_meets_three_to_one_on_every_surface", builtin_outline_meets_three_to_one_on_every_surface},
-        {"without_overrides_every_palette_is_the_builtin_value", without_overrides_every_palette_is_the_builtin_value},
-        {"overriding_web_light_accent_changes_only_that_combination", overriding_web_light_accent_changes_only_that_combination},
-        {"every_palette_role_is_overridable_and_isolated", every_palette_role_is_overridable_and_isolated},
-        {"role_helpers_reject_unknown_roles_and_wrong_kinds", role_helpers_reject_unknown_roles_and_wrong_kinds},
-        {"each_contrast_rule_has_a_passing_and_a_failing_case", each_contrast_rule_has_a_passing_and_a_failing_case},
-        {"rejection_message_reports_the_actual_ratio", rejection_message_reports_the_actual_ratio},
-        {"invalid_entries_are_rejected_and_keep_the_active_list", invalid_entries_are_rejected_and_keep_the_active_list},
-        {"replacing_and_clearing_the_list_takes_effect_immediately", replacing_and_clearing_the_list_takes_effect_immediately},
-        {"off_thread_calls_report_wrong_thread", off_thread_calls_report_wrong_thread},
-        {"a_custom_appearance_is_never_overridden", a_custom_appearance_is_never_overridden},
-        {"painting_uses_the_overridden_colors_for_the_current_combination", painting_uses_the_overridden_colors_for_the_current_combination},
-        {"a_multiline_field_paints_with_the_overridden_palette", a_multiline_field_paints_with_the_overridden_palette},
-        {"the_semantic_layer_reads_the_effective_palette_read_only", the_semantic_layer_reads_the_effective_palette_read_only},
+        {"contrast_ratio_matches_wcag_reference_values", contrastRatioMatchesWcagReferenceValues},
+        {"builtin_palettes_pass_the_contrast_rules", builtinPalettesPassTheContrastRules},
+        {"builtin_outline_meets_three_to_one_on_every_surface", builtinOutlineMeetsThreeToOneOnEverySurface},
+        {"without_overrides_every_palette_is_the_builtin_value", withoutOverridesEveryPaletteIsTheBuiltinValue},
+        {"overriding_web_light_accent_changes_only_that_combination", overridingWebLightAccentChangesOnlyThatCombination},
+        {"every_palette_role_is_overridable_and_isolated", everyPaletteRoleIsOverridableAndIsolated},
+        {"role_helpers_reject_unknown_roles_and_wrong_kinds", roleHelpersRejectUnknownRolesAndWrongKinds},
+        {"each_contrast_rule_has_a_passing_and_a_failing_case", eachContrastRuleHasAPassingAndAFailingCase},
+        {"rejection_message_reports_the_actual_ratio", rejectionMessageReportsTheActualRatio},
+        {"invalid_entries_are_rejected_and_keep_the_active_list", invalidEntriesAreRejectedAndKeepTheActiveList},
+        {"replacing_and_clearing_the_list_takes_effect_immediately", replacingAndClearingTheListTakesEffectImmediately},
+        {"off_thread_calls_report_wrong_thread", offThreadCallsReportWrongThread},
+        {"a_custom_appearance_is_never_overridden", aCustomAppearanceIsNeverOverridden},
+        {"painting_uses_the_overridden_colors_for_the_current_combination", paintingUsesTheOverriddenColorsForTheCurrentCombination},
+        {"a_multiline_field_paints_with_the_overridden_palette", aMultilineFieldPaintsWithTheOverriddenPalette},
+        {"the_semantic_layer_reads_the_effective_palette_read_only", theSemanticLayerReadsTheEffectivePaletteReadOnly},
     };
     return test::run("palette_override", cases);
 }

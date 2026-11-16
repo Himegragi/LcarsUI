@@ -3,11 +3,11 @@
 #include "lcars/diagnostics.hpp"
 #include <string>
 #include <string_view>
-namespace settings_demo {
+namespace settingsDemo {
 // Turns the renderer failure the demo is told about into the diagnostic record it keeps
 // (TD01): the in-memory Diagnostics module stores it as the first failure, and a
 // --diagnostics-out run saves it with the recent events.
-inline std::string failure_utf8(std::u16string_view text) {
+inline std::string failureUtf8(std::u16string_view text) {
     std::string out;
     for (std::size_t i = 0; i < text.size(); ++i) {
         char32_t c = text[i];
@@ -21,7 +21,7 @@ inline std::string failure_utf8(std::u16string_view text) {
     }
     return out;
 }
-inline lcars::RenderDiagnostic failure_diagnostic(const lcars::RendererFailure& failure) {
+inline lcars::RenderDiagnostic failureDiagnostic(const lcars::RendererFailure& failure) {
     lcars::RenderDiagnostic d;
     d.backend = u"OpenGL";
     d.severity = lcars::DiagnosticSeverity::error;
@@ -33,7 +33,7 @@ inline lcars::RenderDiagnostic failure_diagnostic(const lcars::RendererFailure& 
     case lcars::RendererFailureKind::resourceFailed: d.code = "renderer_failed.resource_failed"; break;
     }
     d.nativeCode = failure.nativeCode;
-    d.nativeMessage = failure_utf8(failure.message);
+    d.nativeMessage = failureUtf8(failure.message);
     return d;
 }
 }

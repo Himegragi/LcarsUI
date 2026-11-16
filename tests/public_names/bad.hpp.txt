@@ -8,4 +8,10 @@ struct Fixture {
 private:
     int still_snake_;
 };
+class PrivateOwner {
+    int collision_;
+};
+struct PublicOwner {
+    int collision_;
+};
 }
