@@ -36,12 +36,17 @@ public:
 private:
     std::function<void()> disconnect_;
 };
+// Option nodes describe only the option itself; properties it does not have keep their default values.
 struct NodeSnapshot : CommonState {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
     std::u16string accelerator_key, access_key;
     bool selected = false;
-    bool hidden = false, blocked_by_modal = false;
+    // Options share their component's hidden state. A collapsed dropdown's options are not hidden;
+    // they have visible == false and no bounds instead.
+    bool hidden = false;
+    // Options share their component's modal blocking state.
+    bool blocked_by_modal = false;
     bool selection_required = false;
     std::optional<Rect> bounds;
     std::vector<NodeRef> labelled_by, described_by;
