@@ -17,20 +17,20 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
-Applications retain the handles returned by `Ui::add_text`, `add_button` and `add_label`; the layout accepts those handles. Each `Ui::add_x` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.add_button({.id = "profile.save"})`. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
+Applications retain the handles returned by `Ui::add_text_field`, `add_button` and `add_label`; the layout accepts those handles. Each `Ui::add_x` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.add_button({.id = "profile.save"})`. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
 ```cpp
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
 lcars::Ui ui;
-auto name = ui.add_text({.id = "profile.name"}).value.value();
+auto name = ui.add_text_field({.id = "profile.name"}).value.value();
 auto save = ui.add_button({.id = "profile.save"}).value.value();
 name.connect_source({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
 }});
-ui.connect_confirmation(save, {name}, [&](const std::vector<lcars::FieldChange>& changes) {
-    model = std::get<lcars::Change<lcars::TextHandle>>(changes[0]).value;
+ui.connect_confirmation(save, {name}, [&](const std::vector<lcars::ConfirmFieldChange>& changes) {
+    model = std::get<lcars::Change<lcars::TextFieldHandle>>(changes[0]).value;
     if (notify_source) notify_source();
     return lcars::ConfirmationResult{};
 });
@@ -59,14 +59,22 @@ title.connect_source([&] { return u"Templates"; });                      // text
 clock.connect_source({[&] { return now_text(); }, subscribe_to_clock});  // a notification repaints
 ```
 
-Every handle kind (`TextHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHandle`, `ContextMenuHandle`) compares with `==` against handles of its own kind: two handles are equal when they control the same thing now. Two default-constructed handles are equal and differ from every real one; a button removed and created again under the same id gives a different handle (the old one keeps answering `not_found`); the same id in another `Ui` is a different handle; a context menu attached again to a recreated target is the same handle, since the old handle controls the new attachment. Comparing handles of two kinds (`TextHandle == CheckboxHandle`) does not compile, and `ComponentHandle` and `ConfirmField` compare through their alternatives. Handles have no hash.
+Every handle kind (`TextFieldHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHandle`, `ContextMenuHandle`) compares with `==` against handles of its own kind: two handles are equal when they control the same thing now. Two default-constructed handles are equal and differ from every real one; a button removed and created again under the same id gives a different handle (the old one keeps answering `not_found`); the same id in another `Ui` is a different handle; a context menu attached again to a recreated target is the same handle, since the old handle controls the new attachment. Comparing handles of two kinds (`TextFieldHandle == CheckboxHandle`) does not compile, and `ComponentHandle` and `ConfirmField` compare through their alternatives. Handles have no hash.
 
 ## Multi-line text fields
 
-A text field is single-line unless it is created with `multiline`. The choice is fixed at creation; everything else about the field (data connections, confirmation groups, history, semantic role `text`) is unchanged, and a single-line field behaves exactly as before.
+Public names distinguish writable fields (`Change<Field, Value>`, `ConfirmField`, `ConfirmFieldChange`,
+`ConfirmFieldError`) from the text-field component (`ComponentKind::text_field`, `Ui::add_text_field`,
+`TextFieldHandle`, `Role::text_field`). General text layout and styling keep names such as `TextAlign` and `TextStyle`.
+An appearance arranges a text field with `arrange_text_field(width, TextFieldHeights, scale[, density])`, returning
+`TextFieldLayout`; `Placement::text_field` holds that geometry and `Placement::view` holds its multi-line `TextFieldView`.
+Multi-line scroll snapshots are `TextFieldScroll`, and `ScrollRegion::text_field` identifies a text field's scrollbar.
+The unused `Appearance::field()` and `FieldParts` are removed. Renamed public names keep no aliases.
+
+A text field is single-line unless it is created with `multiline`. The choice is fixed at creation; everything else about the field (data connections, confirmation groups, history, semantic role `Role::text_field`) is unchanged, and a single-line field behaves exactly as before.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .max_length = 200,
+auto note = ui.add_text_field({.id = "item.note", .max_length = 200,
                          .multiline = true, .visible_lines = 3}).value.value();
 note.set_visible_lines(5);                         // reflows at once
 note.set_scroll_line(2);                           // first visible display line
@@ -79,7 +87,7 @@ ui.semantics().perform({"item.note"}, lcars::Verb::scroll, 4);  // the same oper
 - **Layout.** The height is exactly `visible_lines` lines. Long lines wrap at the field's edge like labels; there is no horizontal scrolling. The scrollbar's width is always reserved, so the first lines never re-wrap when the scrollbar appears; the thumb shows only when the text overflows.
 - **Scrolling.** The scroll position is the index of the first visible display line, so it keeps its meaning across text size and density changes (the same text stays on top). It follows the caret when the caret moves, never moves the caret, and never snaps back after the wheel or the thumb scrolled it. The wheel scrolls the field first and passes to the page at the ends. Inside an open dialog the dialog's own scrollable content (this field included) takes the wheel and the thumb; the page behind still does not. A position past the last page is `Status::invalid_value` for both entry points.
 - **Pointer.** A click puts the caret on the pointed line and column; a drag selects across lines and, above or below the field, scrolls a line per step (the desktop host repeats it on a timer).
-- **Layout data for application and host code.** After `arrange`, `Placement::multiline` fields carry `Placement::view` (`FieldView`: every display line with its UTF-16 range and caret stops, the first visible line, the track and thumb). `Frame::text_offset(handle, x, y)`, `Placement::caret_x/caret_y/caret_rect` and `Frame::select_to` read it. A host that can lay out again on demand registers `UiState::on_relayout` (the desktop host does) so cursor keys never see stale lines.
+- **Layout data for application and host code.** After `arrange`, `Placement::multiline` fields carry `Placement::view` (`TextFieldView`: every display line with its UTF-16 range and caret stops, the first visible line, the track and thumb). `Frame::text_offset(handle, x, y)`, `Placement::caret_x/caret_y/caret_rect` and `Frame::select_to` read it. A host that can lay out again on demand registers `UiState::on_relayout` (the desktop host does) so cursor keys never see stale lines.
 - **UI Automation.** The text pattern reads and moves by `TextUnit_Line` (display lines) and `TextUnit_Paragraph` (LF-separated lines); a vertical-only scroll pattern reads and sets the scroll position.
 
 Out of scope here: growing with content, horizontal scrolling or a no-wrap mode, Tab characters, alignment and line spacing and vertical text. Styled text is the [rich text option](#rich-text-fields) below.
@@ -99,7 +107,7 @@ ui.semantics().perform({"item.note"}, lcars::Verb::select_paragraph, 12);  // th
 - **Where words are.** `dictionary` (the default) asks the Windows system ICU (`icu.dll`, loaded from System32 on first use, locale `zh_TW`), so Chinese is cut into words (設定|管理|示範). If the library is missing or cannot open a break iterator the field falls back to `per_character` without interrupting anything; `word_segmentation()` reports the mode set, `word_segmentation_in_use()` the mode in effect. `per_character`: every Chinese or Japanese character is a word, a run of Latin letters and digits is one word. `script_run`: a run of Chinese or Japanese characters is one word. In every mode each punctuation mark and each LF is a word of its own and a run of spaces stays together. The dictionary result follows the Windows version, so only rule-independent cases (script changes, punctuation) are asserted against it.
 - **Clicks.** The desktop host reads `GetDoubleClickTime()` and `SM_CXDOUBLECLK/SM_CYDOUBLECLK` on each press and lets core count: a press counts as the next click when it comes within the double-click time of the previous one and inside the box centered on the first press; the fourth press is a single click again. Core takes an injectable clock and settings (`UiState::set_click_clock/set_click_settings`) and the press entry `UiState::text_pointer_down`, so tests never depend on a real clock.
 - **Read-only and disabled.** A read-only field selects and moves by words, and Ctrl+Backspace/Delete answer `Status::read_only`. A disabled field does nothing (`Status::disabled`). Clicks during input-method composition behave like a single click does.
-- **Programmatic control.** `TextHandle::set_word_segmentation / word_segmentation / word_segmentation_in_use / word_at / paragraph_at / next_word_stop / previous_word_stop / select_word / select_paragraph / double_click / triple_click`, and the semantic `Verb::set_word_segmentation / select_word / select_paragraph / double_click / triple_click` with `SemanticTree::text_unit` and `word_stop`, share one set of functions.
+- **Programmatic control.** `TextFieldHandle::set_word_segmentation / word_segmentation / word_segmentation_in_use / word_at / paragraph_at / next_word_stop / previous_word_stop / select_word / select_paragraph / double_click / triple_click`, and the semantic `Verb::set_word_segmentation / select_word / select_paragraph / double_click / triple_click` with `SemanticTree::text_unit` and `word_stop`, share one set of functions.
 - **UI Automation.** `TextUnit_Word` uses the same boundaries (a word keeps the spaces after it; each punctuation mark, each LF and a run of spaces on its own are units) and `TextUnit_Paragraph` the LF-separated paragraphs, through `ExpandToEnclosingUnit`, `Move` and `MoveEndpointByUnit`. `TextUnit_Line`, `Page` and `Format` are unchanged.
 
 ## Rich text fields
@@ -107,10 +115,10 @@ ui.semantics().perform({"item.note"}, lcars::Verb::select_paragraph, 12);  // th
 A multi-line field created with `rich = true` holds **plain text plus style spans** (`lcars::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalid_value` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
 
 ```cpp
-auto note = ui.add_text({.id = "item.note", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+auto note = ui.add_text_field({.id = "item.note", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
 note.set_colors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
 note.connect_rich_source({[&] { return model; }, subscribe});        // Source<RichText>: read() -> RichText
-note.connect_rich_confirmed([&](const lcars::Change<lcars::TextHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
+note.connect_rich_confirmed([&](const lcars::Change<lcars::TextFieldHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
 note.set_style(0, 2, {.bold = true});                                // a range of the committed text
 note.toggle_style(lcars::StyleAttribute::underline);                 // what Ctrl+U does: the selection, or the typing style at a caret
 note.apply_style({.color = "red"});                                  // set the selection's color (caret only: the typing style)
@@ -123,7 +131,7 @@ auto value = note.rich_value();                                      // Query<Ri
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typing_style()` / `set_typing_style()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
 - **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
-- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_confirmation` (a `Change<TextHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
+- **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_confirmation` (a `Change<TextFieldHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
 - **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
@@ -135,7 +143,7 @@ Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::d
 - **justify** stretches every display line to the full width except the last line of a paragraph (the line before an LF, or the end of the text), which stays left-aligned. A single-line text field therefore looks left-aligned. **distribute** also stretches the last line and a one-line text (a form label such as `姓　名`); a text field refuses it with `Status::invalid_value` and stays unchanged.
 - **Where the extra width goes** is `JustifyMethod` (`ComponentConfig::justify_method`, `set_justify_method`, semantic verb `set_justify_method`, read back with `justify_method()`; only used while the alignment is justify or distribute). `automatic` (default): around every CJK character and full-width punctuation mark and after every ASCII space or ideographic space (U+3000, which stays with the character before it); punctuation is never compressed and a Latin word is never widened inside. `spaces`: only after ASCII spaces, so a Chinese-only line stays left-aligned. `per_character`: between any two characters, Latin letters included; such a line is drawn piece by piece, so ligatures such as `fi` do not form.
 - **Shared rules.** Width is added only between whole characters (a base with its variation selector, or an emoji sequence, is never split; the unit is the shaping cluster). Trailing spaces neither count toward the width nor receive any. A line with nowhere to stretch is left-aligned. The added width sits on top of the font's own spacing and kerning.
-- **Caret, selection and pointer.** All of them use the stretched, drawn positions: `FieldLine::run` stops include the added width, `FieldLine::segments` / `Line::segments` list the drawn pieces (each starts at its own x). Typing re-spreads the line being typed in, which is expected. A caret at a gap is drawn at the start of the next character.
+- **Caret, selection and pointer.** All of them use the stretched, drawn positions: `TextFieldLine::run` stops include the added width, `TextFieldLine::segments` / `Line::segments` list the drawn pieces (each starts at its own x). Typing re-spreads the line being typed in, which is expected. A caret at a gap is drawn at the start of the next character.
 - **Rich text.** A justified line of a rich field is also cut at every style boundary (no width is added there), so each drawn piece lies inside one run and keeps its face and color; a run's underline spans the gaps added inside it. Caret, selection, hits and drawn glyphs read the same positions as in plain text.
 - **Vertical labels.** Justify and distribute read as top alignment there; the justification method is ignored.
 - **User setting (WCAG 1.4.8).** `PresentationSettings::justify_as_left` (default off, applied by `Ui::set_presentation`) draws every justified and distributed text left-aligned. The property values do not change; UI Automation then reports `HorizontalTextAlignment_Left`, otherwise both values report `HorizontalTextAlignment_Justified`. The settings demo's Appearance page has the checkbox and saves the setting.
@@ -310,6 +318,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 | #96 public names follow the glossary; `add_x` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `add_x` at run time, and `demo_render_compare` stays byte-identical |
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
+| #100 field and text-field public names | none: host and layout edits are pure renames, and the unused appearance method is removed; the consumer checks the new names and rejects the old ones, with all existing CTests and `demo_render_compare` retained |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.

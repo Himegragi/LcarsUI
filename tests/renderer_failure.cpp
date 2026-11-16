@@ -275,7 +275,7 @@ static void presentation_during_failure(const Appearance& appearance) {
     reference_host.force_scale(1.f); reference_host.client_size(960, 720); reference_host.paint();
     auto expected = reference_host.frame().find(reference.handles.name);
     check(expected && field->bounds.w == expected->bounds.w && field->bounds.h == expected->bounds.h &&
-          field->field.editor == expected->field.editor && field->run.width == expected->run.width,
+          field->text_field.editor == expected->text_field.editor && field->run.width == expected->run.width,
           "PS10 first recovered frame matches independently configured font and density");
     auto comparison = host.compare_gpu(960, 720, 1.f);
     check(bool(comparison), "PS10 recovered CPU/GPU frame comparison");

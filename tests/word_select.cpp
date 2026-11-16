@@ -40,16 +40,16 @@ struct FailingBreaker final : detail::WordBreaker {
 };
 
 struct Field {
-    Ui ui; TextHandle handle;
+    Ui ui; TextFieldHandle handle;
     explicit Field(std::u16string value, bool multiline = false, WordSegmentation mode = WordSegmentation::dictionary,
                    std::shared_ptr<const detail::WordBreaker> breaker = std::make_shared<PairBreaker>()) {
         ComponentConfig control{.id = "t", .value = value, .multiline = multiline, .visible_lines = 4};
         auto model = std::make_shared<std::u16string>(std::move(value));
-        auto query = ui.add_text(std::move(control));
+        auto query = ui.add_text_field(std::move(control));
         check(bool(query), "Create the text field");
         handle = *query;
         check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-        check(bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
+        check(bool(handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
         host().set_word_breaker(std::move(breaker));
         check(bool(handle.set_word_segmentation(mode)), "Choose the segmentation");
     }
@@ -278,7 +278,7 @@ struct Laid {
     const Placement& placed() const { return *frame.find(field.handle); }
     // The pointer position in the middle of the character starting at `offset`.
     int x_of(unsigned offset) const { return (placed().caret_x(offset) + placed().caret_x(offset + 1)) / 2; }
-    int y() const { return placed().bounds.y + placed().field.editor.y + 2; }
+    int y() const { return placed().bounds.y + placed().text_field.editor.y + 2; }
 };
 
 void dragging_after_a_double_click_grows_by_words_and_keeps_the_first_word() {
@@ -320,10 +320,10 @@ void a_selection_change_ends_the_unit_drag() {
 
 void clicks_count_by_time_distance_and_target() {
     Field f(u"aa bb cc");
-    auto second = *f.ui.add_text({.id = "u", .value = u"aa bb cc"});
+    auto second = *f.ui.add_text_field({.id = "u", .value = u"aa bb cc"});
     auto model = std::make_shared<std::u16string>(u"aa bb cc");
     second.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    second.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    second.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     auto& host = f.host();
     std::uint64_t now = 0;
     host.set_click_clock([&] { return now; });
@@ -508,8 +508,8 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
     for (const bool multiline : {true, false}) {
         Ui ui;
         auto model = std::make_shared<std::u16string>(multiline ? text : u"aa bb cc");
-        auto handle = *ui.add_text({.id = "c", .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
-        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect the field");
+        auto handle = *ui.add_text_field({.id = "c", .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
+        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect the field");
         check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
@@ -532,10 +532,10 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
     }
 }
 
-TextHandle rich_field(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
-    auto handle = *ui.add_text({.id = "r", .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
+TextFieldHandle rich_field(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
+    auto handle = *ui.add_text_field({.id = "r", .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
-    check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
+    check(bool(handle.connect_rich_immediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
     check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
     return handle;
 }

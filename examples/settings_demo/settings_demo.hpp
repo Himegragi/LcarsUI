@@ -101,14 +101,14 @@ public:
     lcars::ScrollState scroll;
     mutable lcars::ScrollState license_scroll;
     lcars::NavigationListHandle nav;
-    lcars::TextHandle name, items_search;
+    lcars::TextFieldHandle name, items_search;
     lcars::ListHandle items_list;
     lcars::ContextMenuHandle items_menu;  // Edit / Delete on every row
     lcars::ListHandle licenses;
     lcars::ButtonHandle items_add, items_edit, items_delete, item_ok;
     lcars::ButtonHandle item_note_bold, item_note_italic, item_note_underline;  // style buttons above the note
     lcars::DropdownHandle item_note_color;
-    lcars::TextHandle item_name, item_note;
+    lcars::TextFieldHandle item_name, item_note;
     lcars::DialogHandle item_dialog, delete_dialog, close_dialog;
     lcars::ButtonHandle close_save, close_discard, close_cancel;
     void on_close(std::function<void()> callback) { close_handler_ = std::move(callback); }

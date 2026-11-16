@@ -14,17 +14,17 @@ namespace focus_visibility {
 struct Fixture {
     Ui ui;
     ButtonHandle first, second;
-    TextHandle edit, readonly, note, note_readonly;
+    TextFieldHandle edit, readonly, note, note_readonly;
     SliderHandle slider;
     ScrollState scroll;
     test::FakeMeasure measure;
     Fixture() {
         first = ui.add_button({.id = "first", .label = u"First"}).value.value();
         second = ui.add_button({.id = "second", .label = u"Second"}).value.value();
-        edit = ui.add_text({.id = "edit", .value = u"abc"}).value.value();
-        readonly = ui.add_text({.id = "readonly", .value = u"abc", .read_only = true}).value.value();
-        note = ui.add_text({.id = "note", .value = u"a\nb\nc", .multiline = true, .visible_lines = 3}).value.value();
-        note_readonly = ui.add_text({.id = "note_readonly", .value = u"a\nb\nc", .read_only = true, .multiline = true, .visible_lines = 3}).value.value();
+        edit = ui.add_text_field({.id = "edit", .value = u"abc"}).value.value();
+        readonly = ui.add_text_field({.id = "readonly", .value = u"abc", .read_only = true}).value.value();
+        note = ui.add_text_field({.id = "note", .value = u"a\nb\nc", .multiline = true, .visible_lines = 3}).value.value();
+        note_readonly = ui.add_text_field({.id = "note_readonly", .value = u"a\nb\nc", .read_only = true, .multiline = true, .visible_lines = 3}).value.value();
         slider = ui.add_slider({.id = "volume", .label = u"Volume"}, SliderRange{0, 100, 1}).value.value();
         detail::access(ui).window_active(true);
     }

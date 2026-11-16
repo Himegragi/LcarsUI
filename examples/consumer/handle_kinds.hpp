@@ -12,7 +12,7 @@
 #include <type_traits>
 
 namespace handle_kinds {
-using All = std::tuple<lcars::TextHandle, lcars::ButtonHandle, lcars::LabelHandle, lcars::CheckboxHandle, lcars::RadioGroupHandle,
+using All = std::tuple<lcars::TextFieldHandle, lcars::ButtonHandle, lcars::LabelHandle, lcars::CheckboxHandle, lcars::RadioGroupHandle,
                        lcars::SliderHandle, lcars::ProgressHandle, lcars::DropdownHandle, lcars::TabsHandle, lcars::NavigationListHandle,
                        lcars::ListHandle, lcars::DialogHandle, lcars::TooltipHandle, lcars::ContextMenuHandle>;
 template <class A, class... H> constexpr bool compares_only_with_itself = ((std::is_same_v<A, H> || !std::equality_comparable_with<A, H>) && ...);

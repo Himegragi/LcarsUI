@@ -41,7 +41,7 @@ struct Everything {
     std::vector<std::pair<const char*, ComponentHandle>> components;
     explicit Everything(bool confirmed) {
         auto accepted = [](const auto&) { return Result{}; };
-        auto text_field = ui.add_text({.id = "text", .label = u"Text"}).value.value();
+        auto text_field = ui.add_text_field({.id = "text", .label = u"Text"}).value.value();
         text_field.connect_source(text_source(text));
         if (confirmed) text_field.connect_confirmed(accepted); else text_field.connect_immediate(accepted);
         components.push_back({"text", text_field});
@@ -85,7 +85,7 @@ template <class E, std::size_t N> std::string name_in(const Named<E> (&names)[N]
 }
 std::string name_of(Role role) {
     static const Named<Role> names[] = {
-        {Role::text, "text"}, {Role::button, "button"}, {Role::label, "label"}, {Role::checkbox, "checkbox"}, {Role::radio_group, "radio_group"},
+        {Role::text_field, "text"}, {Role::button, "button"}, {Role::label, "label"}, {Role::checkbox, "checkbox"}, {Role::radio_group, "radio_group"},
         {Role::radio_option, "radio_option"}, {Role::slider, "slider"}, {Role::dropdown, "dropdown"}, {Role::dropdown_option, "dropdown_option"},
         {Role::list, "list"}, {Role::list_item, "list_item"}, {Role::tabs, "tabs"}, {Role::tab_item, "tab_item"}, {Role::progress, "progress"},
         {Role::dialog, "dialog"}, {Role::tooltip, "tooltip"}, {Role::menu, "menu"}, {Role::menu_item, "menu_item"}, {Role::menu_separator, "menu_separator"}};
@@ -297,7 +297,7 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
 // registry table and the diagnostics (which name the type of an ID that is taken again) are both checked against it.
 struct BuiltIn { const char* component; ComponentKind kind; const char* name; };
 const BuiltIn built_in_types[] = {
-    {"text", ComponentKind::text, "text"}, {"button", ComponentKind::button, "button"}, {"label", ComponentKind::label, "label"}, {"checkbox", ComponentKind::checkbox, "checkbox"},
+    {"text", ComponentKind::text_field, "text"}, {"button", ComponentKind::button, "button"}, {"label", ComponentKind::label, "label"}, {"checkbox", ComponentKind::checkbox, "checkbox"},
     {"radio", ComponentKind::radio_group, "radio_group"}, {"slider", ComponentKind::slider, "slider"}, {"dropdown", ComponentKind::dropdown, "dropdown"}, {"list", ComponentKind::list, "list"},
     {"tabs", ComponentKind::tabs, "tabs"}, {"progress", ComponentKind::progress, "progress"}, {"navigation_list", ComponentKind::navigation_list, "navigation_list"}};
 

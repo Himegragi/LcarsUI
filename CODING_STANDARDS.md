@@ -42,8 +42,14 @@ the words public names use are these.
   `add_list`), listed as `ComponentSnapshot::items`; a scroll state anchored on one names it `anchor_item`.
   `layout::Placement::options` and `option_start` keep their names: they hold the bounds of the placed options, and of
   tab and navigation pages, as laid out, not a component's items.
-- E. A read-only snapshot is `XxxSnapshot`: a struct that describes the whole state of one component, option, menu, menu
+- E. `Field` means a writable field (a text field, checkbox, radio group, slider, dropdown or list); a list writes
+  immediately only, and a navigation list is not a field. `TextField` means only the text-field component
+  (`ComponentKind::text_field`, `Ui::add_text_field`, `TextFieldHandle`). Names beginning with `Text` otherwise mean
+  general text layout or styling shared by labels and text fields (`TextAlign`, `TextRun`, `TextStyle`, `TextSpan`,
+  `TextMeasure`, `TextSegment`). Public header comments use "text field" for that component and "field" for writable
+  fields in general. `ConfirmFieldChange` and `ConfirmFieldError` belong to confirmation groups.
+- F. A read-only snapshot is `XxxSnapshot`: a struct that describes the whole state of one component, option, menu, menu
   item or semantic tree node at one moment, and is only read back, never passed in (`ComponentSnapshot`,
   `OptionSnapshot`, `MenuSnapshot`, `MenuItemSnapshot`, `NodeSnapshot`). A struct that holds a part of such state, or
-  that the application passes in, keeps its own name (`Placement`, `Frame`, `Palette`, `TextSpan`, `TextScroll`,
+  that the application passes in, keeps its own name (`Placement`, `Frame`, `Palette`, `TextSpan`, `TextFieldScroll`,
   `HoverTarget`, `OptionValue`); so do `describe()`, `SemanticTree`, `NodeRef` and `Ui::semantics()`.

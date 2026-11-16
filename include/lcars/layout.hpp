@@ -2,7 +2,7 @@
 // B01-B03 minimal layout: column/row, grid and nested scroll regions, measured through a host
 // text backend. The same inputs give the same frame, which the host both draws and hit-tests,
 // so measurement, painting and pointer targets cannot disagree. arrange settles view state as it
-// goes: it clamps the scroll offset and each field's display offset before placing anything.
+// goes: it clamps the scroll offset and each text field's display offset before placing anything.
 #include "lcars/appearance.hpp"
 #include "lcars/core.hpp"
 #include <string>
@@ -47,25 +47,25 @@ std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view t
 // relative to the start of the line, x is physical pixels from the line's start (the start the line's
 // alignment gives it: the left edge of the box or text area). A line drawn as one piece has none (#84).
 struct TextSegment { unsigned begin = 0, end = 0; float x = 0, width = 0; };  // width: the piece's own advance (no added gap)
-// One display line of a multi-line field: a hard line (it ends at an LF) or one wrapped piece of it.
+// One display line of a multi-line text field: a hard line (it ends at an LF) or one wrapped piece of it.
 // Offsets are UTF-16 offsets into the visible text (an IME composition included).
-struct FieldLine {
+struct TextFieldLine {
     unsigned begin = 0, end = 0;  // end excludes the LF that ends a hard line
     bool soft = false;            // wrapped: the next line continues it, and next.begin == end
     TextRun run;                  // caret stops for this line alone; x is 0 at the text's own left edge. A justified line's stops include the added width
     std::vector<TextSegment> segments;  // #84: a justified line's pieces (x from the shift); empty = draw the whole line in one go
     float shift = 0;             // where the text starts, from the text area's left edge: its alignment (#80)
     int top = 0;                  // top of the line's row from the first line's, physical pixels (#80)
-    // Rich fields: the line cut into runs of one style, in order and covering [0, end - begin). Offsets are
+    // Rich text fields: the line cut into runs of one style, in order and covering [0, end - begin). Offsets are
     // relative to begin; x is each run's left edge from the TEXT AREA's left edge, the line's alignment shift
     // included (where the run is drawn); the run's stops continue across runs.
     struct Piece { unsigned begin = 0, end = 0; TextStyle style; float x = 0, width = 0; };
     std::vector<Piece> pieces;
 };
-// The settled multi-line geometry of one field. Core keeps a copy for the cursor keys, so drawing,
+// The settled multi-line geometry of one text field. Core keeps a copy for the cursor keys, so drawing,
 // hit testing, navigation and the IME all read the same lines.
-struct FieldView {
-    std::vector<FieldLine> lines;  // every display line, never empty once laid out
+struct TextFieldView {
+    std::vector<TextFieldLine> lines;  // every display line, never empty once laid out
     unsigned first = 0;            // index of the first visible line: the scroll position
     unsigned visible = 0;          // configured height in lines
     int line_height = 0;           // physical pixels: the font's line height, what a glyph run occupies
@@ -92,9 +92,9 @@ struct FieldView {
     unsigned line_at(int y, unsigned first_line) const;
 };
 // Wraps like wrap() and measures each resulting line, keeping UTF-16 offsets.
-// With spans (a rich field's styled runs, offsets into text) every run is measured in its own style, so
+// With spans (a rich text field's styled runs, offsets into text) every run is measured in its own style, so
 // wrapping and caret stops follow the real widths of bold and italic text.
-std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width,
+std::vector<TextFieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width,
                                   const std::vector<StyleSpan>* spans = nullptr);
 
 struct ScrollState {
@@ -187,14 +187,14 @@ struct Placement {
     std::size_t option_start = 0; // logical index of the first placed option
     Rect slider_track;           // slider track in frame coordinates
     Rect progress_track, progress_fill; // progress display in frame coordinates
-    FieldLayout field;            // text fields, translated to frame coordinates
+    TextFieldLayout text_field;   // text fields, translated to frame coordinates
     bool multiline = false;       // text fields: lines, caret and hits come from view, not run
-    FieldView view;               // multi-line text fields
+    TextFieldView view;            // multi-line text fields
     std::vector<Line> label_lines, description_lines, error_lines;
     TextRun run;                  // text fields: visible text (composition included)
     float offset = 0;             // text fields: horizontal display offset in pixels
-    float shift = 0;              // single-line fields: where text shorter than the room starts, by its alignment (#80)
-    int text_top = 0;             // single-line fields: top of the glyphs inside the editor row (line spacing)
+    float shift = 0;              // single-line text fields: where text shorter than the room starts, by its alignment (#80)
+    int text_top = 0;             // single-line text fields: top of the glyphs inside the editor row (line spacing)
     int caret_x(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
     // The open context menu, an overlay painted and hit above every other; id is menu_node_id(target).
     bool menu = false;
@@ -203,8 +203,8 @@ struct Placement {
     int menu_maximum = 0;         // scroll range in pixels; 0 when every row fits
     Rect menu_track, menu_thumb;  // scrollbar, empty when nothing scrolls
     int menu_pad = 0;             // horizontal text inset inside a row
-    int caret_y(unsigned offset) const;  // multi-line fields: frame y of the top of the caret's line
-    // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line field a caret scrolled
+    int caret_y(unsigned offset) const;  // multi-line text fields: frame y of the top of the caret's line
+    // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line text field a caret scrolled
     // out of view is held on the nearest visible row, which is where an input method anchors its window.
     Rect caret_rect(unsigned offset) const;
 };
@@ -212,8 +212,8 @@ struct ScrollRegion {
     ScrollState* state = nullptr;
     Rect viewport, clip, track, thumb;
     int extent = 0, maximum = 0, offset = 0;
-    std::string field;           // a multi-line text field's own scrollbar; it moves by whole lines
-    int step = 0;                // physical pixels per line when field is set
+    std::string text_field;      // a multi-line text field's own scrollbar; it moves by whole lines
+    int step = 0;                // physical pixels per line when text_field is set
     bool modal_content = false;  // inside the open dialog, so it still takes wheel and drag input
     // A horizontal region is a vertical-writing label: its offset counts pixels scrolled from the start of
     // the text (the right edge), the bar lies along the bottom, and the thumb starts at the right end.
@@ -229,7 +229,7 @@ struct Frame {
     Rect modal_panel;
     Rect viewport, track, thumb;  // scroll region and its bar; thumb empty when nothing scrolls
     int extent = 0, maximum = 0, offset = 0;
-    const Placement* find(const TextHandle& handle) const;
+    const Placement* find(const TextFieldHandle& handle) const;
     const Placement* find(const ButtonHandle& handle) const;
     const Placement* find(const LabelHandle& handle) const;
     const Placement* find(const CheckboxHandle& handle) const;
@@ -253,18 +253,18 @@ struct Frame {
     bool wheel(Ui& ui, int x, int y, int delta, bool sideways_only = false) const;
     // Route a horizontal wheel step (delta in physical pixels, positive to the right) to a sideways-scrolling label.
     bool hwheel(Ui& ui, int x, int y, int delta) const;
-    unsigned text_offset(const TextHandle& handle, int x) const;  // field caret offset for a pointer x
-    // Multi-line fields: caret offset for a pointer position. Above or below the lines it clamps to
+    unsigned text_offset(const TextFieldHandle& handle, int x) const;  // text field caret offset for a pointer x
+    // Multi-line text fields: caret offset for a pointer position. Above or below the lines it clamps to
     // the first or last visible line.
-    unsigned text_offset(const TextHandle& handle, int x, int y) const;
-    // Extend the field's selection to the pointer, as a drag does. Outside the top or bottom edge the
-    // field also scrolls one line toward the pointer; hosts repeat this on a timer. True if anything changed.
-    bool select_to(Ui& ui, const TextHandle& handle, int x, int y) const;
+    unsigned text_offset(const TextFieldHandle& handle, int x, int y) const;
+    // Extend the text field's selection to the pointer, as a drag does. Outside the top or bottom edge the
+    // text field also scrolls one line toward the pointer; hosts repeat this on a timer. True if anything changed.
+    bool select_to(Ui& ui, const TextFieldHandle& handle, int x, int y) const;
     const detail::UiState* owner_ = nullptr; // identity only; never dereferenced
     int offset_for_thumb(int thumb_top) const;       // scroll offset when the thumb top is dragged here
 };
 // reveal: when not empty, scroll so that the component with this id is fully visible (top-aligned if taller).
-// Updates each focused field's display offset in ui so its caret stays visible.
+// Updates each focused text field's display offset in ui so its caret stays visible.
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal = {});
 }

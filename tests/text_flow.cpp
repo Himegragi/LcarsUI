@@ -95,14 +95,14 @@ void out_of_range_values_are_invalid_and_change_nothing() {
         check(ui.add_label(label("bad", u"x", TextAlign::left, bad)).status == Status::invalid_value, "A label is not created with a bad line spacing");
     for (int bad : {-1, 49})
         check(ui.add_label(label("bad", u"x", TextAlign::left, 1.0, bad)).status == Status::invalid_value, "A label is not created with a bad paragraph spacing");
-    check(ui.add_text({.id = "bad", .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
+    check(ui.add_text_field({.id = "bad", .line_spacing = 3.1}).status == Status::invalid_value, "Nor a text field");
     check(ui.add_button({.id = "b", .text_align = TextAlign::center}).status == Status::invalid_value, "A button has no alignment");
     check(ui.add_checkbox({.id = "c", .line_spacing = 1.5}).status == Status::invalid_value, "A checkbox has no line spacing");
     check(ui.add_progress({.id = "p", .paragraph_spacing = 8}).status == Status::invalid_value, "A progress bar has no paragraph spacing");
     check(bool(ui.add_button({.id = "ok"})), "Defaults are fine everywhere");
 
     auto label_handle = *ui.add_label(label("l", u"x"));
-    auto field = *ui.add_text({.id = "t"});
+    auto field = *ui.add_text_field({.id = "t"});
     auto exercise = [](auto& h, const char* what) {
         check(*h.text_align() == TextAlign::left && *h.line_spacing() == 1.0 && *h.paragraph_spacing() == 0, what);
         check(h.set_line_spacing(0.9).status == Status::invalid_value && h.set_line_spacing(3.1).status == Status::invalid_value, what);
@@ -137,11 +137,11 @@ void a_scrollable_label_steps_one_actual_row() {
 }
 
 // A text field, connected so it accepts edits like an application's would.
-TextHandle field_of(Ui& ui, ComponentConfig control) {
+TextFieldHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
-    auto field = *ui.add_text(std::move(control));
+    auto field = *ui.add_text_field(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 ComponentConfig single(std::string id, std::u16string value, TextAlign align = TextAlign::left, double spacing = 1.0) {
@@ -170,7 +170,7 @@ void an_empty_centered_field_puts_the_caret_in_the_middle() {
     auto handle = field_of(ui, single("t", u"", TextAlign::center));
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
-    const int middle = p->bounds.x + p->field.editor.x + p->field.editor.w / 2;
+    const int middle = p->bounds.x + p->text_field.editor.x + p->text_field.editor.w / 2;
     check(p->caret_x(0) == middle && middle == 100, "The caret is in the middle of the editor");
     auto& host = detail::access(ui);
     check(bool(host.focus("t")) && bool(host.text_input(u"ab")), "Type two characters");
@@ -201,9 +201,9 @@ void line_spacing_makes_a_single_line_field_taller_and_centers_the_text() {
     auto spaced = field_of(spaced_ui, single("t", u"abcd", TextAlign::left, 1.5));
     Laid a(plain_ui, plain), b(spaced_ui, spaced);
     const auto* pa = a.frame.find(plain); const auto* pb = b.frame.find(spaced);
-    check(pa->field.editor.h == 24 && pb->field.editor.h == 36, "The editor is one 1.5 row tall");
+    check(pa->text_field.editor.h == 24 && pb->text_field.editor.h == 36, "The editor is one 1.5 row tall");
     check(pb->bounds.h == pa->bounds.h + 12, "The field grows by the spare 12 px");
-    check(pb->caret_rect(2).h == 36 && pb->caret_rect(2).y == pb->field.editor.y, "The caret is as tall as the row");
+    check(pb->caret_rect(2).h == 36 && pb->caret_rect(2).y == pb->text_field.editor.y, "The caret is as tall as the row");
     check(pb->text_top == 6, "The glyphs sit in the middle of the row");
 }
 
@@ -305,7 +305,7 @@ void multi_line_height_counts_the_spaced_rows_and_paragraph_gaps() {
     auto spaced = field_of(ui, multi("spaced", u"a\nb\nc\nd", 3, TextAlign::left, 1.5));
     auto gapped = field_of(ui, multi("gapped", u"a\nb\nc\nd", 3, TextAlign::left, 1.0, 8));
     auto both = field_of(ui, multi("both", u"a\nb\nc\nd", 3, TextAlign::left, 1.5, 8));
-    auto editor_h = [&](const TextHandle& h) { Laid laid(ui, h); return laid.frame.find(h)->field.editor.h; };
+    auto editor_h = [&](const TextFieldHandle& h) { Laid laid(ui, h); return laid.frame.find(h)->text_field.editor.h; };
     check(editor_h(plain) == 72, "Three rows of 24");
     check(editor_h(spaced) == 108, "Three rows of 36");
     check(editor_h(gapped) == 72 + 2 * 8, "Three rows and two paragraph gaps");
@@ -404,7 +404,7 @@ Drawn drawn_field(Ui& ui, ComponentConfig control, const Appearance& look) {
         out.area_x = p->view.text.x; out.area_w = p->view.text.w;
         for (const auto& line : p->view.lines) out.starts.push_back(p->caret_x(line.begin));
     } else {
-        out.area_x = p->bounds.x + p->field.editor.x; out.area_w = p->field.editor.w;
+        out.area_x = p->bounds.x + p->text_field.editor.x; out.area_w = p->text_field.editor.w;
         out.starts.push_back(p->caret_x(0));
     }
     return out;
@@ -449,7 +449,7 @@ void scrolling_a_spaced_field_moves_whole_lines_and_page_keys_use_the_visible_co
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
     const ScrollRegion* region = nullptr;
-    for (const auto& r : laid.frame.regions) if (r.field == "t") region = &r;
+    for (const auto& r : laid.frame.regions) if (r.text_field == "t") region = &r;
     check(region && region->step == 36 && region->extent == 10 * 36 && region->maximum == 7 * 36, "The scrollbar counts rows of 36, not the paragraph gaps");
     const int x = p->view.text.x + 10, y = p->view.text.y + 10;
     check(laid.frame.wheel(ui, x, y, -36) && *handle.scroll_line() == 1, "One wheel step of a row scrolls one line");
@@ -475,7 +475,7 @@ void a_larger_text_size_scales_the_row_of_a_field_proportionally() {
     check(bool(ui.set_presentation({.text_size = 28})), "Raise the text size");
     Laid laid(ui, handle);
     const auto* p = laid.frame.find(handle);
-    check(p->caret_rect(2).y - p->caret_rect(0).y == 63 && p->view.row_height == 63 && p->field.editor.h == 3 * 63, "Rows are the new line height 42 * 1.5 apart");
+    check(p->caret_rect(2).y - p->caret_rect(0).y == 63 && p->view.row_height == 63 && p->text_field.editor.h == 3 * 63, "Rows are the new line height 42 * 1.5 apart");
     check(bool(ui.set_presentation({.text_size = 28, .density = Density::compact})), "Compact density");
     Laid compact(ui, handle);
     check(compact.frame.find(handle)->view.row_height == 63, "Density leaves the spacing alone");
@@ -506,10 +506,10 @@ void the_input_method_anchors_at_the_drawn_caret_of_an_aligned_field() {
         const auto* p = laid.frame.find(handle);
         const auto caret = host.edit("t")->visible_caret();
         // The composition is 16 px wide: centered it starts (area - 16) / 2 in, and the caret follows it.
-        const int start = multiline ? p->view.text.x + (p->view.text.w - 16) / 2 : p->bounds.x + p->field.editor.x + (p->field.editor.w - 16) / 2;
+        const int start = multiline ? p->view.text.x + (p->view.text.w - 16) / 2 : p->bounds.x + p->text_field.editor.x + (p->text_field.editor.w - 16) / 2;
         const auto rect = p->caret_rect(caret);
         check(rect.x == start + 16, "The input method's anchor is where the caret is drawn");
-        check(rect.h == 36 && rect.y == (multiline ? p->view.text.y : p->bounds.y + p->field.editor.y), "A full spaced row tall, at the top of the line");
+        check(rect.h == 36 && rect.y == (multiline ? p->view.text.y : p->bounds.y + p->text_field.editor.y), "A full spaced row tall, at the top of the line");
     }
 }
 

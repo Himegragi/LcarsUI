@@ -23,14 +23,14 @@ struct MemoryClipboard final : Clipboard {
 };
 // An editable, immediately written text field over an application-owned model.
 struct Field {
-    TextHandle handle;
+    TextFieldHandle handle;
     std::shared_ptr<std::u16string> model;
 };
 Field add_field(Ui& ui, std::string id, std::u16string value, bool read_only = false) {
     auto model = std::make_shared<std::u16string>(value);
-    auto handle = ui.add_text({.id = id, .label = u"欄位", .value = value, .read_only = read_only}).value.value();
+    auto handle = ui.add_text_field({.id = id, .label = u"欄位", .value = value, .read_only = read_only}).value.value();
     check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect field source");
-    check(bool(handle.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
+    check(bool(handle.connect_immediate([model](const Change<TextFieldHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
     return {handle, model};
 }
 detail::UiState& core(Ui& ui) { return detail::access(ui); }
@@ -67,8 +67,8 @@ void text_field_menu_has_the_windows_edit_items() {
     check(!*ui.context_menu_open(), "no menu is open at the start");
     check(ui.context_menu().status == Status::hidden, "querying a closed menu reports hidden");
     check(bool(ui.open_context_menu(field.handle)), "a text field opens its built-in menu");
-    check(*ui.context_menu_open() && std::holds_alternative<TextHandle>(ui.context_menu()->target) &&
-          std::get<TextHandle>(ui.context_menu()->target) == field.handle, "the menu is open for the field");
+    check(*ui.context_menu_open() && std::holds_alternative<TextFieldHandle>(ui.context_menu()->target) &&
+          std::get<TextFieldHandle>(ui.context_menu()->target) == field.handle, "the menu is open for the field");
     auto menu = ui.context_menu();
     check(ids_of(*menu) == builtin_layout, "built-in items: undo, redo, line, cut, copy, paste, delete, line, select all");
     check(find_item(*menu, "lcars.undo")->label == u"復原(U)" && find_item(*menu, "lcars.redo")->label == u"重做(R)" &&
@@ -153,14 +153,14 @@ void built_in_items_match_their_shortcuts() {
 
 // A rich (multi-line, styled) field over an application-owned model, written at once.
 struct RichField {
-    TextHandle handle;
+    TextFieldHandle handle;
     std::shared_ptr<RichText> model;
 };
 RichField add_rich_field(Ui& ui, std::string id, std::u16string value, bool read_only = false) {
     auto model = std::make_shared<RichText>(RichText{value, {}});
-    auto handle = ui.add_text({.id = id, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
+    auto handle = ui.add_text_field({.id = id, .label = u"內容", .value = value, .read_only = read_only, .multiline = true, .rich = true}).value.value();
     check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect rich source");
-    check(bool(handle.connect_rich_immediate([model](const Change<TextHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
+    check(bool(handle.connect_rich_immediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
     return {handle, model};
 }
 const std::vector<std::string> rich_layout{"lcars.undo", "lcars.redo", "-", "lcars.cut", "lcars.copy", "lcars.paste", "lcars.delete", "-", "lcars.select_all",
@@ -627,7 +627,7 @@ void keyboard_position_follows_the_caret_and_the_current_row() {
     frame = layout_of(ui, 600, 400, scroll);
     const auto* panel = frame.menu_panel();
     item = frame.find(field.handle);
-    const int caret = item->caret_x(5), line_bottom = item->bounds.y + item->field.editor.y + item->field.editor.h;
+    const int caret = item->caret_x(5), line_bottom = item->bounds.y + item->text_field.editor.y + item->text_field.editor.h;
     check(panel && panel->bounds.x == caret && panel->bounds.y == line_bottom, "the menu hangs from the caret, under its line");
     ui.close_context_menu();
     field.handle.select(0, 0);
@@ -653,9 +653,9 @@ void keyboard_position_follows_the_caret_and_the_current_row() {
 void multi_line_field_menu_hangs_from_the_caret_line() {
     Ui ui; MemoryClipboard clipboard; core(ui).set_clipboard(&clipboard); clipboard.content = u"x\ny";
     auto model = std::make_shared<std::u16string>(u"first\nsecond\nthird");
-    auto note = ui.add_text({.id = "note", .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
+    auto note = ui.add_text_field({.id = "note", .label = u"說明", .value = *model, .multiline = true, .visible_lines = 3}).value.value();
     check(bool(note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) &&
-          bool(note.connect_immediate([model](const Change<TextHandle>& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
+          bool(note.connect_immediate([model](const Change<TextFieldHandle>& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
     ScrollState scroll;
     note.select(8, 8); note.focus();
     auto frame = layout_of(ui, 600, 400, scroll);
