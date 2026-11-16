@@ -62,11 +62,15 @@ void all_eight_kinds_can_be_removed() {
         std::function<void()> notification;
         Ui ui;
         auto handle = make(ui, kind);
+        const bool reads_source = std::visit([](const auto& h) {
+            return requires { h.connect_source(Source<std::u16string>{}); } || requires { h.connect_source(Source<bool>{}); } ||
+                   requires { h.connect_source(Source<int>{}); } || requires { h.connect_source(Source<std::optional<OptionValue>>{}); };
+        }, handle);
         const auto connected = connect(handle, changed, reads, [&](auto callback) {
             notification = std::move(callback);
             return [&] { ++cancellations; notification(); };
         });
-        check(kind == 8 || bool(connected), "Every source-bearing kind connects");
+        check(!reads_source || bool(connected), "Every source-bearing kind connects");
         auto saved_notification = notification;
         if (saved_notification) {
             auto initial = describe(handle);
@@ -130,7 +134,7 @@ void all_eight_kinds_can_be_removed() {
         });
         check(bool(trigger.invoke()), "The callback returns safely");
         check(blurs == 0 && focus_moves == (focused ? 1 : 0), "Removal skips field blur callbacks and keeps the host focus notification");
-        check(cancellations == (kind == 8 ? 0 : 1), "Removal cancels the source once when present");
+        check(cancellations == (reads_source ? 1 : 0), "Removal cancels the source once when present");
         check(describe(handle).status == Status::not_found, "A removed handle is invalid");
         check(remove(handle).status == Status::not_found, "Removal cannot be repeated");
         ui.semantics().dispatch_events();
