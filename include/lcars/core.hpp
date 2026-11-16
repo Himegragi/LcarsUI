@@ -340,6 +340,8 @@ struct Change {
 class TextFieldHandle : private detail::HandleBase<TextFieldHandle> {
 public:
     TextFieldHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result set_value(std::u16string value) const;
     Result undo() const;
     Result redo() const;
@@ -454,6 +456,8 @@ private:
 class LabelHandle : private detail::HandleBase<LabelHandle> {
 public:
     LabelHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     // The label's text, read again every time the label is drawn (it keeps no copy), so keep the read cheap. Two forms:
     // a full read source, whose notifications ask for a repaint (text changed by background work: a clock, a download),
     // or a read function alone, for text that only changes through what happens on screen (another field's draft).
@@ -488,6 +492,8 @@ private:
 class CheckboxHandle : private detail::HandleBase<CheckboxHandle> {
 public:
     CheckboxHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result toggle() const;
     Result use_latest() const;
     Result focus() const;
@@ -507,6 +513,8 @@ private:
 class RadioGroupHandle : private detail::HandleBase<RadioGroupHandle> {
 public:
     RadioGroupHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result select(OptionValue value) const;
     Result use_latest() const;
     Result focus() const;
@@ -527,6 +535,8 @@ private:
 class SliderHandle : private detail::HandleBase<SliderHandle> {
 public:
     SliderHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result on_blur(std::function<void()> callback) const;
     Result set_value(int value) const;
     Result use_latest() const;
@@ -548,6 +558,8 @@ private:
 class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
     ProgressHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result connect_source(Source<int> source) const;
     Query<ComponentSnapshot> describe() const;
     bool operator==(const ProgressHandle& other) const = default;
@@ -559,6 +571,8 @@ private:
 class DropdownHandle : private detail::HandleBase<DropdownHandle> {
 public:
     DropdownHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result open() const;
     Result cancel() const;
     Result select(OptionValue value) const;
@@ -619,6 +633,8 @@ private:
 class ListHandle : private detail::HandleBase<ListHandle> {
 public:
     ListHandle() = default;
+    // Owner configuration: permanently remove this component; existing handles become invalid.
+    Result remove() const;
     Result select(OptionValue value) const;
     Result set_items(std::vector<OptionItem> items) const;
     Result focus() const;

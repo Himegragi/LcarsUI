@@ -183,6 +183,9 @@ void detail::UiState::commit_removals() {
         pending_removals_.pop_back();
         if (!find(id)) continue;
         retiring_ = id;
+        // Removal never asks the native IME to complete preedit or validates the discarded draft.
+        if (composing_ == id) composition_cancel();
+        blur_callbacks_.erase(id);
         if (focus_ == id) {
             try { move_focus({}); } catch (...) { stopped_ = true; focus_.clear(); }
         }
@@ -202,12 +205,23 @@ void detail::UiState::commit_removals() {
             for (const auto& field : group->second) with_connection(field, [](auto& connection) { connection.confirmation_member = false; });
             confirmation_members_.erase(group);
         }
+        for (auto group = confirmation_members_.begin(); group != confirmation_members_.end();) {
+            std::erase(group->second, id);
+            if (group->second.empty()) {
+                actions_.erase(group->first);
+                confirmation_buttons_.erase(group->first);
+                group = confirmation_members_.erase(group);
+            } else ++group;
+        }
         if (auto tip = tooltip_ids_.find(id); tip != tooltip_ids_.end()) { overlay_ids_.erase(tip->second); tooltip_ids_.erase(tip); }
         actions_.erase(id); confirmation_buttons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosed_names_.erase(id);
-        blur_callbacks_.erase(id);
+        component_type(find(id)->kind).retire(*this, id);
+        text_scrolls_.erase(id); vertical_scrolls_.erase(id); visibility_.erase(id);
+        semantic_bounds_.erase(id); semantic_options_.erase(id); semantic_positions_.erase(id);
+        std::erase(semantic_order_, id);
         std::erase_if(controls_, [&](const Component& control) { return control.id == id; });
         semantic_instances_.erase(id);
-        button_lifetimes_.erase(id);
+        component_lifetimes_.erase(id);
         retiring_.clear();
     }
     committing_removals_ = false;
@@ -319,7 +333,7 @@ detail::UiState::UiState(std::vector<Component> controls) : controls_(std::move(
         if (control.id.empty() || !ids.emplace(control.id, true).second)
             throw std::invalid_argument("Control IDs must be nonempty and unique");
         if (!valid_text_flow(control)) throw std::invalid_argument("Invalid text alignment or spacing");
-        button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
+        component_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         detail::component_type(control.kind).adopt(*this, control);
     }
     for (const auto& control : controls_)
@@ -332,7 +346,7 @@ bool detail::UiState::draws_focus_indicator(const ComponentSnapshot& semantics) 
 }
 detail::UiState::~UiState() {
     lifetime_.reset();
-    button_lifetimes_.clear();
+    component_lifetimes_.clear();
     for (auto& [id, field] : edits_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : bools_) if (field.disconnect) field.disconnect();
     for (auto& [id, field] : radios_) if (field.disconnect) field.disconnect();
@@ -349,7 +363,7 @@ ProgressHandle detail::UiState::add_progress(Component control) {
     Id id = control.id;
     controls_.push_back(std::move(control));
     progresses_.emplace(id, ProgressField{});
-    return ProgressHandle(this, lifetime_, std::move(id));
+    return ProgressHandle(this, component_lifetime(id), id);
 }
 Result ProgressHandle::connect_source(Source<int> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
@@ -357,7 +371,8 @@ Result ProgressHandle::connect_source(Source<int> source) const {
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A numeric source requires read and subscribe"};
         auto& field = ui_->progresses_.at(id_);
         auto weak = lifetime_; auto state = ui_;
-        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        auto id = id_;
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id) && state->invalidate_) state->invalidate_(); };
         if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         if (ui_->invalidate_) ui_->invalidate_();
         return {};
@@ -375,7 +390,7 @@ TextFieldHandle detail::UiState::add_text_field(Component control) {
     Id id = control.id;
     controls_.push_back(std::move(control));
     edits_.emplace(id, std::move(field));
-    return TextFieldHandle(this, lifetime_, std::move(id));
+    return TextFieldHandle(this, component_lifetime(id), id);
 }
 ButtonHandle detail::UiState::add_button(Component control) {
     OperationScope operation(this);
@@ -384,7 +399,7 @@ ButtonHandle detail::UiState::add_button(Component control) {
     Id id = control.id;
     controls_.push_back(std::move(control));
     auto token = std::make_shared<int>(0);
-    button_lifetimes_.emplace(id, token);
+    component_lifetimes_.emplace(id, token);
     return ButtonHandle(this, token, std::move(id));
 }
 LabelHandle detail::UiState::add_label(Component control) {
@@ -393,7 +408,7 @@ LabelHandle detail::UiState::add_label(Component control) {
         throw std::invalid_argument("Invalid label component");
     Id id = control.id;
     controls_.push_back(std::move(control));
-    return LabelHandle(this, lifetime_, std::move(id));
+    return LabelHandle(this, component_lifetime(id), id);
 }
 CheckboxHandle detail::UiState::add_checkbox(Component control) {
     OperationScope operation(this);
@@ -403,7 +418,7 @@ CheckboxHandle detail::UiState::add_checkbox(Component control) {
     controls_.push_back(std::move(control));
     bools_.emplace(id, BoolField{});
     bind(id, [this, id] { return toggle_checkbox(id); });
-    return CheckboxHandle(this, lifetime_, std::move(id));
+    return CheckboxHandle(this, component_lifetime(id), id);
 }
 Result CheckboxHandle::toggle() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->toggle_checkbox(id_); });
@@ -430,7 +445,7 @@ Result CheckboxHandle::connect_source(Source<bool> source) const {
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"A boolean source requires read and subscribe"};
         auto& field = ui_->bools_.at(id_);
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        auto changed = [weak, state, id] { if (!weak.expired()) state->bool_source_changed(id); };
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id)) state->bool_source_changed(id); };
         if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         field.connected = false;
         return ui_->read_installed_source([&] { ui_->bool_source_changed(id_); });
@@ -474,7 +489,7 @@ Result detail::UiState::toggle_checkbox(const Id& id) {
     if (dispatching_) return {Status::busy, u"Operation is already executing"};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = !field.value;
-    Change<CheckboxHandle> change{CheckboxHandle(this, lifetime_, id), field.value, field.origin};
+    Change<CheckboxHandle> change{CheckboxHandle(this, component_lifetimes_.at(id), id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
 Query<ComponentSnapshot> CheckboxHandle::describe() const {
@@ -496,7 +511,7 @@ RadioGroupHandle detail::UiState::add_radio_group(Component control, std::vector
     auto id = control.id;
     controls_.push_back(std::move(control));
     RadioField field; field.options = std::move(options); radios_.emplace(id, std::move(field));
-    return RadioGroupHandle(this, lifetime_, std::move(id));
+    return RadioGroupHandle(this, component_lifetime(id), id);
 }
 ListHandle detail::UiState::add_list(Component control, std::vector<OptionItem> items) {
     OperationScope operation(this);
@@ -505,14 +520,15 @@ ListHandle detail::UiState::add_list(Component control, std::vector<OptionItem> 
     for (const auto& item : items) if (item.value.id.empty() || !ids.insert(item.value.id).second) throw std::invalid_argument("Invalid list identity");
     auto id = control.id; controls_.push_back(std::move(control));
     ListField field; field.items = std::move(items); lists_.emplace(id, std::move(field));
-    return ListHandle(this, lifetime_, std::move(id));
+    return ListHandle(this, component_lifetime(id), id);
 }
 Result ListHandle::connect_source(Source<std::optional<OptionValue>> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configuration_access(id_); !r) return r;
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
         auto& f = ui_->lists_.at(id_); auto weak = lifetime_; auto* state = ui_;
-        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        auto id = id_;
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id) && state->invalidate_) state->invalidate_(); };
         return ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); });
     });
 }
@@ -630,7 +646,7 @@ Result RadioGroupHandle::connect_source(Source<std::optional<OptionValue>> sourc
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
         auto& field = ui_->radios_.at(id_);
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        auto changed = [weak, state, id] { if (!weak.expired()) state->option_source_changed(id); };
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id)) state->option_source_changed(id); };
         if (auto r = ui_->replace_source(field.source, field.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         field.connected = false;
         return ui_->read_installed_source([&] { ui_->option_source_changed(id_); });
@@ -678,7 +694,7 @@ Result detail::UiState::select_option(const Id& id, OptionValue value) {
     if (field.value == value) return {};
     if (field.value == field.source_value && !field.submitting) field.origin = field.source_value;
     field.value = std::move(value);
-    Change<RadioGroupHandle> change{RadioGroupHandle(this, lifetime_, id), field.value, field.origin};
+    Change<RadioGroupHandle> change{RadioGroupHandle(this, component_lifetimes_.at(id), id), field.value, field.origin};
     return write_immediately(id, field, change);
 }
 Query<ComponentSnapshot> RadioGroupHandle::describe() const {
@@ -698,7 +714,7 @@ DropdownHandle detail::UiState::add_dropdown(Component control, std::vector<Opti
         if (option.value.id.empty() || !ids.insert(option.value.id).second) throw std::invalid_argument("Invalid dropdown option");
     auto id = control.id; controls_.push_back(std::move(control));
     DropdownField field; field.options = std::move(options); dropdowns_.emplace(id, std::move(field));
-    return DropdownHandle(this, lifetime_, std::move(id));
+    return DropdownHandle(this, component_lifetime(id), id);
 }
 void detail::UiState::close_popup() {
     OperationScope operation(this);
@@ -760,7 +776,7 @@ Result DropdownHandle::connect_source(Source<std::optional<OptionValue>> source)
         if (!source.read || !source.subscribe) return {Status::invalid_value, u"An option source requires read and subscribe"};
         auto& f = ui_->dropdowns_.at(id_);
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        auto changed = [weak, state, id] { if (!weak.expired()) state->dropdown_source_changed(id); };
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id)) state->dropdown_source_changed(id); };
         if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         f.connected = false;
         return ui_->read_installed_source([&] { ui_->dropdown_source_changed(id_); });
@@ -822,7 +838,7 @@ Result detail::UiState::select_dropdown(const Id& id, OptionValue value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = std::move(value); set_error(id, u"");
     if (invalidate_) invalidate_();
-    Change<DropdownHandle> change{DropdownHandle(this, lifetime_, id), f.value, f.origin};
+    Change<DropdownHandle> change{DropdownHandle(this, component_lifetimes_.at(id), id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
 Query<ComponentSnapshot> DropdownHandle::describe() const {
@@ -851,7 +867,7 @@ SliderHandle detail::UiState::add_slider(Component control, SliderRange range) {
     controls_.push_back(std::move(control));
     NumericField field{}; field.range = range; field.value = field.source_value = field.origin = range.minimum;
     numerics_.emplace(id, std::move(field));
-    return SliderHandle(this, lifetime_, std::move(id));
+    return SliderHandle(this, component_lifetime(id), id);
 }
 Result SliderHandle::set_value(int value) const {
     return detail::UiState::operate(*this, [&]() -> Result {
@@ -888,7 +904,7 @@ Result SliderHandle::connect_source(Source<int> source) const {
         try { value = source.read(); } catch (...) { return {Status::failed, u"Source read failed"}; }
         if (snap_slider(f.range, value) != value) return {Status::invalid_value, u"Source value is outside the slider's valid values"};
         auto weak = lifetime_; auto state = ui_; auto id = id_;
-        auto changed = [weak, state, id] { if (!weak.expired()) state->numeric_source_changed(id); };
+        auto changed = [weak, state, id] { if (!weak.expired() && !state->removal_pending(id)) state->numeric_source_changed(id); };
         if (auto r = ui_->replace_source(f.source, f.disconnect, std::move(source), [&](const auto& s) { return s.subscribe(changed); }); !r) return r;
         f.connected = false;
         return ui_->read_installed_source([&] { ui_->numeric_source_changed(id_); });
@@ -939,7 +955,7 @@ Result detail::UiState::slider_set_value(const Id& id, int value) {
     if (f.value == f.source_value && !f.submitting) f.origin = f.source_value;
     f.value = value;
     slider_land(id);  // the user's own input starts its slide afterwards (slider_started_moving); any other change shows at once
-    Change<SliderHandle> change{SliderHandle(this, lifetime_, id), f.value, f.origin};
+    Change<SliderHandle> change{SliderHandle(this, component_lifetimes_.at(id), id), f.value, f.origin};
     return write_immediately(id, f, change);
 }
 namespace {
@@ -1092,9 +1108,11 @@ std::optional<Id> detail::UiState::layout_id(const ComponentHandle& handle) cons
         else return item.ui_ == this && !item.lifetime_.expired() ? std::optional<Id>(item.id_) : std::nullopt;
     }, handle);
 }
-bool detail::UiState::retired_button(const ComponentHandle& handle) const {
-    const auto* button = std::get_if<ButtonHandle>(&handle);
-    return button && button->ui_ == this && button->lifetime_.expired();
+bool detail::UiState::retired_component(const ComponentHandle& handle) const {
+    return std::visit([this](const auto& h) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(h)>, std::monostate>) return false;
+        else return h.ui_ == this && (h.lifetime_.expired() || removal_pending(h.id_));
+    }, handle);
 }
 TabsHandle detail::UiState::add_tabs(Component control, std::vector<TabPage> pages) {
     OperationScope operation(this);
@@ -1116,7 +1134,7 @@ TabsHandle detail::UiState::add_tabs(Component control, std::vector<TabPage> pag
         for (const auto& handle : pages[i].members) page_members_.emplace(*layout_id(handle), std::make_pair(id, i));
     tabs_.emplace(id, TabsState{std::move(pages), 0, 0, false, {}});
     bind(id, [this, id] { auto& t = tabs_.at(id); return activate_tab(id, t.pages[t.candidate].value); });
-    return TabsHandle(this, lifetime_, std::move(id));
+    return TabsHandle(this, component_lifetime(id), id);
 }
 NavigationListHandle detail::UiState::add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial) {
     OperationScope operation(this);
@@ -1141,7 +1159,7 @@ NavigationListHandle detail::UiState::add_navigation_list(Component control, std
     for (std::size_t i = 0; i < pages.size(); ++i)
         for (const auto& handle : pages[i].members) page_members_.emplace(*layout_id(handle), std::make_pair(id, i));
     tabs_.emplace(id, TabsState{std::move(pages), index, index, false, {}});
-    return NavigationListHandle(this, lifetime_, std::move(id));
+    return NavigationListHandle(this, component_lifetime(id), id);
 }
 TooltipHandle detail::UiState::add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms) {
     OperationScope operation(this);
@@ -1648,15 +1666,40 @@ Result ButtonHandle::enable(bool enabled) const {
         return {};
     });
 }
+Result detail::UiState::remove_component(const Id& id) {
+    if (auto r = configuration_access(id); !r) return r;
+    if (dialog_member(id) || std::any_of(dialogs_.begin(), dialogs_.end(), [&](const auto& entry) {
+        return entry.second.initial == id || entry.second.fallback == id || entry.second.name_label == id;
+    })) return {Status::invalid_value, u"Dialog references must remain alive"};
+    pending_removals_.push_back(id);
+    return {};
+}
 Result ButtonHandle::remove() const {
-    return detail::UiState::operate(*this, [&]() -> Result {
-        if (auto r = ui_->configuration_access(id_); !r) return r;
-        if (ui_->dialog_member(id_) || std::any_of(ui_->dialogs_.begin(), ui_->dialogs_.end(), [&](const auto& entry) { return entry.second.fallback == id_; }))
-            return {Status::invalid_value, u"Dialog focus targets must remain alive"};
-        if (std::find(ui_->pending_removals_.begin(), ui_->pending_removals_.end(), id_) == ui_->pending_removals_.end())
-            ui_->pending_removals_.push_back(id_);
-        return {};
-    });
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result TextFieldHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result LabelHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result CheckboxHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result RadioGroupHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result SliderHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result ProgressHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result DropdownHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
+}
+Result ListHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->remove_component(id_); });
 }
 
 Result TextFieldHandle::focus() const {
@@ -1766,7 +1809,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
     std::set<Id> members;
     for (const auto& member : fields) {
         bool valid = std::visit([&](const auto& h) {
-            if (h.ui_ != this || h.lifetime_.expired() || !members.insert(h.id_).second) return false;
+            if (h.ui_ != this || h.lifetime_.expired() || removal_pending(h.id_) || !members.insert(h.id_).second) return false;
             auto& state = fields_of<std::decay_t<decltype(h)>>();
             auto it = state.find(h.id_);
             return it != state.end() && it->second.joinable();
@@ -1777,8 +1820,14 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
     confirmation_buttons_.insert(button.id_);
     confirmation_members_[button.id_] = {members.begin(), members.end()};
     bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
+        // The action's handles retain identity, while membership can shrink between invocations.
+        auto remaining = fields;
+        std::erase_if(remaining, [&](const auto& member) {
+            return std::visit([&](const auto& h) { return h.lifetime_.expired() || removal_pending(h.id_); }, member);
+        });
+        if (remaining.empty()) return Result{};
         std::vector<ConfirmFieldChange> changes;
-        for (const auto& member : fields) std::visit([&](const auto& h) {
+        for (const auto& member : remaining) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             changes.push_back(pending_change(h, f));
             f.submitting = true;
@@ -1786,25 +1835,25 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
         ConfirmationResult outcome;
         try { outcome = submit(changes); }
         catch (...) {
-            for (const auto& member : fields) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).submitting = false; }, member);
+            for (const auto& member : remaining) std::visit([&](const auto& h) { fields_of<std::decay_t<decltype(h)>>().at(h.id_).submitting = false; }, member);
             throw;
         }
-        for (std::size_t i = 0; i < fields.size(); ++i) std::visit([&](const auto& h) {
+        for (std::size_t i = 0; i < remaining.size(); ++i) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             f.submitting = false;
             if (outcome.result) { adopt_written(f, changes[i]); set_error(h.id_, u""); }
-        }, fields[i]);
+        }, remaining[i]);
         if (!outcome.result) {
             std::optional<std::size_t> first;
             for (const auto& error : outcome.errors) {
                 auto id = std::visit([&](const auto& h) { return layout_id(ComponentHandle{h}); }, error.field);
                 if (!id) continue;
-                for (std::size_t i = 0; i < fields.size(); ++i) {
-                    auto field_id = std::visit([&](const auto& h) { return h.id_; }, fields[i]);
+                for (std::size_t i = 0; i < remaining.size(); ++i) {
+                    auto field_id = std::visit([&](const auto& h) { return h.id_; }, remaining[i]);
                     if (field_id == *id) { set_error(*id, error.message); if (!error.message.empty() && (!first || i < *first)) first = i; break; }
                 }
             }
-            if (first) std::visit([&](const auto& h) { focus_error(h.id_); }, fields[*first]);
+            if (first) std::visit([&](const auto& h) { focus_error(h.id_); }, remaining[*first]);
         }
         auto notification = notify(); return notification ? outcome.result : notification;
     });
@@ -1882,8 +1931,8 @@ Result detail::UiState::connect_source(const Id& id, TextFieldSource source) {
     if (it == edits_.end()) return {Status::not_found, u"Component no longer exists"};
     if (!std::visit([](const auto& s) { return s.read && s.subscribe; }, source))
         return {Status::invalid_value, u"A text source requires read and subscribe"};
-    auto weak = std::weak_ptr<void>(lifetime_);
-    auto changed = [weak, this, id] { if (!weak.expired()) source_changed(id); };
+    auto weak = std::weak_ptr<void>(component_lifetimes_.at(id));
+    auto changed = [weak, this, id] { if (!weak.expired() && !removal_pending(id)) source_changed(id); };
     auto& field = it->second;
     if (auto r = replace_source(field.source, field.disconnect, std::move(source),
                                 [&](const TextFieldSource& next) { return std::visit([&](const auto& s) { return s.subscribe(changed); }, next); }); !r)
@@ -2165,7 +2214,7 @@ std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) 
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
-        if (other.target != id) continue;
+        if (other.target != id || removal_pending(other.id)) continue;
         s.labels.push_back(other.id);
         if (other.label_kind == LabelKind::name) s.name = text(other.id);
         else if (other.label_kind == LabelKind::description) s.description = text(other.id);
@@ -2205,8 +2254,8 @@ Result detail::UiState::bind_text(std::string_view id, std::function<std::u16str
     auto [entry, added] = providers_.try_emplace(control->id);
     auto& bound = entry->second;
     if (subscribe) {
-        std::weak_ptr<void> weak = lifetime_; auto* state = this;
-        auto changed = [weak, state] { if (!weak.expired() && state->invalidate_) state->invalidate_(); };
+        std::weak_ptr<void> weak = component_lifetimes_.at(control->id); auto* state = this; auto target = control->id;
+        auto changed = [weak, state, target] { if (!weak.expired() && !state->removal_pending(target) && state->invalidate_) state->invalidate_(); };
         auto result = replace_source(bound.read, bound.disconnect, std::move(provider), [&](const auto&) { return subscribe(changed); });
         if (added && !bound.read) providers_.erase(entry);  // a first binding whose subscribe threw leaves the label unbound
         return result;
@@ -2465,7 +2514,7 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
 }
 Result detail::UiState::submit_field(std::string_view id, Field& field,
         const std::function<Result(const Change<TextFieldHandle>&)>& write, bool command) {
-    auto change = Change<TextFieldHandle>{TextFieldHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+    auto change = Change<TextFieldHandle>{TextFieldHandle(this, component_lifetimes_.at(Id(id)), Id(id)), field.session.text, field.origin};
     field.submitting = true;
     if (command) invoking_ = true;
     Result result;
@@ -2860,7 +2909,7 @@ Result detail::UiState::move_focus(Id next) {
     for (std::size_t i = 0; i < pending_focus_.size(); ++i) {
         auto [from, to] = pending_focus_[i];
         try {
-            if (auto it = blur_callbacks_.find(from); it != blur_callbacks_.end()) {
+            if (auto it = blur_callbacks_.find(from); it != blur_callbacks_.end() && !removal_pending(from)) {
                 auto callback = it->second;
                 callback();
             }
@@ -3226,7 +3275,7 @@ void detail::UiState::seed_test_controls(std::vector<Component> controls) {
     for (auto& control : controls) {
         const auto& type = detail::component_type(control.kind);
         if (control.id.empty() || find(control.id)) throw std::invalid_argument("Control IDs must be nonempty and unique");
-        button_lifetimes_.emplace(control.id, std::make_shared<int>(0));
+        component_lifetimes_.emplace(control.id, std::make_shared<int>(0));
         controls_.push_back(std::move(control));
         type.adopt(*this, controls_.back());
     }
@@ -3372,7 +3421,7 @@ void detail::UiState::semantic_frame(const Frame& frame) {
             for (std::size_t i=0; i<p.options.size(); ++i) options[p.option_start+i] = intersect(p.options[i], p.clip);
         } else for (auto option : p.options) options.push_back(intersect(option, p.clip));
         for (const auto& control : controls_) {
-            if (control.target != p.id) continue;
+            if (control.target != p.id || removal_pending(control.id)) continue;
             const std::vector<Line>* lines = nullptr;
             if (control.label_kind == LabelKind::name) lines = &p.label_lines;
             else if (control.label_kind == LabelKind::description) lines = &p.description_lines;

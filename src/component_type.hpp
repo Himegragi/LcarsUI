@@ -18,7 +18,7 @@
 //     UiState::add_x with its kind check, which registers the component and its state;
 //   - its state: a field struct and map in UiState (core_internal.hpp) with an accessor in UiState::Internals
 //     (defined in component_type.cpp), and, when the state holds a source subscription, a line in the UiState destructor's
-//     disconnect loop;
+//     disconnect loop, and a retire() override that releases its state and source subscription at removal;
 //   - a Role in include/lcars/semantics.hpp and its UIA mapping, only if no existing Role fits.
 // A type that is created as data (UiState constructor, UiState::seed_test_controls) needs none of this but its ComponentKind
 // value (a test type takes one no built-in has), named in each detail::Component it is given: the class and its
@@ -192,6 +192,8 @@ public:
     // ---- What the layout, the host and the context menu ask a type.
     // A control supplied as data (the UiState constructor, the test seam) is registered with the state that goes with it.
     virtual void adopt(UiState&, const Component&) const {}
+    // At the removal safe point, release this type's per-instance state and source subscription.
+    virtual void retire(UiState&, const Id&) const {}
     // The type opens a popup that holds its items (a dropdown): the popup owns the wheel and a press outside it closes it, its
     // items show no bounds while it is closed and start no tooltip.
     virtual bool opens_popup() const { return false; }

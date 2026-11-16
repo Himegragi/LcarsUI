@@ -450,6 +450,13 @@ struct Arranger {
     int d(int v) const { return static_cast<int>(std::lround(v * scale)); }
     int pixels(int size) const { return static_cast<int>(std::lround((size ? size / 16.f : 1.f) * ui.presentation().text_size * scale)); }
 
+    std::vector<const Node*> retained_children(const Node& node) const {
+        std::vector<const Node*> children;
+        for (const auto& child : node.children)
+            if (child.kind != Node::Kind::component || !ui.retired_component(child.component)) children.push_back(&child);
+        return children;
+    }
+
     int component_width(const Node& node) {
         auto id = node.kind == Node::Kind::component ? ui.layout_id(node.component) : std::nullopt;
         auto control = id ? ui.find(*id) : nullptr;
@@ -476,7 +483,7 @@ struct Arranger {
         switch (node.kind) {
         case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
-            if (!id && ui.retired_button(node.component)) return 0;
+            if (ui.retired_component(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             bool previous = measuring; measuring = true;
             int result = build(node, width).bounds.h;
@@ -497,7 +504,7 @@ struct Arranger {
         switch (node.kind) {
         case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
-            if (!id && ui.retired_button(node.component)) return 0;
+            if (ui.retired_component(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
@@ -528,15 +535,18 @@ struct Arranger {
             return y - r.y + pad;
         }
         case Node::Kind::row: {
+            auto children = retained_children(node);
             int fixed = 0, flexible = 0;
-            for (const auto& child : node.children) {
+            for (const auto* entry : children) {
+                const auto& child = *entry;
                 if (auto width = component_width(child); width >= 0) fixed += width; else ++flexible;
             }
-            int total_gap = gap * std::max(0, static_cast<int>(node.children.size()) - 1);
+            int total_gap = gap * std::max(0, static_cast<int>(children.size()) - 1);
             int share = flexible ? std::max(0, (r.w - fixed - total_gap) / flexible) : 0;
             std::vector<int> widths, heights;
             int x = r.x, tallest = 0;
-            for (const auto& child : node.children) {
+            for (const auto* entry : children) {
+                const auto& child = *entry;
                 auto natural = component_width(child);
                 widths.push_back(natural >= 0 ? std::min(natural, std::max(0, r.x + r.w - x)) : share);
                 heights.push_back(height(child, widths.back()));
@@ -544,20 +554,21 @@ struct Arranger {
                 x += widths.back() + gap;
             }
             x = r.x;
-            for (std::size_t i = 0; i < node.children.size(); ++i) {  // centered on the cross axis
-                place(node.children[i], {x, r.y + (tallest - heights[i]) / 2, widths[i], 0}, out);
+            for (std::size_t i = 0; i < children.size(); ++i) {  // centered on the cross axis
+                place(*children[i], {x, r.y + (tallest - heights[i]) / 2, widths[i], 0}, out);
                 x += widths[i] + gap;
             }
             return tallest;
         }
         case Node::Kind::grid: {
-            int min = d(node.min_column), n = static_cast<int>(node.children.size());
+            auto children = retained_children(node);
+            int min = d(node.min_column), n = static_cast<int>(children.size());
             int columns = std::clamp((r.w + gap) / std::max(1, min + gap), 1, std::max(1, n));
             int w = (r.w - gap * (columns - 1)) / columns, y = r.y;
             for (int start = 0; start < n; start += columns) {
                 int tallest = 0;
                 for (int c = 0; c < columns && start + c < n; ++c)
-                    tallest = std::max(tallest, place(node.children[start + c], {r.x + c * (w + gap), y, w, 0}, out));
+                    tallest = std::max(tallest, place(*children[start + c], {r.x + c * (w + gap), y, w, 0}, out));
                 y += tallest + (start + columns < n ? gap : 0);
             }
             return y - r.y;
@@ -908,7 +919,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         visibility[p.id] = visibility[p.id] || visible(p.bounds, p.clip);
         if (!detail::component_type(p.kind).labels_in_placement()) return;
         for (const auto& control : a.ui.controls()) {
-            if (control.target != p.id) continue;
+            if (control.target != p.id || a.ui.available(control.id, true).status == Status::not_found) continue;
             const std::vector<Line>* lines = nullptr;
             if (control.label_kind == LabelKind::name) lines = &p.label_lines;
             else if (control.label_kind == LabelKind::description) lines = &p.description_lines;

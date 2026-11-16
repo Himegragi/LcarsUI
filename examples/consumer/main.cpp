@@ -16,6 +16,14 @@ static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiSta
 #include <variant>
 #include <vector>
 
+// Removal belongs to application configuration, and is available on these nine component handles only (#104).
+template <class H> concept OwnerRemovable = requires(const H& h) { { h.remove() } -> std::same_as<lcars::Result>; };
+static_assert(OwnerRemovable<lcars::ButtonHandle> && OwnerRemovable<lcars::LabelHandle> && OwnerRemovable<lcars::TextFieldHandle> &&
+              OwnerRemovable<lcars::CheckboxHandle> && OwnerRemovable<lcars::RadioGroupHandle> && OwnerRemovable<lcars::SliderHandle> &&
+              OwnerRemovable<lcars::ProgressHandle> && OwnerRemovable<lcars::DropdownHandle> && OwnerRemovable<lcars::ListHandle>);
+static_assert(!OwnerRemovable<lcars::TabsHandle> && !OwnerRemovable<lcars::NavigationListHandle> && !OwnerRemovable<lcars::DialogHandle> &&
+              !OwnerRemovable<lcars::TooltipHandle> && !OwnerRemovable<lcars::ContextMenuHandle> && !OwnerRemovable<lcars::SemanticTree>);
+
 // Read sources are one template told apart by value type (#95), and stay strongly typed (ADR 0004).
 static_assert(!std::is_convertible_v<lcars::Source<bool>, lcars::Source<int>>);
 static_assert(!std::is_convertible_v<lcars::Source<bool>, lcars::Source<std::optional<lcars::OptionValue>>>);

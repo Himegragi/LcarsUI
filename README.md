@@ -61,6 +61,19 @@ clock.connect_source({[&] { return now_text(); }, subscribe_to_clock});  // a no
 
 Every handle kind (`TextFieldHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHandle`, `ContextMenuHandle`) compares with `==` against handles of its own kind: two handles are equal when they control the same thing now. Two default-constructed handles are equal and differ from every real one; a button removed and created again under the same id gives a different handle (the old one keeps answering `not_found`); the same id in another `Ui` is a different handle; a context menu attached again to a recreated target is the same handle, since the old handle controls the new attachment. Comparing handles of two kinds (`TextFieldHandle == CheckboxHandle`) does not compile, and `ComponentHandle` and `ConfirmField` compare through their alternatives. Handles have no hash.
 
+Application code can permanently remove a label, text field, button, checkbox, radio group, slider, progress display,
+dropdown or list with `handle.remove()`. Acceptance immediately makes every operation on that instance answer
+`not_found` and ignores source notifications; the next safe point cancels its subscription and releases its state.
+Columns, rows and grids collapse its space and gaps. Reusing its id creates a new instance; old handles and saved source
+callbacks stay invalid. Removal has no semantic verb, and tabs, navigation lists and overlays have no removal entry point.
+
+Removing a field discards its draft and IME preedit, skips its `on_blur`, and still reports the focus move to the host.
+A confirmation group submits only its remaining fields; removing the last field releases the group action and leaves the
+button's enabled state unchanged, ready for `bind` or another group. Dialog members, initial/fallback focus targets and
+dialog name labels refuse removal with `invalid_value`. Removing a name label restores its target's fallback name with
+one semantic name-change event. Removing its target leaves the label on screen, and the label names a new component
+created under the same id.
+
 ## Component and semantic snapshots
 
 `handle.describe()` returns a `ComponentSnapshot` for application code; `ui.semantics().get(ref)` returns a
@@ -346,6 +359,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 | #100 field and text-field public names | none: host and layout edits are pure renames, and the unused appearance method is removed; the consumer checks the new names and rejects the old ones, with all existing CTests and `demo_render_compare` retained |
 | #102 shared snapshot fields | none: owning `CommonState` extraction and complete snapshot equality only; no host or layout changes, and option-node values are preserved for #106; `snapshots` and `demo_render_compare` cover the refactor |
+| #104 individual component removal | `-Only clipboard,ime,dpi`: row/grid compaction changes layout; removal discards IME preedit and suppresses blur validation through the core focus seam. No `desktop_host.cpp` or `uia_provider.cpp` changes. `removals` and `handles` cover the code and semantic contracts; the demo adds no removal controls. |
 | #101 aligned component and semantic snapshots (0.4.0) | `-Only uia,axe,demo-uia`: the UIA adapter combines item and parent `IsEnabled` and propagates parent availability events; `snapshots` is the core twin. No `desktop_host.cpp` or layout change. Check right-click and keyboard menus once with real input; component `focused` is false while the menu owns input. |
 | #106 option snapshots describe their own state (0.4.0) | `-Only uia,axe,demo-uia`: options no longer inherit parent descriptions, errors, labels or selection requirements; disabled list rows are not keyboard-focusable. `option_nodes` is the core twin. No host/provider or layout code changes; `tests/uia/verify.ps1` requires the two new UIA09 property checks. |
 

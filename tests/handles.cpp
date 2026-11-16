@@ -163,7 +163,7 @@ std::vector<Op> text_ops(const World& w) {
             LCARS_OP(h, set_rich_value(RichText{u"r", {}})), LCARS_OP(h, rich_value()), LCARS_OP(h, set_style(0, 1, bold())),
             LCARS_OP(h, toggle_style(StyleAttribute::bold)), LCARS_OP(h, apply_style(bold())),
             LCARS_OP(h, typing_style()), LCARS_OP(h, set_typing_style(TextStyle{})), LCARS_OP(h, set_colors({})), LCARS_OP(h, colors()),
-            LCARS_OP(h, confirm()), LCARS_OP(h, source_conflict()), LCARS_OP(h, use_latest()), LCARS_OP(h, describe()), LCARS_OP(h, draft())};
+            LCARS_OP(h, confirm()), LCARS_OP(h, source_conflict()), LCARS_OP(h, use_latest()), LCARS_OP(h, remove()), LCARS_OP(h, describe()), LCARS_OP(h, draft())};
 }
 std::vector<Op> button_ops(const World& w) {
     auto h = w.button;
@@ -177,7 +177,7 @@ std::vector<Op> label_ops(const World& w) {
             LCARS_OP(h, set_justify_method(JustifyMethod::per_character)), LCARS_OP(h, justify_method()),
             LCARS_OP(h, set_line_spacing(2.0)), LCARS_OP(h, line_spacing()), LCARS_OP(h, set_paragraph_spacing(8)), LCARS_OP(h, paragraph_spacing()),
             LCARS_OP(h, set_writing_mode(WritingMode::vertical)), LCARS_OP(h, writing_mode()),
-            LCARS_OP(h, set_vertical_digits(2)), LCARS_OP(h, vertical_digits()), LCARS_OP(h, describe())};
+            LCARS_OP(h, set_vertical_digits(2)), LCARS_OP(h, vertical_digits()), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> checkbox_ops(const World& w) {
     auto h = w.checkbox;
@@ -185,7 +185,7 @@ std::vector<Op> checkbox_ops(const World& w) {
             LCARS_OP(h, connect_source({[] { return true; }, no_updates()})),
             LCARS_OP(h, connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_confirmed([](const Change<CheckboxHandle>&) { return Result{}; })),
-            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
+            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> radio_ops(const World& w) {
     auto h = w.radio;
@@ -194,7 +194,7 @@ std::vector<Op> radio_ops(const World& w) {
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
             LCARS_OP(h, connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })),
-            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
+            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> slider_ops(const World& w) {
     auto h = w.slider;
@@ -202,11 +202,11 @@ std::vector<Op> slider_ops(const World& w) {
             LCARS_OP(h, connect_source({[] { return 40; }, no_updates()})),
             LCARS_OP(h, connect_immediate([](const Change<SliderHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })),
-            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
+            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> progress_ops(const World& w) {
     auto h = w.progress;
-    return {LCARS_OP(h, connect_source({[] { return 50; }, no_updates()})), LCARS_OP(h, describe())};
+    return {LCARS_OP(h, connect_source({[] { return 50; }, no_updates()})), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> dropdown_ops(const World& w) {
     auto h = w.dropdown;
@@ -215,7 +215,7 @@ std::vector<Op> dropdown_ops(const World& w) {
             LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
             LCARS_OP(h, connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })),
-            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, describe())};
+            LCARS_OP(h, confirm()), LCARS_OP(h, draft()), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> tabs_ops(const World& w) {
     auto h = w.tabs;
@@ -233,7 +233,7 @@ std::vector<Op> list_ops(const World& w) {
     focus_row.gone = u"";  // this one operation of today answers not_found without text
     return {LCARS_OP(h, select({"b"})), LCARS_OP(h, set_items(two_options())), LCARS_OP(h, focus()), std::move(focus_row),
             LCARS_OP(h, enable(true)), LCARS_OP(h, connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const Change<ListHandle>&) { return Result{}; })), LCARS_OP(h, describe())};
+            LCARS_OP(h, connect_immediate([](const Change<ListHandle>&) { return Result{}; })), LCARS_OP(h, remove()), LCARS_OP(h, describe())};
 }
 std::vector<Op> dialog_ops(const World& w) {
     auto h = w.dialog;
@@ -257,6 +257,7 @@ std::vector<Op> menu_ops(const World& w) {
 struct HandleKind {
     const char* name;
     const char16_t* gone;
+    Result (*remove)(World&); // null for handle kinds outside owner removal
     std::vector<Op> (*operations)(const World&);
     bool (*equal)(const World&, const World&);  // the kind's handle in one world == the one in the other
     bool (*copies_equal)(const World&);         // a copy-constructed and a copy-assigned handle == the world's
@@ -265,7 +266,9 @@ struct HandleKind {
 };
 template <auto member> HandleKind kind(const char* name, const char16_t* gone, std::vector<Op> (*operations)(const World&)) {
     using H = std::remove_cvref_t<decltype(std::declval<World&>().*member)>;
-    return {name, gone, operations,
+    Result (*remove)(World&) = nullptr;
+    if constexpr (requires(H h) { h.remove(); }) remove = [](World& w) { return (w.*member).remove(); };
+    return {name, gone, remove, operations,
             [](const World& a, const World& b) { return a.*member == b.*member; },
             [](const World& w) {
                 const H constructed(w.*member);
@@ -295,11 +298,6 @@ const std::vector<HandleKind>& kinds() {
     };
     return list;
 }
-const HandleKind& kind_named(std::string_view name) {
-    for (const auto& kind : kinds()) if (kind.name == name) return kind;
-    throw std::runtime_error("no such handle kind in the list");
-}
-
 std::string narrow(std::u16string_view text) { return {text.begin(), text.end()}; }  // the texts checked here are ASCII
 // The generic lifetime driver: each operation answers not_found with its text of today.
 void expect_gone(const HandleKind& kind, const std::vector<Op>& operations) {
@@ -346,14 +344,21 @@ void every_operation_after_the_ui_ends_is_not_found() {
     for (std::size_t i = 0; i < kinds().size(); ++i) expect_gone(kinds()[i], operations[i]);
 }
 
-void every_operation_of_a_removed_button_is_not_found() {
-    const auto& kind = kind_named("ButtonHandle");
-    expect_live(kind);
-    World world;
-    auto operations = kind.operations(world);
-    check(world.button.remove().status == Status::ok, "the button is removed");
-    expect_gone(kind, operations);
-    check(world.text.describe().status == Status::ok, "the Ui itself lives on");
+void every_operation_of_a_removed_component_is_not_found() {
+    for (const auto& kind : kinds()) {
+        if (!kind.remove) continue;
+        expect_live(kind);
+        World world;
+        auto operations = kind.operations(world);
+        auto trigger = world.ui->add_button({.id = "remove.trigger", .label = u"Remove"}).value.value();
+        trigger.bind([&] {
+            check(kind.remove(world).status == Status::ok, "Removal is accepted");
+            expect_gone(kind, operations);
+            return Result{};
+        });
+        check(bool(trigger.invoke()), "Every operation refuses a pending component inside the current callback");
+        expect_gone(kind, operations);
+    }
 }
 
 void expect(bool condition, const HandleKind& kind, const char* expectation) {
@@ -438,7 +443,7 @@ int main() {
     static constexpr test::Case cases[]{
         {"the list covers every handle kind", list_covers_every_kind},
         {"every operation of every handle answers not_found after the Ui ends", every_operation_after_the_ui_ends_is_not_found},
-        {"every operation of a removed button's handle answers not_found", every_operation_of_a_removed_button_is_not_found},
+        {"every operation of a removed component's handle answers not_found", every_operation_of_a_removed_component_is_not_found},
         {"default handles equal each other and no real handle", empty_handles_equal_each_other_and_no_real_one},
         {"a handle equals its copy", a_handle_equals_its_copy},
         {"the same id in another Ui is another handle", the_same_id_in_another_ui_differs},
