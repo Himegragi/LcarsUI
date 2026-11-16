@@ -17,7 +17,6 @@ inline Rect intersect(Rect a, Rect b) {
     int right = a.x + a.w < b.x + b.w ? a.x + a.w : b.x + b.w, bottom = a.y + a.h < b.y + b.h ? a.y + a.h : b.y + b.h;
     return {x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
 }
-struct FieldParts { Rect label, surface, editor; bool underline = false; };
 // border: decorative lines and dividers (light). outline: the edge that identifies a component (text field box,
 // checkbox, radio circle, slider track, scrollbar thumb, ...), >= 3:1 against surface, background and panel.
 struct Palette {
@@ -55,13 +54,13 @@ struct PaletteOverride {
     PaletteValue value;
     bool operator==(const PaletteOverride&) const = default;
 };
-// Measured text blocks a field must host. Heights are physical pixels from the text backend.
-struct FieldText {
+// Measured text blocks a text field must host. Heights are physical pixels from the text backend.
+struct TextFieldHeights {
     int label = 0, description = 0, error = 0;  // wrapped block heights; 0 when absent
     int editor = 0;                            // one line of editable text
 };
-// Where an appearance puts a field's role carriers. Rects are relative to the field origin.
-struct FieldLayout {
+// Where an appearance puts a text field's role carriers. Rects are relative to the text field origin.
+struct TextFieldLayout {
     Rect label, surface, editor, description, error;
     int height = 0;
     bool underline = false;
@@ -90,18 +89,17 @@ public:
     virtual Palette palette() const = 0;
     virtual bool supports(const ThemeVariant& variant) const { return variant == ThemeVariant::light(); }
     virtual Palette palette(const ThemeVariant&) const { return palette(); }
-    virtual FieldParts field(Rect bounds, int text_size) const = 0;
     virtual int radius() const = 0;
     // S1 form arrangement. scale converts the appearance's DIP spacing to physical pixels;
-    // labels and errors keep their association with the field in every arrangement.
-    virtual FieldLayout arrange_field(int width, const FieldText& text, float scale) const = 0;
+    // labels and errors keep their association with the text field in every arrangement.
+    virtual TextFieldLayout arrange_text_field(int width, const TextFieldHeights& text, float scale) const = 0;
     virtual int button_height(int line_height, float scale) const = 0;
     virtual int button_padding(float scale) const = 0;
     virtual const ComponentPresentation& component_presentation() const {
         static const ComponentPresentation defaults;
         return defaults;
     }
-    virtual FieldLayout arrange_field(int width, const FieldText& text, float scale, Density) const { return arrange_field(width, text, scale); }
+    virtual TextFieldLayout arrange_text_field(int width, const TextFieldHeights& text, float scale, Density) const { return arrange_text_field(width, text, scale); }
     virtual int button_height(int line_height, float scale, Density) const { return button_height(line_height, scale); }
     virtual int button_padding(float scale, Density) const { return button_padding(scale); }
     virtual ComponentPresentation component_presentation(Density density) const {

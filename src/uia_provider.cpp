@@ -122,7 +122,7 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
 namespace {
 int control_type(Role r) {
     switch (r) {
-    case Role::text: return UIA_EditControlTypeId;
+    case Role::text_field: return UIA_EditControlTypeId;
     case Role::button: return UIA_ButtonControlTypeId;
     case Role::label: return UIA_TextControlTypeId;
     case Role::checkbox: return UIA_CheckBoxControlTypeId;
@@ -192,9 +192,9 @@ public:
             if (id == UIA_ExpandCollapsePatternId && n->role == Role::dropdown) *result = static_cast<IExpandCollapseProvider*>(this);
             if (id == UIA_SelectionPatternId && (n->role == Role::radio_group || n->role == Role::dropdown || n->role == Role::list || n->role == Role::tabs)) { *result = make_selection_provider(this); return *result ? S_OK : E_OUTOFMEMORY; }
             if (id == UIA_SelectionItemPatternId && (n->role == Role::radio_option || n->role == Role::dropdown_option || n->role == Role::list_item || n->role == Role::tab_item)) *result = static_cast<ISelectionItemProvider*>(this);
-            if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
-            if (id == UIA_TextPatternId && n->role == Role::text) *result = static_cast<ITextProvider*>(this);
-            if (id == UIA_ScrollPatternId && n->role == Role::text && n->scroll) *result = static_cast<IScrollProvider*>(this);
+            if (id == UIA_ValuePatternId && n->role == Role::text_field) *result = static_cast<IValueProvider*>(this);
+            if (id == UIA_TextPatternId && n->role == Role::text_field) *result = static_cast<ITextProvider*>(this);
+            if (id == UIA_ScrollPatternId && n->role == Role::text_field && n->scroll) *result = static_cast<IScrollProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -405,7 +405,7 @@ public:
         if (SUCCEEDED(hr)) { *out = bstr(*result); if (!*out) return E_OUTOFMEMORY; } return hr;
     }
     // A multi-line text field scrolls vertically, by display lines: small steps are one line, large ones a page.
-    HRESULT scroll_call(std::function<HRESULT(const TextScroll&)> action) {
+    HRESULT scroll_call(std::function<HRESULT(const TextFieldScroll&)> action) {
         AddRef();
         auto hr = ctx->call([this, action = std::move(action)] {
             auto h = check(); if (FAILED(h)) return h;
@@ -415,10 +415,10 @@ public:
         });
         Release(); return hr;
     }
-    static unsigned most_first(const TextScroll& s) { return s.line_count > s.visible_lines ? s.line_count - s.visible_lines : 0; }
+    static unsigned most_first(const TextFieldScroll& s) { return s.line_count > s.visible_lines ? s.line_count - s.visible_lines : 0; }
     HRESULT STDMETHODCALLTYPE Scroll(ScrollAmount horizontal, ScrollAmount vertical) override {
         if (horizontal != ScrollAmount_NoAmount) return UIA_E_INVALIDOPERATION;
-        return scroll_call([&](const TextScroll& s) {
+        return scroll_call([&](const TextFieldScroll& s) {
             long long step = vertical == ScrollAmount_SmallIncrement ? 1 : vertical == ScrollAmount_SmallDecrement ? -1
                 : vertical == ScrollAmount_LargeIncrement ? static_cast<long long>(s.visible_lines) : vertical == ScrollAmount_LargeDecrement ? -static_cast<long long>(s.visible_lines) : 0;
             auto target = std::clamp(static_cast<long long>(s.first_line) + step, 0LL, static_cast<long long>(most_first(s)));
@@ -430,37 +430,37 @@ public:
         if (horizontal != -1.0) return UIA_E_INVALIDOPERATION;
         if (vertical == -1.0) return S_OK;
         if (!(vertical >= 0 && vertical <= 100)) return E_INVALIDARG;
-        return scroll_call([&](const TextScroll& s) {
+        return scroll_call([&](const TextFieldScroll& s) {
             auto target = static_cast<int>(std::lround(vertical / 100.0 * most_first(s)));
             return status_hr(ctx->ui->semantics().perform(ref, Verb::scroll, target).status);
         });
     }
-    HRESULT scroll_value(std::function<double(const TextScroll&)> value, double* out) {
+    HRESULT scroll_value(std::function<double(const TextFieldScroll&)> value, double* out) {
         if (!out) return E_POINTER;
         *out = 0;
         auto result = std::make_shared<double>(0);
-        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        auto hr = scroll_call([&](const TextFieldScroll& s) { *result = value(s); return S_OK; });
         if (SUCCEEDED(hr)) *out = *result;
         return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* out) override { return scroll_value([](const TextScroll&) { return static_cast<double>(-1.0); }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* out) override { return scroll_value([](const TextFieldScroll&) { return static_cast<double>(-1.0); }, out); }
     HRESULT STDMETHODCALLTYPE get_VerticalScrollPercent(double* out) override {
-        return scroll_value([](const TextScroll& s) { return most_first(s) ? 100.0 * s.first_line / most_first(s) : 0.0; }, out);
+        return scroll_value([](const TextFieldScroll& s) { return most_first(s) ? 100.0 * s.first_line / most_first(s) : 0.0; }, out);
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* out) override { return scroll_value([](const TextScroll&) { return 100.0; }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* out) override { return scroll_value([](const TextFieldScroll&) { return 100.0; }, out); }
     HRESULT STDMETHODCALLTYPE get_VerticalViewSize(double* out) override {
-        return scroll_value([](const TextScroll& s) { return s.line_count > s.visible_lines ? 100.0 * s.visible_lines / s.line_count : 100.0; }, out);
+        return scroll_value([](const TextFieldScroll& s) { return s.line_count > s.visible_lines ? 100.0 * s.visible_lines / s.line_count : 100.0; }, out);
     }
-    HRESULT scroll_flag(std::function<bool(const TextScroll&)> value, BOOL* out) {
+    HRESULT scroll_flag(std::function<bool(const TextFieldScroll&)> value, BOOL* out) {
         if (!out) return E_POINTER;
         *out = FALSE;
         auto result = std::make_shared<bool>(false);
-        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        auto hr = scroll_call([&](const TextFieldScroll& s) { *result = value(s); return S_OK; });
         if (SUCCEEDED(hr)) *out = *result ? TRUE : FALSE;
         return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll&) { return false; }, out); }
-    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll& s) { return s.line_count > s.visible_lines; }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* out) override { return scroll_flag([](const TextFieldScroll&) { return false; }, out); }
+    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* out) override { return scroll_flag([](const TextFieldScroll& s) { return s.line_count > s.visible_lines; }, out); }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
     HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
@@ -824,7 +824,7 @@ class TextRange final : public ITextRangeProvider {
         return call([&](const auto &) {
             std::vector<Rect> rectangles;
             if (auto p = placement(); p && first != last) {
-                auto editor = p->field.editor;
+                auto editor = p->text_field.editor;
                 editor.x += p->bounds.x; editor.y += p->bounds.y;
                 auto clip = intersect(editor, p->clip);
                 auto add = [&](unsigned a, unsigned b) {
@@ -1075,7 +1075,7 @@ HRESULT Provider::GetVisibleRanges(SAFEARRAY **out) {
         const auto& frame = ctx->frame();
         auto p = find_placement(frame, ref.id);
         if (!p || n->hidden) return ranges(nullptr, out);
-        auto editor = p->field.editor; editor.x += p->bounds.x; editor.y += p->bounds.y;
+        auto editor = p->text_field.editor; editor.x += p->bounds.x; editor.y += p->bounds.y;
         auto clip = intersect(editor, p->clip);
         if (clip.w <= 0 || clip.h <= 0) return ranges(nullptr, out);
         auto first = placement_text_offset(frame, ref.id, clip.x);
@@ -1224,7 +1224,7 @@ void UiaBridge::Impl::observe() {
             }
         }
         if (event.kind == SemanticEventKind::property_changed && event.property == "value") {
-            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text) return;
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text_field) return;
             auto p = ctx->provider(event.ref); p->AddRef(); auto value = n->value;
             ctx->events->post([p, value = std::move(value)] {
                 VARIANT before, after; VariantInit(&before); VariantInit(&after);

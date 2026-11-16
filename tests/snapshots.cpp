@@ -12,7 +12,7 @@ namespace {
 static_assert(std::is_same_v<decltype(ComponentSnapshot::writing_mode), std::optional<WritingMode>>);
 static_assert(std::is_same_v<decltype(ComponentSnapshot::vertical_digits), std::optional<int>>);
 static_assert(std::is_same_v<decltype(ComponentSnapshot::range), std::optional<SliderRange>>);
-static_assert(std::is_same_v<decltype(ComponentSnapshot::scroll), std::optional<TextScroll>>);
+static_assert(std::is_same_v<decltype(ComponentSnapshot::scroll), std::optional<TextFieldScroll>>);
 
 // #102 can replace this predicate with CommonState equality without changing any state driver.
 bool same_common_fields(const ComponentSnapshot& a, const NodeSnapshot& b) {
@@ -45,18 +45,18 @@ struct World {
     test::FakeMeasure measure;
     ScrollState page_scroll;
     std::vector<Subject> subjects;
-    TextHandle multi;
+    TextFieldHandle multi;
     ButtonHandle button;
     template <class H> H keep(H h) { subjects.push_back({h.describe()->id, h}); return h; }
     explicit World(bool enabled = true, bool read_only = false) {
         auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
         auto text_config = config("text"); text_config.read_only = read_only;
-        auto text = keep(ui.add_text(text_config).value.value());
+        auto text = keep(ui.add_text_field(text_config).value.value());
         text.connect_source(source(std::u16string(u"Single")));
         text.connect_confirmed([](const auto&) { return Result{}; });
         auto multi_config = config("multi"); multi_config.multiline = true; multi_config.visible_lines = 2;
         multi_config.rich = true; multi_config.read_only = read_only;
-        multi = keep(ui.add_text(multi_config).value.value());
+        multi = keep(ui.add_text_field(multi_config).value.value());
         multi.connect_rich_source(source(RichText{u"a\nb\nc\nd\ne\nf", {{0, 1, true}}}));
         multi.connect_rich_confirmed([](const auto&) { return Result{}; });
         button = keep(ui.add_button(config("button")).value.value());
@@ -122,11 +122,11 @@ void normal() {
     check(component && node && component->name == u"Displayed" && component->value == u"Displayed" &&
           component->name == node->name, "normal/label: both snapshots name a label by its displayed text");
     check(same_common_fields(*component, *node), "normal/label: all common fields agree");
-    auto field = ui.add_text({.id = "multi", .value = u"a\nb\nc\nd", .multiline = true, .visible_lines = 2}).value.value();
+    auto field = ui.add_text_field({.id = "multi", .value = u"a\nb\nc\nd", .multiline = true, .visible_lines = 2}).value.value();
     arrange(layout::component(field), ui, web_appearance(), measure, 300, 200, 1.f, scroll);
     check(same_common_fields(*field.describe(), *ui.semantics().get({"multi"})), "normal/multi: all common fields agree");
     check(!field.describe()->writing_mode && !field.describe()->vertical_digits &&
-          field.describe()->scroll == std::optional{TextScroll{0, 2, 4}}, "normal/multi: only labels have writing settings, scrolling is one value");
+          field.describe()->scroll == std::optional{TextFieldScroll{0, 2, 4}}, "normal/multi: only labels have writing settings, scrolling is one value");
     auto name = ui.add_label({.id = "label.name", .value = u"Other", .target = "label", .label_kind = LabelKind::name}).value.value();
     check(label.describe()->name == u"Displayed" && ui.semantics().get({"label"})->name == u"Displayed",
           "normal/label: an association does not replace the label's own displayed name");
@@ -145,7 +145,7 @@ void read_only() {
     for (const auto& subject : w.subjects) {
         const auto snapshot = describe(subject.handle);
         // Applicability follows the typed handle/configuration capabilities, including read-only progress.
-        const bool applicable = std::holds_alternative<TextHandle>(subject.handle) ||
+        const bool applicable = std::holds_alternative<TextFieldHandle>(subject.handle) ||
                                 std::holds_alternative<SliderHandle>(subject.handle) ||
                                 std::holds_alternative<ListHandle>(subject.handle) ||
                                 std::holds_alternative<ProgressHandle>(subject.handle);
@@ -203,11 +203,11 @@ void blocked_by_modal() {
 void multiline_scrolled() {
     World w; w.arrange_page();
     for (const auto& subject : w.subjects) {
-        if (const auto* field = std::get_if<TextHandle>(&subject.handle); field && field->describe()->multiline)
+        if (const auto* field = std::get_if<TextFieldHandle>(&subject.handle); field && field->describe()->multiline)
             check(bool(field->set_scroll_line(3)), "multiline_scrolled: set first display line");
     }
     w.arrange_page(); compare_all(w, "multiline_scrolled");
-    check(w.multi.describe()->scroll == std::optional{TextScroll{3, 2, 6}}, "multiline_scrolled: scrolled view reached");
+    check(w.multi.describe()->scroll == std::optional{TextFieldScroll{3, 2, 6}}, "multiline_scrolled: scrolled view reached");
 }
 void scrolled_offscreen() {
     World w;

@@ -264,9 +264,8 @@ void a_custom_appearance_is_never_overridden() {
     struct Custom final : Appearance {
         std::string_view name() const override { return "Minimal Web"; }  // same name, different object
         Palette palette() const override { return web_appearance().palette(); }
-        FieldParts field(Rect b, int s) const override { return web_appearance().field(b, s); }
         int radius() const override { return 6; }
-        FieldLayout arrange_field(int w, const FieldText& t, float s) const override { return web_appearance().arrange_field(w, t, s); }
+        TextFieldLayout arrange_text_field(int w, const TextFieldHeights& t, float s) const override { return web_appearance().arrange_text_field(w, t, s); }
         int button_height(int l, float s) const override { return web_appearance().button_height(l, s); }
         int button_padding(float s) const override { return web_appearance().button_padding(s); }
     } custom;
@@ -311,7 +310,7 @@ struct RectProbe : detail::ComponentPaint {
 
 void a_multiline_field_paints_with_the_overridden_palette() {
     Ui ui;
-    auto field = ui.add_text({.id = "note", .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visible_lines = 2}).value.value();
+    auto field = ui.add_text_field({.id = "note", .value = u"1\n2\n3\n4\n5\n6", .multiline = true, .visible_lines = 2}).value.value();
     detail::access(ui).focus("note");
     const auto& web = web_appearance();
     const Color track{245, 240, 250}, thumb{200, 30, 120};

@@ -72,7 +72,7 @@ std::vector<std::pair<unsigned, unsigned>> wrap_ranges(std::u16string_view text,
 }
 // text[begin, end) in runs of one style, each measured with its own face; the stops continue across runs.
 TextRun styled_run(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<StyleSpan>& spans,
-                   unsigned begin, unsigned end, std::vector<FieldLine::Piece>* pieces) {
+                   unsigned begin, unsigned end, std::vector<TextFieldLine::Piece>* pieces) {
     TextRun out;
     out.stops.push_back({0, 0.f});
     float x = 0;
@@ -117,13 +117,13 @@ std::vector<WrappedLine> wrap_marked(TextMeasure& measure, std::u16string_view t
     }
     return out;
 }
-std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width, const std::vector<StyleSpan>* spans) {
+std::vector<TextFieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text, int pixels, int width, const std::vector<StyleSpan>* spans) {
     RangeMeasure run_of = [&](unsigned a, unsigned b) {
         return spans ? styled_run(measure, text, pixels, *spans, a, b, nullptr) : measure.measure(text.substr(a, b - a), pixels);
     };
-    std::vector<FieldLine> out;
+    std::vector<TextFieldLine> out;
     for (auto [begin, end] : wrap_ranges(text, width, run_of)) {
-        FieldLine line;
+        TextFieldLine line;
         line.begin = begin;
         line.end = end;
         // The LF between paragraphs is not part of a line; a wrapped piece is followed by more of its own text.
@@ -133,37 +133,37 @@ std::vector<FieldLine> wrap_lines(TextMeasure& measure, std::u16string_view text
     }
     return out;
 }
-unsigned FieldView::line_of(unsigned offset) const {
+unsigned TextFieldView::line_of(unsigned offset) const {
     if (lines.empty()) return 0;
-    auto it = std::upper_bound(lines.begin(), lines.end(), offset, [](unsigned o, const FieldLine& line) { return o < line.begin; });
+    auto it = std::upper_bound(lines.begin(), lines.end(), offset, [](unsigned o, const TextFieldLine& line) { return o < line.begin; });
     unsigned index = it == lines.begin() ? 0 : static_cast<unsigned>(it - lines.begin()) - 1;
     if (upstream && index > 0 && lines[index - 1].soft && lines[index - 1].end == offset) --index;
     return index;
 }
-std::pair<unsigned, bool> FieldView::hit_in_line(unsigned line, float x) const {
+std::pair<unsigned, bool> TextFieldView::hit_in_line(unsigned line, float x) const {
     if (lines.empty()) return {0, false};
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     unsigned offset = item.begin + item.run.hit(x - item.shift);
     return {offset, item.soft && offset == item.end};
 }
-unsigned FieldView::cell_in_line(unsigned line, float x) const {
+unsigned TextFieldView::cell_in_line(unsigned line, float x) const {
     if (lines.empty()) return 0;
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     unsigned offset = item.begin + item.run.cell(x - item.shift);
     if (item.soft && offset == item.end && offset > item.begin) --offset;  // right of a wrapped line: its last character
     return offset;
 }
-float FieldView::x_in_line(unsigned line, unsigned offset) const {
+float TextFieldView::x_in_line(unsigned line, unsigned offset) const {
     if (lines.empty()) return 0;
     const auto& item = lines[std::min<std::size_t>(line, lines.size() - 1)];
     return item.shift + item.run.x(std::clamp(offset, item.begin, item.end) - item.begin);
 }
-int FieldView::row_y(unsigned line, unsigned first_line) const {
+int TextFieldView::row_y(unsigned line, unsigned first_line) const {
     if (lines.empty()) return text.y;
     const auto at = [&](unsigned i) { return lines[std::min<std::size_t>(i, lines.size() - 1)].top; };
     return text.y + at(line) - at(first_line);
 }
-unsigned FieldView::line_at(int y, unsigned first_line) const {
+unsigned TextFieldView::line_at(int y, unsigned first_line) const {
     if (lines.empty()) return 0;
     const unsigned last = static_cast<unsigned>(std::min<std::size_t>(first_line + std::max(1u, visible), lines.size())) - 1;
     unsigned found = std::min(first_line, last);
@@ -212,7 +212,7 @@ const Placement* detail::find_placement(const Frame& frame, std::string_view id)
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
-const Placement* Frame::find(const TextHandle& handle) const {
+const Placement* Frame::find(const TextFieldHandle& handle) const {
     return handle.ui_ == owner_ && !handle.lifetime_.expired() ? detail::find_placement(*this, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ButtonHandle& handle) const {
@@ -275,43 +275,43 @@ const Placement* Frame::hit(int x, int y) const {
 detail::TextHit detail::placement_text_hit(const Frame& frame, std::string_view id, int x, int y) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return {};
-    if (!p->multiline) return {p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset), false};
+    if (!p->multiline) return {p->run.hit(static_cast<float>(x - p->bounds.x - p->text_field.editor.x) - p->shift + p->offset), false};
     auto [offset, upstream] = p->view.hit_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
     return {offset, upstream};
 }
 unsigned detail::placement_text_cell(const Frame& frame, std::string_view id, int x, int y) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return 0;
-    if (!p->multiline) return p->run.cell(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+    if (!p->multiline) return p->run.cell(static_cast<float>(x - p->bounds.x - p->text_field.editor.x) - p->shift + p->offset);
     return p->view.cell_in_line(p->view.line_at(y), static_cast<float>(x - p->view.text.x));
 }
 unsigned detail::placement_text_offset(const Frame& frame, std::string_view id, int x) {
     const auto* p = detail::find_placement(frame, id);
     if (!p || !component_type(p->kind).selects_text()) return 0;
     if (p->multiline) return placement_text_hit(frame, id, x, p->view.text.y).offset;
-    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+    return p->run.hit(static_cast<float>(x - p->bounds.x - p->text_field.editor.x) - p->shift + p->offset);
 }
-unsigned Frame::text_offset(const TextHandle& handle, int x) const {
+unsigned Frame::text_offset(const TextFieldHandle& handle, int x) const {
     const auto* p = find(handle);
     if (!p) return 0;
     if (p->multiline) return detail::placement_text_hit(*this, p->id, x, p->view.text.y).offset;
-    return p->run.hit(static_cast<float>(x - p->bounds.x - p->field.editor.x) - p->shift + p->offset);
+    return p->run.hit(static_cast<float>(x - p->bounds.x - p->text_field.editor.x) - p->shift + p->offset);
 }
-unsigned Frame::text_offset(const TextHandle& handle, int x, int y) const {
+unsigned Frame::text_offset(const TextFieldHandle& handle, int x, int y) const {
     const auto* p = find(handle);
     return p ? detail::placement_text_hit(*this, p->id, x, y).offset : 0;
 }
 int Placement::caret_x(unsigned offset) const {
     if (multiline) return view.text.x + static_cast<int>(std::lround(view.x_in_line(view.line_of(offset), offset)));
-    return bounds.x + field.editor.x + static_cast<int>(std::lround(shift + run.x(offset) - this->offset));
+    return bounds.x + text_field.editor.x + static_cast<int>(std::lround(shift + run.x(offset) - this->offset));
 }
 Rect Placement::caret_rect(unsigned offset) const {
-    if (!multiline) return {caret_x(offset), bounds.y + field.editor.y, 1, field.editor.h};
+    if (!multiline) return {caret_x(offset), bounds.y + text_field.editor.y, 1, text_field.editor.h};
     const unsigned last = static_cast<unsigned>(std::min<std::size_t>(view.first + std::max(1u, view.visible), view.lines.size())) - 1;
     return {caret_x(offset), view.row_y(std::clamp(view.line_of(offset), std::min(view.first, last), last)), 1, view.row_height};
 }
 int Placement::caret_y(unsigned offset) const {
-    if (!multiline) return bounds.y + field.editor.y;
+    if (!multiline) return bounds.y + text_field.editor.y;
     return view.row_y(view.line_of(offset));
 }
 int ScrollRegion::offset_for_thumb(int thumb_position) const {
@@ -335,10 +335,10 @@ bool Frame::scroll_to(Ui& ui, ScrollState& state, int offset) const {
     if ((modal || owner.modal()) && !popup_scroll && !region->modal_content) return false;
     int next = std::clamp(offset, 0, region->maximum);
     if (next == state.offset) return false;
-    if (!region->field.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
+    if (!region->text_field.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
         int step = std::max(1, region->step), lines = (next + step / 2) / step, current = state.offset / step;
         if (lines == current) lines += next > state.offset ? 1 : -1;
-        if (!owner.scroll_lines_to(region->field, static_cast<unsigned>(std::clamp(lines, 0, region->maximum / step)))) return false;
+        if (!owner.scroll_lines_to(region->text_field, static_cast<unsigned>(std::clamp(lines, 0, region->maximum / step)))) return false;
         owner.scrolled();
         return true;
     }
@@ -390,7 +390,7 @@ bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
     }
     return false;
 }
-bool Frame::select_to(Ui& ui, const TextHandle& handle, int x, int y) const {
+bool Frame::select_to(Ui& ui, const TextFieldHandle& handle, int x, int y) const {
     auto& owner = detail::access(ui);
     if (owner_ != &owner) return false;
     const auto* p = find(handle);
@@ -616,7 +616,7 @@ struct Arranger {
         const auto& v = p.view;
         ScrollRegion region;
         region.state = &ui.line_scroll(p.id);
-        region.field = p.id; region.step = v.row_height; region.modal_content = in_modal;
+        region.text_field = p.id; region.step = v.row_height; region.modal_content = in_modal;
         region.viewport = region.clip = {v.text.x, v.text.y, v.track.x + v.track.w - v.text.x, v.text.h};
         region.track = v.track; region.thumb = v.thumb;
         const int count = static_cast<int>(v.lines.size()), visible = static_cast<int>(v.visible);
@@ -819,7 +819,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     a.frame.items = std::move(items);
     for (auto& region : a.frame.regions) region.clip = intersect(region.clip, window);
     // The frame-level scroll fields describe the page, never a sideways-scrolling label or a text field.
-    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal && r.field.empty(); });
+    auto page_region = std::find_if(a.frame.regions.begin(), a.frame.regions.end(), [](const ScrollRegion& r) { return !r.horizontal && r.text_field.empty(); });
     if (page_region != a.frame.regions.end()) {
         const auto& outer = *page_region;
         a.frame.viewport = outer.viewport; a.frame.track = outer.track; a.frame.thumb = outer.thumb;

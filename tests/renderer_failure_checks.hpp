@@ -6,7 +6,7 @@
 inline bool renderer_failure_omits_interactive_verbs(const lcars::ComponentSnapshot& snapshot) {
     return std::all_of(snapshot.verbs.begin(), snapshot.verbs.end(), [](lcars::Verb verb) { return verb == lcars::Verb::confirm; });
 }
-inline bool renderer_failure_preserves_draft(const lcars::TextHandle& field, std::u16string_view expected) {
+inline bool renderer_failure_preserves_draft(const lcars::TextFieldHandle& field, std::u16string_view expected) {
     return field.set_value(u"unexpected change").status == lcars::Status::renderer_failed &&
         field.draft().value == expected;
 }

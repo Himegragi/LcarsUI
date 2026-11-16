@@ -1,6 +1,7 @@
 # Ticket #101 spec updates (0.4.0)
 
 Apply to the untracked author-machine specs under `E:\LcarsUI\docs\specs`.
+The final scroll type is TextFieldScroll after merging #100 (which removed TextScroll).
 Historical inventory rows can stay historical; the following describe the current contract.
 
 ## v1-semantic-layer-and-uia.md
@@ -9,7 +10,7 @@ Section: 語意層讀取（S2）, immediately before the C++ shape.
 
 Old: `規格提案的 C++ 形狀（新標頭 include/lcars/semantics.hpp，屬 lcars_core）` (the existing Markdown puts backticks around the paths).
 
-New: `元件快照（ComponentSnapshot，Handle::describe）與語意節點快照（NodeSnapshot，SemanticTree::get）維持兩個型別。同名欄位同義；元件節點的共同欄位及元件層級 verbs 與 describe() 完全相等。元件快照保留 items、labels、source_conflict、candidate；節點快照保留 bounds、instance、labelled_by／described_by 等語意樹專用欄位。選項維持 items 與 {元件識別碼, 選項值} 子節點兩種表示法。Verb 與 TextScroll 宣告在 core.hpp；NodeSnapshot 與 SemanticTree 在 semantics.hpp。共同 struct 的抽取另由 #102 實作。`
+New: `元件快照（ComponentSnapshot，Handle::describe）與語意節點快照（NodeSnapshot，SemanticTree::get）維持兩個型別。同名欄位同義；元件節點的共同欄位及元件層級 verbs 與 describe() 完全相等。元件快照保留 items、labels、source_conflict、candidate；節點快照保留 bounds、instance、labelled_by／described_by 等語意樹專用欄位。選項維持 items 與 {元件識別碼, 選項值} 子節點兩種表示法。Verb 與 TextFieldScroll 宣告在 core.hpp；NodeSnapshot 與 SemanticTree 在 semantics.hpp。共同 struct 的抽取另由 #102 實作。`
 
 Section: S2, `NodeSnapshot` code block.
 
@@ -23,7 +24,7 @@ New: `std::vector<Verb> verbs;             // 元件節點與 ComponentSnapshot 
 
 Section: S2, after the code block. Old: no paragraph defining the aligned snapshot fields.
 
-New paragraph: `兩種快照中，標籤的 name 與 value 都是顯示文字；focused 指此刻鍵盤輸入送到哪裡，右鍵選單開著時元件為 false。選項 enabled 只代表選項自己的設定，不併入所屬元件；能否選取看 verbs 是否有 select。UIA IsEnabled 由轉接合併所屬元件與選項設定；所屬元件 enabled 改變時，轉接仍發出受影響選項的 IsEnabled 事件。writing_mode、vertical_digits 為 optional，只有標籤有值；滑桿統一用 range；多行文字欄位統一用 optional<TextScroll> scroll（first_line、visible_lines、line_count）。舊 ComponentSnapshot::operations、slider_range、visible_lines、scroll_line、line_count 不保留別名。`
+New paragraph: `兩種快照中，標籤的 name 與 value 都是顯示文字；focused 指此刻鍵盤輸入送到哪裡，右鍵選單開著時元件為 false。選項 enabled 只代表選項自己的設定，不併入所屬元件；能否選取看 verbs 是否有 select。UIA IsEnabled 由轉接合併所屬元件與選項設定；所屬元件 enabled 改變時，轉接仍發出受影響選項的 IsEnabled 事件。writing_mode、vertical_digits 為 optional，只有標籤有值；滑桿統一用 range；多行文字欄位統一用 optional<TextFieldScroll> scroll（first_line、visible_lines、line_count）。舊 ComponentSnapshot::operations、slider_range、visible_lines、scroll_line、line_count 不保留別名。`
 
 Section: 語意層操作（S3）, 富文字（#81） paragraph.
 

@@ -18,7 +18,7 @@ int main() {
         auto node = probe.semantics().get({"probe.unnamed"});
         check(std::find(node->verbs.begin(), node->verbs.end(), Verb::invoke) == node->verbs.end());
         check(probe.semantics().perform({"probe.unnamed"}, Verb::invoke).status == Status::not_supported);
-        auto field = probe.add_text({.id = "unconnected"}).value.value();
+        auto field = probe.add_text_field({.id = "unconnected"}).value.value();
         check(bool(field.read_only(true)));
         check(field.set_value(u"x").status == Status::read_only);
         auto error = probe.add_label({.id = "unconnected.error", .target = "unconnected", .label_kind = LabelKind::error}).value.value();
@@ -38,7 +38,7 @@ int main() {
         check(children && children->size() == 2 && (*children)[0].id == "first" && (*children)[1].id == "second");
     }
     Ui ui;
-    auto first = ui.add_text({.id = "form.name"});
+    auto first = ui.add_text_field({.id = "form.name"});
     check(bool(first));
     auto duplicate = ui.add_button({.id = "form.name"});
     check(duplicate.status == Status::invalid_value && !duplicate.value && bool(first.value->describe()));

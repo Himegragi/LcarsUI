@@ -45,7 +45,7 @@ bool safe_cut(std::u16string_view text, std::size_t offset) {
 bool is_space(char32_t c) { return c == u' '; }
 // The line shaped once for letters that will be drawn apart: optional ligatures off, kerning on (TextMeasure::measure_apart).
 // Rich lines are measured run by run in each run's own face and joined, as the layout does for the natural run.
-TextRun measure_line_apart(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<FieldLine::Piece>* styles) {
+TextRun measure_line_apart(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<TextFieldLine::Piece>* styles) {
     if (!styles || styles->empty()) return measure.measure_apart(text, pixels, FontStyle{});
     TextRun joined;
     joined.stops.push_back({0, 0.f});
@@ -72,7 +72,7 @@ bool is_wide_character(char32_t c) {
            (c >= 0x20000 && c <= 0x3ffff);
 }
 std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view text, int pixels, const TextRun& natural, float width, JustifyMethod method,
-                                      const std::vector<FieldLine::Piece>* styles) {
+                                      const std::vector<TextFieldLine::Piece>* styles) {
     std::size_t content_end = text.size();
     while (content_end > 0 && is_blank(text[content_end - 1])) --content_end;  // trailing spaces never stretch
     if (content_end == 0) return std::nullopt;

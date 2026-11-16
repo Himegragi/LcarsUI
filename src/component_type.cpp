@@ -159,7 +159,7 @@ int conflict_lines(ComponentLayout& c, int y, bool conflict, int inset = 0) {
 }
 // The error message under a component, when it is invalid. Text set in from the edges keeps at least one pixel of width;
 // text across the whole width takes the width as given, even none. (A text field does not use this: its appearance decides the
-// rectangle of its error text, so arrange_field wraps the message to that rectangle and anchors it there.)
+// rectangle of its error text, so arrange_text_field wraps the message to that rectangle and anchors it there.)
 int error_lines(ComponentLayout& c, int y, const ComponentSnapshot& semantics, int inset = 0) {
     if (!semantics.invalid) return y;
     return stack_lines(c, c.placement.error_lines, semantics.error, y, inset, inset > 0 ? std::max(1, c.width - 2 * inset) : c.width);
@@ -187,7 +187,7 @@ void paint_lines(ComponentPaint& c, const std::vector<Line>& lines, int pixels, 
 // appearance that puts it inside, the label) keeps a ring's thickness of room from every edge. Missing room is added: the
 // content moves in from the sides, and the surface grows at the top and bottom, pushing what follows it down. It does this
 // whether or not the field is focused, so focus never moves anything.
-void keep_ring_room(FieldLayout& f, int ring) {
+void keep_ring_room(TextFieldLayout& f, int ring) {
     const Rect surface = f.surface;
     if (surface.w <= 0 || surface.h <= 0) return;
     auto held = [&](const Rect& r) {
@@ -419,7 +419,7 @@ public:
             const auto caret = target.caret_rect(session->visible_caret());
             return Rect{caret.x, caret.y, 0, caret.h};
         }
-        return Rect{target.bounds.x, target.bounds.y + target.field.editor.y, 0, target.field.editor.h};
+        return Rect{target.bounds.x, target.bounds.y + target.text_field.editor.y, 0, target.text_field.editor.h};
     }
     bool has_builtin_menu() const override { return true; }
     void builtin_menu_entries(const UiState& ui, const Component& c, bool clipboard_text, std::vector<UiState::MenuEntry>& raw) const override {
@@ -477,7 +477,7 @@ public:
         const auto& field = it->second;
         if (c.multiline) {
             const auto& m = field.multi;
-            s.scroll = TextScroll{m.pending_first.value_or(m.first), c.visible_lines,
+            s.scroll = TextFieldScroll{m.pending_first.value_or(m.first), c.visible_lines,
                                   m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0};
         }
         s.source_conflict = field.connected && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
@@ -578,10 +578,10 @@ public:
         return std::nullopt;
     }
     std::string_view name() const override { return "text"; }
-    Role role() const override { return Role::text; }
+    Role role() const override { return Role::text_field; }
     bool supports_text_flow() const override { return true; }
     bool supports_rich_text() const override { return true; }
-    ComponentHandle handle(UiState& ui, const Component& c) const override { return ui.typed_handle<TextHandle>(c); }
+    ComponentHandle handle(UiState& ui, const Component& c) const override { return ui.typed_handle<TextFieldHandle>(c); }
     void arrange(ComponentLayout& c) const override {
         auto& p = c.placement;
         const auto& control = c.control;
@@ -592,7 +592,7 @@ public:
         if (!control.enabled) name += c.presentation().disabled_suffix;
         int caption = p.caption_size = std::max(1, p.text_size * 7 / 8);
         const int ring = focus_ring_width(c.ui, c.appearance, c.scale);
-        auto probe = c.appearance.arrange_field(c.width, {line, line, line, line}, c.scale, c.ui.presentation().density);
+        auto probe = c.appearance.arrange_text_field(c.width, {line, line, line, line}, c.scale, c.ui.presentation().density);
         keep_ring_room(probe, ring);
         auto label = block(c.measure, name, caption, probe.label.w);
         auto description_text = semantics.description;
@@ -605,12 +605,12 @@ public:
         const int row = text_row(line, control.line_spacing);
         // A fixed number of lines: every row, plus room for a paragraph gap between each pair of them.
         const int editor_height = control.multiline ? row * static_cast<int>(control.visible_lines) + paragraph_gap(control, c.scale) * static_cast<int>(control.visible_lines - 1) : row;
-        p.field = c.appearance.arrange_field(c.width, {height_of(label), height_of(description), height_of(error), editor_height}, c.scale, c.ui.presentation().density);
-        keep_ring_room(p.field, ring);
+        p.text_field = c.appearance.arrange_text_field(c.width, {height_of(label), height_of(description), height_of(error), editor_height}, c.scale, c.ui.presentation().density);
+        keep_ring_room(p.text_field, ring);
         auto anchor = [](std::vector<Line>& lines, Rect at) { for (auto& l : lines) { l.bounds.x += at.x; l.bounds.y += at.y; } };
-        anchor(label, p.field.label); anchor(description, p.field.description); anchor(error, p.field.error);
+        anchor(label, p.text_field.label); anchor(description, p.text_field.description); anchor(error, p.text_field.error);
         p.label_lines = std::move(label); p.description_lines = std::move(description); p.error_lines = std::move(error);
-        p.bounds = {0, 0, c.width, p.field.height};
+        p.bounds = {0, 0, c.width, p.text_field.height};
         const auto* session = c.ui.edit(control.id);
         if (control.multiline) { arrange_lines(c, line, row); return; }
         p.run = c.measure.measure(session->visible(), p.text_size);
@@ -620,7 +620,7 @@ public:
             auto anchor = c.ui.text_anchor(control.id, p.text_size);
             if (anchor) offset = p.run.x(anchor);
         }
-        float room = static_cast<float>(p.field.editor.w - static_cast<int>(std::lround(c.presentation().inset * c.scale)));
+        float room = static_cast<float>(p.text_field.editor.w - static_cast<int>(std::lround(c.presentation().inset * c.scale)));
         if (c.ui.focused() == control.id) {
             float caret = p.run.x(session->visible_caret());
             if (caret - offset > room) offset = caret - room;
@@ -637,7 +637,7 @@ public:
         // A single line is the last line of its paragraph, so justify leaves it left-aligned (#84).
         const auto align = drawn_text_align(control, c.ui.presentation());
         if (p.run.width <= room && (align == TextAlign::center || align == TextAlign::right))
-            p.shift = align == TextAlign::center ? std::max(0.f, (static_cast<float>(p.field.editor.w) - p.run.width) / 2) : room - p.run.width;
+            p.shift = align == TextAlign::center ? std::max(0.f, (static_cast<float>(p.text_field.editor.w) - p.run.width) / 2) : room - p.run.width;
     }
     // Multi-line: wrap at the edge, reserve the scrollbar's width whether or not it shows, and let
     // core decide the first visible line (scroll position, caret reveal, font-size anchor).
@@ -647,7 +647,7 @@ public:
         p.multiline = true;
         view.visible = c.control.visible_lines; view.line_height = line; view.row_height = row;
         const int bar = scaled(c.scale, 10), gap = scaled(c.scale, 4);
-        const Rect editor = p.field.editor;
+        const Rect editor = p.text_field.editor;
         view.text = {editor.x, editor.y, std::max(0, editor.w - bar - gap), editor.h};
         view.track = {editor.x + editor.w - bar, editor.y, bar, editor.h};
         if (!c.settle) return;  // a measurement probe only needs the fixed height
@@ -760,7 +760,7 @@ public:
     void paint(ComponentPaint& c) const override {
         const auto& item = c.placement;
         const auto& semantics = c.semantics;
-        const auto& f = item.field;
+        const auto& f = item.text_field;
         auto p = c.palette();
         auto d = [&](int value) { return scaled(c.scale, value); };
         auto surface = offset(f.surface, item.bounds), editor = offset(f.editor, item.bounds);
@@ -1684,7 +1684,7 @@ Button button;
 Command command;
 const std::map<ComponentKind, const ComponentType*>& types() {
     static const std::map<ComponentKind, const ComponentType*> registry{
-        {ComponentKind::label, &label}, {ComponentKind::text, &text}, {ComponentKind::button, &button},
+        {ComponentKind::label, &label}, {ComponentKind::text_field, &text}, {ComponentKind::button, &button},
         {ComponentKind::checkbox, &checkbox}, {ComponentKind::radio_group, &radio_group}, {ComponentKind::slider, &slider}, {ComponentKind::dropdown, &dropdown}, {ComponentKind::list, &list}, {ComponentKind::tabs, &tabs}, {ComponentKind::progress, &progress}, {ComponentKind::navigation_list, &navigation_list}};
     return registry;
 }

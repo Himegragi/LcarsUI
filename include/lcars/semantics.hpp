@@ -4,12 +4,12 @@
 
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
-enum class Role { text, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
+enum class Role { text_field, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
 // The text units a semantic query can ask for: what a double click selects and what a triple click selects.
 enum class TextUnitKind { word, paragraph };
 // Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
 struct StyleEdit { unsigned begin = 0, end = 0; StyleChange change; };
-// Rich fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
+// Rich text fields also take a RichText for set_value, a StyleEdit for set_style and a TextStyle for set_typing_style.
 using Argument = std::variant<std::monostate, std::u16string, int, Selection, OptionValue, TextAlign, double, MenuPosition, WritingMode, RichText, StyleEdit, TextStyle, WordSegmentation, JustifyMethod>;
 enum class SemanticEventKind { focus_changed, property_changed, structure_changed, text_changed, text_selection_changed, layout_changed, menu_opened, menu_closed };
 // An open menu is a child node of its component with this id; its items are {menu id, item id}.
@@ -54,14 +54,14 @@ struct NodeSnapshot {
     std::vector<NodeRef> labelled_by, described_by;
     std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
-    std::optional<TextScroll> scroll;  // multi-line text fields
+    std::optional<TextFieldScroll> scroll;  // multi-line text fields
     TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. As set: the user's "justified text as left" setting does not change it
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
     bool rich = false;                 // text fields created with ComponentConfig::rich
-    std::vector<StyleSpan> styles;     // rich fields: the styled runs of value, in normal form
-    std::optional<TextStyle> typing_style;  // rich fields: the style the next typed text takes
+    std::vector<StyleSpan> styles;     // rich text fields: the styled runs of value, in normal form
+    std::optional<TextStyle> typing_style;  // rich text fields: the style the next typed text takes
     std::optional<WordSegmentation> word_segmentation, word_segmentation_in_use;  // text fields: as set, and what works now
     std::uint64_t text_revision = 0; // changes when committed text changes
 };
@@ -74,7 +74,7 @@ public:
     // Same answer and admission as Ui::animating: is any on-screen transition still running?
     Query<bool> animating() const;
     // Text fields: the range of the word or paragraph holding the character at a UTF-16 offset, and the next or
-    // previous word stop (where Ctrl+Right / Ctrl+Left go). The same answers as the typed TextHandle.
+    // previous word stop (where Ctrl+Right / Ctrl+Left go). The same answers as the typed TextFieldHandle.
     Query<TextSpan> text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const;
     Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
     // Read-only: the colors currently painted for the bound appearance and the current theme variant,
@@ -84,7 +84,7 @@ public:
     // Same answer as Ui::hover. UIA never reports hover, so neither node properties nor events change with it.
     Query<std::optional<NodeRef>> hover() const;
     Result clear_simulated_hover();
-    // Rich fields: the color a color name is painted in right now: the field's color for the current theme
+    // Rich text fields: the color a color name is painted in right now: the text field's color for the current theme
     // variant, or the theme's normal text color for an empty or unknown name (which needs a bound appearance).
     Query<Color> text_color(const NodeRef& ref, std::string_view name) const;
     Result perform(const NodeRef& ref, Verb verb, Argument argument = {});

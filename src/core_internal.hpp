@@ -24,7 +24,7 @@ struct Component : ComponentConfig {
     ComponentKind kind;
     Component(ComponentKind type, ComponentConfig config) : ComponentConfig(std::move(config)), kind(type) {}
 };
-// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text and of a field supplied as data).
+// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text_field and of a field supplied as data).
 bool valid_text_control(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
@@ -66,7 +66,7 @@ public:
     explicit UiState(std::vector<Component> controls);
     ~UiState();
     // Called only by Ui::add_x (through add_component in core.cpp), which builds `control` with the matching kind (#96).
-    TextHandle add_text(Component control);
+    TextFieldHandle add_text_field(Component control);
     ButtonHandle add_button(Component control);
     LabelHandle add_label(Component control);
     CheckboxHandle add_checkbox(Component control);
@@ -140,8 +140,8 @@ public:
     std::optional<int> slider_held_x(std::string_view id) const;
     Result reset_to_source(const Id& id);
     Result use_latest(const Id& id);
-    Result connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate);
-    Result connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate);
+    Result connect_write(const Id& id, std::function<Result(const Change<TextFieldHandle>&)> write, bool immediate);
+    Result connect_rich_write(const Id& id, std::function<Result(const Change<TextFieldHandle, RichText>&)> write, bool immediate);
     bool is_rich(std::string_view id) const;
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
@@ -169,7 +169,7 @@ public:
     // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
     struct Internals;
     Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
+        std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit);
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
     const std::vector<Component>& controls() const { return controls_; }
@@ -295,8 +295,8 @@ public:
     void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
     // Multi-line view state. arrange hands over the lines it measured and gets the settled first
     // visible line back (view.first): layout is the only place that knows where lines break.
-    void settle_lines(std::string_view id, FieldView& view, int text_size, int width);
-    const FieldView* field_view(std::string_view id) const;  // lines as last arranged; null for other kinds
+    void settle_lines(std::string_view id, TextFieldView& view, int text_size, int width);
+    const TextFieldView* field_view(std::string_view id) const;  // lines as last arranged; null for other kinds
     ScrollState& line_scroll(const Id& id) { return edits_.at(id).multi.scroll; }
     bool scroll_lines_to(std::string_view id, unsigned first);  // clamps; true when the position changed
     // A pointer click or drag: like select, but may place the caret at the end of a wrapped line.
@@ -406,7 +406,7 @@ private:
     friend class ::lcars::ContextMenuHandle;
     friend class ::lcars::TabsHandle;
     friend class ::lcars::NavigationListHandle;
-    friend class ::lcars::TextHandle;
+    friend class ::lcars::TextFieldHandle;
     friend class ::lcars::ButtonHandle;
     friend class ::lcars::LabelHandle;
     friend class ::lcars::CheckboxHandle;
@@ -435,7 +435,7 @@ private:
     struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     // The data connection of every field that writes back to the application (#94): text field, checkbox, radio group,
     // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, use_latest and
-    // draft keep their names and parameters. Change is the field's public change record (Change<TextHandle>, Change<CheckboxHandle>, ...).
+    // draft keep their names and parameters. Change is the field's public change record (Change<TextFieldHandle>, Change<CheckboxHandle>, ...).
     template <class ChangeType> struct FieldConnection {
         using Change = ChangeType;
         bool connected = false;            // the source has delivered a valid value
@@ -454,14 +454,14 @@ private:
         // Whether the field may join a confirmation group: a source and no write timing yet.
         bool joinable() const { return connected && !has_write_timing(); }
     };
-    struct Field : FieldConnection<Change<TextHandle>> {
+    struct Field : FieldConnection<Change<TextFieldHandle>> {
         EditSession session;
         std::vector<Snapshot> past, future;  // field history; never shared between fields
         float offset = 0;
         int offset_text_size = 0;
         unsigned offset_anchor = 0;
         struct MultiView {
-            FieldView view;               // lines as last arranged (geometry rectangles are unused here)
+            TextFieldView view;               // lines as last arranged (geometry rectangles are unused here)
             std::u16string text;          // the visible text those lines were laid out from
             std::vector<StyleSpan> styles; // and its styled runs (rich fields): a style change can re-wrap too
             int size = 0, width = 0;      // text size and wrap width they were laid out at
@@ -594,7 +594,7 @@ private:
     std::map<Id, NumericField, std::less<>> numerics_;
     // The field state behind a confirmable handle, by handle kind (the one place that pairs a kind with its map).
     template <class Handle> auto& fields_of() {
-        if constexpr (std::is_same_v<Handle, TextHandle>) return edits_;
+        if constexpr (std::is_same_v<Handle, TextFieldHandle>) return edits_;
         else if constexpr (std::is_same_v<Handle, CheckboxHandle>) return bools_;
         else if constexpr (std::is_same_v<Handle, RadioGroupHandle>) return radios_;
         else if constexpr (std::is_same_v<Handle, DropdownHandle>) return dropdowns_;
@@ -688,12 +688,12 @@ private:
     bool source_matches(const Field& field) const { return field.session.text == field.source_value && field.spans == field.source_spans; }
     Result finish_edit(std::string_view id, Field& field);
     Result submit_field(std::string_view id, Field& field,
-                        const std::function<Result(const Change<TextHandle>&)>& write, bool command);
+                        const std::function<Result(const Change<TextFieldHandle>&)>& write, bool command);
     Result travel(std::string_view id, bool forward);
     Result edit_key(KeyPress key);  // the keys a text field takes
     // Multi-line cursor movement over the lines the last arrange settled. A host that can lay out
     // again on demand registers on_relayout so keys typed faster than frames never see stale lines.
-    FieldView vertical_view(const Id& id);
+    TextFieldView vertical_view(const Id& id);
     // Bumped by every property that changes how text lines up (alignment, justification, spacing, the
     // justify-as-left setting): the lines cursor keys use are stale until an arrange sees the new value.
     unsigned layout_revision_ = 0;
@@ -701,8 +701,8 @@ private:
     Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
     std::function<void()> changed_, invalidate_, relayout_;
-    struct TextScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
-    std::map<std::string, TextScroll, std::less<>> text_scrolls_;
+    struct TextFieldScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
+    std::map<std::string, TextFieldScroll, std::less<>> text_scrolls_;
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;

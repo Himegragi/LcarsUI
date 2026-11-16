@@ -838,7 +838,7 @@ void DesktopHost::relayout() {
 void DesktopHost::drag_text(int x, int y) {
     const auto& id = detail::access(ui_).focused();
     auto handle = detail::access(ui_).layout_handle(id);
-    if (auto* field = std::get_if<TextHandle>(&handle)) {
+    if (auto* field = std::get_if<TextFieldHandle>(&handle)) {
         frame_.select_to(ui_, *field, x, y);
         const auto* placed = detail::find_placement(frame_, id);
         const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + placed->view.text.h);

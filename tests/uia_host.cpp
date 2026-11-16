@@ -90,7 +90,7 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
                     sample_left = std::min(sample_left, x); sample_right = std::max(sample_right, x);
                 }
             }
-            auto editor = field->field.editor;
+            auto editor = field->text_field.editor;
             editor.x += field->bounds.x; editor.y += field->bounds.y;
             int left = image.width, right = -1;
             int start = std::max(editor.x, field->caret_x(0) - 2);
@@ -121,7 +121,7 @@ LRESULT CALLBACK test_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 25: { auto opened = active_form->handles.dialog_open.invoke(); if (!opened) return static_cast<LRESULT>(opened.status); return static_cast<LRESULT>(active_form->handles.dialog_cancel.invoke().status); }
         case 22: { auto r = active_form->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(active_form->ui).key_down({.key=lcars::Key::down}).status); }
         case 17: { auto settings = active_form->ui.presentation(); settings.text_size = static_cast<int>(l); return static_cast<LRESULT>(active_form->ui.set_presentation(settings).status); }
-        case 19: { const auto* item = lcars::detail::find_placement(active_host->frame(), "form.name"); if (!item) return -1; POINT p{item->caret_x(static_cast<unsigned>(l)), item->bounds.y + item->field.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
+        case 19: { const auto* item = lcars::detail::find_placement(active_host->frame(), "form.name"); if (!item) return -1; POINT p{item->caret_x(static_cast<unsigned>(l)), item->bounds.y + item->text_field.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
         case 18: { auto node = active_form->ui.semantics().get({"form.name"}); if (!node || !node->text_selection) return -1; return MAKELPARAM(node->text_selection->anchor, node->text_selection->caret); }
         }
     }

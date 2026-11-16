@@ -64,14 +64,14 @@ struct RichModel {
 ComponentConfig rich_control(std::string id, std::u16string value = {}, unsigned lines = 3) {
     return {.id = std::move(id), .value = std::move(value), .multiline = true, .visible_lines = lines, .rich = true};
 }
-TextHandle connect_rich(Ui& ui, ComponentConfig control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
+TextFieldHandle connect_rich(Ui& ui, ComponentConfig control, std::shared_ptr<RichModel> model = {}, bool immediate = false) {
     if (!model) model = std::make_shared<RichModel>();
     model->value.text = control.value;
-    auto query = ui.add_text(std::move(control));
+    auto query = ui.add_text_field(std::move(control));
     check(bool(query), "Create the rich field");
     auto field = *query;
     check(bool(field.connect_rich_source({[model] { return model->value; }, [model](std::function<void()> cb) { model->notify = cb; return [] {}; }})), "Connect a rich source");
-    auto write = [model](const Change<TextHandle, RichText>& change) { ++model->writes; model->last_written = change.value; model->last_origin = change.origin; return Result{}; };
+    auto write = [model](const Change<TextFieldHandle, RichText>& change) { ++model->writes; model->last_written = change.value; model->last_origin = change.origin; return Result{}; };
     check(bool(immediate ? field.connect_rich_immediate(write) : field.connect_rich_confirmed(write)), "Connect a rich write");
     return field;
 }
@@ -79,8 +79,8 @@ std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui)
 
 void a_rich_field_is_a_multi_line_option_fixed_at_creation() {
     Ui ui;
-    check(bool(ui.add_text(rich_control("rich"))), "A multi-line field can be rich");
-    check(ui.add_text({.id = "single", .rich = true}).status == Status::invalid_value, "A single-line field cannot be rich");
+    check(bool(ui.add_text_field(rich_control("rich"))), "A multi-line field can be rich");
+    check(ui.add_text_field({.id = "single", .rich = true}).status == Status::invalid_value, "A single-line field cannot be rich");
 }
 
 void rich_values_are_read_and_written_in_normal_form() {
@@ -97,7 +97,7 @@ void rich_values_are_read_and_written_in_normal_form() {
     check(bool(field.set_value(u"plain")) && field.rich_value()->text == u"plain" && field.rich_value()->spans.empty(),
           "set_value on a rich field replaces the text and leaves it unstyled");
     Ui other;
-    auto plain = *other.add_text({.id = "p", .multiline = true});
+    auto plain = *other.add_text_field({.id = "p", .multiline = true});
     check(plain.rich_value().status == Status::not_supported && plain.set_rich_value({u"x", {}}).status == Status::not_supported &&
           plain.set_style(0, 0, {.bold = true}).status == Status::not_supported && plain.typing_style().status == Status::not_supported,
           "A field that is not rich answers not_supported");
@@ -136,7 +136,7 @@ void read_only_and_unconnected_rich_fields_refuse_style_edits() {
     field.read_only(true);
     check(field.set_style(0, 1, {.bold = true}).status == Status::read_only && field.set_rich_value({u"x", {}}).status == Status::read_only,
           "A read-only field refuses style edits like any edit");
-    auto bare = *ui.add_text(rich_control("bare", u"abc"));
+    auto bare = *ui.add_text_field(rich_control("bare", u"abc"));
     check(bare.set_style(0, 1, {.bold = true}).status == Status::invalid_value, "A field without a write timing refuses edits");
 }
 
@@ -153,7 +153,7 @@ void max_length_counts_plain_characters_only() {
 // ---- Keyboard ------------------------------------------------------------------------------
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
 KeyPress press(Key key, bool shift = false) { return {.key = key, .shift = shift}; }
-Spans spans_of(TextHandle& field) { return field.rich_value()->spans; }
+Spans spans_of(TextFieldHandle& field) { return field.rich_value()->spans; }
 
 void ctrl_b_toggles_the_selection_and_all_three_shortcuts_work() {
     Ui ui;
@@ -261,7 +261,7 @@ void each_styled_insertion_is_one_undo_entry() {
 void the_field_takes_ctrl_b_before_an_application_shortcut() {
     Ui ui;
     auto rich = connect_rich(ui, rich_control("note", u"abc"));
-    auto plain = *ui.add_text({.id = "plain", .value = u"abc", .multiline = true});
+    auto plain = *ui.add_text_field({.id = "plain", .value = u"abc", .multiline = true});
     auto button = *ui.add_button({.id = "bold", .label = u"Bold"});
     int pressed = 0;
     button.bind([&] { ++pressed; return Result{}; });
@@ -306,7 +306,7 @@ void a_color_name_resolves_per_theme_and_unknown_names_keep_their_name() {
     check(repaints == 1 && host.named_color("note", "teal") == Color{64, 224, 208} && !host.named_color("note", "red").has_value(),
           "Replacing the list repaints at once and applies to existing text");
     Ui other;
-    auto plain = *other.add_text({.id = "p", .multiline = true});
+    auto plain = *other.add_text_field({.id = "p", .multiline = true});
     check(plain.set_colors({}).status == Status::not_supported && plain.colors().status == Status::not_supported, "A field that is not rich has no color list");
 }
 
@@ -351,17 +351,17 @@ void a_confirmation_group_takes_a_rich_field_in_the_mixed_form() {
     Ui ui;
     auto note_model = std::make_shared<RichModel>();
     auto name_value = std::make_shared<std::u16string>(u"n");
-    auto note = *ui.add_text(rich_control("note", u"abc"));
-    auto name = *ui.add_text({.id = "name", .value = u"n"});
+    auto note = *ui.add_text_field(rich_control("note", u"abc"));
+    auto name = *ui.add_text_field({.id = "name", .value = u"n"});
     auto button = *ui.add_button({.id = "ok", .label = u"OK"});
     note_model->value.text = u"abc";
     note.connect_rich_source({[note_model] { return note_model->value; }, [](std::function<void()>) { return [] {}; }});
     name.connect_source({[name_value] { return *name_value; }, [](std::function<void()>) { return [] {}; }});
     RichText got, origin; std::u16string got_name; int calls = 0;
-    check(bool(ui.connect_confirmation(button, {name, note}, [&](const std::vector<FieldChange>& changes) {
+    check(bool(ui.connect_confirmation(button, {name, note}, [&](const std::vector<ConfirmFieldChange>& changes) {
         ++calls;
-        got_name = std::get<Change<TextHandle>>(changes[0]).value;
-        const auto& rich = std::get<Change<TextHandle, RichText>>(changes[1]);
+        got_name = std::get<Change<TextFieldHandle>>(changes[0]).value;
+        const auto& rich = std::get<Change<TextFieldHandle, RichText>>(changes[1]);
         got = rich.value; origin = rich.origin;
         return ConfirmationResult{};
     })), "A rich field joins a mixed confirmation group");
@@ -399,11 +399,11 @@ struct PlainOnlyClipboard final : Clipboard {  // a host that never learned the 
 };
 
 
-TextHandle connect_plain(Ui& ui, ComponentConfig control) {
+TextFieldHandle connect_plain(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
-    auto field = *ui.add_text(std::move(control));
+    auto field = *ui.add_text_field(std::move(control));
     field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     return field;
 }
 
@@ -529,7 +529,7 @@ void the_semantic_layer_reads_and_writes_styles_like_the_typed_calls() {
     auto has = [&](Verb verb) { auto n = tree.get({"note"}); return std::find(n->verbs.begin(), n->verbs.end(), verb) != n->verbs.end(); };
     check(has(Verb::set_style) && has(Verb::set_typing_style) && has(Verb::set_value), "The style verbs are offered to an editable rich field");
     check(bool(tree.perform({"note"}, Verb::set_style, StyleEdit{1, 3, {.bold = true}})) && tree.get({"note"})->styles == Spans{bold(1, 2)} && spans_of(field) == Spans{bold(1, 2)},
-          "set_style applies a range, as TextHandle::set_style does");
+          "set_style applies a range, as TextFieldHandle::set_style does");
     check(tree.perform({"note"}, Verb::set_style, StyleEdit{3, 1, {.bold = true}}).status == field.set_style(3, 1, {.bold = true}).status &&
           tree.perform({"note"}, Verb::set_style, StyleEdit{3, 1, {.bold = true}}).status == Status::invalid_value, "An invalid range gives the typed call's status");
     check(tree.perform({"note"}, Verb::set_style, std::u16string(u"bold")).status == Status::invalid_value, "A wrong argument is invalid_value");
@@ -582,7 +582,7 @@ void style_changes_raise_a_property_event_and_colors_resolve_for_the_theme() {
 struct Laid {
     test::FakeMeasure measure; ScrollState scroll; Frame frame;
     const Placement* field = nullptr;
-    Laid(Ui& ui, const TextHandle& handle, int width = 200) {
+    Laid(Ui& ui, const TextFieldHandle& handle, int width = 200) {
         frame = arrange(layout::component(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
         field = frame.find(handle);
         check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
@@ -643,7 +643,7 @@ struct Recorder final : detail::ComponentPaint {
 Recorder paint(Ui& ui, const Placement& field, std::string_view id) {
     auto semantics = *detail::access(ui).describe(id);
     Recorder recorder(detail::access(ui), field, semantics, web_appearance(), 1.f, true);
-    detail::component_type(ComponentKind::text).paint(recorder);
+    detail::component_type(ComponentKind::text_field).paint(recorder);
     return recorder;
 }
 

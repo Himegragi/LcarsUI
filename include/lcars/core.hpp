@@ -15,7 +15,7 @@
 
 namespace lcars {
 // Labels may span lines and describe another component; an overflowing scroll_text label is focusable.
-enum class ComponentKind { text, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
+enum class ComponentKind { text_field, button, label, checkbox, radio_group, slider, dropdown, list, tabs, progress, navigation_list };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class LabelKind { plain, name, description, error };
 enum class Status { ok, not_found, disabled, read_only, blocked_by_modal, busy, invalid_value, wrong_thread, failed, not_supported, empty_history, hidden, renderer_failed };
@@ -33,7 +33,7 @@ template<class T> struct Query {
     const T* operator->() const { return &value.value(); }
     const T& operator*() const { return value.value(); }
 };
-// Public text field limit in UTF-16 units. A field may choose its own; an edit that would
+// Public text field limit in UTF-16 units. A text field may choose its own; an edit that would
 // exceed it is rejected whole, leaving text and history untouched.
 inline constexpr std::size_t default_max_text_length = 4096;
 // Horizontal placement of every display line inside the component's own width (#80). justify stretches
@@ -67,7 +67,7 @@ struct ComponentConfig {
     std::string target = {};         // labels: the component this text names, describes or reports errors for
     LabelKind label_kind = LabelKind::plain;
     std::size_t max_length = default_max_text_length;  // text fields only
-    // Text fields only; fixed when the field is created. A multi-line field holds line breaks as a
+    // Text fields only; fixed when the text field is created. A multi-line text field holds line breaks as a
     // single LF, wraps at its edge and scrolls vertically inside a box visible_lines tall.
     bool multiline = false;
     unsigned visible_lines = 3;  // multi-line height in lines, at least 1; later changed through the handle
@@ -80,12 +80,12 @@ struct ComponentConfig {
     int paragraph_spacing = 0;       // DIP after each paragraph ended by an LF, 0-48
     WritingMode writing_mode = WritingMode::horizontal;  // labels only; other components reject vertical
     int vertical_digits = max_vertical_digits;           // labels only; 0-3, anything else is invalid_value
-    // Multi-line text fields only (invalid_value on any other component); fixed when the field is created.
-    // A rich field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
+    // Multi-line text fields only (invalid_value on any other component); fixed when the text field is created.
+    // A rich text field holds plain text plus style spans (RichText) and takes Ctrl+B / Ctrl+I / Ctrl+U itself.
     bool rich = false;
 };
-// What one run of rich text looks like. An empty color means the field's normal text color; a color
-// name is looked up in the field's color list on every paint, so theme changes recolor it.
+// What one run of rich text looks like. An empty color means the text field's normal text color; a color
+// name is looked up in the text field's color list on every paint, so theme changes recolor it.
 struct TextStyle {
     bool bold = false, italic = false, underline = false;
     std::string color;
@@ -120,7 +120,7 @@ struct StyleChange {
     bool operator==(const StyleChange&) const = default;
 };
 enum class StyleAttribute { bold, italic, underline };
-// A color a rich field can use by name, one value per theme: dark for ThemeVariant::dark(), light
+// A color a rich text field can use by name, one value per theme: dark for ThemeVariant::dark(), light
 // for every other variant.
 struct NamedColor {
     std::string name;
@@ -142,7 +142,7 @@ struct OptionValue { std::string id; bool operator==(const OptionValue&) const =
 struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
 // Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
-struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextScroll&) const = default; };
+struct TextFieldScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextFieldScroll&) const = default; };
 struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
 struct ComponentSnapshot {
@@ -153,7 +153,7 @@ struct ComponentSnapshot {
     bool visible = false; // positive on-screen area in the latest arranged frame, and not hidden
     bool multiline = false;     // text fields: created multi-line
     bool rich = false;          // text fields: created with ComponentConfig::rich
-    std::optional<TextScroll> scroll; // multi-line text fields: configured height and latest arranged display lines
+    std::optional<TextFieldScroll> scroll; // multi-line text fields: configured height and latest arranged display lines
     TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. The property as set, even while the user's "justified text as left" setting shows it left-aligned
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
@@ -181,10 +181,10 @@ struct KeyPress {
 };
 struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
 struct Selection { unsigned anchor = 0, caret = 0; };
-// A half-open range of UTF-16 offsets into a field's text.
+// A half-open range of UTF-16 offsets into text.
 struct TextSpan { unsigned begin = 0, end = 0; bool operator==(const TextSpan&) const = default; };
 // How a text field decides where words are, for double click, Ctrl+arrow and UIA word units. Every mode
-// gives each punctuation mark its own word and keeps a run of spaces together. Set per field at any time.
+// gives each punctuation mark its own word and keeps a run of spaces together. Set per text field at any time.
 enum class WordSegmentation {
     dictionary,     // the system ICU dictionary (zh_TW); falls back to per_character when it is unavailable
     per_character,  // every Chinese or Japanese character is a word; a run of Latin letters and digits is one word
@@ -197,7 +197,7 @@ public:
     virtual bool write(std::u16string_view text) = 0;
     // not_supported means no text; failed means the clipboard could not be read.
     virtual Query<std::u16string> read() = 0;
-    // Rich text. A copy from a rich field hands the plain text (CRLF) together with an opaque payload that
+    // Rich text. A copy from a rich text field hands the plain text (CRLF) together with an opaque payload that
     // carries the styles; the host stores the payload under one private format beside the plain text and
     // returns it unchanged. A host that does not know the format keeps these defaults, so only plain text
     // moves. A plain write replaces every format, as on Windows, so a stale payload never outlives its text.
@@ -207,7 +207,7 @@ public:
 };
 // Pasted CRLF counts as one line break, lone CR and LF as one each; every break becomes a space.
 std::u16string paste_as_single_line(std::u16string_view text);
-// Multi-line fields keep breaks: CRLF, a lone CR and a lone LF each become one LF.
+// Multi-line text fields keep breaks: CRLF, a lone CR and a lone LF each become one LF.
 std::u16string paste_as_multi_line(std::u16string_view text);
 // One session owns text and transient composition. Offsets are UTF-16.
 // The text backend supplies navigation stops; this is not a Unicode segmenter.
@@ -220,7 +220,7 @@ public:
     std::uint64_t selection_changes = 0;  // counts every select(); a temporary typing style ends when it moves
     std::u16string preedit;
     unsigned preedit_caret = 0;
-    // Multi-line fields: the caret sits at the end of a wrapped line, not the start of the next one.
+    // Multi-line text fields: the caret sits at the end of a wrapped line, not the start of the next one.
     // Only the End key and a click on a line's end set it; every other selection change clears it.
     bool caret_upstream = false;
     unsigned begin() const { return std::min(selection.anchor, selection.caret); }
@@ -287,7 +287,7 @@ template <class Handle> class HandleBase {
     std::string id_;
 };
 }
-class TextHandle;
+class TextFieldHandle;
 class CheckboxHandle;
 class RadioGroupHandle;
 class SliderHandle;
@@ -296,7 +296,7 @@ class ListHandle;
 namespace detail {
 // The value type a field kind's change record carries when Change names only the field kind (void: the kind has none).
 template <class Field> struct ChangeValue { using type = void; };
-template <> struct ChangeValue<TextHandle> { using type = std::u16string; };
+template <> struct ChangeValue<TextFieldHandle> { using type = std::u16string; };
 template <> struct ChangeValue<CheckboxHandle> { using type = bool; };
 template <> struct ChangeValue<RadioGroupHandle> { using type = std::optional<OptionValue>; };
 template <> struct ChangeValue<SliderHandle> { using type = int; };
@@ -305,16 +305,16 @@ template <> struct ChangeValue<ListHandle> { using type = std::optional<OptionVa
 // The combinations the framework sends: each field kind with its own value type, and a rich text field's RichText.
 template <class Field, class Value>
 inline constexpr bool sends_change = (!std::is_void_v<Value> && std::is_same_v<Value, typename ChangeValue<Field>::type>) ||
-                                     (std::is_same_v<Field, TextHandle> && std::is_same_v<Value, RichText>);
+                                     (std::is_same_v<Field, TextFieldHandle> && std::is_same_v<Value, RichText>);
 }
 // A change record: what a write hands the application's change entry. `field` is the field it came from, `value` the new
 // value, `origin` the value the draft started from (the source value when the draft began). One template told apart by
 // field kind and value type (#95): a radio group's and a dropdown's records share a value type, and a confirmation group
 // must still say which kind of field each came from. The value type defaults to the field kind's own:
-// Change<TextHandle> (std::u16string), Change<CheckboxHandle> (bool), Change<RadioGroupHandle>, Change<DropdownHandle>
+// Change<TextFieldHandle> (std::u16string), Change<CheckboxHandle> (bool), Change<RadioGroupHandle>, Change<DropdownHandle>
 // and Change<ListHandle> (std::optional<OptionValue>), Change<SliderHandle> (int); a rich text field's is spelled
-// Change<TextHandle, RichText>. A list keeps no draft (#99): its origin is the selection its source held just before the
-// write, and it writes immediately only, so Change<ListHandle> is in neither FieldChange nor a confirmation group.
+// Change<TextFieldHandle, RichText>. A list keeps no draft (#99): its origin is the selection its source held just before the
+// write, and it writes immediately only, so Change<ListHandle> is in neither ConfirmFieldChange nor a confirmation group.
 // Only these seven exist; any other combination (Change<ButtonHandle>, Change<SliderHandle, bool>) does not compile.
 template <class Field, class Value = typename detail::ChangeValue<Field>::type>
     requires detail::sends_change<Field, Value>
@@ -323,9 +323,9 @@ struct Change {
     Value value, origin;
 };
 // A handle identifies a component without owning it. Each operation validates its lifetime.
-class TextHandle : private detail::HandleBase<TextHandle> {
+class TextFieldHandle : private detail::HandleBase<TextFieldHandle> {
 public:
-    TextHandle() = default;
+    TextFieldHandle() = default;
     Result set_value(std::u16string value) const;
     Result undo() const;
     Result redo() const;
@@ -339,7 +339,7 @@ public:
     Result reset_to_source() const;
     Result enable(bool enabled) const;
     Result read_only(bool is_read_only) const;
-    // Multi-line fields only; any other field answers not_supported. The scroll position is the index of
+    // Multi-line text fields only; any other text field answers not_supported. The scroll position is the index of
     // the first visible display line (a wrapped piece counts as a line), so it keeps its meaning when the
     // text size or density changes. A position past the last page is invalid_value, as for the semantic scroll.
     Result set_visible_lines(unsigned lines) const;  // owner configuration: at least 1; reflows at once
@@ -347,10 +347,10 @@ public:
     Result set_scroll_line(unsigned first_visible_line) const;
     Query<unsigned> scroll_line() const;
     // Owner configuration (#80), live: the next frame reflows. Out-of-range values are invalid_value and
-    // leave the field unchanged. Horizontal alignment, line spacing and paragraph spacing; the field's
+    // leave the text field unchanged. Horizontal alignment, line spacing and paragraph spacing; the text field's
     // caption, description and error text always stay left-aligned.
-    // A field refuses TextAlign::distribute with invalid_value (it is for labels). justify is accepted: the
-    // last line of each paragraph stays left-aligned, so a single-line field looks left-aligned.
+    // A text field refuses TextAlign::distribute with invalid_value (it is for labels). justify is accepted: the
+    // last line of each paragraph stays left-aligned, so a single-line text field looks left-aligned.
     Result set_text_align(TextAlign align) const;
     Query<TextAlign> text_align() const;
     Result set_justify_method(JustifyMethod method) const;  // #84; live, like the alignment
@@ -359,10 +359,10 @@ public:
     Query<double> line_spacing() const;
     Result set_paragraph_spacing(int dip) const;
     Query<int> paragraph_spacing() const;
-    // Words and paragraphs (#83). A word is what the field's segmentation says it is; a paragraph is the text
-    // between line feeds (the whole text of a single-line field). Offsets are UTF-16 and name the character that
+    // Words and paragraphs (#83). A word is what the text field's segmentation says it is; a paragraph is the text
+    // between line feeds (the whole text of a single-line text field). Offsets are UTF-16 and name the character that
     // starts there; one at or past the end of a paragraph means "after its last character". These work like
-    // select(): they need an available field, are refused while an input method composes, and ignore read-only.
+    // select(): they need an available text field, are refused while an input method composes, and ignore read-only.
     Result set_word_segmentation(WordSegmentation mode) const;  // owner configuration; takes effect at once
     Query<WordSegmentation> word_segmentation() const;          // the mode as set
     Query<WordSegmentation> word_segmentation_in_use() const;   // the mode that segments the text now (dictionary may fall back)
@@ -377,17 +377,17 @@ public:
     Result double_click(unsigned offset) const;
     Result triple_click(unsigned offset) const;
     Result connect_source(Source<std::u16string> source) const;
-    Result connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const;
-    Result connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const;
-    // Rich fields (ComponentConfig::rich) connect with the rich value type; the plain connect_* calls above answer
-    // not_supported on a rich field, and these answer not_supported on any other field. Confirmation
-    // groups take rich fields through Ui::connect_confirmation (a Change<TextHandle, RichText> per rich field).
+    Result connect_immediate(std::function<Result(const Change<TextFieldHandle>&)> write) const;
+    Result connect_confirmed(std::function<Result(const Change<TextFieldHandle>&)> write) const;
+    // Rich text fields (ComponentConfig::rich) connect with the rich value type; the plain connect_* calls above answer
+    // not_supported on a rich text field, and these answer not_supported on any other text field. Confirmation
+    // groups take rich text fields through Ui::connect_confirmation (a Change<TextFieldHandle, RichText> per rich text field).
     Result connect_rich_source(Source<RichText> source) const;
-    Result connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
-    Result connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const;
-    // Rich fields only; any other field answers not_supported. The same admission as every edit (a
-    // read-only, disabled, composing or unconnected field refuses with its usual status). set_rich_value
-    // normalizes (normalize_rich_text) and is one undo entry; set_value on a rich field replaces the text
+    Result connect_rich_immediate(std::function<Result(const Change<TextFieldHandle, RichText>&)> write) const;
+    Result connect_rich_confirmed(std::function<Result(const Change<TextFieldHandle, RichText>&)> write) const;
+    // Rich text fields only; any other text field answers not_supported. The same admission as every edit (a
+    // read-only, disabled, composing or unconnected text field refuses with its usual status). set_rich_value
+    // normalizes (normalize_rich_text) and is one undo entry; set_value on a rich text field replaces the text
     // and leaves it unstyled. draft() is the plain text.
     Result set_rich_value(RichText value) const;
     Query<RichText> rich_value() const;
@@ -405,7 +405,7 @@ public:
     // start of a paragraph).
     Query<TextStyle> typing_style() const;
     Result set_typing_style(TextStyle style) const;
-    // The named colors this field draws with; replaced as a whole and repainted at once. Names must be
+    // The named colors this text field draws with; replaced as a whole and repainted at once. Names must be
     // non-empty and distinct. Text whose color name is not in the list is drawn in the normal text color.
     Result set_colors(std::vector<NamedColor> colors) const;
     Query<std::vector<NamedColor>> colors() const;
@@ -414,7 +414,7 @@ public:
     Result use_latest() const;
     Query<ComponentSnapshot> describe() const;
     Query<std::u16string> draft() const;
-    bool operator==(const TextHandle& other) const = default;
+    bool operator==(const TextFieldHandle& other) const = default;
 private:
     friend class detail::UiState;
     friend struct Frame;
@@ -567,7 +567,7 @@ private:
 class ListHandle;
 class TabsHandle;
 class NavigationListHandle;
-using ComponentHandle = std::variant<std::monostate, TextHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
+using ComponentHandle = std::variant<std::monostate, TextFieldHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
 class TabsHandle : private detail::HandleBase<TabsHandle> {
 public:
     TabsHandle() = default;
@@ -651,12 +651,12 @@ private:
 // Page membership is explicit, using component handles. Page identities remain stable on reorder.
 struct TabPage { OptionValue value; std::u16string label; bool enabled = true; std::vector<ComponentHandle> members; };
 using NavigationPage = TabPage;
-using ConfirmField = std::variant<TextHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
-// One change record per field of a confirmation group; a rich text field's is Change<TextHandle, RichText>.
-using FieldChange = std::variant<Change<TextHandle>, Change<CheckboxHandle>, Change<RadioGroupHandle>, Change<SliderHandle>,
-                                 Change<DropdownHandle>, Change<TextHandle, RichText>>;
-struct FieldError { ConfirmField field; std::u16string message; };
-struct ConfirmationResult { Result result; std::vector<FieldError> errors; };
+using ConfirmField = std::variant<TextFieldHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle>;
+// One change record per field of a confirmation group; a rich text field's is Change<TextFieldHandle, RichText>.
+using ConfirmFieldChange = std::variant<Change<TextFieldHandle>, Change<CheckboxHandle>, Change<RadioGroupHandle>, Change<SliderHandle>,
+                                 Change<DropdownHandle>, Change<TextFieldHandle, RichText>>;
+struct ConfirmFieldError { ConfirmField field; std::u16string message; };
+struct ConfirmationResult { Result result; std::vector<ConfirmFieldError> errors; };
 // ---- Context menu. A short list of commands opened beside a component.
 struct MenuContext;
 // A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
@@ -722,7 +722,7 @@ public:
     ~Ui();
     Ui(const Ui&) = delete;
     Ui& operator=(const Ui&) = delete;
-    Query<TextHandle> add_text(ComponentConfig config);
+    Query<TextFieldHandle> add_text_field(ComponentConfig config);
     Query<ButtonHandle> add_button(ComponentConfig config);
     Query<LabelHandle> add_label(ComponentConfig config);
     Query<CheckboxHandle> add_checkbox(ComponentConfig config);
@@ -740,13 +740,13 @@ public:
                             ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name = {});
     Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});
     Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit);
+        std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit);
     // Attach the application's menu to any component. Text fields have built-in items; with
     // MenuMode::append (the default) the application's items follow them after a separator.
     // Other components have no menu until one is attached. A component carries one attachment.
     Query<ContextMenuHandle> add_context_menu(ComponentHandle target, std::vector<MenuItem> items = {}, MenuMode mode = MenuMode::append);
     // Open the one window-wide menu for a component: at `at`, or at the keyboard position (a text
-    // field's caret, a list's current row, otherwise the component). For a list `item` names the
+    // text field's caret, a list's current row, otherwise the component). For a list `item` names the
     // row: it is selected first and handed to the application's code.
     Result open_context_menu(ComponentHandle target, std::optional<MenuPosition> at = {}, std::optional<OptionValue> item = {});
     Result close_context_menu();

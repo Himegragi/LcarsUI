@@ -23,7 +23,7 @@ struct Justified {
 // drawn in that run's face; `natural` must already continue across the runs, each measured in its own face.
 std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view text, int pixels,
                                       const TextRun& natural, float width, JustifyMethod method,
-                                      const std::vector<FieldLine::Piece>* styles = nullptr);
+                                      const std::vector<TextFieldLine::Piece>* styles = nullptr);
 // The character classes the automatic method uses. The code point is the first of a cluster.
 bool is_wide_character(char32_t code_point);  // CJK ideographs, kana, hangul, bopomofo, full-width forms and CJK punctuation
 }

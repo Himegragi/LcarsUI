@@ -116,7 +116,7 @@ void creation_rejects_a_bad_digit_limit_and_other_components() {
     check(ui.add_label({.id = "four", .vertical_digits = 4}).status == Status::invalid_value, "A limit of 4 is invalid");
     check(ui.add_label({.id = "negative", .vertical_digits = -1}).status == Status::invalid_value, "A negative limit is invalid");
     check(bool(ui.add_label({.id = "zero", .vertical_digits = 0})), "A limit of 0 turns combining off");
-    check(ui.add_text({.id = "field", .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Text fields do not support vertical writing");
+    check(ui.add_text_field({.id = "field", .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Text fields do not support vertical writing");
     check(ui.add_button({.id = "button", .writing_mode = WritingMode::vertical}).status == Status::invalid_value, "Only labels support vertical writing");
     check(bool(ui.add_label({.id = "four"})), "A rejected label does not reserve its identifier");
 }
@@ -145,7 +145,7 @@ void the_semantic_layer_matches_the_typed_handle() {
     check(tree.perform({"label"}, Verb::set_vertical_digits, 4).status == label.set_vertical_digits(4).status, "Both entries give the same Status for a bad limit");
     check(tree.perform({"label"}, Verb::set_vertical_digits, std::u16string(u"x")).status == Status::invalid_value, "A wrong argument type is invalid_value");
     check(tree.perform({"label"}, Verb::set_vertical_digits, 0) && tree.get({"label"})->vertical_digits == 0, "0 through the semantic layer");
-    auto field = ui.add_text({.id = "field"}).value.value();
+    auto field = ui.add_text_field({.id = "field"}).value.value();
     check(!tree.get({"field"})->writing_mode && tree.perform({"field"}, Verb::set_writing_mode, WritingMode::vertical).status == Status::not_supported, "Other components have neither property");
 }
 void a_property_change_is_announced() {

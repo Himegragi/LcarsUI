@@ -11,11 +11,11 @@ namespace {
 // Application-owned source fixtures give legacy host input tests explicit write timing.
 void populate(Ui& ui, std::vector<detail::Component> controls) {
     for (auto& control : controls) {
-        if (control.kind == ComponentKind::text) {
+        if (control.kind == ComponentKind::text_field) {
             auto model = std::make_shared<std::u16string>(control.value);
-            auto field = ui.add_text(std::move(control)).value.value();
+            auto field = ui.add_text_field(std::move(control)).value.value();
             check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect fixture source");
-            check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect fixture write");
+            check(bool(field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect fixture write");
         } else if (control.kind == ComponentKind::button) ui.add_button(std::move(control)).value.value();
         else ui.add_label(std::move(control)).value.value();
     }
@@ -23,7 +23,7 @@ void populate(Ui& ui, std::vector<detail::Component> controls) {
 std::vector<detail::Component> name_form() {
     return {
         {ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
-        {ComponentKind::text, {.id = "name", .value = u"測試使用者"}},
+        {ComponentKind::text_field, {.id = "name", .value = u"測試使用者"}},
         {ComponentKind::label, {.id = "name.help", .value = u"單行文字", .target = "name", .label_kind = LabelKind::description}},
         {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
         {ComponentKind::label, {.id = "note", .value = u"第一行\n第二行"}},
@@ -122,7 +122,7 @@ void button_activates_once_per_press() {
 KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ctrl = true, .letter = letter}; }
 std::vector<detail::Component> two_fields() {
     auto controls = form_with_buttons();
-    controls.push_back({ComponentKind::text, {.id = "alias", .value = u"別名"}});
+    controls.push_back({ComponentKind::text_field, {.id = "alias", .value = u"別名"}});
     return controls;
 }
 
@@ -157,7 +157,7 @@ bool at(Ui& ui, unsigned anchor, unsigned caret) {
 
 void caret_moves_by_code_point_and_extends_with_shift() {
     // "A", U+20000 (two UTF-16 units), "B", "中": UTF-16 length 5.
-    Ui ui; populate(ui, {{ComponentKind::text, {.id = "t", .value = u"A\U00020000B中"}}});
+    Ui ui; populate(ui, {{ComponentKind::text_field, {.id = "t", .value = u"A\U00020000B中"}}});
     detail::access(ui).focus("t");
     detail::access(ui).key_down(press(Key::home));
     check(at(ui, 0, 0), "Home puts the caret at the start");
@@ -373,7 +373,7 @@ void keyboard_editing_obeys_the_same_admission() {
 }
 
 void over_limit_edit_is_rejected_whole() {
-    Ui ui; populate(ui, {{ComponentKind::text, {.id = "code", .value = u"AB", .max_length = 4}}});
+    Ui ui; populate(ui, {{ComponentKind::text_field, {.id = "code", .value = u"AB", .max_length = 4}}});
     check(ComponentConfig{.id = "x"}.max_length == default_max_text_length && default_max_text_length == 4096,
           "The default limit is public");
     detail::access(ui).focus("code");
@@ -385,7 +385,7 @@ void over_limit_edit_is_rejected_whole() {
     check(detail::access(ui).text("code") == u"ABCD" && detail::access(ui).undo("code") && detail::access(ui).text("code") == u"AB" && !detail::access(ui).undo("code"),
           "Rejected edits keep text and history");
     bool refused = false;
-    refused = ui.add_text({.id = "x", .value = u"toolong", .max_length = 3}).status == Status::invalid_value;
+    refused = ui.add_text_field({.id = "x", .value = u"toolong", .max_length = 3}).status == Status::invalid_value;
     check(refused, "Initial text must respect the field limit");
 }
 
@@ -428,12 +428,12 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
 
 void confirmed_field_respects_shared_command_guard() {
     Ui ui;
-    auto field = ui.add_text({.id = "guard.field"}).value.value();
+    auto field = ui.add_text_field({.id = "guard.field"}).value.value();
     auto button = ui.add_button({.id = "guard.button"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int writes = 0;
     Status nested = Status::ok;
-    field.connect_confirmed([&](const Change<TextHandle>&) { ++writes; nested = button.invoke().status; return Result{}; });
+    field.connect_confirmed([&](const Change<TextFieldHandle>&) { ++writes; nested = button.invoke().status; return Result{}; });
     field.set_value(u"draft");
     int commands = 0;
     button.bind([&] { ++commands; return field.confirm(); });
@@ -444,9 +444,9 @@ void confirmed_field_respects_shared_command_guard() {
 
 void public_text_operations_obey_restrictions() {
     Ui ui; MemoryClipboard clipboard; detail::access(ui).set_clipboard(&clipboard);
-    auto field = ui.add_text({.id = "public.text"}).value.value();
+    auto field = ui.add_text_field({.id = "public.text"}).value.value();
     field.connect_source({[] { return std::u16string(u"alpha"); }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     check(bool(field.select(0, 5)) && bool(field.copy()) && clipboard.content == u"alpha", "Public selection and copy");
     check(bool(field.cut()) && field.describe()->value.empty(), "Public cut");
     check(bool(field.undo()) && bool(field.redo()) && field.describe()->value.empty(), "Public undo and redo");
@@ -456,10 +456,10 @@ void public_text_operations_obey_restrictions() {
 }
 
 void handle_queries_report_expiry() {
-    TextHandle field; ButtonHandle button; LabelHandle label;
+    TextFieldHandle field; ButtonHandle button; LabelHandle label;
     {
         Ui ui;
-        field = ui.add_text({.id = "query.field"}).value.value();
+        field = ui.add_text_field({.id = "query.field"}).value.value();
         button = ui.add_button({.id = "query.button"}).value.value();
         label = ui.add_label({.id = "query.label"}).value.value();
         check(button.describe()->kind == ComponentKind::button && label.describe()->kind == ComponentKind::label,
@@ -472,7 +472,7 @@ void handle_queries_report_expiry() {
 
 void configuration_requires_ui_thread() {
     Ui ui;
-    auto field = ui.add_text({.id = "thread.field"}).value.value();
+    auto field = ui.add_text_field({.id = "thread.field"}).value.value();
     auto label = ui.add_label({.id = "thread.label"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     Status reset = Status::ok, connect = Status::ok;
@@ -491,7 +491,7 @@ void configuration_requires_ui_thread() {
 
 void group_action_cannot_be_replaced() {
     Ui ui;
-    auto field = ui.add_text({.id = "group.field"}).value.value();
+    auto field = ui.add_text_field({.id = "group.field"}).value.value();
     auto button = ui.add_button({.id = "group.button"}).value.value();
     field.connect_source({[] { return std::u16string(u"source"); }, [](std::function<void()>) { return [] {}; }});
     int submitted = 0, replacement = 0;
@@ -503,19 +503,19 @@ void group_action_cannot_be_replaced() {
 
 void unconnected_text_rejects_edits() {
     Ui ui;
-    auto field = ui.add_text({.id = "unconnected", .value = u"initial"}).value.value();
+    auto field = ui.add_text_field({.id = "unconnected", .value = u"initial"}).value.value();
     auto snapshot = field.describe();
     check(field.set_value(u"changed").status == Status::invalid_value && snapshot->value == u"initial" &&
           !has(snapshot->verbs, Verb::set_value), "An unconnected field rejects edits and does not advertise editing");
 }
 
 void handles_expire_with_their_component_tree() {
-    TextHandle field;
+    TextFieldHandle field;
     {
         Ui ui;
-        field = ui.add_text({.id = "handle.field", .value = u"initial"}).value.value();
+        field = ui.add_text_field({.id = "handle.field", .value = u"initial"}).value.value();
         field.connect_source({[] { return std::u16string(u"initial"); }, [](std::function<void()>) { return [] {}; }});
-        field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+        field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
         check(bool(field.set_value(u"edited")) && field.describe()->value == u"edited",
               "Typed handle edits and describes its field");
     }
@@ -528,10 +528,10 @@ void handles_expire_with_their_component_tree() {
 void source_updates_follow_the_component_lifetime() {
     std::u16string model = u"first";
     std::function<void()> changed;
-    TextHandle field;
+    TextFieldHandle field;
     {
         Ui ui;
-        field = ui.add_text({.id = "source.field"}).value.value();
+        field = ui.add_text_field({.id = "source.field"}).value.value();
         field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
             changed = std::move(callback);
             return [&] { changed = {}; };
@@ -548,12 +548,12 @@ void source_conflict_keeps_draft_until_cancelled() {
     std::u16string model = u"original";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "conflict.field"}).value.value();
+    auto field = ui.add_text_field({.id = "conflict.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     auto confirm = ui.add_button({.id = "conflict.apply"}).value.value();
-    ui.connect_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
+    ui.connect_confirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; });
     field.set_value(u"draft");
     model = u"newest";
     changed();
@@ -570,15 +570,15 @@ void confirmation_submits_draft_and_origin_and_keeps_history() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "confirm.field"}).value.value();
+    auto field = ui.add_text_field({.id = "confirm.field"}).value.value();
     auto apply = ui.add_button({.id = "confirm.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     std::u16string received_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
-        received_origin = std::get<Change<TextHandle>>(changes.at(0)).origin;
-        model = std::get<Change<TextHandle>>(changes.at(0)).value;
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        received_origin = std::get<Change<TextFieldHandle>>(changes.at(0)).origin;
+        model = std::get<Change<TextFieldHandle>>(changes.at(0)).value;
         changed();
         return ConfirmationResult{};
     });
@@ -593,13 +593,13 @@ void rejected_group_keeps_drafts_and_focuses_first_error() {
     std::u16string a = u"one", b = u"two";
     std::function<void()> changed_a, changed_b;
     Ui ui;
-    auto first = ui.add_text({.id = "reject.first"}).value.value();
-    auto second = ui.add_text({.id = "reject.second"}).value.value();
+    auto first = ui.add_text_field({.id = "reject.first"}).value.value();
+    auto second = ui.add_text_field({.id = "reject.second"}).value.value();
     auto apply = ui.add_button({.id = "reject.apply"}).value.value();
     first.connect_source({[&] { return a; }, [&](std::function<void()> f) { changed_a = std::move(f); return [&] { changed_a = {}; }; }});
     second.connect_source({[&] { return b; }, [&](std::function<void()> f) { changed_b = std::move(f); return [&] { changed_b = {}; }; }});
-    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<FieldChange>& changes) {
-        check(changes.size() == 2 && std::get<Change<TextHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextHandle>>(changes[1]).value == u"bad two",
+    ui.connect_confirmation(apply, {first, second}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        check(changes.size() == 2 && std::get<Change<TextFieldHandle>>(changes[0]).value == u"bad one" && std::get<Change<TextFieldHandle>>(changes[1]).value == u"bad two",
               "Both drafts arrive together");
         return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{second, u"second problem"}, {first, u"first problem"}}};
     });
@@ -615,18 +615,18 @@ void confirmation_blocks_reentry_but_preserves_new_edits() {
     std::u16string model = u"start";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "busy.field"}).value.value();
+    auto field = ui.add_text_field({.id = "busy.field"}).value.value();
     auto apply = ui.add_button({.id = "busy.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int calls = 0;
     std::u16string second_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
         ++calls;
         if (calls == 1) {
             check(apply.executing().value.value_or(false) && apply.invoke().status == Status::busy, "An executing confirmation cannot re-trigger");
             check(bool(field.set_value(u"newer")), "The field remains editable while the action executes");
-        } else second_origin = std::get<Change<TextHandle>>(changes[0]).origin;
-        model = std::get<Change<TextHandle>>(changes[0]).value;
+        } else second_origin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
+        model = std::get<Change<TextFieldHandle>>(changes[0]).value;
         changed();
         return ConfirmationResult{};
     });
@@ -644,7 +644,7 @@ void connected_text_requires_explicit_write_timing() {
     std::u16string model = u"source";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "timing.field"}).value.value();
+    auto field = ui.add_text_field({.id = "timing.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     check(field.set_value(u"draft").status == Status::invalid_value && field.describe()->value == u"source",
           "A connected editable field without explicit write timing rejects editing");
@@ -654,10 +654,10 @@ void source_update_during_composition_keeps_preedit() {
     std::u16string model = u"one";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "ime.source"}).value.value();
+    auto field = ui.add_text_field({.id = "ime.source"}).value.value();
     auto apply = ui.add_button({.id = "ime.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    ui.connect_confirmation(apply, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; });
+    ui.connect_confirmation(apply, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; });
     field.focus();
     detail::access(ui).composition_update(u"preedit", 7);
     model = u"external";
@@ -673,12 +673,12 @@ void editing_again_after_matching_the_source_uses_the_new_origin() {
     std::u16string model = u"old";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "origin.field"}).value.value();
+    auto field = ui.add_text_field({.id = "origin.field"}).value.value();
     auto apply = ui.add_button({.id = "origin.apply"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     std::u16string sent_origin;
-    ui.connect_confirmation(apply, {field}, [&](const std::vector<FieldChange>& changes) {
-        sent_origin = std::get<Change<TextHandle>>(changes[0]).origin;
+    ui.connect_confirmation(apply, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        sent_origin = std::get<Change<TextFieldHandle>>(changes[0]).origin;
         return ConfirmationResult{};
     });
     field.set_value(u"draft");
@@ -693,9 +693,9 @@ void explicit_immediate_write_keeps_a_rejected_draft() {
     std::u16string model = u"initial";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "immediate.field"}).value.value();
+    auto field = ui.add_text_field({.id = "immediate.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    field.connect_immediate([&](const Change<TextHandle>& change) {
+    field.connect_immediate([&](const Change<TextFieldHandle>& change) {
         if (change.value == u"bad") return Result{Status::invalid_value, u"Rejected"};
         model = change.value;
         changed();
@@ -711,10 +711,10 @@ void cancelling_a_rejected_draft_clears_its_error_without_writing() {
     std::u16string model = u"saved";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "cancel.field"}).value.value();
+    auto field = ui.add_text_field({.id = "cancel.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int writes = 0;
-    field.connect_immediate([&](const Change<TextHandle>&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
+    field.connect_immediate([&](const Change<TextFieldHandle>&) { ++writes; return Result{Status::invalid_value, u"Rejected"}; });
     field.set_value(u"bad");
     check(bool(field.use_latest()) && field.describe()->value == u"saved" && !field.describe()->invalid && writes == 1,
           "Cancelling restores the source, clears its rejection, and makes no new write");
@@ -724,7 +724,7 @@ void source_notifications_request_a_repaint() {
     std::u16string model = u"before";
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "paint.field"}).value.value();
+    auto field = ui.add_text_field({.id = "paint.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
     int invalidations = 0;
     detail::access(ui).on_invalidate([&] { ++invalidations; });
@@ -738,9 +738,9 @@ void ungrouped_confirmed_connection_writes_only_on_confirm() {
     std::u16string model = u"before", origin;
     std::function<void()> changed;
     Ui ui;
-    auto field = ui.add_text({.id = "single.field"}).value.value();
+    auto field = ui.add_text_field({.id = "single.field"}).value.value();
     field.connect_source({[&] { return model; }, [&](std::function<void()> f) { changed = std::move(f); return [&] { changed = {}; }; }});
-    field.connect_confirmed([&](const Change<TextHandle>& change) {
+    field.connect_confirmed([&](const Change<TextFieldHandle>& change) {
         origin = change.origin;
         model = change.value;
         changed();
@@ -795,7 +795,7 @@ void mixed_confirmation_submits_one_batch() {
     bool enabled = true;
     std::optional<OptionValue> mode = OptionValue{"normal"};
     Ui ui;
-    auto text = ui.add_text({.id = "name"}).value.value();
+    auto text = ui.add_text_field({.id = "name"}).value.value();
     auto box = ui.add_checkbox({.id = "enabled"}).value.value();
     auto radio = ui.add_radio_group({.id = "mode"}, {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}}).value.value();
     auto apply = ui.add_button({.id = "apply"}).value.value();
@@ -803,9 +803,9 @@ void mixed_confirmation_submits_one_batch() {
     box.connect_source({[&] { return enabled; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[&] { return mode; }, [](std::function<void()>) { return [] {}; }});
     int calls = 0;
-    ui.connect_confirmation(apply, {text, box, radio}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {text, box, radio}, [&](const std::vector<ConfirmFieldChange>& changes) {
         ++calls;
-        name = std::get<Change<TextHandle>>(changes[0]).value;
+        name = std::get<Change<TextFieldHandle>>(changes[0]).value;
         enabled = std::get<Change<CheckboxHandle>>(changes[1]).value;
         mode = std::get<Change<RadioGroupHandle>>(changes[2]).value;
         return ConfirmationResult{};
@@ -818,7 +818,7 @@ void mixed_confirmation_submits_one_batch() {
 
 void mixed_rejection_marks_each_field_and_focuses_first() {
     Ui ui;
-    auto text = ui.add_text({.id = "text"}).value.value();
+    auto text = ui.add_text_field({.id = "text"}).value.value();
     auto box = ui.add_checkbox({.id = "box"}).value.value();
     auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
     auto apply = ui.add_button({.id = "apply"}).value.value();
@@ -902,7 +902,7 @@ void slider_connected_draft_is_confirmed_as_a_number() {
     auto slider = ui.add_slider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
     auto apply = ui.add_button({.id = "apply.slider"}).value.value();
     slider.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<ConfirmFieldChange>& changes) {
         model = std::get<Change<SliderHandle>>(changes[0]).value;
         return ConfirmationResult{};
     });
@@ -1000,7 +1000,7 @@ void slider_group_preserves_edits_during_submission() {
     auto apply = ui.add_button({.id = "apply"}).value.value();
     slider.connect_source({[&] { return model; }, [&](std::function<void()> cb) { changed = std::move(cb); return [&] { changed = {}; }; }});
     int calls = 0;
-    ui.connect_confirmation(apply, {slider}, [&](const std::vector<FieldChange>& changes) {
+    ui.connect_confirmation(apply, {slider}, [&](const std::vector<ConfirmFieldChange>& changes) {
         const auto change = std::get<Change<SliderHandle>>(changes[0]);
         ++calls; submitted_origin = change.origin;
         if (calls == 1) {
@@ -1148,8 +1148,8 @@ void tabs_respect_modal_and_disabled_pointer_targets() {
 
 void cross_page_confirmation_reveals_first_error_and_marks_other_pages() {
     Ui ui;
-    auto first = ui.add_text({.id = "first-field"}).value.value();
-    auto second = ui.add_text({.id = "second-field"}).value.value();
+    auto first = ui.add_text_field({.id = "first-field"}).value.value();
+    auto second = ui.add_text_field({.id = "second-field"}).value.value();
     auto submit = ui.add_button({.id = "submit"}).value.value();
     auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
     first.connect_source(source); second.connect_source(source);
@@ -1366,7 +1366,7 @@ void pointer_dispatch_rechecks_a_removed_focus_target() {
 
 void removing_confirmation_button_releases_its_fields() {
     Ui ui;
-    auto field = ui.add_text({.id = "field"}).value.value();
+    auto field = ui.add_text_field({.id = "field"}).value.value();
     field.connect_source({[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }});
     auto owner = ui.add_button({.id = "owner"}).value.value();
     auto capture = std::make_shared<int>(42);
@@ -1443,7 +1443,7 @@ void component_type_reports_state_applicability() {
     const Row rows[] = {
         {ComponentKind::label, {S::normal}},
         {ComponentKind::button, {S::normal, S::disabled, S::executing}},
-        {ComponentKind::text, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
+        {ComponentKind::text_field, {S::normal, S::disabled, S::read_only, S::error, S::conflict}},
         {ComponentKind::checkbox, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
         {ComponentKind::radio_group, {S::normal, S::disabled, S::selected, S::error, S::conflict}},
         {ComponentKind::dropdown, {S::normal, S::disabled, S::candidate, S::error, S::conflict}},
@@ -1505,10 +1505,10 @@ const SourceKind source_kinds[] = {
     {"radio group", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.add_radio_group({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
     {"dropdown", FirstRead::after_replacing, [](Ui& ui) { return probe_of<Pick>(ui.add_dropdown({.id = "probe"}, compass).value.value(), {Pick{{"north"}}, Pick{{"south"}}, Pick{{"east"}}}); }},
     {"slider", FirstRead::before_replacing, [](Ui& ui) { return probe_of<int>(ui.add_slider({.id = "probe"}, {0, 100, 5}).value.value(), {10, 40, 90}); }},
-    {"text", FirstRead::after_replacing, [](Ui& ui) { return probe_of<std::u16string>(ui.add_text({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
+    {"text", FirstRead::after_replacing, [](Ui& ui) { return probe_of<std::u16string>(ui.add_text_field({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
     {"rich text", FirstRead::after_replacing, [](Ui& ui) {
-        return probe_of<RichText>(ui.add_text({.id = "probe", .multiline = true, .rich = true}).value.value(), {RichText{u"alpha"}, RichText{u"beta"}, RichText{u"gamma"}},
-                                  [](const TextHandle& h, Source<RichText> source) { return h.connect_rich_source(std::move(source)); });
+        return probe_of<RichText>(ui.add_text_field({.id = "probe", .multiline = true, .rich = true}).value.value(), {RichText{u"alpha"}, RichText{u"beta"}, RichText{u"gamma"}},
+                                  [](const TextFieldHandle& h, Source<RichText> source) { return h.connect_rich_source(std::move(source)); });
     }},
     {"label", FirstRead::when_shown, [](Ui& ui) { return probe_of<std::u16string>(ui.add_label({.id = "probe"}).value.value(), {u"alpha", u"beta", u"gamma"}); }},
 };

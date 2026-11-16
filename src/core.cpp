@@ -366,7 +366,7 @@ Result ProgressHandle::connect_source(Source<int> source) const {
 Query<ComponentSnapshot> ProgressHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
-TextHandle detail::UiState::add_text(Component control) {
+TextFieldHandle detail::UiState::add_text_field(Component control) {
     OperationScope operation(this);
     if (control.id.empty() || find(control.id) || !detail::valid_text_control(control))
         throw std::invalid_argument("Invalid text component");
@@ -375,7 +375,7 @@ TextHandle detail::UiState::add_text(Component control) {
     Id id = control.id;
     controls_.push_back(std::move(control));
     edits_.emplace(id, std::move(field));
-    return TextHandle(this, lifetime_, std::move(id));
+    return TextFieldHandle(this, lifetime_, std::move(id));
 }
 ButtonHandle detail::UiState::add_button(Component control) {
     OperationScope operation(this);
@@ -1659,7 +1659,7 @@ Result ButtonHandle::remove() const {
     });
 }
 
-Result TextHandle::focus() const {
+Result TextFieldHandle::focus() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
 Result SliderHandle::on_blur(std::function<void()> callback) const {
@@ -1670,7 +1670,7 @@ Result SliderHandle::on_blur(std::function<void()> callback) const {
         return {};
     });
 }
-Result TextHandle::on_blur(std::function<void()> callback) const {
+Result TextFieldHandle::on_blur(std::function<void()> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (callback) ui_->blur_callbacks_.insert_or_assign(id_, std::move(callback));
@@ -1678,24 +1678,24 @@ Result TextHandle::on_blur(std::function<void()> callback) const {
         return {};
     });
 }
-Result TextHandle::set_error(std::u16string message) const {
+Result TextFieldHandle::set_error(std::u16string message) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_error(id_, std::move(message)); });
 }
-Result TextHandle::enable(bool enabled) const {
+Result TextFieldHandle::enable(bool enabled) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         ui_->enable(id_, enabled);
         return {};
     });
 }
-Result TextHandle::read_only(bool is_read_only) const {
+Result TextFieldHandle::read_only(bool is_read_only) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         ui_->set_read_only(id_, is_read_only);
         return {};
     });
 }
-Result TextHandle::reset_to_source() const {
+Result TextFieldHandle::reset_to_source() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->reset_to_source(id_); });
 }
 Result detail::UiState::reset_to_source(const Id& id) {
@@ -1713,22 +1713,22 @@ Result ButtonHandle::invoke() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->invoke(id_); });
 }
 Query<bool> ButtonHandle::executing() const { return semantic_property(describe(), &ComponentSnapshot::executing); }
-Result TextHandle::paste(std::u16string_view text) const {
+Result TextFieldHandle::paste(std::u16string_view text) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->paste(id_, text); });
 }
-Result TextHandle::undo() const {
+Result TextFieldHandle::undo() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->undo(id_); });
 }
-Result TextHandle::redo() const {
+Result TextFieldHandle::redo() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->redo(id_); });
 }
-Result TextHandle::select(unsigned anchor, unsigned caret) const {
+Result TextFieldHandle::select(unsigned anchor, unsigned caret) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->select(id_, anchor, caret); });
 }
-Result TextHandle::copy() const {
+Result TextFieldHandle::copy() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->copy(id_); });
 }
-Result TextHandle::cut() const {
+Result TextFieldHandle::cut() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->cut(id_); });
 }
 Result detail::UiState::configuration_access(std::string_view id, bool read_only) const {
@@ -1740,24 +1740,24 @@ Result detail::UiState::configuration_access(std::string_view id, bool read_only
 }
 // A confirmation group member's value and last written value as its change record; a rich text field's carries its styles.
 template <class Handle, class FieldState>
-static FieldChange pending_change(const Handle& handle, const FieldState& f) {
-    if constexpr (std::is_same_v<Handle, TextHandle>) {
-        if (f.rich) return Change<TextHandle, RichText>{handle, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}};
-        return Change<TextHandle>{handle, f.session.text, f.origin};
+static ConfirmFieldChange pending_change(const Handle& handle, const FieldState& f) {
+    if constexpr (std::is_same_v<Handle, TextFieldHandle>) {
+        if (f.rich) return Change<TextFieldHandle, RichText>{handle, RichText{f.session.text, f.spans}, RichText{f.origin, f.origin_spans}};
+        return Change<TextFieldHandle>{handle, f.session.text, f.origin};
     } else return typename FieldState::Change{handle, f.value, f.origin};
 }
 // After the group's write succeeds: the value its change record handed over becomes the member's origin.
 template <class FieldState>
-static void adopt_written(FieldState& f, const FieldChange& written) {
-    if constexpr (std::is_same_v<typename FieldState::Change, Change<TextHandle>>) {
-        if (const auto* rich = std::get_if<Change<TextHandle, RichText>>(&written)) {
+static void adopt_written(FieldState& f, const ConfirmFieldChange& written) {
+    if constexpr (std::is_same_v<typename FieldState::Change, Change<TextFieldHandle>>) {
+        if (const auto* rich = std::get_if<Change<TextFieldHandle, RichText>>(&written)) {
             f.origin = rich->value.text; f.origin_spans = rich->value.spans; return;
         }
     }
     f.origin = std::get<typename FieldState::Change>(written).value;
 }
 Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
+        std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
     OperationScope operation(this);
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalid_value, u"Invalid confirmation group"};
@@ -1777,7 +1777,7 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
     confirmation_buttons_.insert(button.id_);
     confirmation_members_[button.id_] = {members.begin(), members.end()};
     bind(button.id_, [this, fields = std::move(fields), submit = std::move(submit)] {
-        std::vector<FieldChange> changes;
+        std::vector<ConfirmFieldChange> changes;
         for (const auto& member : fields) std::visit([&](const auto& h) {
             auto& f = fields_of<std::decay_t<decltype(h)>>().at(h.id_);
             changes.push_back(pending_change(h, f));
@@ -1810,44 +1810,44 @@ Result detail::UiState::connect_confirmation(ButtonHandle button, std::vector<Co
     });
     return {};
 }
-Result TextHandle::connect_immediate(std::function<Result(const Change<TextHandle>&)> write) const {
+Result TextFieldHandle::connect_immediate(std::function<Result(const Change<TextFieldHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_immediate"};
         return ui_->connect_write(id_, std::move(write), true);
     });
 }
-Result TextHandle::connect_confirmed(std::function<Result(const Change<TextHandle>&)> write) const {
+Result TextFieldHandle::connect_confirmed(std::function<Result(const Change<TextFieldHandle>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_confirmed"};
         return ui_->connect_write(id_, std::move(write), false);
     });
 }
-Result TextHandle::connect_rich_immediate(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
+Result TextFieldHandle::connect_rich_immediate(std::function<Result(const Change<TextFieldHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), true); });
 }
-Result TextHandle::connect_rich_confirmed(std::function<Result(const Change<TextHandle, RichText>&)> write) const {
+Result TextFieldHandle::connect_rich_confirmed(std::function<Result(const Change<TextFieldHandle, RichText>&)> write) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->connect_rich_write(id_, std::move(write), false); });
 }
-// The shared write path hands over a plain Change<TextHandle>; a rich write reads the field's spans at that moment.
-Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const Change<TextHandle, RichText>&)> write, bool immediate) {
+// The shared write path hands over a plain Change<TextFieldHandle>; a rich write reads the field's spans at that moment.
+Result detail::UiState::connect_rich_write(const Id& id, std::function<Result(const Change<TextFieldHandle, RichText>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end() || !it->second.rich) return {Status::not_supported, u"Not a rich text field"};
     if (!write) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
-    return connect_write(id, [this, write = std::move(write)](const Change<TextHandle>& change) {
+    return connect_write(id, [this, write = std::move(write)](const Change<TextFieldHandle>& change) {
         auto& field = edits_.at(change.field.id_);
-        return write(Change<TextHandle, RichText>{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
+        return write(Change<TextFieldHandle, RichText>{change.field, RichText{change.value, field.spans}, RichText{change.origin, field.origin_spans}});
     }, immediate);
 }
-Result detail::UiState::connect_write(const Id& id, std::function<Result(const Change<TextHandle>&)> write, bool immediate) {
+Result detail::UiState::connect_write(const Id& id, std::function<Result(const Change<TextFieldHandle>&)> write, bool immediate) {
     OperationScope operation(this);
     if (auto result = configuration_access(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalid_value, u"Write needs an ungrouped connected source"};
     return connect_field_write(it->second, std::move(write), immediate);
 }
-Result TextHandle::confirm() const {
+Result TextFieldHandle::confirm() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->confirm(id_); });
 }
 Result detail::UiState::confirm(const Id& id) {
@@ -1861,13 +1861,13 @@ Result detail::UiState::confirm(const Id& id) {
         return {Status::busy, u"Operation is already executing"};
     return submit_field(id, field, field.confirmed, true);
 }
-Result TextHandle::connect_source(Source<std::u16string> source) const {
+Result TextFieldHandle::connect_source(Source<std::u16string> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (ui_->is_rich(id_)) return {Status::not_supported, u"A rich field connects with connect_rich_source"};
         return ui_->connect_source(id_, std::move(source));
     });
 }
-Result TextHandle::connect_rich_source(Source<RichText> source) const {
+Result TextFieldHandle::connect_rich_source(Source<RichText> source) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto result = ui_->configuration_access(id_); !result) return result;
         if (!ui_->is_rich(id_)) return {Status::not_supported, u"Not a rich text field"};
@@ -1916,8 +1916,8 @@ void detail::UiState::source_changed(const Id& id) {
     }
     if (invalidate_) invalidate_();
 }
-Query<bool> TextHandle::source_conflict() const { return semantic_property(describe(), &ComponentSnapshot::source_conflict); }
-Result TextHandle::use_latest() const {
+Query<bool> TextFieldHandle::source_conflict() const { return semantic_property(describe(), &ComponentSnapshot::source_conflict); }
+Result TextFieldHandle::use_latest() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->use_latest(id_); });
 }
 Result detail::UiState::use_latest(const Id& id) {
@@ -1938,43 +1938,43 @@ Result detail::UiState::use_latest(const Id& id) {
     }
     return result;
 }
-Result TextHandle::set_value(std::u16string value) const {
+Result TextFieldHandle::set_value(std::u16string value) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_value(id_, std::move(value)); });
 }
-Result TextHandle::set_rich_value(RichText value) const {
+Result TextFieldHandle::set_rich_value(RichText value) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_rich_value(id_, std::move(value)); });
 }
-Query<RichText> TextHandle::rich_value() const {
+Query<RichText> TextFieldHandle::rich_value() const {
     return detail::UiState::operate(*this, [&]() -> Query<RichText> { return ui_->rich_value(id_); });
 }
-Result TextHandle::set_style(unsigned begin, unsigned end, StyleChange change) const {
+Result TextFieldHandle::set_style(unsigned begin, unsigned end, StyleChange change) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_style(id_, begin, end, change); });
 }
-Result TextHandle::toggle_style(StyleAttribute attribute) const {
+Result TextFieldHandle::toggle_style(StyleAttribute attribute) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->toggle_style(id_, attribute); });
 }
-Result TextHandle::apply_style(StyleChange change) const {
+Result TextFieldHandle::apply_style(StyleChange change) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->apply_style(id_, change); });
 }
-Query<TextStyle> TextHandle::typing_style() const {
+Query<TextStyle> TextFieldHandle::typing_style() const {
     return detail::UiState::operate(*this, [&]() -> Query<TextStyle> { return ui_->typing_style(id_); });
 }
-Result TextHandle::set_typing_style(TextStyle style) const {
+Result TextFieldHandle::set_typing_style(TextStyle style) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_typing_style(id_, std::move(style)); });
 }
-Result TextHandle::set_colors(std::vector<NamedColor> colors) const {
+Result TextFieldHandle::set_colors(std::vector<NamedColor> colors) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_colors(id_, std::move(colors)); });
 }
-Query<std::vector<NamedColor>> TextHandle::colors() const {
+Query<std::vector<NamedColor>> TextFieldHandle::colors() const {
     return detail::UiState::operate(*this, [&]() -> Query<std::vector<NamedColor>> { return ui_->colors(id_); });
 }
-Query<ComponentSnapshot> TextHandle::describe() const {
+Query<ComponentSnapshot> TextFieldHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
-Result TextHandle::set_visible_lines(unsigned lines) const {
+Result TextFieldHandle::set_visible_lines(unsigned lines) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_visible_lines(id_, lines); });
 }
-Query<unsigned> TextHandle::visible_lines() const {
+Query<unsigned> TextFieldHandle::visible_lines() const {
     return detail::UiState::operate(*this, [&]() -> Query<unsigned> {
         if (auto r = ui_->configuration_access(id_, true); !r) return {r.status, r.message, std::nullopt};
         const auto* control = ui_->find(id_);
@@ -1982,43 +1982,43 @@ Query<unsigned> TextHandle::visible_lines() const {
         return {Status::ok, {}, control->visible_lines};
     });
 }
-Result TextHandle::set_scroll_line(unsigned first_visible_line) const {
+Result TextFieldHandle::set_scroll_line(unsigned first_visible_line) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_scroll_line(id_, first_visible_line); });
 }
-Query<unsigned> TextHandle::scroll_line() const {
+Query<unsigned> TextFieldHandle::scroll_line() const {
     return detail::UiState::operate(*this, [&]() -> Query<unsigned> { return ui_->scroll_line(id_); });
 }
-Result TextHandle::set_word_segmentation(WordSegmentation mode) const {
+Result TextFieldHandle::set_word_segmentation(WordSegmentation mode) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_word_segmentation(id_, mode); });
 }
-Query<WordSegmentation> TextHandle::word_segmentation() const {
+Query<WordSegmentation> TextFieldHandle::word_segmentation() const {
     return detail::UiState::operate(*this, [&]() -> Query<WordSegmentation> { return ui_->word_segmentation(id_); });
 }
-Query<WordSegmentation> TextHandle::word_segmentation_in_use() const {
+Query<WordSegmentation> TextFieldHandle::word_segmentation_in_use() const {
     return detail::UiState::operate(*this, [&]() -> Query<WordSegmentation> { return ui_->word_segmentation_in_use(id_); });
 }
-Query<TextSpan> TextHandle::word_at(unsigned offset) const {
+Query<TextSpan> TextFieldHandle::word_at(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Query<TextSpan> { return ui_->word_at(id_, offset); });
 }
-Query<TextSpan> TextHandle::paragraph_at(unsigned offset) const {
+Query<TextSpan> TextFieldHandle::paragraph_at(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Query<TextSpan> { return ui_->paragraph_at(id_, offset); });
 }
-Query<unsigned> TextHandle::next_word_stop(unsigned offset) const {
+Query<unsigned> TextFieldHandle::next_word_stop(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Query<unsigned> { return ui_->word_stop(id_, offset, true); });
 }
-Query<unsigned> TextHandle::previous_word_stop(unsigned offset) const {
+Query<unsigned> TextFieldHandle::previous_word_stop(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Query<unsigned> { return ui_->word_stop(id_, offset, false); });
 }
-Result TextHandle::select_word(unsigned offset) const {
+Result TextFieldHandle::select_word(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->select_word(id_, offset); });
 }
-Result TextHandle::select_paragraph(unsigned offset) const {
+Result TextFieldHandle::select_paragraph(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->select_paragraph(id_, offset); });
 }
-Result TextHandle::double_click(unsigned offset) const {
+Result TextFieldHandle::double_click(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->double_click(id_, offset); });
 }
-Result TextHandle::triple_click(unsigned offset) const {
+Result TextFieldHandle::triple_click(unsigned offset) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->triple_click(id_, offset); });
 }
 Result detail::UiState::set_visible_lines(std::string_view id, unsigned lines) {
@@ -2085,22 +2085,22 @@ Result detail::UiState::set_paragraph_spacing(std::string_view id, int dip) {
 }
 // Text flow (#80, #84): one implementation for the text field and the label (#94). The setters run the UiState operations
 // above, the getters read the handle's own description; both handles declare the same eight operations.
-Result TextHandle::set_text_align(TextAlign align) const {
+Result TextFieldHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
-Query<TextAlign> TextHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
-Result TextHandle::set_justify_method(JustifyMethod method) const {
+Query<TextAlign> TextFieldHandle::text_align() const { return semantic_property(describe(), &ComponentSnapshot::text_align); }
+Result TextFieldHandle::set_justify_method(JustifyMethod method) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_justify_method(id_, method); });
 }
-Query<JustifyMethod> TextHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
-Result TextHandle::set_line_spacing(double multiple) const {
+Query<JustifyMethod> TextFieldHandle::justify_method() const { return semantic_property(describe(), &ComponentSnapshot::justify_method); }
+Result TextFieldHandle::set_line_spacing(double multiple) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_line_spacing(id_, multiple); });
 }
-Query<double> TextHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
-Result TextHandle::set_paragraph_spacing(int dip) const {
+Query<double> TextFieldHandle::line_spacing() const { return semantic_property(describe(), &ComponentSnapshot::line_spacing); }
+Result TextFieldHandle::set_paragraph_spacing(int dip) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_paragraph_spacing(id_, dip); });
 }
-Query<int> TextHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
+Query<int> TextFieldHandle::paragraph_spacing() const { return semantic_property(describe(), &ComponentSnapshot::paragraph_spacing); }
 Result LabelHandle::set_text_align(TextAlign align) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->set_text_align(id_, align); });
 }
@@ -2134,7 +2134,7 @@ Query<unsigned> detail::UiState::scroll_line(std::string_view id) const {
     const auto& m = edits_.find(id)->second.multi;
     return {Status::ok, {}, m.pending_first.value_or(m.first)};
 }
-Query<std::u16string> TextHandle::draft() const { return semantic_property(describe(), &ComponentSnapshot::value); }
+Query<std::u16string> TextFieldHandle::draft() const { return semantic_property(describe(), &ComponentSnapshot::value); }
 Query<ComponentSnapshot> ButtonHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handle_describe(id_); });
 }
@@ -2464,8 +2464,8 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     return finish_edit(id, *field);
 }
 Result detail::UiState::submit_field(std::string_view id, Field& field,
-        const std::function<Result(const Change<TextHandle>&)>& write, bool command) {
-    auto change = Change<TextHandle>{TextHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
+        const std::function<Result(const Change<TextFieldHandle>&)>& write, bool command) {
+    auto change = Change<TextFieldHandle>{TextFieldHandle(this, lifetime_, Id(id)), field.session.text, field.origin};
     field.submitting = true;
     if (command) invoking_ = true;
     Result result;
@@ -2594,11 +2594,11 @@ unsigned detail::UiState::text_anchor(std::string_view id, int text_size) const 
 void detail::UiState::set_text_anchor(std::string_view id, int text_size, unsigned anchor) {
     if (auto it = edits_.find(id); it != edits_.end()) { it->second.offset_text_size = text_size; it->second.offset_anchor = anchor; }
 }
-const FieldView* detail::UiState::field_view(std::string_view id) const {
+const TextFieldView* detail::UiState::field_view(std::string_view id) const {
     auto it = edits_.find(id);
     return it != edits_.end() && it->second.multi.placed ? &it->second.multi.view : nullptr;
 }
-void detail::UiState::settle_lines(std::string_view id, FieldView& view, int text_size, int width) {
+void detail::UiState::settle_lines(std::string_view id, TextFieldView& view, int text_size, int width) {
     OperationScope operation(this);
     auto it = edits_.find(id);
     if (it == edits_.end() || view.lines.empty()) return;
@@ -2815,10 +2815,10 @@ Result detail::UiState::focusable(const Component& control) const {
     return {};
 }
 void detail::UiState::set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height) {
-    text_scrolls_.insert_or_assign(std::move(id), TextScroll{&state, maximum, std::max(1, line_height)});
+    text_scrolls_.insert_or_assign(std::move(id), TextFieldScroll{&state, maximum, std::max(1, line_height)});
 }
 void detail::UiState::set_vertical_scroll(const Id& id, int maximum, int column_width) {
-    text_scrolls_.insert_or_assign(id, TextScroll{&vertical_scrolls_[id], maximum, std::max(1, column_width), true});
+    text_scrolls_.insert_or_assign(id, TextFieldScroll{&vertical_scrolls_[id], maximum, std::max(1, column_width), true});
 }
 void detail::UiState::clear_vertical_scroll(const Id& id) {
     if (auto it = text_scrolls_.find(id); it != text_scrolls_.end() && it->second.horizontal) text_scrolls_.erase(it);
@@ -3078,19 +3078,19 @@ Result detail::UiState::edit_key(KeyPress key) {
 }
 // The lines cursor keys move over: the last arrange's when they still describe the text, else a fresh
 // arrange from the host, else the hard lines alone (no wrapping, one pixel per column).
-FieldView detail::UiState::vertical_view(const Id& id) {
+TextFieldView detail::UiState::vertical_view(const Id& id) {
     auto& field = edits_.find(id)->second;
     auto fresh = [&] {
         return field.multi.placed && field.multi.revision == layout_revision_ && field.multi.text == field.session.visible() &&
                field.multi.styles == visible_style_spans(id);
     };
     if (!fresh() && relayout_) relayout_();
-    FieldView view;
+    TextFieldView view;
     if (fresh()) { view = field.multi.view; view.upstream = field.session.caret_upstream; return view; }
     const auto& text = field.session.text;
     for (std::size_t start = 0;;) {
         auto end = text.find(u'\n', start);
-        FieldLine line;
+        TextFieldLine line;
         line.begin = static_cast<unsigned>(start);
         line.end = static_cast<unsigned>(end == std::u16string::npos ? text.size() : end);
         line.run.stops.push_back({0, 0.f});
@@ -3264,8 +3264,8 @@ static Query<Handle> add_component(detail::UiState& state, ComponentKind kind, C
     try { return {Status::ok, {}, create(std::move(component))}; }
     catch (const std::invalid_argument&) { return {Status::invalid_value, u"Invalid component", std::nullopt}; }
 }
-Query<TextHandle> Ui::add_text(ComponentConfig config) {
-    return add_component<TextHandle>(*state_, ComponentKind::text, std::move(config), [&](auto c) { return state_->add_text(std::move(c)); });
+Query<TextFieldHandle> Ui::add_text_field(ComponentConfig config) {
+    return add_component<TextFieldHandle>(*state_, ComponentKind::text_field, std::move(config), [&](auto c) { return state_->add_text_field(std::move(c)); });
 }
 Query<ButtonHandle> Ui::add_button(ComponentConfig config) {
     return add_component<ButtonHandle>(*state_, ComponentKind::button, std::move(config), [&](auto c) { return state_->add_button(std::move(c)); });
@@ -3328,7 +3328,7 @@ Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle sco
     return state_->add_shortcut(chord, std::move(target), std::move(scope));
 }
 Result Ui::connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
-        std::function<ConfirmationResult(const std::vector<FieldChange>&)> submit) {
+        std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
     return state_->connect_confirmation(std::move(button), std::move(fields), std::move(submit));
 }
 void Ui::on_change(std::function<void()> callback) { state_->on_change(std::move(callback)); }
@@ -3532,17 +3532,17 @@ Query<Color> SemanticTree::text_color(const NodeRef& ref, std::string_view name)
 }
 Query<TextSpan> SemanticTree::text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
-    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    if (n->role != Role::text_field) return {Status::not_supported, {}, std::nullopt};
     return unit == TextUnitKind::word ? state_->word_at(id, offset) : state_->paragraph_at(id, offset);
 }
 Query<unsigned> SemanticTree::word_stop(std::string_view id, unsigned offset, bool forward) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, std::nullopt};
-    if (n->role != Role::text) return {Status::not_supported, {}, std::nullopt};
+    if (n->role != Role::text_field) return {Status::not_supported, {}, std::nullopt};
     return state_->word_stop(id, offset, forward);
 }
 Query<std::u16string> SemanticTree::text(std::string_view id) const {
     auto n = get({std::string(id)}); if (!n) return {n.status, n.message, {}};
-    if (n->role != Role::text) return {Status::not_supported, {}, {}};
+    if (n->role != Role::text_field) return {Status::not_supported, {}, {}};
     return {Status::ok, {}, n->value};
 }
 std::vector<NodeSnapshot> detail::UiState::semantic_snapshot() {
@@ -3617,7 +3617,7 @@ void detail::UiState::semantic_diff() {
             property(node.scroll->visible_lines != old->scroll->visible_lines, "visible_lines");
         }
         property(node.writing_mode != old->writing_mode, "writing_mode"); property(node.vertical_digits != old->vertical_digits, "vertical_digits");
-        if (node.role == Role::text && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
+        if (node.role == Role::text_field && node.value != old->value) emit(SemanticEventKind::text_changed, node.ref);
         if (node.text_selection && old->text_selection && (node.text_selection->anchor != old->text_selection->anchor || node.text_selection->caret != old->text_selection->caret))
             emit(SemanticEventKind::text_selection_changed, node.ref);
         if (node.bounds != old->bounds) emit(SemanticEventKind::layout_changed, {});

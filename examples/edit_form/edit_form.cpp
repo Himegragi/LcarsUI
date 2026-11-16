@@ -51,7 +51,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     handles.long_text = ui.add_button({.id = i.long_text, .label = u"長說明"}).value.value();
     handles.reset = ui.add_button({.id = i.reset, .label = u"重設"}).value.value();
     handles.name_label = ui.add_label({.id = i.name_label, .value = u"顯示名稱", .target = i.name, .label_kind = LabelKind::name}).value.value();
-    handles.name = ui.add_text({.id = i.name, .value = initial_name}).value.value();
+    handles.name = ui.add_text_field({.id = i.name, .value = initial_name}).value.value();
     handles.name_help = ui.add_label({.id = i.name_help, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .label_kind = LabelKind::description}).value.value();
     handles.name_error = ui.add_label({.id = i.name_error, .target = i.name, .label_kind = LabelKind::error}).value.value();
     handles.notices = ui.add_checkbox({.id = i.notices, .label = u"\u555f\u7528\u63d0\u793a"}).value.value();
@@ -259,9 +259,9 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
             return ui.set_presentation(settings);
         });
-        handles.preview = ui.add_text({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
+        handles.preview = ui.add_text_field({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
-        handles.preview.connect_immediate([this](const Change<TextHandle>& change) { preview_ = change.value; return Result{}; });
+        handles.preview.connect_immediate([this](const Change<TextFieldHandle>& change) { preview_ = change.value; return Result{}; });
         // #84: one mixed-script paragraph (Chinese, English and digits) whose alignment and justification method
         // the two dropdowns switch live, and short labels to compare distribute with left alignment.
         handles.justify_sample = ui.add_label({.id = prefix + "v04.justify.sample", .value = justify_sample_text, .text_align = TextAlign::justify}).value.value();
@@ -356,14 +356,14 @@ bool Form::validate() {
     handles.name.set_error(valid ? u"" : required_name);
     return valid;
 }
-ConfirmationResult Form::apply(const std::vector<FieldChange>& changes) {
+ConfirmationResult Form::apply(const std::vector<ConfirmFieldChange>& changes) {
     if (auto observer = std::exchange(next_apply_observer_, {})) observer();
-    const auto& name = std::get<Change<TextHandle>>(changes[0]);
+    const auto& name = std::get<Change<TextFieldHandle>>(changes[0]);
     const auto& notices = std::get<Change<CheckboxHandle>>(changes[1]);
     const auto& mode = std::get<Change<RadioGroupHandle>>(changes[2]);
     const auto& region = std::get<Change<DropdownHandle>>(changes[3]);
     const auto& volume = std::get<Change<SliderHandle>>(changes[4]);
-    std::vector<FieldError> errors;
+    std::vector<ConfirmFieldError> errors;
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
     if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};

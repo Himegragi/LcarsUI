@@ -24,9 +24,9 @@ std::string label_of(const Appearance& a, const ThemeVariant& v) { return name_o
 struct Page {
     Ui ui; ScrollState scroll; test::FakeMeasure measure;
     ButtonHandle save, off, ok; CheckboxHandle box; RadioGroupHandle radio; DropdownHandle drop; ListHandle list;
-    TabsHandle tabs; NavigationListHandle nav; SliderHandle slider; TextHandle field, notes; ProgressHandle progress;
+    TabsHandle tabs; NavigationListHandle nav; SliderHandle slider; TextFieldHandle field, notes; ProgressHandle progress;
     LabelHandle label, vertical; DialogHandle dialog; TooltipHandle tip;
-    TextHandle aligned, aligned_notes;  // #80: aligned, spaced text; #79: multi-line
+    TextFieldHandle aligned, aligned_notes;  // #80: aligned, spaced text; #79: multi-line
     int height = 2400;
     bool list_first = false;  // lets a scroll test reach the list rows inside a short window
     Page() {
@@ -51,11 +51,11 @@ struct Page {
         slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connect_source({[] { return 50; }, [](auto) { return [] {}; }});
         slider.connect_immediate([](const Change<SliderHandle>&) { return Result{}; });
-        field = ui.add_text({.id = "field", .label = u"Name", .value = u"abc"}).value.value();
-        notes = ui.add_text({.id = "notes", .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
-        aligned = ui.add_text({.id = "aligned", .label = u"Right", .value = u"abc"}).value.value();
+        field = ui.add_text_field({.id = "field", .label = u"Name", .value = u"abc"}).value.value();
+        notes = ui.add_text_field({.id = "notes", .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
+        aligned = ui.add_text_field({.id = "aligned", .label = u"Right", .value = u"abc"}).value.value();
         check(bool(aligned.set_text_align(TextAlign::right)), "a single-line field takes an alignment");
-        aligned_notes = ui.add_text({.id = "aligned_notes", .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visible_lines = 3}).value.value();
+        aligned_notes = ui.add_text_field({.id = "aligned_notes", .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visible_lines = 3}).value.value();
         check(bool(aligned_notes.set_text_align(TextAlign::center)) && bool(aligned_notes.set_line_spacing(1.5)) && bool(aligned_notes.set_paragraph_spacing(8)),
               "a multi-line field takes alignment, line spacing and paragraph spacing");
         progress = ui.add_progress({.id = "progress", .label = u"Progress"}).value.value();
@@ -370,7 +370,7 @@ void hover_commands_follow_the_target_everywhere() {
     }
     // Not vacuous: every clickable kind, and the open dropdown's panel, showed an overlay.
     std::set<std::string> expected_kinds;
-    for (auto kind : {ComponentKind::text, ComponentKind::button, ComponentKind::checkbox, ComponentKind::radio_group, ComponentKind::slider, ComponentKind::dropdown, ComponentKind::list, ComponentKind::tabs, ComponentKind::navigation_list})
+    for (auto kind : {ComponentKind::text_field, ComponentKind::button, ComponentKind::checkbox, ComponentKind::radio_group, ComponentKind::slider, ComponentKind::dropdown, ComponentKind::list, ComponentKind::tabs, ComponentKind::navigation_list})
         expected_kinds.insert(std::to_string(static_cast<int>(kind)));
     expected_kinds.insert(std::to_string(static_cast<int>(ComponentKind::dropdown)) + "p");
     std::string missing;

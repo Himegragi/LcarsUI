@@ -55,13 +55,13 @@ void put_error(Ui& ui, const std::string& id, bool error) { if (error) check(boo
 
 const Subject subjects[] = {
     {"text", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto field = ui.add_text(control(id, u"Name")).value.value();
+        auto field = ui.add_text_field(control(id, u"Name")).value.value();
         auto& source = new_source(); auto model = std::make_shared<std::u16string>(u"original");
         if (conflict) {
             field.connect_source({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
             auto confirm = ui.add_button(control(id + ".apply", u"Apply")).value.value();
-            check(bool(ui.connect_confirmation(confirm, {field}, [](const std::vector<FieldChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
+            check(bool(ui.connect_confirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
             field.set_value(u"draft"); *model = u"newest"; source.notify();
             check(field.describe()->source_conflict, "the text field reports a conflict");
         }
@@ -137,7 +137,7 @@ std::string describe(const Placement& p) {
     out += " options=";
     for (const auto& o : p.options) out += "(" + rect(o) + ")";
     out += " track=" + rect(p.slider_track);
-    out += " field=" + rect(p.field.label) + ";" + rect(p.field.surface) + ";" + rect(p.field.editor) + ";" + rect(p.field.description) + ";" + rect(p.field.error) + ";" + std::to_string(p.field.height);
+    out += " field=" + rect(p.text_field.label) + ";" + rect(p.text_field.surface) + ";" + rect(p.text_field.editor) + ";" + rect(p.text_field.description) + ";" + rect(p.text_field.error) + ";" + std::to_string(p.text_field.height);
     return out;
 }
 

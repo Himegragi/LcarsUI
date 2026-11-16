@@ -15,9 +15,8 @@ struct AlternatePresentation final : Appearance {
     const Appearance& base = web_appearance();
     std::string_view name() const override { return "alternate"; }
     Palette palette() const override { return base.palette(); }
-    FieldParts field(Rect r, int size) const override { return base.field(r, size); }
     int radius() const override { return base.radius(); }
-    FieldLayout arrange_field(int w, const FieldText& text, float scale) const override { return base.arrange_field(w, text, scale); }
+    TextFieldLayout arrange_text_field(int w, const TextFieldHeights& text, float scale) const override { return base.arrange_text_field(w, text, scale); }
     int button_height(int line, float scale) const override { return base.button_height(line, scale); }
     int button_padding(float scale) const override { return base.button_padding(scale); }
     ComponentPresentation presentation = [] {
@@ -141,7 +140,7 @@ void command_kinds_are_placed_like_buttons() {
 
 std::vector<detail::Component> field_controls() {
     return {{ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
-            {ComponentKind::text, {.id = "name", .value = u"測試使用者"}},
+            {ComponentKind::text_field, {.id = "name", .value = u"測試使用者"}},
             {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
             {ComponentKind::button, {.id = "apply", .label = u"套用"}}};
 }
@@ -242,12 +241,12 @@ void resize_after_deep_scroll_settles_in_the_first_frame() {
 
 void pointer_hits_map_to_the_painted_caret_positions() {
     for (float scale : {1.f, 1.5f}) {
-        Ui ui; detail::access(ui).seed_test_controls({{ComponentKind::text, {.id = "name", .value = u"Ab中\U00020000文"}}});
+        Ui ui; detail::access(ui).seed_test_controls({{ComponentKind::text_field, {.id = "name", .value = u"Ab中\U00020000文"}}});
         FakeMeasure measure;
         ScrollState scroll;
         auto frame = arrange(layout::column({host_control(ui, "name")}), ui, material_appearance(), measure, 400, 200, scale, scroll);
         auto field = detail::find_placement(frame, "name");
-        int origin = field->bounds.x + field->field.editor.x;
+        int origin = field->bounds.x + field->text_field.editor.x;
         for (auto [offset, x] : field->run.stops) {
             int painted = origin + static_cast<int>(x - field->offset);
             check(detail::placement_text_offset(frame, "name", painted) == offset, "Pointer at a painted caret returns that caret");
@@ -260,10 +259,10 @@ void pointer_hits_map_to_the_painted_caret_positions() {
 
 void long_text_keeps_caret_visible_and_reset_clears_offset() {
     Ui ui;
-    auto name_field = ui.add_text({.id = "name", .value = std::u16string(60, u'A')}).value.value();
+    auto name_field = ui.add_text_field({.id = "name", .value = std::u16string(60, u'A')}).value.value();
     ui.add_button({.id = "apply"}).value.value();
     name_field.connect_source({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
-    name_field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    name_field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     FakeMeasure measure;
     ScrollState scroll;
     auto page = layout::column({host_control(ui, "name"), host_control(ui, "apply")});
@@ -273,7 +272,7 @@ void long_text_keeps_caret_visible_and_reset_clears_offset() {
     auto frame = arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
     auto field = detail::find_placement(frame, "name");
     float caret = field->run.x(61) - field->offset;
-    check(field->offset > 0 && caret >= 0 && caret <= field->field.editor.w, "Caret at the end stays inside the editor");
+    check(field->offset > 0 && caret >= 0 && caret <= field->text_field.editor.w, "Caret at the end stays inside the editor");
     detail::access(ui).focus("apply");
     arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
     check(detail::access(ui).text_offset("name") > 0, "Leaving the field keeps its display offset");
@@ -389,8 +388,8 @@ void stack_and_popup_edges_follow_paint_order() {
 void cross_page_error_is_revealed_in_first_frame() {
     for (const auto* look : {&web_appearance(), &material_appearance()}) {
         Ui ui;
-        auto current = ui.add_text({.id = "current"}).value.value();
-        auto remote = ui.add_text({.id = "remote"}).value.value();
+        auto current = ui.add_text_field({.id = "current"}).value.value();
+        auto remote = ui.add_text_field({.id = "remote"}).value.value();
         auto filler = ui.add_label({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10"}).value.value();
         auto submit = ui.add_button({.id = "apply"}).value.value();
         auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};

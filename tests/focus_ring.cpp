@@ -106,9 +106,8 @@ struct AccentAfterwards final : Appearance {
         if (own_focus_) p.focus = *own_focus_;
         return p;
     }
-    FieldParts field(Rect b, int s) const override { return web_appearance().field(b, s); }
     int radius() const override { return 6; }
-    FieldLayout arrange_field(int w, const FieldText& t, float s) const override { return web_appearance().arrange_field(w, t, s); }
+    TextFieldLayout arrange_text_field(int w, const TextFieldHeights& t, float s) const override { return web_appearance().arrange_text_field(w, t, s); }
     int button_height(int l, float s) const override { return web_appearance().button_height(l, s); }
     int button_padding(float s) const override { return web_appearance().button_padding(s); }
     std::optional<Color> own_focus_;
@@ -188,11 +187,11 @@ struct Page {
     std::vector<std::string> ids;
     Page() {
         auto add = [&](std::string id, layout::Node node) { ids.push_back(std::move(id)); nodes.push_back(std::move(node)); };
-        auto text = ui.add_text({.id = "text", .label = u"Name", .value = u"abc"}).value.value();
+        auto text = ui.add_text_field({.id = "text", .label = u"Name", .value = u"abc"}).value.value();
         add("text", layout::component(text));
-        auto note = ui.add_text({.id = "note", .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
+        auto note = ui.add_text_field({.id = "note", .label = u"Notes", .value = u"a\nb\nc\nd\ne", .multiline = true, .visible_lines = 3}).value.value();
         add("note", layout::component(note));
-        auto rich = ui.add_text({.id = "rich", .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        auto rich = ui.add_text_field({.id = "rich", .label = u"Description", .value = u"bold plain", .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         add("rich", layout::component(rich));
         auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
         add("dropdown", layout::component(dropdown));
@@ -272,7 +271,7 @@ std::optional<Rect> expected_outer(const std::string& id, const Placement& item,
     auto offset = [](Rect r, Rect origin) { return Rect{r.x + origin.x, r.y + origin.y, r.w, r.h}; };
     // The row of one option, found by its value in the semantic option list.
     auto row = [&](const char* value) { for (std::size_t i = 0; i < s.items.size(); ++i) if (s.items[i].value == OptionValue{value}) return item.options[i]; return Rect{}; };
-    if (s.kind == ComponentKind::text) return offset(item.field.surface, item.bounds);
+    if (s.kind == ComponentKind::text_field) return offset(item.text_field.surface, item.bounds);
     // radio_none has nothing selected and its first option "a" is disabled: the ring is on "b", the first one that can be chosen.
     // radio_sel has "b" selected. A list and tabs frame their candidate row, navigation its selected row: both are state the
     // semantic layer reports, not a rule of the painter.
@@ -323,10 +322,10 @@ void the_driver_reaches_single_line_multi_line_rich_and_underline_text_fields() 
     int single = 0, multi = 0, rich = 0, underline = 0, boxed = 0;
     for (const auto& r : runs)
         for_each_focused(r, [](PresentationSettings&) {}, [&](Page&, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
-            if (s.kind != ComponentKind::text) return;
+            if (s.kind != ComponentKind::text_field) return;
             check(find_ring(probe.cmds).has_value(), (label + ": a text field draws its ring").c_str());
             (s.rich ? rich : s.multiline ? multi : single) += 1;
-            (item.field.underline ? underline : boxed) += 1;
+            (item.text_field.underline ? underline : boxed) += 1;
         });
     check(single > 0 && multi > 0 && rich > 0, "single-line, multi-line and rich text fields are all driven");
     check(underline > 0 && boxed > 0, "so are underline-style and boxed fields (one per appearance)");
@@ -371,7 +370,7 @@ std::vector<int> geometry(const Frame& frame) {
             for (const auto* lines : {&p.lines, &p.label_lines, &p.description_lines, &p.error_lines}) for (const auto& l : *lines) add(l.bounds);
             for (const auto& o : p.options) add(o);
             add(p.slider_track); add(p.progress_track);
-            add(p.field.label); add(p.field.surface); add(p.field.editor); add(p.field.description); add(p.field.error);
+            add(p.text_field.label); add(p.text_field.surface); add(p.text_field.editor); add(p.text_field.description); add(p.text_field.error);
             add(p.view.text); add(p.view.track);
             add(p.column_layout.track); add(p.column_layout.thumb);
             for (const auto& column : p.column_layout.columns) add(column.bounds);
@@ -508,7 +507,7 @@ void never_draws_no_focus_indicator_on_any_component() {
             check(!find_ring(probe.cmds), (label + ": no ring").c_str());
             check(s.focused && page.state().focused() == s.id, (label + ": focus itself is untouched").c_str());
             check(!page.ui.focus_indicator_visible(), (label + ": the public query says hidden").c_str());
-            if (s.kind == ComponentKind::text) check(probe.count(PaintRole::caret) == 1, (label + ": the caret still draws, editable fields included").c_str());
+            if (s.kind == ComponentKind::text_field) check(probe.count(PaintRole::caret) == 1, (label + ": the caret still draws, editable fields included").c_str());
             if (s.kind == ComponentKind::slider) {
                 // the thumb stays its plain size
                 int size = 0; for (const auto& c : probe.cmds) if (c.kind == Cmd::Kind::rounded && focus_marks::is_thumb(c.rect)) size = c.rect.w;
