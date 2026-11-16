@@ -3449,23 +3449,25 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     const auto snapshot = u.describe(ref.id);
     const auto& s = *snapshot;
     NodeSnapshot n;
-    // Copy the owning common part once, keeping the complete source intact for the registry callbacks.
-    static_cast<CommonState&>(n) = static_cast<const CommonState&>(s);
     n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
-    if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
-    for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
-    detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
-    if (ref.item) {
+    if (!ref.item) {
+        // Component nodes copy the owning common part; options start from defaults below.
+        static_cast<CommonState&>(n) = static_cast<const CommonState&>(s);
+        if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
+        for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
+        detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
+    } else {
         auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *ref.item; });
         if (it == s.items.end()) return {Status::not_found, {}, {}};
         if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
-        n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = it->enabled; n.invalid = it->invalid;
+        n.name = it->label; n.selected = it->selected; n.enabled = it->enabled; n.invalid = it->invalid;
+        n.focusable = n.role == Role::list_item && s.focusable && it->enabled;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }

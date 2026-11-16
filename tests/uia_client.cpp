@@ -317,6 +317,15 @@ int wmain(int argc, wchar_t** argv) {
         list_case = list_case && second && SUCCEEDED(second->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&list_item))) && list_item && SUCCEEDED(list_item->get_CurrentIsSelected(&selected_item)) && selected_item;
         if (list_item) list_item->Release();
         list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.disable")) && select_id(automation, root, L"T008") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
+        BSTR item_help = nullptr;
+        const bool item_help_empty = first && SUCCEEDED(first->get_CurrentHelpText(&item_help)) && SysStringLen(item_help) == 0;
+        SysFreeString(item_help);
+        std::cout << "UIA09 option HelpText empty: " << (item_help_empty ? "PASS" : "FAIL") << '\n'; pass &= item_help_empty;
+        auto disabled_row = find_id(automation, root, L"T008"); BOOL row_focusable = TRUE, row_enabled = TRUE;
+        const bool disabled_not_focusable = disabled_row && SUCCEEDED(disabled_row->get_CurrentIsEnabled(&row_enabled)) && !row_enabled &&
+            SUCCEEDED(disabled_row->get_CurrentIsKeyboardFocusable(&row_focusable)) && !row_focusable;
+        if (disabled_row) disabled_row->Release();
+        std::cout << "UIA09 disabled row not focusable: " << (disabled_not_focusable ? "PASS" : "FAIL") << '\n'; pass &= disabled_not_focusable;
         list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.sort"));
         bool list_focus = SUCCEEDED(focus_subscribed) && SendMessageW(search.window, WM_APP + 80, 22, 0) == 0 && WaitForSingleObject(focus_events->received, 10000) == WAIT_OBJECT_0;
         { std::lock_guard lock(focus_events->mutex); list_focus = list_focus && focus_events->observed.size() >= 2 && focus_events->observed[0] == L"T003" && focus_events->observed[1] == L"T004"; }

@@ -186,10 +186,10 @@ const std::vector<std::string> golden_semantics = {
     "list: list verbs=focus,",
     "list[0]: list_item verbs=select,focus,",
     "tabs: tabs selection_required verbs=focus,",
-    "tabs[0]: tab_item selection_required verbs=select,",
+    "tabs[0]: tab_item verbs=select,",
     "progress: progress verbs=",
     "navigation_list: list selection_required verbs=focus,",
-    "navigation_list[0]: list_item selection_required verbs=select,"};
+    "navigation_list[0]: list_item verbs=select,"};
 // With a confirmed write instead of an immediate one, the five types that take a write timing also list the confirm verb (after
 // their other verbs); every other row is what the immediate table says.
 std::vector<std::string> confirmed_from(const std::vector<std::string>& immediate) {

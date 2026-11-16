@@ -146,9 +146,15 @@ struct TextFieldScroll { unsigned first_line = 0, visible_lines = 0, line_count 
 struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; bool operator==(const OptionSnapshot&) const = default; };
 // Owning common part of a component or semantic node snapshot; not a complete snapshot by itself.
 struct CommonState {
-    std::u16string name, value, description, error;
+    std::u16string name, value, description;
+    // This component or node's own error message, if any. Options have none, even when invalid is true.
+    std::u16string error;
     // enabled is this component or node's own setting, including on items; parent restrictions affect verbs separately.
+    // focusable means keyboard focus can stop here now. List/navigation rows also require a focusable parent
+    // and their own enabled setting, unlike enabled, which never merges the parent. Other options are not focusable.
     // focused means keyboard input goes here now; an open context menu takes it away from its component.
+    // invalid is an error mark: components have a nonempty error; page options mark errors in their members,
+    // without copying the members' messages. Other options have no error mark.
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false;
     bool visible = false; // positive on-screen area in the latest arranged frame, and not hidden
     bool rich = false;          // text fields: created with ComponentConfig::rich
