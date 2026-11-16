@@ -72,7 +72,7 @@ void renderer_failure_admission() {
     Status background=Status::ok;
     std::thread worker([&] { background=name.set_value(u"x").status; }); worker.join();
     check(background == Status::wrong_thread, "Wrong thread precedes renderer failure");
-    check(name.describe()->verbs.empty(), "Failure advertises no operations");
+    check(renderer_failure_omits_interactive_verbs(*name.describe()), "Failure omits focus, editing and selection verbs");
     auto settings = ui.presentation(); settings.text_size = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
     check(bool(ui.set_presentation(settings)) && ui.presentation() == settings, "PS10 presentation accepted while failed");
     auto invalid = settings; invalid.text_size = 29;

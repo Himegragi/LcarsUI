@@ -46,6 +46,7 @@ struct World {
     ScrollState page_scroll;
     std::vector<Subject> subjects;
     TextHandle multi;
+    ButtonHandle button;
     template <class H> H keep(H h) { subjects.push_back({h.describe()->id, h}); return h; }
     explicit World(bool enabled = true, bool read_only = false) {
         auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
@@ -58,9 +59,11 @@ struct World {
         multi = keep(ui.add_text(multi_config).value.value());
         multi.connect_rich_source(source(RichText{u"a\nb\nc\nd\ne\nf", {{0, 1, true}}}));
         multi.connect_rich_confirmed([](const auto&) { return Result{}; });
-        auto button = keep(ui.add_button(config("button")).value.value());
+        button = keep(ui.add_button(config("button")).value.value());
         button.bind([] { return Result{}; });
         auto label_config = config("label"); label_config.value = u"Displayed"; label_config.vertical_digits = 2;
+        label_config.writing_mode = WritingMode::vertical; label_config.text_align = TextAlign::right;
+        label_config.justify_method = JustifyMethod::spaces; label_config.line_spacing = 1.5; label_config.paragraph_spacing = 4;
         keep(ui.add_label(label_config).value.value());
         auto box = keep(ui.add_checkbox(config("checkbox")).value.value());
         box.connect_source(source(true)); box.connect_confirmed([](const auto&) { return Result{}; });
@@ -188,8 +191,7 @@ void hidden() {
 void blocked_by_modal() {
     World w;
     const auto inside = w.ui.add_button({.id = "dialog.close", .label = u"Close"}).value.value();
-    const auto fallback = std::get<ButtonHandle>(w.subjects[2].handle);
-    const auto dialog = w.ui.add_dialog("dialog", {inside}, inside, fallback, [](bool) {}).value.value();
+    const auto dialog = w.ui.add_dialog("dialog", {inside}, inside, w.button, [](bool) {}).value.value();
     check(bool(dialog.open()), "modal: open dialog");
     arrange(layout::modal(w.root(), layout::component(inside), dialog), w.ui, web_appearance(), w.measure, 400, 2400, 1.f, w.page_scroll);
     compare_all(w, "blocked_by_modal");
@@ -221,10 +223,34 @@ void scrolled_offscreen() {
               ("scrolled_offscreen/" + subject.id + ": no visible area").c_str());
     }
 }
+void errors() {
+    World w;
+    for (const auto& subject : w.subjects) std::visit([](const auto& handle) {
+        if constexpr (requires { handle.set_error(u"Error"); }) check(bool(handle.set_error(u"Error")), "errors: set field error");
+    }, subject.handle);
+    for (const auto& subject : w.subjects) {
+        if (const auto* tabs = std::get_if<TabsHandle>(&subject.handle))
+            check(bool(tabs->add_member({"a"}, w.subjects.front().handle)), "errors: place text on tab page");
+        if (const auto* nav = std::get_if<NavigationListHandle>(&subject.handle))
+            check(bool(nav->add_member({"a"}, w.multi)), "errors: place multi on navigation page");
+    }
+    w.arrange_page(); compare_all(w, "errors");
+    check(w.ui.semantics().get({"tabs", OptionValue{"a"}})->invalid &&
+          w.ui.semantics().get({"navigation", OptionValue{"a"}})->invalid, "errors: page items carry the member's error mark");
+}
+void dropdown_open() {
+    World w; w.arrange_page();
+    for (const auto& subject : w.subjects) if (const auto* dropdown = std::get_if<DropdownHandle>(&subject.handle)) {
+        check(bool(dropdown->open()), "dropdown_open: open popup");
+        w.arrange_page(); compare_all(w, "dropdown_open");
+        check(dropdown->describe()->expanded, "dropdown_open: expanded state reached");
+    }
+}
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", read_only}, {"context_menu_open", context_menu_open},
                               {"attached_error_visible", attached_error_visible}, {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal},
-                              {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen}};
+                              {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen},
+                              {"errors", errors}, {"dropdown_open", dropdown_open}};
     return test::run("snapshots", cases);
 }
