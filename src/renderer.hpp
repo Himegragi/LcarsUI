@@ -7,27 +7,27 @@
 #include <memory>
 namespace lcars::detail {
 struct RendererTestHooks {
-    bool fail_context_33 = false, fail_rebuild_once = false, hide_robustness = false, hide_khr_debug = false, misuse_once = false;
-    std::string fragment_shader_override;
-    std::string startup_resource_error;
-    int gl_error_at_frame = 0, reset_at_frame = 0;
+    bool failContext33 = false, failRebuildOnce = false, hideRobustness = false, hideKhrDebug = false, misuseOnce = false;
+    std::string fragmentShaderOverride;
+    std::string startupResourceError;
+    int errorAtFrame = 0, resetAtFrame = 0;
     // From this frame on the backend reports a lost device on every error query, as after a real TDR.
-    int context_lost_at_frame = 0;
-    int rebuild_attempts = 0;
-    unsigned injected_error = 0x0505;
+    int contextLostAtFrame = 0;
+    int rebuildAttempts = 0;
+    unsigned injectedError = 0x0505;
 };
 struct StartupError { StartupFailure failure; };
 struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
-RenderDiagnostic frame_diagnostic(unsigned code);
+RenderDiagnostic frameDiagnostic(unsigned code);
 class Renderer {
 public:
-    explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::build_default, std::function<void(RenderDiagnostic)> sink = {});
+    explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
     ~Renderer();
-    double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submission_ms = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
-    Image read_back(const DrawList& list, int width, int height);
+    double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
+    Image readBack(const DrawList& list, int width, int height);
     std::string name() const;
     RendererCapabilities capabilities() const;
-    void restore_atlas(const std::vector<const AtlasPage*>& pages);
+    void restoreAtlas(const std::vector<const AtlasPage*>& pages);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

@@ -6,9 +6,9 @@
 #include <string>
 
 int main() {
-    auto* volatile desktop_entry = &lcars::run_desktop;
-    if (!desktop_entry) return 5;
-    const auto notices = lcars::third_party_notices();
+    auto* volatile desktopEntry = &lcars::runDesktop;
+    if (!desktopEntry) return 5;
+    const auto notices = lcars::thirdPartyNotices();
     if (notices.size() != 4) return 1;
     std::ifstream input(LCARS_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
     const std::string file((std::istreambuf_iterator<char>(input)), {});

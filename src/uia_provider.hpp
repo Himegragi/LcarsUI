@@ -9,11 +9,11 @@ public:
     struct Impl;
     UiaBridge(Ui&, HWND, std::function<const Frame&()>);
     ~UiaBridge();
-    LRESULT get_object(WPARAM, LPARAM);
+    LRESULT getObject(WPARAM, LPARAM);
     void dispatch();
     void close();
 private:
     std::shared_ptr<Impl> impl_;
 };
-constexpr UINT uia_dispatch_message = WM_APP + 46;
+constexpr UINT uiaDispatchMessage = WM_APP + 46;
 }

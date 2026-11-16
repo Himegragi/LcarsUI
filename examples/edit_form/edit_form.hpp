@@ -9,112 +9,112 @@
 #include <array>
 #include <map>
 
-namespace edit_form {
+namespace editForm {
 struct Ids {
     std::string title, intro;
-    std::string normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
-    std::string name_label, name, name_help, name_error, apply;
-    std::string notices, mode, volume, volume_latest, offline_disabled, region, region_empty;
+    std::string normal, readOnly, disabled, error, longText, reset;  // recoverable test entries
+    std::string nameLabel, name, nameHelp, nameError, apply;
+    std::string notices, mode, volume, volumeLatest, offlineDisabled, region, regionEmpty;
     std::string state, draft, result, count, latest;                        // displayed results
 };
-Ids default_ids();
+Ids defaultIds();
 
 class Form {
 private:
-    enum class Mode { normal, read_only, disabled };
+    enum class Mode { normal, readOnly, disabled };
     Ids ids_;
     std::u16string applied_;
     std::u16string preview_ = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f";
     int applies_ = 0;
-    int volume_applied_ = 40;
+    int volumeApplied_ = 40;
     int progress_ = 50;
-    int dialog_confirmations_ = 0;
-    std::u16string dialog_result_ = u"No result";
-    bool notices_applied_ = true;
-    std::optional<lcars::OptionValue> mode_applied_ = lcars::OptionValue{"normal"};
-    std::optional<lcars::OptionValue> region_applied_ = lcars::OptionValue{"north"};
-    bool region_empty_ = false;
-    bool offline_disabled_ = false;
+    int dialogConfirmations_ = 0;
+    std::u16string dialogResult_ = u"No result";
+    bool noticesApplied_ = true;
+    std::optional<lcars::OptionValue> modeApplied_ = lcars::OptionValue{"normal"};
+    std::optional<lcars::OptionValue> regionApplied_ = lcars::OptionValue{"north"};
+    bool regionEmpty_ = false;
+    bool offlineDisabled_ = false;
     Mode mode_ = Mode::normal;
-    bool long_intro_ = false;
-    bool reject_notices_conflict_ = false;
-    std::optional<lcars::ConfirmFieldError> next_field_error_;
-    std::string clip_padding_id_;
-    std::u16string clip_padding_text_;
-    std::map<std::string, std::function<lcars::Result()>, std::less<>> fixture_actions_;
-    std::function<void()> next_apply_observer_;
-    std::function<lcars::FontResolution(std::u16string_view)> resolve_font_;
+    bool longIntro_ = false;
+    bool rejectNoticesConflict_ = false;
+    std::optional<lcars::ConfirmFieldError> nextFieldError_;
+    std::string clipPaddingId_;
+    std::u16string clipPaddingText_;
+    std::map<std::string, std::function<lcars::Result()>, std::less<>> fixtureActions_;
+    std::function<void()> nextApplyObserver_;
+    std::function<lcars::FontResolution(std::u16string_view)> resolveFont_;
     bool pages_ = false;
-    std::array<int, 4> page_offsets_{};
-    std::function<void()> source_changed_, notices_changed_, mode_changed_, volume_changed_, region_changed_, progress_changed_, font_changed_, text_size_changed_, dark_changed_, justify_align_changed_, justify_method_changed_;
+    std::array<int, 4> pageOffsets_{};
+    std::function<void()> sourceChanged_, noticesChanged_, modeChanged_, volumeChanged_, regionChanged_, progressChanged_, fontChanged_, textSizeChanged_, darkChanged_, justifyAlignChanged_, justifyMethodChanged_;
 public:
-    explicit Form(Ids ids = default_ids(), bool pages = false,
-                  std::function<lcars::FontResolution(std::u16string_view)> resolve_font = {});
+    explicit Form(Ids ids = defaultIds(), bool pages = false,
+                  std::function<lcars::FontResolution(std::u16string_view)> resolveFont = {});
     Form(const Form&) = delete;
     Form& operator=(const Form&) = delete;
     struct Handles {
         lcars::TextFieldHandle name, preview;
-        lcars::SliderHandle text_size;
-        lcars::LabelHandle v04_title, font_status;
+        lcars::SliderHandle textSize;
+        lcars::LabelHandle v04Title, fontStatus;
         // #84: a mixed-script paragraph with its alignment and justification-method dropdowns, and short labels to compare distribute with left.
-        lcars::LabelHandle justify_sample, distribute_name, distribute_plain;
-        lcars::DropdownHandle justify_align, justify_method;
+        lcars::LabelHandle justifySample, distributeName, distributePlain;
+        lcars::DropdownHandle justifyAlign, justifyMethod;
         lcars::DropdownHandle font;
-        lcars::ButtonHandle reset_v04;
+        lcars::ButtonHandle resetV04;
         lcars::CheckboxHandle dark;
         lcars::TabsHandle tabs;
-        lcars::ButtonHandle reset_v03;
-        lcars::ButtonHandle dialog_open, dialog_temporary, dialog_cancel, dialog_confirm;
+        lcars::ButtonHandle resetV03;
+        lcars::ButtonHandle dialogOpen, dialogTemporary, dialogCancel, dialogConfirm;
         lcars::DialogHandle dialog;
-        lcars::ButtonHandle progress_zero, progress_half, progress_full, progress_below, progress_above;
-        lcars::LabelHandle v03_title, progress_source, dialog_title, dialog_body, dialog_result;
+        lcars::ButtonHandle progressZero, progressHalf, progressFull, progressBelow, progressAbove;
+        lcars::LabelHandle v03Title, progressSource, dialogTitle, dialogBody, dialogResult;
         lcars::ProgressHandle progress;
-        lcars::TooltipHandle progress_tip;
+        lcars::TooltipHandle progressTip;
         lcars::CheckboxHandle notices, compact;
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
         lcars::DropdownHandle region;
-        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, notices_latest, mode_latest, region_latest, offline_disabled, region_empty;
-        lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
+        lcars::ButtonHandle normal, readOnly, disabled, error, longText, reset, apply, latest, volumeLatest, noticesLatest, modeLatest, regionLatest, offlineDisabled, regionEmpty;
+        lcars::LabelHandle title, intro, nameLabel, nameHelp, nameError, state, draft, result, count;
     } handles;
     // Page model must outlive Ui subscriptions and their disconnect callbacks.
-    std::unique_ptr<list_page::Page> list;
+    std::unique_ptr<listPage::Page> list;
     lcars::Ui ui;
     lcars::ScrollState scroll;
     lcars::layout::Node page() const;
     const Ids& ids() const { return ids_; }
     const std::u16string& applied() const { return applied_; }
     int applies() const { return applies_; }
-    int volume_applied() const { return volume_applied_; }
+    int volumeApplied() const { return volumeApplied_; }
     int progress() const { return progress_; }
-    int dialog_confirmations() const { return dialog_confirmations_; }
-    bool notices_applied() const { return notices_applied_; }
-    std::optional<lcars::OptionValue> mode_applied() const { return mode_applied_; }
-    std::optional<lcars::OptionValue> region_applied() const { return region_applied_; }
+    int dialogConfirmations() const { return dialogConfirmations_; }
+    bool noticesApplied() const { return noticesApplied_; }
+    std::optional<lcars::OptionValue> modeApplied() const { return modeApplied_; }
+    std::optional<lcars::OptionValue> regionApplied() const { return regionApplied_; }
     // An external application change to the same model (also useful to exercise conflicts).
-    void update_source(std::u16string value);
-    void update_volume_source(int value);
-    void update_mode_source(lcars::OptionValue value);
-    void update_region_source(lcars::OptionValue value);
-    void update_progress(int value);
+    void updateSource(std::u16string value);
+    void updateVolumeSource(int value);
+    void updateModeSource(lcars::OptionValue value);
+    void updateRegionSource(lcars::OptionValue value);
+    void updateProgress(int value);
     // Restore the application's original action after a temporary typed-handle binding.
-    lcars::Result restore_fixture_action(lcars::ButtonHandle button) const;
+    lcars::Result restoreFixtureAction(lcars::ButtonHandle button) const;
     // Fixture: observe one invocation inside the application's confirmation modification entry.
-    void observe_next_apply(std::function<void()> observer) { next_apply_observer_ = std::move(observer); }
+    void observeNextApply(std::function<void()> observer) { nextApplyObserver_ = std::move(observer); }
     // Fixture: expand one existing label to exercise scroll clipping, then restore its model source.
-    lcars::Result set_clip_padding(lcars::LabelHandle label, std::u16string text);
-    void clear_clip_padding();
+    lcars::Result setClipPadding(lcars::LabelHandle label, std::u16string text);
+    void clearClipPadding();
     // Fixture: reject the next apply after a concurrent boolean-source update and draft edit.
-    void reject_next_apply_with_notices_source_change() { reject_notices_conflict_ = true; }
+    void rejectNextApplyWithNoticesSourceChange() { rejectNoticesConflict_ = true; }
     // Fixture: reject one otherwise valid apply with an application-supplied field error.
-    void reject_next_apply_for(lcars::ConfirmField field, std::u16string message) {
-        next_field_error_ = lcars::ConfirmFieldError{std::move(field), std::move(message)};
+    void rejectNextApplyFor(lcars::ConfirmField field, std::u16string message) {
+        nextFieldError_ = lcars::ConfirmFieldError{std::move(field), std::move(message)};
     }
 private:
-    lcars::Result bind_action(lcars::ButtonHandle button, std::function<lcars::Result()> action);
+    lcars::Result bindAction(lcars::ButtonHandle button, std::function<lcars::Result()> action);
     bool validate();
     lcars::ConfirmationResult apply(const std::vector<lcars::ConfirmFieldChange>& changes);
-    void refresh_conflict();
-    void set_mode(Mode mode);
+    void refreshConflict();
+    void setMode(Mode mode);
     lcars::Result reset();
 };}

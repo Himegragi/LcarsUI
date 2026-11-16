@@ -19,9 +19,9 @@
 namespace lcars::detail {
 namespace {
 std::string utf8(std::wstring_view value) {
-    return utf8_from_utf16(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));
+    return utf8FromUtf16(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));
 }
-bool first_unreadable_file(const std::filesystem::path& path) {
+bool firstUnreadableFile(const std::filesystem::path& path) {
     static std::mutex mutex;
     static std::set<std::wstring> reported;
     auto key=path.wstring();
@@ -39,7 +39,7 @@ void diagnostic(const wchar_t* message) {
 struct Box { double left, top, right, bottom; };
 // How much a synthetic bold look thickens an outline, in pixels: a bold face is wider, so a synthesized one grows
 // the advance by the same amount.
-float synthetic_bold_pixels(int pixels) { return std::max(1.f,pixels/16.f); }
+float syntheticBoldPixels(int pixels) { return std::max(1.f,pixels/16.f); }
 struct Font {
     HANDLE file=INVALID_HANDLE_VALUE, mapping=nullptr;
     void* data=nullptr;
@@ -54,7 +54,7 @@ struct Font {
         LARGE_INTEGER length{};
         if(file==INVALID_HANDLE_VALUE || !GetFileSizeEx(file,&length) || length.QuadPart<=0 || length.QuadPart>LONG_MAX ||
            !(mapping=CreateFileMappingW(file,nullptr,PAGE_READONLY,0,0,nullptr)) || !(data=MapViewOfFile(mapping,FILE_MAP_READ,0,0,0)) ||
-           (error=FT_New_Memory_Face(library,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(length.QuadPart),source.face_index,&face))) {
+           (error=FT_New_Memory_Face(library,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(length.QuadPart),source.faceIndex,&face))) {
             if(!error) error=static_cast<long>(GetLastError());
             return;
         }
@@ -82,7 +82,7 @@ struct Font {
         if(t.identity()) { FT_Set_Transform(face,nullptr,nullptr); return; }
         auto fixed=[](float v) { return static_cast<FT_Fixed>(std::lround(v*65536.0)); };
         // Rotating 90 degrees clockwise maps an outline point (x, y up) to (y, -x); the scales apply to the glyph's own axes.
-        FT_Matrix matrix=t.rotated?FT_Matrix{0,fixed(t.scale_y),-fixed(t.scale_x),0}:FT_Matrix{fixed(t.scale_x),0,0,fixed(t.scale_y)};
+        FT_Matrix matrix=t.rotated?FT_Matrix{0,fixed(t.scaleY),-fixed(t.scaleX),0}:FT_Matrix{fixed(t.scaleX),0,0,fixed(t.scaleY)};
         FT_Set_Transform(face,&matrix,nullptr);
     }
     // synth: 1 draws a heavier outline, 2 a sheared one, for a look this face does not have itself.
@@ -91,7 +91,7 @@ struct Font {
         apply(transform);
         FT_Error result=FT_Load_Glyph(face,glyph,FT_LOAD_DEFAULT);
         if(!result && synth && face->glyph->format==FT_GLYPH_FORMAT_OUTLINE) {
-            if(synth&1) FT_Outline_Embolden(&face->glyph->outline,static_cast<FT_Pos>(std::lround(synthetic_bold_pixels(pixels)*64)));
+            if(synth&1) FT_Outline_Embolden(&face->glyph->outline,static_cast<FT_Pos>(std::lround(syntheticBoldPixels(pixels)*64)));
             if(synth&2) FT_GlyphSlot_Oblique(face->glyph);
         }
         if(!result) result=FT_Render_Glyph(face->glyph,FT_RENDER_MODE_NORMAL);
@@ -119,25 +119,25 @@ struct Font {
 }
 struct Text::Impl {
     static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
-    // Font ids: 0..9 index `names` (the built-in fallback families; 9 is the emoji family), primary_font is the application's
-    // own family (set_primary_family), no_font means no family has the character.
-    static constexpr unsigned emoji_font=9, primary_font=10, no_font=11;
+    // Font ids: 0..9 index `names` (the built-in fallback families; 9 is the emoji family), primaryFont is the application's
+    // own family (setPrimaryFamily), noFont means no family has the character.
+    static constexpr unsigned emojiFont=9, primaryFont=10, noFont=11;
     FT_Library library=nullptr;
     GlyphAtlas atlas;
     unsigned rasterizations=0;
     std::array<std::array<std::unique_ptr<Font>,11>,4> fonts;  // [slot][font]: slot bit 0 bold, bit 1 italic
     std::array<std::array<bool,11>,4> attempted{};
-    std::array<std::array<std::uint64_t,11>,4> face_ids{};
-    std::function<FontFile(std::u16string_view,bool,bool)> styled_lookup;
-    static std::uint64_t next_face_id() { static std::atomic<std::uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }
+    std::array<std::array<std::uint64_t,11>,4> faceIds{};
+    std::function<FontFile(std::u16string_view,bool,bool)> styledLookup;
+    static std::uint64_t nextFaceId() { static std::atomic<std::uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }
     std::u16string primary;
     std::set<unsigned> missing;
-    int bitmap_mode=-1;
+    int bitmapMode=-1;
     std::function<FontFile(std::u16string_view)> lookup;
     std::function<void(const RenderDiagnostic&)> receiver;
     void report(std::string_view code,std::string message={},std::int64_t native=0) {
-        RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.native_code=native;
-        event.native_message=std::move(message); event.kind=DiagnosticKind::resource;
+        RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.nativeCode=native;
+        event.nativeMessage=std::move(message); event.kind=DiagnosticKind::resource;
         event.severity=code=="text.glyph_missing"?DiagnosticSeverity::info:DiagnosticSeverity::warning;
         receiver(event);
     }
@@ -148,7 +148,7 @@ struct Text::Impl {
         if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing","Microsoft JhengHei");
     }
     ~Impl(){for(auto& slot:fonts)for(auto& font:slot)font.reset();if(library)FT_Done_FreeType(library);}
-    TextLayout shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={},bool ligatures=true);
+    TextLayout shapeDirected(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={},bool ligatures=true);
     struct Look { Font* font=nullptr; unsigned slot=0, synth=0; };
     // The face for a bold/italic request: the real file of that look, else the nearest real file plus the looks it
     // still lacks as synth bits (1 heavier, 2 sheared), else the regular face with both.
@@ -157,8 +157,8 @@ struct Text::Impl {
         if(!want) return {font(id,0),0,0};
         if(auto exact=font(id,want)) return {exact,want,0};
         if(want==3) {
-            if(auto only_bold=font(id,1)) return {only_bold,1,2};
-            if(auto only_italic=font(id,2)) return {only_italic,2,1};
+            if(auto onlyBold=font(id,1)) return {onlyBold,1,2};
+            if(auto onlyItalic=font(id,2)) return {onlyItalic,2,1};
         }
         return {font(id,0),0,want};
     }
@@ -166,23 +166,23 @@ struct Text::Impl {
         if(id>=fonts[0].size() || slot>=fonts.size()) return nullptr;
         if(!attempted[slot][id]) {
             attempted[slot][id]=true;
-            const auto family=id==primary_font?std::u16string_view(primary):names[id];
-            auto file=slot==0?lookup(family):styled_lookup?styled_lookup(family,slot&1,(slot&2)!=0):FontFile{};
-            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && first_unreadable_file(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[slot][id]->error); }
+            const auto family=id==primaryFont?std::u16string_view(primary):names[id];
+            auto file=slot==0?lookup(family):styledLookup?styledLookup(family,slot&1,(slot&2)!=0):FontFile{};
+            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && firstUnreadableFile(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[slot][id]->error); }
         }
-        if (fonts[slot][id] && fonts[slot][id]->face && !face_ids[slot][id]) face_ids[slot][id] = next_face_id();
+        if (fonts[slot][id] && fonts[slot][id]->face && !faceIds[slot][id]) faceIds[slot][id] = nextFaceId();
         return fonts[slot][id] && fonts[slot][id]->face ? fonts[slot][id].get():nullptr;
     }
 };
-Text::Text():Text(system_font_file,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){ impl_->styled_lookup=system_styled_font_file; }
+Text::Text():Text(systemFontFile,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){ impl_->styledLookup=systemStyledFontFile; }
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
     :Text(std::move(lookup),std::function<void(const RenderDiagnostic&)>([report=std::move(report)](const auto& event) { report(event.code); })){}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(const RenderDiagnostic&)> report)
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
-void Text::test_bitmap_mode(int mode) { if (impl_->bitmap_mode!=mode) { impl_->bitmap_mode=mode; impl_->atlas.clear(); } }
-void Text::set_primary_family(std::u16string family, bool new_generation) { if (impl_->primary==family && !new_generation) return; impl_->atlas.clear(); for(auto& ids:impl_->face_ids) ids.fill(0); impl_->primary=std::move(family); for(unsigned slot=0;slot<4;++slot) { impl_->fonts[slot][10].reset(); impl_->attempted[slot][10]=false; } }
-std::optional<float> Text::test_axis_coordinate(unsigned id,std::uint32_t t) {
+void Text::testBitmapMode(int mode) { if (impl_->bitmapMode!=mode) { impl_->bitmapMode=mode; impl_->atlas.clear(); } }
+void Text::setPrimaryFamily(std::u16string family, bool newGeneration) { if (impl_->primary==family && !newGeneration) return; impl_->atlas.clear(); for(auto& ids:impl_->faceIds) ids.fill(0); impl_->primary=std::move(family); for(unsigned slot=0;slot<4;++slot) { impl_->fonts[slot][10].reset(); impl_->attempted[slot][10]=false; } }
+std::optional<float> Text::testAxisCoordinate(unsigned id,std::uint32_t t) {
     auto font=impl_->font(id); if(!font) return {};
     FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};
     std::vector<FT_Fixed> coords(variations->num_axis);
@@ -202,13 +202,13 @@ unsigned TextLayout::hit(float x) const {
     return best;
 }
 TextLayout Text::shape(std::u16string_view text,int size){ return shape(text,size,FontStyle{}); }
-void Text::set_styled_lookup(std::function<FontFile(std::u16string_view,bool,bool)> lookup) { impl_->styled_lookup=std::move(lookup); }
-TextLayout Text::shape(std::u16string_view text,int size,FontStyle style){ return impl_->shape_directed(text,size,HB_DIRECTION_LTR,style); }
+void Text::setStyledLookup(std::function<FontFile(std::u16string_view,bool,bool)> lookup) { impl_->styledLookup=std::move(lookup); }
+TextLayout Text::shape(std::u16string_view text,int size,FontStyle style){ return impl_->shapeDirected(text,size,HB_DIRECTION_LTR,style); }
 // Optional ligatures (liga, clig) off: every letter of "ffi" stays a cluster of its own; kerning is untouched.
-TextLayout Text::shape_apart(std::u16string_view text,int size,FontStyle style){ return impl_->shape_directed(text,size,HB_DIRECTION_LTR,style,false); }
+TextLayout Text::shapeApart(std::u16string_view text,int size,FontStyle style){ return impl_->shapeDirected(text,size,HB_DIRECTION_LTR,style,false); }
 // Top-to-bottom shaping applies the font's vertical alternates ('vert') and reports vertical advances: advance is the
 // distance moved down, dx and dy the offset (y up) from the pen at the top center of the cell to the glyph origin.
-TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direction_t direction,FontStyle style,bool ligatures){
+TextLayout Text::Impl::shapeDirected(std::u16string_view text,int size,hb_direction_t direction,FontStyle style,bool ligatures){
     auto& e=*this;
     struct Run{unsigned begin,end,font;hb_script_t script;};std::vector<Run> runs;
     auto unicode=hb_unicode_funcs_get_default();
@@ -219,23 +219,23 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
         bool follows=script==HB_SCRIPT_INHERITED || (cp>=0xfe00&&cp<=0xfe0f) || (cp>=0xe0100&&cp<=0xe01ef) || cp==0x200c || cp==0x200d;
         if(follows && !runs.empty()) {runs.back().end=i;continue;}
         if(follows) continue;
-        unsigned selected=no_font;
+        unsigned selected=noFont;
         bool emoji=(cp>=0x1f000&&cp<=0x1faff) || (i<text.size() && text[i]==0xfe0f);
         auto supports=[&](unsigned n) {auto f=e.font(n);return f && f->size(size) && FT_Get_Char_Index(f->face,cp);};
-        if(emoji && supports(emoji_font)) selected=emoji_font;
-        else if(!e.primary.empty() && supports(primary_font)) selected=primary_font;
+        if(emoji && supports(emojiFont)) selected=emojiFont;
+        else if(!e.primary.empty() && supports(primaryFont)) selected=primaryFont;
         else for(unsigned n=0;n<names.size();++n) if(supports(n)){selected=n;break;}
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
-        if(selected!=no_font && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
+        if(selected!=noFont && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
         else runs.push_back({begin,i,selected,script});
     }
     TextLayout result;result.size=size;result.carets[0]=0;
     for(auto& run:runs){
-        if(run.font==no_font) {
+        if(run.font==noFont) {
             unsigned cp=text[run.begin]; if(cp>=0xd800&&cp<=0xdbff && run.begin+1<text.size()) cp=0x10000+((cp-0xd800)<<10)+(text[run.begin+1]-0xdc00);
             if(e.missing.insert(cp).second)e.report("text.glyph_missing", "Unicode code point " + std::to_string(cp), cp);
             float advance=cp<128?size*.6f:static_cast<float>(size);
-            result.carets.try_emplace(run.begin,result.width); result.glyphs.push_back({no_font,0,run.begin,result.width,0,0,advance}); result.width+=advance; ++result.missing; continue;
+            result.carets.try_emplace(run.begin,result.width); result.glyphs.push_back({noFont,0,run.begin,result.width,0,0,advance}); result.width+=advance; ++result.missing; continue;
         }
         auto buffer=hb_buffer_create();
         hb_buffer_set_direction(buffer,direction);hb_buffer_set_script(buffer,run.script);
@@ -245,12 +245,12 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
         auto f=look.font; f->size(size);
         const hb_feature_t apart[]={{HB_TAG('l','i','g','a'),0,0,static_cast<unsigned>(-1)},{HB_TAG('c','l','i','g'),0,0,static_cast<unsigned>(-1)}};
         if(ligatures) hb_shape(f->hb,buffer,nullptr,0); else hb_shape(f->hb,buffer,apart,2);
-        const float heavier=(look.synth&1)?synthetic_bold_pixels(size):0.f;  // a synthesized bold advances like a bold face would
+        const float heavier=(look.synth&1)?syntheticBoldPixels(size):0.f;  // a synthesized bold advances like a bold face would
         unsigned count=0;auto info=hb_buffer_get_glyph_infos(buffer,&count);auto pos=hb_buffer_get_glyph_positions(buffer,&count);
         for(unsigned i=0;i<count;++i){
             float advance=(direction==HB_DIRECTION_TTB?-pos[i].y_advance/64.f:pos[i].x_advance/64.f)+heavier;
             result.carets.try_emplace(info[i].cluster,result.width);
-            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.face_ids[look.slot][run.font],GlyphTransform{},static_cast<unsigned char>(look.slot),static_cast<unsigned char>(look.synth)});
+            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.faceIds[look.slot][run.font],GlyphTransform{},static_cast<unsigned char>(look.slot),static_cast<unsigned char>(look.synth)});
             result.width+=advance;result.missing+=info[i].codepoint==0;
         }
         hb_buffer_destroy(buffer);
@@ -260,7 +260,7 @@ TextLayout Text::Impl::shape_directed(std::u16string_view text,int size,hb_direc
 Canvas::Canvas(int w,int h,Color color):width(w),height(h),pixels(static_cast<std::size_t>(w)*h*4),clip{0,0,w,h}{fill(clip,color);}
 void Canvas::blend(int x,int y,Color color,unsigned alpha){
     if(!clip.contains(x,y)||x<0||y<0||x>=width||y>=height)return;
-    if(count_ink && alpha) ++ink;
+    if(countInk && alpha) ++ink;
     auto index=(static_cast<std::size_t>(y)*width+x)*4;
     const unsigned char ink[]={color.r,color.g,color.b};
     for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
@@ -285,7 +285,7 @@ void Canvas::rounded(Rect r,int radius,Color color,unsigned alpha){
         blend(r.x+x,r.y+r.h-1-y,color,edge);blend(r.x+r.w-1-x,r.y+r.h-1-y,color,edge);
     }
 }
-bool bitmap_coverage(unsigned mode,const unsigned char* row,unsigned width,std::vector<unsigned char>& coverage) {
+bool bitmapCoverage(unsigned mode,const unsigned char* row,unsigned width,std::vector<unsigned char>& coverage) {
     if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA) return false;
     coverage.resize(width);
     for(unsigned col=0;col<width;++col) {
@@ -311,13 +311,13 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         };
         if (!glyph.id) {box();continue;}
         auto font=impl_->font(glyph.font,glyph.slot);
-        if (glyph.face_id && impl_->face_ids[glyph.slot][glyph.font] != glyph.face_id) font = nullptr;
+        if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
         auto error=font?font->rasterize(glyph.id,layout.size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
         if(error) {
             impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
         }
         auto& bitmap=font->face->glyph->bitmap;
-        unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);
+        unsigned mode=impl_->bitmapMode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmapMode);
         if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
             impl_->report("text.glyph_format_unsupported", "pixel mode " + std::to_string(mode),mode);box();continue;
         }
@@ -326,16 +326,16 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         std::vector<unsigned char> coverage;
         for(unsigned row=0;row<bitmap.rows;++row){
             unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row; auto data=bitmap.buffer+source*std::abs(bitmap.pitch);
-            bitmap_coverage(mode,data,bitmap.width,coverage);
+            bitmapCoverage(mode,data,bitmap.width,coverage);
             for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col]);
         }
     }
 }
 unsigned GlyphTransform::key() const {
     if (identity()) return 0;
-    return 1u | (rotated ? 2u : 0u) | (static_cast<unsigned>(std::lround(scale_x * 1024.f)) << 2) | (static_cast<unsigned>(std::lround(scale_y * 1024.f)) << 13);
+    return 1u | (rotated ? 2u : 0u) | (static_cast<unsigned>(std::lround(scaleX * 1024.f)) << 2) | (static_cast<unsigned>(std::lround(scaleY * 1024.f)) << 13);
 }
-TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int size,Rect cell) {
+TextLayout Text::shapeVertical(std::u16string_view value,VerticalForm form,int size,Rect cell) {
     auto& e=*impl_;
     TextLayout out; out.size=size;
     const double cx=cell.x+cell.w/2.0, cy=cell.y+cell.h/2.0;
@@ -357,42 +357,42 @@ TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int 
         if(right>=left) { ox=cx-(left+right)/2; oy=cy-(top+bottom)/2; }
         for(const auto& part:parts) put(part.glyph,ox+part.x,oy+part.y);
     };
-    auto horizontal_parts=[&](const TextLayout& h,GlyphTransform transform) {
+    auto horizontalParts=[&](const TextLayout& h,GlyphTransform transform) {
         std::vector<Part> parts;
         for(auto g:h.glyphs) {
             g.transform=transform;
             // Rotating clockwise turns "forward" into "down" and "up" into "right".
-            parts.push_back({g,transform.rotated?double(g.dy):(g.x+g.dx)*transform.scale_x,transform.rotated?(g.x+g.dx)*transform.scale_x:-double(g.dy)});
+            parts.push_back({g,transform.rotated?double(g.dy):(g.x+g.dx)*transform.scaleX,transform.rotated?(g.x+g.dx)*transform.scaleX:-double(g.dy)});
         }
         return parts;
     };
     switch(form) {
-    case VerticalForm::point: case VerticalForm::middle_dot:
-        centered(horizontal_parts(shape(value,size),{}));
+    case VerticalForm::point: case VerticalForm::middleDot:
+        centered(horizontalParts(shape(value,size),{}));
         break;
     case VerticalForm::line:
-        centered(horizontal_parts(shape(value,size),{true,1.f,1.f}));
+        centered(horizontalParts(shape(value,size),{true,1.f,1.f}));
         break;
     case VerticalForm::combined: {
         auto h=shape(value,size);
         float scale=h.width>cell.w && h.width>0?cell.w/h.width:1.f;
-        centered(horizontal_parts(h,{false,scale,1.f}));
+        centered(horizontalParts(h,{false,scale,1.f}));
         break;
     }
     case VerticalForm::sideways: {
         // The horizontal line box turned clockwise: its top edge becomes the right edge of the column.
         auto h=shape(value,size);
         const int line=(size*3+1)/2;
-        const double baseline_x=cell.x+(cell.w-line)/2.0+line-ShapedMeasure::baseline(size);
-        for(auto g:h.glyphs) { g.transform.rotated=true; put(g,baseline_x+g.dy,cell.y+g.x+g.dx); }
+        const double baselineX=cell.x+(cell.w-line)/2.0+line-ShapedMeasure::baseline(size);
+        for(auto g:h.glyphs) { g.transform.rotated=true; put(g,baselineX+g.dy,cell.y+g.x+g.dx); }
         break;
     }
     case VerticalForm::upright: case VerticalForm::bracket: {
         auto h=shape(value,size);
-        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[](const Glyph& g) { return g.font==Impl::emoji_font && g.id; });
+        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[](const Glyph& g) { return g.font==Impl::emojiFont && g.id; });
         if(emoji) {
             // Segoe UI Emoji has no vertical metrics and is wider than a cell: scale it into the cell and center it.
-            auto parts=horizontal_parts(h,{});
+            auto parts=horizontalParts(h,{});
             double left=1e30,top=1e30,right=-1e30,bottom=-1e30;
             for(const auto& part:parts) if(auto box=ink(part.glyph)) {
                 left=std::min(left,part.x+box->left); right=std::max(right,part.x+box->right);
@@ -400,15 +400,15 @@ TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int 
             }
             double widest=std::max(right-left,bottom-top);
             float scale=widest>cell.w && widest>0?static_cast<float>(cell.w/widest):1.f;
-            centered(horizontal_parts(h,{false,scale,scale}));
+            centered(horizontalParts(h,{false,scale,scale}));
             break;
         }
-        auto v=e.shape_directed(value,size,HB_DIRECTION_TTB);
+        auto v=e.shapeDirected(value,size,HB_DIRECTION_TTB);
         bool substituted=v.glyphs.size()!=h.glyphs.size();
         for(std::size_t i=0;!substituted && i<v.glyphs.size();++i) substituted=v.glyphs[i].id!=h.glyphs[i].id;
         if(form==VerticalForm::bracket && !substituted) {
             // The font has no vertical form for this bracket: turn the horizontal one a quarter turn.
-            centered(horizontal_parts(h,{true,1.f,1.f}));
+            centered(horizontalParts(h,{true,1.f,1.f}));
             break;
         }
         double pen=cell.y;
@@ -418,14 +418,14 @@ TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int 
     }
     return out;
 }
-void Text::draw_vertical(Canvas& canvas,std::u16string_view value,VerticalForm form,int pixels,Rect cell,Color color) { draw(canvas,shape_vertical(value,form,pixels,cell),0,0,color); }
-void Text::draw_vertical(RecordingCanvas& canvas,std::u16string_view value,VerticalForm form,int pixels,Rect cell,Color color) { draw(canvas,shape_vertical(value,form,pixels,cell),0,0,color); }
-void Text::clear_atlas() { impl_->atlas.clear(); }
-void Text::configure_atlas(int size,int pages) { impl_->atlas=GlyphAtlas(size,pages); }
-unsigned Text::atlas_clears() const { return impl_->atlas.clears(); }
-unsigned Text::atlas_batches() const { return impl_->atlas.batches(); }
-unsigned Text::atlas_peak_pages() const { return impl_->atlas.peak_pages(); }
-std::vector<const AtlasPage*> Text::atlas_pages() const { return impl_->atlas.pages(); }
+void Text::drawVertical(Canvas& canvas,std::u16string_view value,VerticalForm form,int pixels,Rect cell,Color color) { draw(canvas,shapeVertical(value,form,pixels,cell),0,0,color); }
+void Text::drawVertical(RecordingCanvas& canvas,std::u16string_view value,VerticalForm form,int pixels,Rect cell,Color color) { draw(canvas,shapeVertical(value,form,pixels,cell),0,0,color); }
+void Text::clearAtlas() { impl_->atlas.clear(); }
+void Text::configureAtlas(int size,int pages) { impl_->atlas=GlyphAtlas(size,pages); }
+unsigned Text::atlasClears() const { return impl_->atlas.clears(); }
+unsigned Text::atlasBatches() const { return impl_->atlas.batches(); }
+unsigned Text::atlasPeakPages() const { return impl_->atlas.peakPages(); }
+std::vector<const AtlasPage*> Text::atlasPages() const { return impl_->atlas.pages(); }
 unsigned Text::rasterizations() const { return impl_->rasterizations; }
 void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
     for(const auto glyph:layout.glyphs) {
@@ -439,9 +439,9 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
             canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
             continue;
         }
-        canvas.glyph_deferred(color,[this,glyph,size,x,baseline] {
+        canvas.glyphDeferred(color,[this,glyph,size,x,baseline] {
             const auto before=impl_->atlas.batches();
-            auto entry=impl_->atlas.get({glyph.face_id,glyph.id,size,glyph.transform.key(),glyph.synth},[&] {
+            auto entry=impl_->atlas.get({glyph.faceId,glyph.id,size,glyph.transform.key(),glyph.synth},[&] {
                 ++impl_->rasterizations;
                 auto box=[&] {
                     int w=std::max(1,static_cast<int>(std::round(size*.6f)));
@@ -454,14 +454,14 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                     return result;
                 };
                 auto font=impl_->font(glyph.font,glyph.slot);
-                if (glyph.face_id && impl_->face_ids[glyph.slot][glyph.font] != glyph.face_id) font = nullptr;
+                if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
                 auto error=font?font->rasterize(glyph.id,size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
                 if(error) {
                     impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);
                     return box();
                 }
                 const auto& bitmap=font->face->glyph->bitmap;
-                unsigned mode=impl_->bitmap_mode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmap_mode);
+                unsigned mode=impl_->bitmapMode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmapMode);
                 if(mode!=FT_PIXEL_MODE_GRAY && mode!=FT_PIXEL_MODE_MONO && mode!=FT_PIXEL_MODE_GRAY2 && mode!=FT_PIXEL_MODE_GRAY4 && mode!=FT_PIXEL_MODE_BGRA && bitmap.width && bitmap.rows) {
                     impl_->report("text.glyph_format_unsupported", "pixel mode " + std::to_string(mode),mode); return box();
                 }
@@ -470,7 +470,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                 std::vector<unsigned char> row;
                 for(unsigned y=0;y<bitmap.rows;++y) {
                     unsigned source=bitmap.pitch>=0?y:bitmap.rows-1-y;
-                    bitmap_coverage(mode,bitmap.buffer+source*std::abs(bitmap.pitch),bitmap.width,row);
+                    bitmapCoverage(mode,bitmap.buffer+source*std::abs(bitmap.pitch),bitmap.width,row);
                     std::copy(row.begin(),row.end(),result.pixels.begin()+static_cast<std::size_t>(y)*bitmap.width);
                 }
                 return result;
@@ -483,14 +483,14 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) { return measure(text, pixels, FontStyle{}); }
-static TextRun run_of(const TextLayout& layout) {
+static TextRun runOf(const TextLayout& layout) {
     TextRun run;
     run.stops.assign(layout.carets.begin(), layout.carets.end());
     run.width = layout.width;
     return run;
 }
-TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape(text, pixels, style)); }
-TextRun ShapedMeasure::measure_apart(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape_apart(text, pixels, style)); }
+TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) { return runOf(text_.shape(text, pixels, style)); }
+TextRun ShapedMeasure::measureApart(std::u16string_view text, int pixels, FontStyle style) { return runOf(text_.shapeApart(text, pixels, style)); }
 void Text::label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color){
     auto old=canvas.clip;
     int x=std::max(old.x,rect.x),y=std::max(old.y,rect.y);

@@ -13,14 +13,14 @@ int wmain(int argc, wchar_t** argv) {
     Search search{}; IUIAutomation* uia = nullptr; IUIAutomationElement* root = nullptr;
     if (ok) {
         CloseHandle(pi.hThread); search.pid = pi.dwProcessId;
-        for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(find_window, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
+        for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(findWindow, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
         ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&uia))) && SUCCEEDED(uia->ElementFromHandle(search.window, &root)) && root;
     }
     if (ok) {
-        auto nav = find_id(uia, root, L"app.nav");
-        ok = nav && SUCCEEDED(select_id(uia, nav, L"about"));
+        auto nav = findId(uia, root, L"app.nav");
+        ok = nav && SUCCEEDED(selectId(uia, nav, L"about"));
         if (nav) nav->Release();
-        auto label = ok ? find_id(uia, root, L"about.diagnostics") : nullptr;
+        auto label = ok ? findId(uia, root, L"about.diagnostics") : nullptr;
         BSTR name = nullptr;
         ok = label && SUCCEEDED(label->get_CurrentName(&name)) && name && std::wstring(name) == std::wstring(L"診斷：") + argv[2];
         if (label) label->Release(); SysFreeString(name);

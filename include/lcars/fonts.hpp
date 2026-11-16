@@ -7,12 +7,12 @@
 namespace lcars {
 struct FontFamily {
     std::u16string key;
-    std::u16string display_name;
+    std::u16string displayName;
 };
 struct FontResolution {
     std::u16string requested;
     std::u16string primary;
-    bool requested_available = true;
+    bool requestedAvailable = true;
     std::vector<std::u16string> fallback;
 };
 
@@ -22,8 +22,8 @@ public:
     bool contains(std::u16string_view key) const noexcept;
     FontResolution resolve(const PresentationSettings& settings) const;
 private:
-    friend const FontCatalog& system_font_catalog();
+    friend const FontCatalog& systemFontCatalog();
     std::vector<FontFamily> families_;
 };
-const FontCatalog& system_font_catalog();
+const FontCatalog& systemFontCatalog();
 }

@@ -5,15 +5,15 @@
 
 int wmain() {
     try {
-        list_page::Page page;
+        listPage::Page page;
 #ifdef LCARS_APPEARANCE_material
-        const auto& appearance = lcars::material_appearance();
+        const auto& appearance = lcars::materialAppearance();
 #else
-        const auto& appearance = lcars::web_appearance();
+        const auto& appearance = lcars::webAppearance();
 #endif
         lcars::DesktopConfig options; options.title = u"LcarsUI 範本清單";
         auto creation = lcars::Desktop::create(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);
-        if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }
+        if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
         return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
     } catch (const std::exception& e) { std::cerr << "LcarsUI: " << e.what() << '\n'; return 1; }
 }

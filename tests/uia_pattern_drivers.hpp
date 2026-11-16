@@ -25,11 +25,11 @@ inline bool patterns(IUIAutomation* uia, IUIAutomationElement* root) {
             if (container) container->Release(); if (p) p->Release();
         }
         if (type == UIA_SliderControlTypeId || type == UIA_ProgressBarControlTypeId) {
-            IUIAutomationRangeValuePattern* p = nullptr; double value = 0, minimum = 0, maximum = 0, small_step = 0, large_step = 0; BOOL readonly = FALSE;
+            IUIAutomationRangeValuePattern* p = nullptr; double value = 0, minimum = 0, maximum = 0, smallStep = 0, largeStep = 0; BOOL readonly = FALSE;
             row = row && SUCCEEDED(e->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&p))) && p &&
                 SUCCEEDED(p->get_CurrentValue(&value)) && SUCCEEDED(p->get_CurrentMinimum(&minimum)) && SUCCEEDED(p->get_CurrentMaximum(&maximum)) &&
-                SUCCEEDED(p->get_CurrentSmallChange(&small_step)) && SUCCEEDED(p->get_CurrentLargeChange(&large_step)) && SUCCEEDED(p->get_CurrentIsReadOnly(&readonly)) &&
-                minimum <= value && value <= maximum && small_step > 0 && large_step > 0 && (type != UIA_ProgressBarControlTypeId || readonly);
+                SUCCEEDED(p->get_CurrentSmallChange(&smallStep)) && SUCCEEDED(p->get_CurrentLargeChange(&largeStep)) && SUCCEEDED(p->get_CurrentIsReadOnly(&readonly)) &&
+                minimum <= value && value <= maximum && smallStep > 0 && largeStep > 0 && (type != UIA_ProgressBarControlTypeId || readonly);
             if (p) p->Release();
         }
         if (type == UIA_ComboBoxControlTypeId) {

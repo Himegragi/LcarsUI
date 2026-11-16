@@ -5,7 +5,7 @@
 //
 // Seams under test (confirmed by the ticket's Agent Brief):
 //   - lcars::arrange(layout::column(...), ui, appearance, measure, ...) -> Placement rectangles
-//   - Ui::add_* handles, connect_source (a conflict) and detail::UiState::set_error (an error)
+//   - Ui::add_* handles, connectSource (a conflict) and detail::UiState::setError (an error)
 //
 // The expected values are not computed here. They are the rectangles the layout produced before
 // the refactor, recorded by `lcars_error_lines_tests --dump` into error_lines_expected.hpp.
@@ -29,13 +29,13 @@ using namespace lcars;
 using test::check;
 namespace {
 // One long message: it wraps to several lines in the narrow column, so line stacking shows.
-const std::u16string long_error = u"This value is not accepted because it is much too long for the field";
+const std::u16string longError = u"This value is not accepted because it is much too long for the field";
 
 // A component with its error and/or conflict state set up. A checkbox has two values, so its draft can
 // never differ from both the confirmed and the latest source value: it has no conflict state.
 struct Subject {
     const char* name;
-    bool has_conflict;
+    bool hasConflict;
     std::function<layout::Node(Ui&, const std::string& id, bool conflict, bool error)> add;
 };
 // A source the test can move: `model` is what the source reads, `notify` tells the component it changed.
@@ -46,80 +46,80 @@ struct Source {
     std::function<void()> notify;
 };
 std::vector<std::unique_ptr<Source>>& sources() { static std::vector<std::unique_ptr<Source>> all; return all; }
-Source& new_source() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
+Source& newSource() { sources().push_back(std::make_unique<Source>()); return *sources().back(); }
 
 const std::vector<OptionItem> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}, {{"c"}, u"Gamma"}};
 ComponentConfig control(const std::string& id, const char16_t* label) { ComponentConfig c; c.id = id; c.label = label; return c; }
 
-void put_error(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).set_error(id, long_error)), "an error is set"); }
+void putError(Ui& ui, const std::string& id, bool error) { if (error) check(bool(detail::access(ui).setError(id, longError)), "an error is set"); }
 
 const Subject subjects[] = {
     {"text", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto field = ui.add_text_field(control(id, u"Name")).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::u16string>(u"original");
+        auto field = ui.addTextField(control(id, u"Name")).value.value();
+        auto& source = newSource(); auto model = std::make_shared<std::u16string>(u"original");
         if (conflict) {
-            field.connect_source({[model] { return *model; }, source.subscribe()});
+            field.connectSource({[model] { return *model; }, source.subscribe()});
             // A text field keeps a draft against a changed source only while a confirmation holds it.
-            auto confirm = ui.add_button(control(id + ".apply", u"Apply")).value.value();
-            check(bool(ui.connect_confirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
-            field.set_value(u"draft"); *model = u"newest"; source.notify();
-            check(field.describe()->source_conflict, "the text field reports a conflict");
+            auto confirm = ui.addButton(control(id + ".apply", u"Apply")).value.value();
+            check(bool(ui.connectConfirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; })), "the text field is confirmed");
+            field.setValue(u"draft"); *model = u"newest"; source.notify();
+            check(field.describe()->sourceConflict, "the text field reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(field);
     }},
     {"checkbox", false, [](Ui& ui, const std::string& id, bool, bool error) -> layout::Node {
-        auto checkbox = ui.add_checkbox(control(id, u"Remember me")).value.value();
-        put_error(ui, id, error);
+        auto checkbox = ui.addCheckbox(control(id, u"Remember me")).value.value();
+        putError(ui, id, error);
         return layout::component(checkbox);
     }},
     {"radio", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto group = ui.add_radio_group(control(id, u"Mode"), options).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
+        auto group = ui.addRadioGroup(control(id, u"Mode"), options).value.value();
+        auto& source = newSource(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
-            group.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(group.connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })), "the radio group holds a draft");
+            group.connectSource({[model] { return *model; }, source.subscribe()});
+            check(bool(group.connectConfirmed([](const Change<RadioGroupHandle>&) { return Result{}; })), "the radio group holds a draft");
             group.select({"b"}); *model = OptionValue{"c"}; source.notify();
-            check(group.describe()->source_conflict, "the radio group reports a conflict");
+            check(group.describe()->sourceConflict, "the radio group reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(group);
     }},
     {"dropdown", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto box = ui.add_dropdown(control(id, u"Region"), options).value.value();
-        auto& source = new_source(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
+        auto box = ui.addDropdown(control(id, u"Region"), options).value.value();
+        auto& source = newSource(); auto model = std::make_shared<std::optional<OptionValue>>(OptionValue{"a"});
         if (conflict) {
-            box.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(box.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })), "the dropdown holds a draft");
+            box.connectSource({[model] { return *model; }, source.subscribe()});
+            check(bool(box.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; })), "the dropdown holds a draft");
             box.select({"b"}); *model = OptionValue{"c"}; source.notify();
-            check(box.describe()->source_conflict, "the dropdown reports a conflict");
+            check(box.describe()->sourceConflict, "the dropdown reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(box);
     }},
     {"slider", true, [](Ui& ui, const std::string& id, bool conflict, bool error) -> layout::Node {
-        auto slider = ui.add_slider(control(id, u"Volume"), {0, 100, 5}).value.value();
-        auto& source = new_source(); auto model = std::make_shared<int>(0);
+        auto slider = ui.addSlider(control(id, u"Volume"), {0, 100, 5}).value.value();
+        auto& source = newSource(); auto model = std::make_shared<int>(0);
         if (conflict) {
-            slider.connect_source({[model] { return *model; }, source.subscribe()});
-            check(bool(slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })), "the slider holds a draft");
-            slider.set_value(10); *model = 20; source.notify();
-            check(slider.describe()->source_conflict, "the slider reports a conflict");
+            slider.connectSource({[model] { return *model; }, source.subscribe()});
+            check(bool(slider.connectConfirmed([](const Change<SliderHandle>&) { return Result{}; })), "the slider holds a draft");
+            slider.setValue(10); *model = 20; source.notify();
+            check(slider.describe()->sourceConflict, "the slider reports a conflict");
         }
-        put_error(ui, id, error);
+        putError(ui, id, error);
         return layout::component(slider);
     }},
 };
 struct State { const char* name; bool conflict, error; };
 const State states[] = {{"error", false, true}, {"conflict", true, false}, {"both", true, true}};
 
-struct Run { const Appearance& appearance; const char* appearance_name; Density density; const char* density_name; float scale; const char* scale_name; };
+struct Run { const Appearance& appearance; const char* appearanceName; Density density; const char* densityName; float scale; const char* scaleName; };
 std::vector<Run> runs() {
     std::vector<Run> out;
-    for (const auto& [appearance, name] : {std::pair<const Appearance*, const char*>{&web_appearance(), "web"}, {&material_appearance(), "material"}})
-        for (const auto& [density, density_name] : {std::pair<Density, const char*>{Density::standard, "standard"}, {Density::compact, "compact"}})
-            for (const auto& [scale, scale_name] : {std::pair<float, const char*>{1.f, "1"}, {1.5f, "1.5"}})
-                out.push_back({*appearance, name, density, density_name, scale, scale_name});
+    for (const auto& [appearance, name] : {std::pair<const Appearance*, const char*>{&webAppearance(), "web"}, {&materialAppearance(), "material"}})
+        for (const auto& [density, densityName] : {std::pair<Density, const char*>{Density::standard, "standard"}, {Density::compact, "compact"}})
+            for (const auto& [scale, scaleName] : {std::pair<float, const char*>{1.f, "1"}, {1.5f, "1.5"}})
+                out.push_back({*appearance, name, density, densityName, scale, scaleName});
     return out;
 }
 
@@ -132,12 +132,12 @@ std::string lines(const std::vector<Line>& all) {
 // Every rectangle of a placement the error lines can move: the box, the clip, each group of lines, the options, the
 // slider track, and the text field's rectangles. Text is recorded by its length (the sources are ASCII-free of surprises).
 std::string describe(const Placement& p) {
-    std::string out = "bounds=" + rect(p.bounds) + " clip=" + rect(p.clip) + " lines=" + lines(p.lines) + " label=" + lines(p.label_lines) +
-                      " description=" + lines(p.description_lines) + " error=" + lines(p.error_lines);
+    std::string out = "bounds=" + rect(p.bounds) + " clip=" + rect(p.clip) + " lines=" + lines(p.lines) + " label=" + lines(p.labelLines) +
+                      " description=" + lines(p.descriptionLines) + " error=" + lines(p.errorLines);
     out += " options=";
     for (const auto& o : p.options) out += "(" + rect(o) + ")";
-    out += " track=" + rect(p.slider_track);
-    out += " field=" + rect(p.text_field.label) + ";" + rect(p.text_field.surface) + ";" + rect(p.text_field.editor) + ";" + rect(p.text_field.description) + ";" + rect(p.text_field.error) + ";" + std::to_string(p.text_field.height);
+    out += " track=" + rect(p.sliderTrack);
+    out += " field=" + rect(p.textField.label) + ";" + rect(p.textField.surface) + ";" + rect(p.textField.editor) + ";" + rect(p.textField.description) + ";" + rect(p.textField.error) + ";" + std::to_string(p.textField.height);
     return out;
 }
 
@@ -150,28 +150,28 @@ std::map<std::string, std::string> record() {
         std::vector<layout::Node> nodes; std::vector<std::string> ids;
         for (const auto& subject : subjects)
             for (const auto& state : states) {
-                if (state.conflict && !subject.has_conflict) continue;
+                if (state.conflict && !subject.hasConflict) continue;
                 const std::string id = std::string(subject.name) + "." + state.name;
                 nodes.push_back(subject.add(ui, id, state.conflict, state.error));
                 auto handle = detail::access(ui).describe(id);
-                check(handle.has_value() && handle->invalid == state.error && handle->source_conflict == state.conflict, ("state set up: " + id).c_str());
+                check(handle.has_value() && handle->invalid == state.error && handle->sourceConflict == state.conflict, ("state set up: " + id).c_str());
                 ids.push_back(id);
             }
         auto settings = ui.presentation(); settings.density = run.density;
-        check(bool(ui.set_presentation(settings)), "presentation accepted");
+        check(bool(ui.setPresentation(settings)), "presentation accepted");
         auto frame = arrange(layout::column(nodes), ui, run.appearance, measure, width, 8000, run.scale, scroll);
         for (const auto& id : ids) {
             auto found = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
             check(found != frame.items.end(), ("arranged: " + id).c_str());
-            all[std::string(run.appearance_name) + " " + run.density_name + " " + run.scale_name + " w" + std::to_string(width) + " " + id] = describe(*found);
+            all[std::string(run.appearanceName) + " " + run.densityName + " " + run.scaleName + " w" + std::to_string(width) + " " + id] = describe(*found);
         }
     }
     return all;
 }
 
-void every_error_and_conflict_layout_is_unchanged() {
+void everyErrorAndConflictLayoutIsUnchanged() {
     const auto actual = record();
-    check(actual.size() == expected_count, "the recorded set has the expected number of entries");
+    check(actual.size() == expectedCount, "the recorded set has the expected number of entries");
     std::string failures;
     for (const auto& entry : expected) {
         auto it = actual.find(entry.key);
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     static const test::Case cases[] = {
-        {"every_error_and_conflict_layout_is_unchanged", every_error_and_conflict_layout_is_unchanged},
+        {"every_error_and_conflict_layout_is_unchanged", everyErrorAndConflictLayoutIsUnchanged},
     };
     return test::run("error_lines", cases);
 }
