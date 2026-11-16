@@ -48,11 +48,11 @@ public:
     }
 };
 // One context-menu element as a UIA client sees it: type, Name, AccessKey, AcceleratorKey, IsEnabled and Invoke support.
-bool menu_item_is(IUIAutomationElement* element, CONTROLTYPEID type, const wchar_t* name, const wchar_t* access_key, const wchar_t* accelerator, bool enabled) {
+bool menu_item_is(IUIAutomationElement* element, CONTROLTYPEID type, const wchar_t* name, const wchar_t* accessKey, const wchar_t* accelerator, bool enabled) {
     if (!element) return false;
     CONTROLTYPEID actual = 0; BSTR n = nullptr, key = nullptr, accel = nullptr; BOOL is_enabled = FALSE; IUIAutomationInvokePattern* invoke_pattern = nullptr;
     bool ok = SUCCEEDED(element->get_CurrentControlType(&actual)) && actual == type && SUCCEEDED(element->get_CurrentName(&n)) && n && std::wstring(n) == name &&
-        SUCCEEDED(element->get_CurrentAccessKey(&key)) && key && std::wstring(key) == access_key &&
+        SUCCEEDED(element->get_CurrentAccessKey(&key)) && key && std::wstring(key) == accessKey &&
         SUCCEEDED(element->get_CurrentAcceleratorKey(&accel)) && accel && std::wstring(accel) == accelerator &&
         SUCCEEDED(element->get_CurrentIsEnabled(&is_enabled)) && bool(is_enabled) == enabled &&
         SUCCEEDED(element->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke_pattern))) && invoke_pattern;
@@ -111,10 +111,10 @@ int wmain(int argc, wchar_t** argv) {
             RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             BSTR whole = nullptr;
             note = note && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&note_text))) && note_text;
-            IUIAutomationTextRange* range = nullptr; BSTR first_line = nullptr, second_line = nullptr, last_line = nullptr; int moved = 0;
+            IUIAutomationTextRange* range = nullptr; BSTR firstLine = nullptr, second_line = nullptr, last_line = nullptr; int moved = 0;
             note = note && SUCCEEDED(note_text->get_DocumentRange(&range)) && range && SUCCEEDED(range->GetText(-1, &whole)) && whole && std::wstring(whole) == L"l1\nl2\nl3\nl4\nl5\nl6" &&
                 SUCCEEDED(range->MoveEndpointByRange(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_Start)) && SUCCEEDED(range->ExpandToEnclosingUnit(TextUnit_Line)) &&
-                SUCCEEDED(range->GetText(-1, &first_line)) && first_line && std::wstring(first_line) == L"l1\n" &&
+                SUCCEEDED(range->GetText(-1, &firstLine)) && firstLine && std::wstring(firstLine) == L"l1\n" &&
                 SUCCEEDED(range->Move(TextUnit_Line, 1, &moved)) && moved == 1 && SUCCEEDED(range->GetText(-1, &second_line)) && second_line && std::wstring(second_line) == L"l2\n" &&
                 SUCCEEDED(range->Move(TextUnit_Line, 10, &moved)) && moved == 4 && SUCCEEDED(range->GetText(-1, &last_line)) && last_line && std::wstring(last_line) == L"l6";
             BOOL vertical = FALSE, horizontal = TRUE; double percent = -1, view = -1;
@@ -126,7 +126,7 @@ int wmain(int argc, wchar_t** argv) {
                 SUCCEEDED(note_scroll->SetScrollPercent(UIA_ScrollPatternNoScroll, 100)) && SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent > 99.9 &&
                 SUCCEEDED(note_scroll->Scroll(ScrollAmount_NoAmount, ScrollAmount_SmallDecrement)) && SUCCEEDED(note_scroll->get_CurrentVerticalScrollPercent(&percent)) && percent > 66 && percent < 67 &&
                 note_scroll->Scroll(ScrollAmount_SmallIncrement, ScrollAmount_NoAmount) == UIA_E_INVALIDOPERATION;
-            SysFreeString(whole); SysFreeString(first_line); SysFreeString(second_line); SysFreeString(last_line);
+            SysFreeString(whole); SysFreeString(firstLine); SysFreeString(second_line); SysFreeString(last_line);
             if (range) range->Release(); if (note_scroll) note_scroll->Release(); if (note_text) note_text->Release(); if (note_value) note_value->Release(); if (field) field->Release();
             note = close_modal(uia, root, L"items.dialog") && note;
             std::cout << "UA08 multi-line note: " << (note ? "PASS" : "FAIL") << '\n'; ok &= note;
@@ -385,7 +385,7 @@ int wmain(int argc, wchar_t** argv) {
             if (separators) separators->Release(); if (separator_condition) separator_condition->Release();
             bool disabled_refuses = copy_item && [&] { IUIAutomationInvokePattern* p = nullptr; bool refused = SUCCEEDED(copy_item->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&p))) && p && p->Invoke() == UIA_E_ELEMENTNOTENABLED; if (p) p->Release(); return refused; }();
             if (copy_item) copy_item->Release(); if (select_all_item) select_all_item->Release(); if (field_menu) field_menu->Release();
-            // MenuClosed arrives for every way of closing: the application's close_context_menu (1), Escape (4) and the window
+            // MenuClosed arrives for every way of closing: the application's closeContextMenu (1), Escape (4) and the window
             // losing activation (6). Each round opens the search field's menu again and waits for its MenuOpened first.
             bool field_closed = true;
             for (int how : {1, 4, 6}) {

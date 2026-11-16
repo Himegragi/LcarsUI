@@ -31,7 +31,7 @@ constexpr auto required_region = u"\u8acb\u9078\u64c7\u5730\u5340";
 Ids default_ids() {
     Ids i;
     i.title = "form.title"; i.intro = "form.intro";
-    i.normal = "fixture.normal"; i.read_only = "fixture.read_only"; i.disabled = "fixture.disabled";
+    i.normal = "fixture.normal"; i.readOnly = "fixture.read_only"; i.disabled = "fixture.disabled";
     i.error = "fixture.error"; i.long_text = "fixture.long"; i.reset = "form.reset";
     i.name_label = "form.name.label"; i.name = "form.name"; i.name_help = "form.name.help"; i.name_error = "form.name.error";
     i.volume = "form.volume"; i.volume_latest = "form.volume.latest"; i.notices = "form.notices"; i.mode = "form.mode"; i.offline_disabled = "fixture.offline_disabled";
@@ -42,64 +42,64 @@ Ids default_ids() {
 
 Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolve_font) : ids_(std::move(ids)), applied_(initial_name), resolve_font_(std::move(resolve_font)), pages_(pages), ui() {
     const auto& i = ids_;
-    handles.title = ui.add_label({.id = i.title, .value = u"編輯表單"}).value.value();
-    handles.intro = ui.add_label({.id = i.intro}).value.value();
-    handles.normal = ui.add_button({.id = i.normal, .label = u"正常"}).value.value();
-    handles.read_only = ui.add_button({.id = i.read_only, .label = u"名稱唯讀"}).value.value();
-    handles.disabled = ui.add_button({.id = i.disabled, .label = u"資料區停用"}).value.value();
-    handles.error = ui.add_button({.id = i.error, .label = u"名稱錯誤"}).value.value();
-    handles.long_text = ui.add_button({.id = i.long_text, .label = u"長說明"}).value.value();
-    handles.reset = ui.add_button({.id = i.reset, .label = u"重設"}).value.value();
-    handles.name_label = ui.add_label({.id = i.name_label, .value = u"顯示名稱", .target = i.name, .label_kind = LabelKind::name}).value.value();
-    handles.name = ui.add_text_field({.id = i.name, .value = initial_name}).value.value();
-    handles.name_help = ui.add_label({.id = i.name_help, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .label_kind = LabelKind::description}).value.value();
-    handles.name_error = ui.add_label({.id = i.name_error, .target = i.name, .label_kind = LabelKind::error}).value.value();
-    handles.notices = ui.add_checkbox({.id = i.notices, .label = u"\u555f\u7528\u63d0\u793a"}).value.value();
-    handles.mode = ui.add_radio_group({.id = i.mode, .label = u"\u6a21\u5f0f"},
+    handles.title = ui.addLabel({.id = i.title, .value = u"編輯表單"}).value.value();
+    handles.intro = ui.addLabel({.id = i.intro}).value.value();
+    handles.normal = ui.addButton({.id = i.normal, .label = u"正常"}).value.value();
+    handles.readOnly = ui.addButton({.id = i.readOnly, .label = u"名稱唯讀"}).value.value();
+    handles.disabled = ui.addButton({.id = i.disabled, .label = u"資料區停用"}).value.value();
+    handles.error = ui.addButton({.id = i.error, .label = u"名稱錯誤"}).value.value();
+    handles.long_text = ui.addButton({.id = i.long_text, .label = u"長說明"}).value.value();
+    handles.reset = ui.addButton({.id = i.reset, .label = u"重設"}).value.value();
+    handles.name_label = ui.addLabel({.id = i.name_label, .value = u"顯示名稱", .target = i.name, .labelKind = LabelKind::name}).value.value();
+    handles.name = ui.addTextField({.id = i.name, .value = initial_name}).value.value();
+    handles.name_help = ui.addLabel({.id = i.name_help, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .labelKind = LabelKind::description}).value.value();
+    handles.name_error = ui.addLabel({.id = i.name_error, .target = i.name, .labelKind = LabelKind::error}).value.value();
+    handles.notices = ui.addCheckbox({.id = i.notices, .label = u"\u555f\u7528\u63d0\u793a"}).value.value();
+    handles.mode = ui.addRadioGroup({.id = i.mode, .label = u"\u6a21\u5f0f"},
         {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}}).value.value();
-    handles.region = ui.add_dropdown({.id = i.region, .label = u"\u5730\u5340"}, regions()).value.value();
-    handles.volume = ui.add_slider({.id = i.volume, .label = u"\u97f3\u91cf"}, {0, 100, 5}).value.value();
-    handles.volume_latest = ui.add_button({.id = i.volume_latest, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.notices_latest = ui.add_button({.id = i.notices + ".latest", .label = u"\u63d0\u793a\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.mode_latest = ui.add_button({.id = i.mode + ".latest", .label = u"\u6a21\u5f0f\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.region_latest = ui.add_button({.id = i.region + ".latest", .label = u"\u5730\u5340\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.offline_disabled = ui.add_button({.id = i.offline_disabled, .label = u"\u505c\u7528\u96e2\u7dda"}).value.value();
-    handles.region_empty = ui.add_button({.id = i.region_empty, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"}).value.value();
-    handles.apply = ui.add_button({.id = i.apply, .label = u"套用"}).value.value();
-    handles.state = ui.add_label({.id = i.state}).value.value();
-    handles.draft = ui.add_label({.id = i.draft}).value.value();
-    handles.result = ui.add_label({.id = i.result}).value.value();
-    handles.count = ui.add_label({.id = i.count}).value.value();
-    handles.latest = ui.add_button({.id = i.latest, .label = u"\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.region = ui.addDropdown({.id = i.region, .label = u"\u5730\u5340"}, regions()).value.value();
+    handles.volume = ui.addSlider({.id = i.volume, .label = u"\u97f3\u91cf"}, {0, 100, 5}).value.value();
+    handles.volume_latest = ui.addButton({.id = i.volume_latest, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.notices_latest = ui.addButton({.id = i.notices + ".latest", .label = u"\u63d0\u793a\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.mode_latest = ui.addButton({.id = i.mode + ".latest", .label = u"\u6a21\u5f0f\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.region_latest = ui.addButton({.id = i.region + ".latest", .label = u"\u5730\u5340\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.offline_disabled = ui.addButton({.id = i.offline_disabled, .label = u"\u505c\u7528\u96e2\u7dda"}).value.value();
+    handles.region_empty = ui.addButton({.id = i.region_empty, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"}).value.value();
+    handles.apply = ui.addButton({.id = i.apply, .label = u"套用"}).value.value();
+    handles.state = ui.addLabel({.id = i.state}).value.value();
+    handles.draft = ui.addLabel({.id = i.draft}).value.value();
+    handles.result = ui.addLabel({.id = i.result}).value.value();
+    handles.count = ui.addLabel({.id = i.count}).value.value();
+    handles.latest = ui.addButton({.id = i.latest, .label = u"\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
 
-    handles.name.connect_source({[this] { return applied_; }, [this](std::function<void()> changed) {
+    handles.name.connectSource({[this] { return applied_; }, [this](std::function<void()> changed) {
         source_changed_ = std::move(changed);
         return [this] { source_changed_ = {}; };
     }});
-    handles.notices.connect_source({[this] { return notices_applied_; }, [this](std::function<void()> changed) {
+    handles.notices.connectSource({[this] { return notices_applied_; }, [this](std::function<void()> changed) {
         notices_changed_ = std::move(changed); return [this] { notices_changed_ = {}; };
     }});
-    handles.mode.connect_source({[this] { return mode_applied_; }, [this](std::function<void()> changed) {
+    handles.mode.connectSource({[this] { return mode_applied_; }, [this](std::function<void()> changed) {
         mode_changed_ = std::move(changed); return [this] { mode_changed_ = {}; };
     }});
-    handles.region.connect_source({[this] { return region_applied_; }, [this](std::function<void()> changed) {
+    handles.region.connectSource({[this] { return region_applied_; }, [this](std::function<void()> changed) {
         region_changed_ = std::move(changed); return [this] { region_changed_ = {}; };
     }});
-    handles.volume.connect_source({[this] { return volume_applied_; }, [this](std::function<void()> changed) {
+    handles.volume.connectSource({[this] { return volume_applied_; }, [this](std::function<void()> changed) {
         volume_changed_ = std::move(changed); return [this] { volume_changed_ = {}; };
     }});
     auto title_id = handles.title.describe()->id;
     auto title_text = handles.title.describe()->value;
-    handles.title.connect_source([this, title_id, title_text] {
+    handles.title.connectSource([this, title_id, title_text] {
         return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
     });
-    handles.intro.connect_source([this] {
+    handles.intro.connectSource([this] {
         return clip_padding_id_ == ids_.intro ? clip_padding_text_ : (long_intro_ ? long_intro : short_intro);
     });
-    handles.state.connect_source([this] {
-        std::u16string state = mode_ == Mode::read_only ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
+    handles.state.connectSource([this] {
+        std::u16string state = mode_ == Mode::readOnly ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
         if (handles.name.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
-        if (handles.name.source_conflict().value.value_or(false)) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
+        if (handles.name.sourceConflict().value.value_or(false)) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
         return u"\u72c0\u614b\uff1a" + state;
     });
     auto mode_name = [](const std::optional<OptionValue>& value) -> std::u16string {
@@ -117,35 +117,35 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         if (value->id == "south") return u"\u5357\u5340";
         return u"\u672a\u77e5";
     };
-    handles.draft.connect_source([this, mode_name, region_name, number] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
+    handles.draft.connectSource([this, mode_name, region_name, number] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
         u" / \u63d0\u793a\uff1a" + (*handles.notices.draft() ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(*handles.mode.draft()) + u" / \u5730\u5340\uff1a" + region_name(*handles.region.draft()) + u" / \u97f3\u91cf\uff1a" + number(*handles.volume.draft()); });
-    handles.result.connect_source([this, mode_name, region_name, number] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
+    handles.result.connectSource([this, mode_name, region_name, number] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
         u" / \u63d0\u793a\uff1a" + (notices_applied_ ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + mode_name(mode_applied_) + u" / \u5730\u5340\uff1a" + region_name(region_applied_) + u" / \u97f3\u91cf\uff1a" + number(volume_applied_); });
-    handles.count.connect_source([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
-    handles.name.on_blur([this] { validate(); });
-    ui.on_change([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
-    ui.connect_confirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
-    bind_action(handles.normal, [this] { set_mode(Mode::normal); return Result{}; });
-    bind_action(handles.read_only, [this] { set_mode(Mode::read_only); return Result{}; });
-    bind_action(handles.disabled, [this] { set_mode(Mode::disabled); return Result{}; });
+    handles.count.connectSource([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
+    handles.name.onBlur([this] { validate(); });
+    ui.onChange([this] { if (handles.name.describe()->invalid) validate(); refresh_conflict(); });
+    ui.connectConfirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
+    bind_action(handles.normal, [this] { setMode(Mode::normal); return Result{}; });
+    bind_action(handles.readOnly, [this] { setMode(Mode::readOnly); return Result{}; });
+    bind_action(handles.disabled, [this] { setMode(Mode::disabled); return Result{}; });
     bind_action(handles.offline_disabled, [this] {
         offline_disabled_ = !offline_disabled_;
-        return handles.mode.enable_option({"offline"}, !offline_disabled_);
+        return handles.mode.enableOption({"offline"}, !offline_disabled_);
     });
     bind_action(handles.region_empty, [this] {
         region_empty_ = !region_empty_;
-        return handles.region.set_items(region_empty_ ? std::vector<OptionItem>{} : regions());
+        return handles.region.setItems(region_empty_ ? std::vector<OptionItem>{} : regions());
     });
     bind_action(handles.long_text, [this] { long_intro_ = !long_intro_; return Result{}; });
     bind_action(handles.reset, [this] { return reset(); });
-    bind_action(handles.notices_latest, [this] { auto result = handles.notices.use_latest(); refresh_conflict(); return result; });
-    bind_action(handles.mode_latest, [this] { auto result = handles.mode.use_latest(); refresh_conflict(); return result; });
-    bind_action(handles.region_latest, [this] { auto result = handles.region.use_latest(); refresh_conflict(); return result; });
-    bind_action(handles.volume_latest, [this] { auto result = handles.volume.use_latest(); refresh_conflict(); return result; });
-    bind_action(handles.latest, [this] { auto result = handles.name.use_latest(); refresh_conflict(); return result; });
+    bind_action(handles.notices_latest, [this] { auto result = handles.notices.useLatest(); refresh_conflict(); return result; });
+    bind_action(handles.mode_latest, [this] { auto result = handles.mode.useLatest(); refresh_conflict(); return result; });
+    bind_action(handles.region_latest, [this] { auto result = handles.region.useLatest(); refresh_conflict(); return result; });
+    bind_action(handles.volume_latest, [this] { auto result = handles.volume.useLatest(); refresh_conflict(); return result; });
+    bind_action(handles.latest, [this] { auto result = handles.name.useLatest(); refresh_conflict(); return result; });
     bind_action(handles.error, [this] {
-        set_mode(Mode::normal);
-        handles.name.set_value(u"");
+        setMode(Mode::normal);
+        handles.name.setValue(u"");
         validate();
         handles.name.focus();
         return Result{};
@@ -153,24 +153,24 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     if (pages_) {
         const auto prefix = i.title + ".pages.";
         list = std::make_unique<list_page::Page>(&ui, &scroll, prefix + "v02.");
-        handles.v03_title = ui.add_label({.id = prefix + "v03.title", .value = u"確認與說明"}).value.value();
+        handles.v03_title = ui.addLabel({.id = prefix + "v03.title", .value = u"確認與說明"}).value.value();
         auto v03_title_id = handles.v03_title.describe()->id;
         auto v03_title_text = handles.v03_title.describe()->value;
-        handles.v03_title.connect_source([this, v03_title_id, v03_title_text] {
+        handles.v03_title.connectSource([this, v03_title_id, v03_title_text] {
             return clip_padding_id_ == v03_title_id ? clip_padding_text_ : v03_title_text;
         });
-        handles.progress = ui.add_progress({.id = prefix + "v03.progress", .label = u"示範進度"}).value.value();
-        handles.progress_source = ui.add_label({.id = prefix + "v03.source"}).value.value();
-        handles.progress_zero = ui.add_button({.id = prefix + "v03.zero", .label = u"0%"}).value.value();
-        handles.progress_half = ui.add_button({.id = prefix + "v03.half", .label = u"50%"}).value.value();
-        handles.progress_tip = ui.add_tooltip(prefix + "v03.half.tip", handles.progress_half, u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002").value.value();
-        handles.progress_full = ui.add_button({.id = prefix + "v03.full", .label = u"100%"}).value.value();
-        handles.progress_below = ui.add_button({.id = prefix + "v03.below", .label = u"-10"}).value.value();
-        handles.progress_above = ui.add_button({.id = prefix + "v03.above", .label = u"110"}).value.value();
-        handles.progress.connect_source({[this] { return progress_; }, [this](std::function<void()> changed) {
+        handles.progress = ui.addProgress({.id = prefix + "v03.progress", .label = u"示範進度"}).value.value();
+        handles.progress_source = ui.addLabel({.id = prefix + "v03.source"}).value.value();
+        handles.progress_zero = ui.addButton({.id = prefix + "v03.zero", .label = u"0%"}).value.value();
+        handles.progress_half = ui.addButton({.id = prefix + "v03.half", .label = u"50%"}).value.value();
+        handles.progress_tip = ui.addTooltip(prefix + "v03.half.tip", handles.progress_half, u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002").value.value();
+        handles.progress_full = ui.addButton({.id = prefix + "v03.full", .label = u"100%"}).value.value();
+        handles.progress_below = ui.addButton({.id = prefix + "v03.below", .label = u"-10"}).value.value();
+        handles.progress_above = ui.addButton({.id = prefix + "v03.above", .label = u"110"}).value.value();
+        handles.progress.connectSource({[this] { return progress_; }, [this](std::function<void()> changed) {
             progress_changed_ = std::move(changed); return [this] { progress_changed_ = {}; };
         }});
-        handles.progress_source.connect_source([this] {
+        handles.progress_source.connectSource([this] {
             auto number = std::to_string(progress_);
             return u"來源值：" + std::u16string(number.begin(), number.end());
         });
@@ -179,127 +179,127 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         bind_action(handles.progress_full, [this] { update_progress(100); return Result{}; });
         bind_action(handles.progress_below, [this] { update_progress(-10); return Result{}; });
         bind_action(handles.progress_above, [this] { update_progress(110); return Result{}; });
-        handles.reset_v03 = ui.add_button({.id = prefix + "v03.reset", .label = u"Reset page"}).value.value();
+        handles.reset_v03 = ui.addButton({.id = prefix + "v03.reset", .label = u"Reset page"}).value.value();
         bind_action(handles.reset_v03, [this] {
             if (!handles.dialog_temporary.describe()) {
                 auto id = ids_.title + ".pages.v03.temporary";
-                auto replacement = ui.add_button({.id = std::move(id), .label = u"Temporary opener..."}).value.value();
-                if (auto result = handles.tabs.add_member({"v03"}, replacement); !result) return result;
+                auto replacement = ui.addButton({.id = std::move(id), .label = u"Temporary opener..."}).value.value();
+                if (auto result = handles.tabs.addMember({"v03"}, replacement); !result) return result;
                 handles.dialog_temporary = replacement;
                 bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
             }
             update_progress(50); dialog_confirmations_ = 0; dialog_result_ = u"No result"; scroll.offset = 0; return handles.reset_v03.focus();
         });
-        handles.dialog_open = ui.add_button({.id = prefix + "v03.open", .label = u"Reset progress..."}).value.value();
-        handles.dialog_temporary = ui.add_button({.id = prefix + "v03.temporary", .label = u"Temporary opener..."}).value.value();
-        handles.dialog_result = ui.add_label({.id = prefix + "v03.result"}).value.value();
+        handles.dialog_open = ui.addButton({.id = prefix + "v03.open", .label = u"Reset progress..."}).value.value();
+        handles.dialog_temporary = ui.addButton({.id = prefix + "v03.temporary", .label = u"Temporary opener..."}).value.value();
+        handles.dialog_result = ui.addLabel({.id = prefix + "v03.result"}).value.value();
         auto dialog_result_id = handles.dialog_result.describe()->id;
-        handles.dialog_result.connect_source([this, dialog_result_id] {
+        handles.dialog_result.connectSource([this, dialog_result_id] {
             if (clip_padding_id_ == dialog_result_id) return clip_padding_text_;
             auto count = std::to_string(dialog_confirmations_);
             return u"Result: " + dialog_result_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
         });
-        handles.dialog_title = ui.add_label({.id = prefix + "dialog.title", .value = u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6"}).value.value();
-        handles.dialog_body = ui.add_label({.id = prefix + "dialog.body", .value = u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002"}).value.value();
-        handles.dialog_cancel = ui.add_button({.id = prefix + "dialog.cancel", .label = u"\u53d6\u6d88"}).value.value();
-        handles.dialog_confirm = ui.add_button({.id = prefix + "dialog.confirm", .label = u"\u91cd\u8a2d\u9032\u5ea6"}).value.value();
-        handles.dialog = ui.add_dialog(prefix + "dialog", {handles.dialog_title, handles.dialog_body, handles.dialog_cancel, handles.dialog_confirm}, handles.dialog_cancel, handles.dialog_open,
+        handles.dialog_title = ui.addLabel({.id = prefix + "dialog.title", .value = u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6"}).value.value();
+        handles.dialog_body = ui.addLabel({.id = prefix + "dialog.body", .value = u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002"}).value.value();
+        handles.dialog_cancel = ui.addButton({.id = prefix + "dialog.cancel", .label = u"\u53d6\u6d88"}).value.value();
+        handles.dialog_confirm = ui.addButton({.id = prefix + "dialog.confirm", .label = u"\u91cd\u8a2d\u9032\u5ea6"}).value.value();
+        handles.dialog = ui.addDialog(prefix + "dialog", {handles.dialog_title, handles.dialog_body, handles.dialog_cancel, handles.dialog_confirm}, handles.dialog_cancel, handles.dialog_open,
             [this](bool confirmed) { dialog_result_ = confirmed ? u"Confirmed" : u"Cancelled"; if (confirmed) { update_progress(0); ++dialog_confirmations_; } }, handles.dialog_title).value.value();
         bind_action(handles.dialog_open, [this] { return handles.dialog.open(handles.dialog_open); });
         bind_action(handles.dialog_temporary, [this] { return handles.dialog.open(handles.dialog_temporary); });
         bind_action(handles.dialog_cancel, [this] { return handles.dialog.settle(false); });
         bind_action(handles.dialog_confirm, [this] { return handles.dialog.settle(true); });
-        handles.v04_title = ui.add_label({.id = prefix + "v04.title", .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
+        handles.v04_title = ui.addLabel({.id = prefix + "v04.title", .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
         auto resolve = [this](std::u16string_view family) {
             if (resolve_font_) return resolve_font_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
         };
         std::vector<OptionItem> fonts = {{{"default"}, u"\u9810\u8a2d"}};
         for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
-            bool available = resolve(family).requested_available;
+            bool available = resolve(family).requestedAvailable;
             fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available});
         }
         fonts.push_back({{"missing"}, u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09"});
-        handles.font = ui.add_dropdown({.id = prefix + "v04.font", .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
-        handles.font.connect_source({[this] {
-            const auto& f = ui.presentation().font_family;
+        handles.font = ui.addDropdown({.id = prefix + "v04.font", .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
+        handles.font.connectSource({[this] {
+            const auto& f = ui.presentation().fontFamily;
             return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
         }, [this](std::function<void()> changed) { font_changed_ = std::move(changed); return [this] { font_changed_ = {}; }; }});
-        handles.font.connect_immediate([this](const Change<DropdownHandle>& change) {
-            if (!change.value) return Result{Status::invalid_value, u"Font choice required"};
+        handles.font.connectImmediate([this](const Change<DropdownHandle>& change) {
+            if (!change.value) return Result{Status::invalidValue, u"Font choice required"};
             const auto& id = change.value->id;
             auto settings = ui.presentation();
-            settings.font_family = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
-            auto result = ui.set_presentation(settings); if (result && font_changed_) font_changed_(); return result;
+            settings.fontFamily = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
+            auto result = ui.setPresentation(settings); if (result && font_changed_) font_changed_(); return result;
         });
-        handles.font_status = ui.add_label({.id = prefix + "v04.status"}).value.value();
-        handles.font_status.connect_source([this, resolve] {
-            auto result = resolve(ui.presentation().font_family);
-            auto size = std::to_string(ui.presentation().text_size);
-            return u"\u76ee\u524d\u72c0\u614b\uff1a" + result.primary + (result.requested_available ? u"" : u"\uff08\u5df2\u6539\u7528\u9810\u8a2d\uff09") + u"\uff0c\u6587\u5b57\u5927\u5c0f " + std::u16string(size.begin(), size.end()) +
+        handles.font_status = ui.addLabel({.id = prefix + "v04.status"}).value.value();
+        handles.font_status.connectSource([this, resolve] {
+            auto result = resolve(ui.presentation().fontFamily);
+            auto size = std::to_string(ui.presentation().textSize);
+            return u"\u76ee\u524d\u72c0\u614b\uff1a" + result.primary + (result.requestedAvailable ? u"" : u"\uff08\u5df2\u6539\u7528\u9810\u8a2d\uff09") + u"\uff0c\u6587\u5b57\u5927\u5c0f " + std::u16string(size.begin(), size.end()) +
                 (ui.presentation().variant == ThemeVariant::dark() ? u"\uff0c\u6df1\u8272" : u"\uff0c\u6dfa\u8272") +
                 (ui.presentation().density == Density::compact ? u"\uff0c\u7dca\u6e4a" : u"\uff0c\u6a19\u6e96");
         });
-        handles.reset_v04 = ui.add_button({.id = prefix + "v04.reset", .label = u"\u91cd\u8a2d V04"}).value.value();
+        handles.reset_v04 = ui.addButton({.id = prefix + "v04.reset", .label = u"\u91cd\u8a2d V04"}).value.value();
         bind_action(handles.reset_v04, [this] {
-            auto result = ui.set_presentation({}); if (!result) return result;
+            auto result = ui.setPresentation({}); if (!result) return result;
             if (font_changed_) font_changed_(); if (text_size_changed_) text_size_changed_(); if (dark_changed_) dark_changed_();
-            handles.font.use_latest(); handles.text_size.use_latest(); handles.dark.use_latest(); handles.compact.use_latest(); return Result{};
+            handles.font.useLatest(); handles.textSize.useLatest(); handles.dark.useLatest(); handles.compact.useLatest(); return Result{};
         });
-        handles.text_size = ui.add_slider({.id = prefix + "v04.text_size", .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
-        handles.dark = ui.add_checkbox({.id = prefix + "v04.dark", .label = u"\u6df1\u8272"}).value.value();
-        handles.dark.connect_source({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](std::function<void()> changed) { dark_changed_ = std::move(changed); return [this] { dark_changed_ = {}; }; }});
-        handles.dark.connect_immediate([this](const Change<CheckboxHandle>& change) {
+        handles.textSize = ui.addSlider({.id = prefix + "v04.text_size", .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
+        handles.dark = ui.addCheckbox({.id = prefix + "v04.dark", .label = u"\u6df1\u8272"}).value.value();
+        handles.dark.connectSource({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](std::function<void()> changed) { dark_changed_ = std::move(changed); return [this] { dark_changed_ = {}; }; }});
+        handles.dark.connectImmediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.variant = change.value ? ThemeVariant::dark() : ThemeVariant::light();
-            auto result = ui.set_presentation(settings); if (result && dark_changed_) dark_changed_(); return result;
+            auto result = ui.setPresentation(settings); if (result && dark_changed_) dark_changed_(); return result;
         });
-        handles.compact = ui.add_checkbox({.id = prefix + "v04.compact", .label = u"\u7dfb\u6e4a"}).value.value();
-        handles.compact.connect_source({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
-        handles.compact.connect_immediate([this](const Change<CheckboxHandle>& change) {
+        handles.compact = ui.addCheckbox({.id = prefix + "v04.compact", .label = u"\u7dfb\u6e4a"}).value.value();
+        handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
+        handles.compact.connectImmediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
-            return ui.set_presentation(settings);
+            return ui.setPresentation(settings);
         });
-        handles.preview = ui.add_text_field({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
-        handles.preview.connect_source({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
-        handles.preview.connect_immediate([this](const Change<TextFieldHandle>& change) { preview_ = change.value; return Result{}; });
+        handles.preview = ui.addTextField({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
+        handles.preview.connectSource({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
+        handles.preview.connectImmediate([this](const Change<TextFieldHandle>& change) { preview_ = change.value; return Result{}; });
         // #84: one mixed-script paragraph (Chinese, English and digits) whose alignment and justification method
         // the two dropdowns switch live, and short labels to compare distribute with left alignment.
-        handles.justify_sample = ui.add_label({.id = prefix + "v04.justify.sample", .value = justify_sample_text, .text_align = TextAlign::justify}).value.value();
-        handles.distribute_name = ui.add_label({.id = prefix + "v04.justify.name", .value = u"姓　名", .text_align = TextAlign::distribute}).value.value();
-        handles.distribute_plain = ui.add_label({.id = prefix + "v04.justify.plain", .value = u"姓　名"}).value.value();
-        handles.justify_align = ui.add_dropdown({.id = prefix + "v04.justify.align", .label = u"對齊"},
+        handles.justify_sample = ui.addLabel({.id = prefix + "v04.justify.sample", .value = justify_sample_text, .textAlign = TextAlign::justify}).value.value();
+        handles.distribute_name = ui.addLabel({.id = prefix + "v04.justify.name", .value = u"姓　名", .textAlign = TextAlign::distribute}).value.value();
+        handles.distribute_plain = ui.addLabel({.id = prefix + "v04.justify.plain", .value = u"姓　名"}).value.value();
+        handles.justify_align = ui.addDropdown({.id = prefix + "v04.justify.align", .label = u"對齊"},
             {{{"left"}, u"靠左"}, {{"center"}, u"置中"}, {{"right"}, u"靠右"}, {{"justify"}, u"左右對齊"}, {{"distribute"}, u"分散對齊"}}).value.value();
-        handles.justify_method = ui.add_dropdown({.id = prefix + "v04.justify.method", .label = u"對齊方法"},
+        handles.justifyMethod = ui.addDropdown({.id = prefix + "v04.justify.method", .label = u"對齊方法"},
             {{{"automatic"}, u"自動"}, {{"spaces"}, u"只拉空格"}, {{"per_character"}, u"每字元"}}).value.value();
-        handles.justify_align.connect_source({[this] {
-            const auto align = handles.justify_sample.text_align().value.value_or(TextAlign::left);
+        handles.justify_align.connectSource({[this] {
+            const auto align = handles.justify_sample.textAlign().value.value_or(TextAlign::left);
             return std::optional<OptionValue>{{align == TextAlign::center ? "center" : align == TextAlign::right ? "right" : align == TextAlign::justify ? "justify" : align == TextAlign::distribute ? "distribute" : "left"}};
         }, [this](std::function<void()> changed) { justify_align_changed_ = std::move(changed); return [this] { justify_align_changed_ = {}; }; }});
-        handles.justify_align.connect_immediate([this](const Change<DropdownHandle>& change) {
-            if (!change.value) return Result{Status::invalid_value, u"Alignment choice required"};
+        handles.justify_align.connectImmediate([this](const Change<DropdownHandle>& change) {
+            if (!change.value) return Result{Status::invalidValue, u"Alignment choice required"};
             const auto& id = change.value->id;
-            auto result = handles.justify_sample.set_text_align(id == "center" ? TextAlign::center : id == "right" ? TextAlign::right : id == "justify" ? TextAlign::justify : id == "distribute" ? TextAlign::distribute : TextAlign::left);
+            auto result = handles.justify_sample.setTextAlign(id == "center" ? TextAlign::center : id == "right" ? TextAlign::right : id == "justify" ? TextAlign::justify : id == "distribute" ? TextAlign::distribute : TextAlign::left);
             if (result && justify_align_changed_) justify_align_changed_();
             return result;
         });
-        handles.justify_method.connect_source({[this] {
-            const auto method = handles.justify_sample.justify_method().value.value_or(JustifyMethod::automatic);
-            return std::optional<OptionValue>{{method == JustifyMethod::spaces ? "spaces" : method == JustifyMethod::per_character ? "per_character" : "automatic"}};
+        handles.justifyMethod.connectSource({[this] {
+            const auto method = handles.justify_sample.justifyMethod().value.value_or(JustifyMethod::automatic);
+            return std::optional<OptionValue>{{method == JustifyMethod::spaces ? "spaces" : method == JustifyMethod::perCharacter ? "per_character" : "automatic"}};
         }, [this](std::function<void()> changed) { justify_method_changed_ = std::move(changed); return [this] { justify_method_changed_ = {}; }; }});
-        handles.justify_method.connect_immediate([this](const Change<DropdownHandle>& change) {
-            if (!change.value) return Result{Status::invalid_value, u"Method choice required"};
+        handles.justifyMethod.connectImmediate([this](const Change<DropdownHandle>& change) {
+            if (!change.value) return Result{Status::invalidValue, u"Method choice required"};
             const auto& id = change.value->id;
-            auto result = handles.justify_sample.set_justify_method(id == "spaces" ? JustifyMethod::spaces : id == "per_character" ? JustifyMethod::per_character : JustifyMethod::automatic);
+            auto result = handles.justify_sample.setJustifyMethod(id == "spaces" ? JustifyMethod::spaces : id == "per_character" ? JustifyMethod::perCharacter : JustifyMethod::automatic);
             if (result && justify_method_changed_) justify_method_changed_();
             return result;
         });
-        handles.text_size.connect_source({[this] { return ui.presentation().text_size; }, [this](std::function<void()> changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
-        handles.text_size.connect_immediate([this](const Change<SliderHandle>& change) {
-            auto settings = ui.presentation(); settings.text_size = change.value;
-            auto result = ui.set_presentation(settings); if (result && text_size_changed_) text_size_changed_(); return result;
+        handles.textSize.connectSource({[this] { return ui.presentation().textSize; }, [this](std::function<void()> changed) { text_size_changed_ = std::move(changed); return [this] { text_size_changed_ = {}; }; }});
+        handles.textSize.connectImmediate([this](const Change<SliderHandle>& change) {
+            auto settings = ui.presentation(); settings.textSize = change.value;
+            auto result = ui.setPresentation(settings); if (result && text_size_changed_) text_size_changed_(); return result;
         });
-        handles.tabs = ui.add_tabs({.id = prefix + "tabs", .label = u"Showcase"}, {
-            {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.read_only, handles.disabled,
+        handles.tabs = ui.addTabs({.id = prefix + "tabs", .label = u"Showcase"}, {
+            {{"v01"}, u"Edit form", true, {handles.title, handles.intro, handles.normal, handles.readOnly, handles.disabled,
                 handles.error, handles.long_text, handles.reset, handles.name_label, handles.name, handles.name_help,
                 handles.name_error, handles.notices, handles.notices_latest, handles.mode, handles.mode_latest, handles.region, handles.region_latest, handles.volume, handles.volume_latest,
                 handles.offline_disabled, handles.region_empty, handles.apply, handles.state, handles.draft, handles.result,
@@ -309,10 +309,10 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03_title, handles.progress, handles.progress_source, handles.dialog_result,
                 handles.progress_zero, handles.progress_half, handles.progress_full, handles.progress_below, handles.progress_above, handles.reset_v03, handles.dialog_open, handles.dialog_temporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.text_size, handles.dark, handles.compact, handles.preview, handles.font_status, handles.reset_v04,
-                handles.justify_sample, handles.justify_align, handles.justify_method, handles.distribute_name, handles.distribute_plain}}
+            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04_title, handles.font, handles.textSize, handles.dark, handles.compact, handles.preview, handles.font_status, handles.reset_v04,
+                handles.justify_sample, handles.justify_align, handles.justifyMethod, handles.distribute_name, handles.distribute_plain}}
         }).value.value();
-        handles.tabs.on_page_change([this](OptionValue from, OptionValue to) {
+        handles.tabs.onPageChange([this](OptionValue from, OptionValue to) {
             auto index = [](const OptionValue& page) { return page.id == "v01" ? 0 : page.id == "v02" ? 1 : page.id == "v03" ? 2 : 3; };
             page_offsets_[index(from)] = scroll.offset;
             scroll.offset = page_offsets_[index(to)];
@@ -333,7 +333,7 @@ Result Form::restore_fixture_action(ButtonHandle button) const {
     auto found = fixture_actions_.find(semantic->id);
     if (found != fixture_actions_.end()) return button.bind(found->second);
     if (list) return list->restore_fixture_action(button);
-    return {Status::not_found, u"No original fixture action"};
+    return {Status::notFound, u"No original fixture action"};
 }
 Result Form::set_clip_padding(LabelHandle label, std::u16string text) {
     auto semantic = label.describe();
@@ -343,7 +343,7 @@ Result Form::set_clip_padding(LabelHandle label, std::u16string text) {
         return list->set_clip_padding(label, std::move(text));
     if (id != handles.title.describe()->id && id != handles.intro.describe()->id &&
         (!pages_ || (id != handles.v03_title.describe()->id && id != handles.dialog_result.describe()->id && id != handles.v04_title.describe()->id)))
-        return {Status::invalid_value, u"Unknown clipping fixture label"};
+        return {Status::invalidValue, u"Unknown clipping fixture label"};
     clip_padding_id_ = std::move(id); clip_padding_text_ = std::move(text); return {};
 }
 void Form::clear_clip_padding() {
@@ -353,7 +353,7 @@ void Form::clear_clip_padding() {
 
 bool Form::validate() {
     bool valid = !blank(*handles.name.draft());
-    handles.name.set_error(valid ? u"" : required_name);
+    handles.name.setError(valid ? u"" : required_name);
     return valid;
 }
 ConfirmationResult Form::apply(const std::vector<ConfirmFieldChange>& changes) {
@@ -366,10 +366,10 @@ ConfirmationResult Form::apply(const std::vector<ConfirmFieldChange>& changes) {
     std::vector<ConfirmFieldError> errors;
     if (blank(name.value)) errors.push_back({name.field, required_name});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, required_region});
-    if (!errors.empty()) return {{Status::invalid_value, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
+    if (!errors.empty()) return {{Status::invalidValue, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
     if (next_field_error_) {
         auto error = std::move(*next_field_error_); next_field_error_.reset();
-        return {{Status::invalid_value, u"Fixture rejected apply"}, {std::move(error)}};
+        return {{Status::invalidValue, u"Fixture rejected apply"}, {std::move(error)}};
     }
     if (reject_notices_conflict_) {
         reject_notices_conflict_ = false;
@@ -377,7 +377,7 @@ ConfirmationResult Form::apply(const std::vector<ConfirmFieldChange>& changes) {
         notices_applied_ = notices.value;
         if (notices_changed_) notices_changed_();
         refresh_conflict();
-        return {{Status::invalid_value, u"Source changed during apply"}, {}};
+        return {{Status::invalidValue, u"Source changed during apply"}, {}};
     }
     applied_ = name.value;
     notices_applied_ = notices.value;
@@ -413,15 +413,15 @@ void Form::update_progress(int value) {
     if (progress_changed_) progress_changed_();
 }
 void Form::refresh_conflict() {
-    handles.notices_latest.enable(mode_ != Mode::disabled && handles.notices.describe()->source_conflict);
-    handles.mode_latest.enable(mode_ != Mode::disabled && handles.mode.describe()->source_conflict);
-    handles.region_latest.enable(mode_ != Mode::disabled && handles.region.describe()->source_conflict);
-    handles.volume_latest.enable(mode_ != Mode::disabled && handles.volume.describe()->source_conflict);
-    handles.latest.enable(mode_ != Mode::disabled && mode_ != Mode::read_only && handles.name.source_conflict().value.value_or(false));
+    handles.notices_latest.enable(mode_ != Mode::disabled && handles.notices.describe()->sourceConflict);
+    handles.mode_latest.enable(mode_ != Mode::disabled && handles.mode.describe()->sourceConflict);
+    handles.region_latest.enable(mode_ != Mode::disabled && handles.region.describe()->sourceConflict);
+    handles.volume_latest.enable(mode_ != Mode::disabled && handles.volume.describe()->sourceConflict);
+    handles.latest.enable(mode_ != Mode::disabled && mode_ != Mode::readOnly && handles.name.sourceConflict().value.value_or(false));
 }
-void Form::set_mode(Mode mode) {
+void Form::setMode(Mode mode) {
     mode_ = mode;
-    handles.name.read_only(mode == Mode::read_only);
+    handles.name.readOnly(mode == Mode::readOnly);
     handles.name.enable(mode != Mode::disabled);
     handles.apply.enable(mode != Mode::disabled);
     handles.notices.enable(mode != Mode::disabled);
@@ -431,18 +431,18 @@ void Form::set_mode(Mode mode) {
     refresh_conflict();
 }
 Result Form::reset() {
-    set_mode(Mode::normal);
+    setMode(Mode::normal);
     long_intro_ = false;
     update_source(initial_name);
     notices_applied_ = true; mode_applied_ = OptionValue{"normal"}; region_applied_ = OptionValue{"north"}; volume_applied_ = 40;
-    region_empty_ = false; handles.region.set_items(regions());
+    region_empty_ = false; handles.region.setItems(regions());
     if (notices_changed_) notices_changed_();
     if (mode_changed_) mode_changed_();
     if (region_changed_) region_changed_();
     if (volume_changed_) volume_changed_();
-    handles.notices.use_latest(); handles.mode.use_latest(); handles.region.use_latest(); handles.volume.use_latest();
-    offline_disabled_ = false; handles.mode.enable_option({"offline"}, true);
-    handles.name.reset_to_source();
+    handles.notices.useLatest(); handles.mode.useLatest(); handles.region.useLatest(); handles.volume.useLatest();
+    offline_disabled_ = false; handles.mode.enableOption({"offline"}, true);
+    handles.name.resetToSource();
     refresh_conflict();
     applies_ = 0;
     scroll.offset = 0;
@@ -461,7 +461,7 @@ layout::Node Form::page() const {
     auto form = layout::scroll(column({
         component(handles.title, 24),
         component(handles.intro),
-        grid({component(handles.normal), component(handles.read_only), component(handles.disabled), component(handles.error), component(handles.long_text), component(handles.offline_disabled), component(handles.region_empty), component(handles.reset)}, 120, 8),
+        grid({component(handles.normal), component(handles.readOnly), component(handles.disabled), component(handles.error), component(handles.long_text), component(handles.offline_disabled), component(handles.region_empty), component(handles.reset)}, 120, 8),
         grid({column(std::move(fields), 12),
               column({component(handles.draft), component(handles.result), component(handles.count)}, 8)},
              360, 32),
@@ -477,7 +477,7 @@ layout::Node Form::page() const {
         if (clipping_fixture) items.push_back(column({}, 0, 700));
         items.push_back(component(handles.v04_title, 24));
         items.push_back(component(handles.font));
-        items.push_back(component(handles.text_size));
+        items.push_back(component(handles.textSize));
         items.push_back(component(handles.dark));
         items.push_back(component(handles.compact));
         items.push_back(component(handles.preview));
@@ -485,7 +485,7 @@ layout::Node Form::page() const {
         items.push_back(component(handles.reset_v04));
         // The alignment comparison: the paragraph with its two dropdowns, then "姓　名" distributed next to the same label left-aligned.
         items.push_back(component(handles.justify_sample));
-        items.push_back(grid({component(handles.justify_align), component(handles.justify_method)}, 200, 16));
+        items.push_back(grid({component(handles.justify_align), component(handles.justifyMethod)}, 200, 16));
         items.push_back(grid({component(handles.distribute_name), component(handles.distribute_plain)}, 120, 16));
         if (clipping_fixture) items.push_back(column({}, 0, 700));
         content = layout::scroll(column(std::move(items), 16, 24));

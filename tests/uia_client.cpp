@@ -313,9 +313,9 @@ int wmain(int argc, wchar_t** argv) {
             std::wstring(first_name) == L"共用範本" && std::wstring(first_name) == std::wstring(second_name) &&
             SUCCEEDED(first->get_CurrentAutomationId(&first_id)) && SUCCEEDED(second->get_CurrentAutomationId(&second_id)) && first_id && second_id && std::wstring(first_id) != std::wstring(second_id);
         bool list_case = SUCCEEDED(select_id(automation, root, L"T006")) && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.sort"));
-        IUIAutomationSelectionItemPattern* list_item = nullptr; BOOL selected_item = FALSE;
-        list_case = list_case && second && SUCCEEDED(second->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&list_item))) && list_item && SUCCEEDED(list_item->get_CurrentIsSelected(&selected_item)) && selected_item;
-        if (list_item) list_item->Release();
+        IUIAutomationSelectionItemPattern* listItem = nullptr; BOOL selected_item = FALSE;
+        list_case = list_case && second && SUCCEEDED(second->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&listItem))) && listItem && SUCCEEDED(listItem->get_CurrentIsSelected(&selected_item)) && selected_item;
+        if (listItem) listItem->Release();
         list_case = list_case && SUCCEEDED(invoke_id(automation, root, L"form.title.pages.v02.disable")) && select_id(automation, root, L"T008") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
         BSTR item_help = nullptr;
         const bool item_help_empty = first && SUCCEEDED(first->get_CurrentHelpText(&item_help)) && SysStringLen(item_help) == 0;
@@ -353,13 +353,13 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT read_hr = value_pattern ? value_pattern->get_CurrentValue(&actual) : E_FAIL;
         HRESULT after_hr = applied ? applied->get_CurrentName(&applied_after) : E_FAIL;
         SendMessageW(search.window, WM_APP + 80, 9, 0);
-        BOOL read_only = FALSE;
-        HRESULT readonly_hr = value_pattern ? value_pattern->get_CurrentIsReadOnly(&read_only) : E_FAIL;
+        BOOL readOnly = FALSE;
+        HRESULT readonly_hr = value_pattern ? value_pattern->get_CurrentIsReadOnly(&readOnly) : E_FAIL;
         HRESULT rejected = value_pattern ? value_pattern->SetValue(input) : E_FAIL;
         SendMessageW(search.window, WM_APP + 80, 10, 0);
         bool value_ok = SUCCEEDED(before_hr) && SUCCEEDED(after_hr) && applied_before && applied_after &&
             std::wstring(applied_before, SysStringLen(applied_before)) == std::wstring(applied_after, SysStringLen(applied_after)) && SUCCEEDED(pattern_hr) && SUCCEEDED(set_hr) && SUCCEEDED(read_hr) && actual &&
-            std::wstring(actual, SysStringLen(actual)) == L"\u5de5\u4f5c\u7ad9 A" && SUCCEEDED(readonly_hr) && read_only && rejected == UIA_E_INVALIDOPERATION;
+            std::wstring(actual, SysStringLen(actual)) == L"\u5de5\u4f5c\u7ad9 A" && SUCCEEDED(readonly_hr) && readOnly && rejected == UIA_E_INVALIDOPERATION;
         std::cout << "UIA07 Value: " << (value_ok ? "PASS" : "FAIL") << '\n';
         pass &= value_ok; SysFreeString(applied_before); SysFreeString(applied_after); if (applied) applied->Release(); SysFreeString(input); SysFreeString(actual); if (value_pattern) value_pattern->Release();
     }

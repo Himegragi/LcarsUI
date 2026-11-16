@@ -39,9 +39,9 @@ void CALLBACK show_pending_notice(HWND, UINT, UINT_PTR timer, DWORD) {
 int wmain(int argc, wchar_t** argv) {
     try {
 #ifdef LCARS_APPEARANCE_material
-        const auto& appearance = lcars::material_appearance();
+        const auto& appearance = lcars::materialAppearance();
 #else
-        const auto& appearance = lcars::web_appearance();
+        const auto& appearance = lcars::webAppearance();
 #endif
         auto name = appearance.name();
         std::filesystem::path directory, diagnostics_out;
@@ -72,7 +72,7 @@ int wmain(int argc, wchar_t** argv) {
         demo.on_save([&store](const auto& document) { return store.save(document); },path_text);
         lcars::DesktopConfig options;
 #ifdef LCARS_DEMO_DIAGNOSTICS
-        options.on_diagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
+        options.onDiagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
         // Evidence runs (TD01) save the in-memory record; normal runs never write it.
         auto export_diagnostics = [&] {
             if (diagnostics_out.empty()) return;
@@ -82,22 +82,22 @@ int wmain(int argc, wchar_t** argv) {
 #endif
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
         settings_demo::CloseController close_controller(demo);
-        options.on_close_requested = [&](lcars::Desktop& desktop) {
-            WindowsPrompt prompt(desktop.native_window());
+        options.onCloseRequested = [&](lcars::Desktop& desktop) {
+            WindowsPrompt prompt(desktop.nativeWindow());
             return close_controller.request(desktop, prompt);
         };
-        options.on_renderer_failed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
+        options.onRendererFailed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
 #ifdef LCARS_DEMO_DIAGNOSTICS
-            diagnostics.record_failure(settings_demo::failure_diagnostic(failure));
+            diagnostics.recordFailure(settings_demo::failure_diagnostic(failure));
             export_diagnostics();
 #endif
-            WindowsPrompt prompt(desktop.native_window());
+            WindowsPrompt prompt(desktop.nativeWindow());
             close_controller.failure(desktop, failure, prompt);
         };
         auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) { report_startup_failure(creation.failure); return 1; }
         demo.on_close([&] { creation.desktop->close(); });
-        demo.on_dirty_changed([&](bool dirty) { creation.desktop->set_title((dirty ? u"*" : u"") + options.title); });
+        demo.on_dirty_changed([&](bool dirty) { creation.desktop->setTitle((dirty ? u"*" : u"") + options.title); });
         if (loaded.kind==settings_demo::LoadKind::corrupt) {
             auto message=u"無法讀取 " + path_text + u"（" + loaded.reason + u"）。已改用預設值啟動，";
             message += loaded.renamed ? u"原檔已改名為 settings.json.bad。" : u"原檔無法改名，下次儲存會覆蓋它。";

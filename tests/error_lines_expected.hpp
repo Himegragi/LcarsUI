@@ -1,4 +1,4 @@
-// Recorded by `lcars_error_lines_tests --dump` before the refactor of #92; see error_lines.cpp.
+// Recorded by `lcars_error_lines_tests --dump` before the refactor of #92; see errorLines.cpp.
 #pragma once
 #include <cstddef>
 namespace {

@@ -7,9 +7,9 @@ int wmain() {
     try {
         list_page::Page page;
 #ifdef LCARS_APPEARANCE_material
-        const auto& appearance = lcars::material_appearance();
+        const auto& appearance = lcars::materialAppearance();
 #else
-        const auto& appearance = lcars::web_appearance();
+        const auto& appearance = lcars::webAppearance();
 #endif
         lcars::DesktopConfig options; options.title = u"LcarsUI 範本清單";
         auto creation = lcars::Desktop::create(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);

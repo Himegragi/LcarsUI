@@ -24,7 +24,7 @@ struct Component : ComponentConfig {
     ComponentKind kind;
     Component(ComponentKind type, ComponentConfig config) : ComponentConfig(std::move(config)), kind(type) {}
 };
-// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::add_text_field and of a field supplied as data).
+// Whether a text control's initial value, visible lines and rich option are admissible (the rule of Ui::addTextField and of a field supplied as data).
 bool valid_text_control(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
@@ -41,7 +41,7 @@ public:
     private:
         UiState* state_;
     };
-    // The not_found texts of a handle whose lifetime has ended. Each operation keeps the text it has always given (#94
+    // The notFound texts of a handle whose lifetime has ended. Each operation keeps the text it has always given (#94
     // decision 7): component handles, context menus and most others say component_gone, dialogs and tooltips ui_gone,
     // and ListHandle::focus(OptionValue) answers without text (gone_without_text).
     static constexpr std::u16string_view component_gone = u"Component no longer exists";
@@ -49,7 +49,7 @@ public:
     static constexpr std::u16string_view gone_without_text = u"";
     // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
     // handle whose lifetime has ended (its Ui is gone, its component removed, a tooltip's source removed) runs nothing and
-    // answers not_found with `gone`. R is the operation's own return type (Result or a Query). A typed handle operation
+    // answers notFound with `gone`. R is the operation's own return type (Result or a Query). A typed handle operation
     // is written as `return detail::UiState::operate(*this, [&]() -> Result { ... });`.
     template <class Handle, class Body, class R = std::invoke_result_t<Body&>>
     static R operate(const Handle& handle, Body&& body, std::u16string_view gone = component_gone) {
@@ -60,7 +60,7 @@ public:
             pending = alive && std::this_thread::get_id() == handle.ui_->owner_ && handle.ui_->removal_pending(handle.id_);
         if (!alive || pending) {
             R answer;
-            answer.status = Status::not_found;
+            answer.status = Status::notFound;
             answer.message = std::u16string(gone);
             return answer;
         }
@@ -69,25 +69,25 @@ public:
     explicit UiState(std::vector<Component> controls);
     ~UiState();
     // Called only by Ui::add_x (through add_component in core.cpp), which builds `control` with the matching kind (#96).
-    TextFieldHandle add_text_field(Component control);
-    ButtonHandle add_button(Component control);
-    LabelHandle add_label(Component control);
-    CheckboxHandle add_checkbox(Component control);
-    RadioGroupHandle add_radio_group(Component control, std::vector<OptionItem> options);
-    SliderHandle add_slider(Component control, SliderRange range);
-    ProgressHandle add_progress(Component control);
-    DropdownHandle add_dropdown(Component control, std::vector<OptionItem> options);
-    TabsHandle add_tabs(Component control, std::vector<TabPage> pages);
-    NavigationListHandle add_navigation_list(Component control, std::vector<NavigationPage> pages, OptionValue initial);
+    TextFieldHandle addTextField(Component control);
+    ButtonHandle addButton(Component control);
+    LabelHandle addLabel(Component control);
+    CheckboxHandle addCheckbox(Component control);
+    RadioGroupHandle addRadioGroup(Component control, std::vector<OptionItem> options);
+    SliderHandle addSlider(Component control, SliderRange range);
+    ProgressHandle addProgress(Component control);
+    DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
+    TabsHandle addTabs(Component control, std::vector<TabPage> pages);
+    NavigationListHandle addNavigationList(Component control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activate_tab(const Id& id, OptionValue page);
     Result add_page_member(const Id& id, OptionValue page, ComponentHandle member);
-    Result enable_page(const Id& id, const OptionValue& page, bool enabled);
-    Result on_page_change(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
+    Result enablePage(const Id& id, const OptionValue& page, bool enabled);
+    Result onPageChange(const Id& id, std::function<void(OptionValue, OptionValue)> callback);
     Query<OptionValue> active_page(const Id& id) const;
     Query<ComponentSnapshot> handle_describe(std::string_view id) const;
     Result focus_error(const Id& id);
-    ListHandle add_list(Component control, std::vector<OptionItem> items);
-    TooltipHandle add_tooltip(ComponentHandle source, std::u16string text, unsigned delay_ms);
+    ListHandle addList(Component control, std::vector<OptionItem> items);
+    TooltipHandle addTooltip(ComponentHandle source, std::u16string text, unsigned delayMs);
     void tooltip_time(std::uint64_t now);
     void tooltip_clock(std::function<std::uint64_t()> clock) { tooltip_clock_ = std::move(clock); }
     std::optional<std::uint64_t> tooltip_deadline() const;
@@ -107,15 +107,15 @@ public:
     // The admitted target (see Ui::hover) and whether the overlay is drawn for it.
     std::optional<HoverTarget> hover_target() const;
     bool hover_drawn(std::string_view id, const OptionValue* item) const;
-    Result simulate_hover(std::string_view id, const std::optional<OptionValue>& item);
-    Result clear_simulated_hover();
+    Result simulateHover(std::string_view id, const std::optional<OptionValue>& item);
+    Result clearSimulatedHover();
     Query<std::optional<HoverTarget>> hover_query() const;
     void refresh_tooltips();
     void scrolled(); // input moved a viewport outside popup content
     ScrollState& dropdown_scroll(const Id& id) { return dropdowns_.at(id).scroll; }
     bool dropdown_reveal(const Id& id) { return std::exchange(dropdowns_.at(id).reveal, false); }
     void popup_scrolled() { if (invalidate_) invalidate_(); }
-    DialogHandle add_dialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
+    DialogHandle addDialog(std::string id, std::vector<ComponentHandle> members, ComponentHandle initial, ButtonHandle fallback, std::function<void(bool)> result, std::optional<LabelHandle> name);
     Result open_dialog(const Id& id, const ComponentHandle* opener);
     Result settle_dialog(const Id& id, bool confirmed);
     void close_popup();
@@ -141,8 +141,8 @@ public:
     std::optional<double> slider_animated_ratio(std::string_view id) const;
     // Pointer x the thumb is drawn at while the pointer holds it (a drag, or any press with motion off).
     std::optional<int> slider_held_x(std::string_view id) const;
-    Result reset_to_source(const Id& id);
-    Result use_latest(const Id& id);
+    Result resetToSource(const Id& id);
+    Result useLatest(const Id& id);
     Result connect_write(const Id& id, std::function<Result(const Change<TextFieldHandle>&)> write, bool immediate);
     Result connect_rich_write(const Id& id, std::function<Result(const Change<TextFieldHandle, RichText>&)> write, bool immediate);
     bool is_rich(std::string_view id) const;
@@ -164,13 +164,13 @@ public:
     void arm_key(const Id& id) { key_armed_ = id; }
     bool popup_open(std::string_view id) const { return popup_source_ == id; }
     void invalidate() { if (invalidate_) invalidate_(); }
-    bool renderer_failed() const { return renderer_failed_; }
+    bool rendererFailed() const { return renderer_failed_; }
     bool has_action(std::string_view id) const { return actions_.contains(id); }
     bool text_composing(std::string_view id) const { auto it = edits_.find(id); return it != edits_.end() && it->second.session.composing; }
     // The per-type state and the engines a component type reaches into (the maps and helpers declared private below).
     // Only declared here: the definition lives in component_type.cpp, so no other file can use it.
     struct Internals;
-    Result connect_confirmation(ButtonHandle button, std::vector<ConfirmField> fields,
+    Result connectConfirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit);
     UiState(const UiState&)=delete;
     UiState& operator=(const UiState&)=delete;
@@ -203,23 +203,23 @@ public:
     // Current display text: field content, or label text (bound provider wins over static value).
     std::u16string text(std::string_view id) const;
     EditSession* edit(std::string_view id);
-    Result set_value(std::string_view id, std::u16string value);
+    Result setValue(std::string_view id, std::u16string value);
     Result invoke(std::string_view id);
     Result available(std::string_view id, bool ignore_renderer_failure = false) const;
     Result available_option(std::string_view id, const OptionValue& value) const;
 
     void bind(Id id, Action action);
-    void on_change(std::function<void()> callback) { changed_ = std::move(callback); }
+    void onChange(std::function<void()> callback) { changed_ = std::move(callback); }
     // Host requests a new frame when a source notification changes the view.
-    Result set_presentation(const PresentationSettings& settings);
+    Result setPresentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const { return presentation_; }
     // Focus indicator display state. Only real input moves it: key_down and the host's pointer press.
     // Programmatic focus, semantic operations and UIA never change it.
     // `never` is checked first and wins over everything, the system's "always show keyboard cues" setting included.
-    bool focus_indicator_visible() const { return presentation_.focus_indicator != FocusIndicatorMode::never && keyboard_focus_cues(); }
+    bool focusIndicatorVisible() const { return presentation_.focusIndicator != FocusIndicatorMode::never && keyboard_focus_cues(); }
     // Whether the user is working with the keyboard (or the application forces the display on). Drawing is decided by
-    // focus_indicator_visible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
-    bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focus_indicator == FocusIndicatorMode::always; }
+    // focusIndicatorVisible(); this one also drives what is not drawing, such as the tooltip that follows keyboard focus.
+    bool keyboard_focus_cues() const { return keyboard_cues_ || system_cues_ || presentation_.focusIndicator == FocusIndicatorMode::always; }
     // The per-component answer the paint code uses: focused, and either shown or an editable text field.
     bool draws_focus_indicator(const ComponentSnapshot& semantics) const;
     // A pointer press anywhere in the client area, including empty space and inert components.
@@ -227,17 +227,17 @@ public:
     // The host mirrors Windows SPI_GETKEYBOARDCUES here (at startup and on WM_SETTINGCHANGE).
     void set_system_keyboard_cues(bool enabled);
     void on_presentation(std::function<void()> callback) { presentation_changed_ = std::move(callback); }
-    Result set_palette_overrides(std::vector<PaletteOverride> overrides);
-    const std::vector<PaletteOverride>& palette_overrides() const { return palette_overrides_; }
+    Result setPaletteOverrides(std::vector<PaletteOverride> overrides);
+    const std::vector<PaletteOverride>& paletteOverrides() const { return palette_overrides_; }
     // The single color entry for painting: built-in palette of this appearance for the current
     // theme variant (or an explicit one), with the override list applied.
-    Palette effective_palette(const Appearance& appearance, const ThemeVariant& variant) const;
-    Palette effective_palette(const Appearance& appearance) const { return effective_palette(appearance, presentation_.variant); }
-    void bind_appearance(const Appearance* appearance) { bound_appearance_ = appearance; }
+    Palette effectivePalette(const Appearance& appearance, const ThemeVariant& variant) const;
+    Palette effectivePalette(const Appearance& appearance) const { return effectivePalette(appearance, presentation_.variant); }
+    void bindAppearance(const Appearance* appearance) { bound_appearance_ = appearance; }
     const Appearance* bound_appearance() const { return bound_appearance_; }
     void on_invalidate(std::function<void()> callback) { invalidate_ = std::move(callback); }
     void on_relayout(std::function<void()> callback) { relayout_ = std::move(callback); }
-    void set_scrollable_text(std::string id, ScrollState& state, int maximum, int line_height);
+    void set_scrollable_text(std::string id, ScrollState& state, int maximum, int lineHeight);
     // Sideways scrolling of a vertical-writing label. The state belongs to the label; the offset counts pixels
     // from the start of the text (right edge). A label that does not scroll is not focusable.
     ScrollState& vertical_scroll(const Id& id) { return vertical_scrolls_[id]; }
@@ -264,7 +264,7 @@ public:
     // Input routed to the focused control. Hosts call these after translating native messages.
     // Buttons: Enter activates on press, Space on release, pointer on release over the pressed
     // control. A press belongs to the control that received it and dies with focus moves.
-    Result add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope);
+    Result addShortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope);
     Result key_down(KeyPress key);
     Result key_up(Key key);
     // The host hit-tests and passes the control under the pointer (empty when none).
@@ -291,42 +291,42 @@ public:
     Result composition_commit(std::u16string_view text);
     Result composition_cancel();
     // Horizontal display offset of a field in DIP. View state owned here so owner resets clear it.
-    float text_offset(std::string_view id) const;
+    float textOffset(std::string_view id) const;
     void set_text_offset(std::string_view id, float offset);
-    unsigned text_anchor(std::string_view id, int text_size) const;
-    void set_text_anchor(std::string_view id, int text_size, unsigned anchor);
+    unsigned text_anchor(std::string_view id, int textSize) const;
+    void set_text_anchor(std::string_view id, int textSize, unsigned anchor);
     // Multi-line view state. arrange hands over the lines it measured and gets the settled first
     // visible line back (view.first): layout is the only place that knows where lines break.
-    void settle_lines(std::string_view id, TextFieldView& view, int text_size, int width);
+    void settle_lines(std::string_view id, TextFieldView& view, int textSize, int width);
     const TextFieldView* field_view(std::string_view id) const;  // lines as last arranged; null for other kinds
     ScrollState& line_scroll(const Id& id) { return edits_.at(id).multi.scroll; }
     bool scroll_lines_to(std::string_view id, unsigned first);  // clamps; true when the position changed
     // A pointer click or drag: like select, but may place the caret at the end of a wrapped line.
     Result select_pointer(std::string_view id, unsigned anchor, unsigned caret, bool upstream);
     // Multi-line configuration and view position, shared by the typed handle and the semantic verb.
-    Result set_visible_lines(std::string_view id, unsigned lines);
-    Result set_scroll_line(std::string_view id, unsigned first);
-    Query<unsigned> scroll_line(std::string_view id) const;
+    Result setVisibleLines(std::string_view id, unsigned lines);
+    Result setScrollLine(std::string_view id, unsigned first);
+    Query<unsigned> scrollLine(std::string_view id) const;
     // Text flow (#80), labels and text fields; shared by the typed handles and the semantic verbs.
-    Result set_text_align(std::string_view id, TextAlign align);
-    Result set_justify_method(std::string_view id, JustifyMethod method);
-    Result set_line_spacing(std::string_view id, double multiple);
-    Result set_paragraph_spacing(std::string_view id, int dip);
+    Result setTextAlign(std::string_view id, TextAlign align);
+    Result setJustifyMethod(std::string_view id, JustifyMethod method);
+    Result setLineSpacing(std::string_view id, double multiple);
+    Result setParagraphSpacing(std::string_view id, int dip);
     // Words, paragraphs and multi-click (#83). Queries and selections share select()'s admission rules.
     void set_word_breaker(std::shared_ptr<const WordBreaker> breaker) { word_breaker_ = std::move(breaker); }  // null: the system ICU
-    Result set_word_segmentation(std::string_view id, WordSegmentation mode);
-    Query<WordSegmentation> word_segmentation(std::string_view id) const;
-    Query<WordSegmentation> word_segmentation_in_use(std::string_view id) const;
-    Query<TextSpan> word_at(std::string_view id, unsigned offset) const;
-    Query<TextSpan> paragraph_at(std::string_view id, unsigned offset) const;
-    Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;
+    Result setWordSegmentation(std::string_view id, WordSegmentation mode);
+    Query<WordSegmentation> wordSegmentation(std::string_view id) const;
+    Query<WordSegmentation> wordSegmentationInUse(std::string_view id) const;
+    Query<TextSpan> wordAt(std::string_view id, unsigned offset) const;
+    Query<TextSpan> paragraphAt(std::string_view id, unsigned offset) const;
+    Query<unsigned> wordStop(std::string_view id, unsigned offset, bool forward) const;
     // The UIA word and paragraph unit boundaries of a field's committed text (empty for anything that is not a text field).
     std::vector<unsigned> word_unit_boundaries(std::string_view id) const;
     std::vector<unsigned> paragraph_boundaries(std::string_view id) const;
-    Result select_word(std::string_view id, unsigned offset);
-    Result select_paragraph(std::string_view id, unsigned offset);
-    Result double_click(std::string_view id, unsigned offset);
-    Result triple_click(std::string_view id, unsigned offset);
+    Result selectWord(std::string_view id, unsigned offset);
+    Result selectParagraph(std::string_view id, unsigned offset);
+    Result doubleClick(std::string_view id, unsigned offset);
+    Result tripleClick(std::string_view id, unsigned offset);
     // The host reads the system double-click settings and a clock and lets core count the clicks, so tests
     // can inject both. Without a clock every press counts as a single click.
     struct ClickSettings { std::uint64_t interval_ms = 500; int width = 4, height = 4; };
@@ -339,9 +339,9 @@ public:
     Result text_pointer_drag(std::string_view id, TextHit caret, unsigned cell);
     void end_text_drag();
     // Owner (application) configuration. These are not user operations and skip admission checks.
-    Result set_error(std::string_view id, std::u16string message);  // empty clears
+    Result setError(std::string_view id, std::u16string message);  // empty clears
     void enable(std::string_view id, bool enabled);  // disabling the focused control releases focus
-    void set_read_only(std::string_view id, bool read_only);
+    void set_read_only(std::string_view id, bool readOnly);
     void check(std::string_view id, bool checked);
     // Label owner configuration (vertical writing). A change asks the host for a new frame.
     static Result writing_support(const Component& control);
@@ -350,16 +350,16 @@ public:
     void replace_text(std::string_view id, std::u16string value);
     void modal(bool active) { modal_ = active; if (active) { close_popup(); close_menu(); } hover_clear(); refresh_tooltips(); }
     void replace_rich(std::string_view id, RichText value);  // owner refresh of a rich field: text and spans
-    // Rich text (Component::rich fields; others answer not_supported). Shared by the typed handle, the semantic
+    // Rich text (Component::rich fields; others answer notSupported). Shared by the typed handle, the semantic
     // layer, Ctrl+B/I/U and any menu: they all run these same functions.
-    Result set_rich_value(std::string_view id, RichText value);
-    Query<RichText> rich_value(std::string_view id) const;
-    Result set_style(std::string_view id, unsigned begin, unsigned end, const StyleChange& change);
-    Result toggle_style(std::string_view id, StyleAttribute attribute);  // selection, or the typing style at a caret
-    Result apply_style(std::string_view id, const StyleChange& change);  // selection, or the typing style at a caret
-    Query<TextStyle> typing_style(std::string_view id) const;
-    Result set_typing_style(std::string_view id, TextStyle style);
-    Result set_colors(std::string_view id, std::vector<NamedColor> colors);
+    Result setRichValue(std::string_view id, RichText value);
+    Query<RichText> richValue(std::string_view id) const;
+    Result setStyle(std::string_view id, unsigned begin, unsigned end, const StyleChange& change);
+    Result toggleStyle(std::string_view id, StyleAttribute attribute);  // selection, or the typing style at a caret
+    Result applyStyle(std::string_view id, const StyleChange& change);  // selection, or the typing style at a caret
+    Query<TextStyle> typingStyle(std::string_view id) const;
+    Result setTypingStyle(std::string_view id, TextStyle style);
+    Result setColors(std::string_view id, std::vector<NamedColor> colors);
     Query<std::vector<NamedColor>> colors(std::string_view id) const;
     // The committed spans of a rich field (null for others) and the spans of the visible text, which an
     // IME composition is part of (the preedit takes the typing style), for layout and painting.
@@ -370,13 +370,13 @@ public:
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
     Result creation_access() const;
-    void renderer_failed(bool failed);
-    // ---- Context menu (src/context_menu.cpp). One menu is open per window; it never changes focus_.
-    struct MenuEntry { std::string id; std::u16string label, hint; bool enabled = true, separator = false; char16_t access_key = 0; };
+    void rendererFailed(bool failed);
+    // ---- Context menu (src/contextMenu.cpp). One menu is open per window; it never changes focus_.
+    struct MenuEntry { std::string id; std::u16string label, hint; bool enabled = true, separator = false; char16_t accessKey = 0; };
     struct MenuView {
         Id target;
         std::optional<OptionValue> item;      // list row the menu was opened for
-        std::optional<OptionValue> anchor_item;  // row a keyboard-opened menu hangs from
+        std::optional<OptionValue> anchorItem;  // row a keyboard-opened menu hangs from
         std::optional<MenuPosition> at;       // none: the keyboard position of the target
         std::vector<MenuEntry> entries;
         std::string highlighted;
@@ -389,11 +389,11 @@ public:
     std::optional<MenuView> menu_view() const;
     ScrollState* menu_scroll() { return menu_ ? &menu_->scroll : nullptr; }
     bool menu_reveal() { return menu_ && std::exchange(menu_->reveal, false); }
-    // at: where to open (window pixels); none for the keyboard position. text_offset: the pointer's caret offset.
+    // at: where to open (window pixels); none for the keyboard position. textOffset: the pointer's caret offset.
     Result open_menu(std::string_view id, std::optional<MenuPosition> at, std::optional<OptionValue> item,
-                     std::optional<unsigned> text_offset = std::nullopt);
+                     std::optional<unsigned> textOffset = std::nullopt);
     // Right-button release over a component: option is the pointer's row (lists).
-    Result menu_pointer_open(std::string_view id, std::optional<std::size_t> option, std::optional<unsigned> text_offset, MenuPosition at);
+    Result menu_pointer_open(std::string_view id, std::optional<std::size_t> option, std::optional<unsigned> textOffset, MenuPosition at);
     Result close_menu();
     Result menu_execute(std::string_view item_id);
     Result menu_highlight(std::string_view item_id);
@@ -420,10 +420,10 @@ private:
     friend class ::lcars::DialogHandle;
     friend class ::lcars::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blur_callbacks_;
-    Result configuration_access(std::string_view id, bool read_only = false) const;
+    Result configuration_access(std::string_view id, bool readOnly = false) const;
     // A text field's read source: plain, or rich for a field created with Component::rich (#95: one place for both).
     using TextFieldSource = std::variant<Source<std::u16string>, Source<RichText>>;
-    Result connect_source(const Id& id, TextFieldSource source);
+    Result connectSource(const Id& id, TextFieldSource source);
     void source_changed(const Id& id);
     std::shared_ptr<void> lifetime_ = std::make_shared<int>(0);
     PresentationSettings presentation_;
@@ -436,7 +436,7 @@ private:
     std::uint64_t next_semantic_instance_ = 0;
     struct Snapshot { std::u16string text; Selection selection; std::vector<StyleSpan> spans; };
     // The data connection of every field that writes back to the application (#94): text field, checkbox, radio group,
-    // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, use_latest and
+    // dropdown and slider. One copy of the state and of the rules on it; the public connect_*, confirm, useLatest and
     // draft keep their names and parameters. Change is the field's public change record (Change<TextFieldHandle>, Change<CheckboxHandle>, ...).
     template <class ChangeType> struct FieldConnection {
         using Change = ChangeType;
@@ -526,15 +526,15 @@ private:
     std::map<Id, ListField, std::less<>> lists_;
     struct TooltipState {
         std::u16string text;
-        unsigned delay_ms = 500;
+        unsigned delayMs = 500;
         std::uint64_t deadline = 0;
         bool eligible = false, visible = false, dismissed = false;
     };
     struct MenuAttachment { MenuMode mode = MenuMode::append; std::vector<MenuItem> items; };
     std::map<Id, MenuAttachment, std::less<>> menu_attachments_;
-    // The opening every ContextMenuHandle operation shares: the configuration check (read_only for a query), then the
-    // attachment on this target, not_found "Menu no longer exists" without one. On ok, `attachment` points at it.
-    Result menu_attachment(std::string_view target, MenuAttachment*& attachment, bool read_only = false);
+    // The opening every ContextMenuHandle operation shares: the configuration check (readOnly for a query), then the
+    // attachment on this target, notFound "Menu no longer exists" without one. On ok, `attachment` points at it.
+    Result menu_attachment(std::string_view target, MenuAttachment*& attachment, bool readOnly = false);
     struct OpenMenu {
         Id target;
         std::optional<OptionValue> item;
@@ -613,7 +613,7 @@ private:
     template <class Connection> static Result connect_field_write(Connection& field, std::function<Result(const typename Connection::Change&)> write, bool immediate);
     template <class Handle> Result confirm_field(const Handle& handle);
     template <class FieldType> Result write_immediately(const Id& id, FieldType& field, const typename FieldType::Change& change);
-    // The connection swap of every connect_source that subscribes to the application's source (ADR 0003). The new
+    // The connection swap of every connectSource that subscribes to the application's source (ADR 0003). The new
     // source's subscribe runs first, before anything changes: if it throws, `installed` and `disconnect` keep the old
     // source and its live subscription and the call fails without stopping the Ui. Only then is the old subscription
     // cancelled and the new source installed. A notification the subscribe fires before returning sees the old source.
@@ -707,7 +707,7 @@ private:
     Result move_line_edge(const Id& id, bool end, bool shift);
     Result notify();
     std::function<void()> changed_, invalidate_, relayout_;
-    struct TextFieldScroll { ScrollState* state; int maximum, line_height; bool horizontal = false; };
+    struct TextFieldScroll { ScrollState* state; int maximum, lineHeight; bool horizontal = false; };
     std::map<std::string, TextFieldScroll, std::less<>> text_scrolls_;
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;

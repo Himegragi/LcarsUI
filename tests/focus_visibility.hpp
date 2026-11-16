@@ -3,8 +3,8 @@
 // pointer press. Included by edit_form.cpp after PaintRoleProbe so every case runs under both appearances.
 //
 // Seams under test (confirmed by the ticket's Agent Brief):
-//   - Ui::set_presentation / PresentationSettings::focus_indicator  (always-show switch)
-//   - Ui::focus_indicator_visible()                                  (read-only query)
+//   - Ui::setPresentation / PresentationSettings::focusIndicator  (always-show switch)
+//   - Ui::focusIndicatorVisible()                                  (read-only query)
 //   - detail::UiState::key_down / pointer_down / pointer_pressed     (the host's real-input entries)
 //   - detail::UiState::focus() and the handles' focus()              (programmatic focus must not change the state)
 //   - detail::UiState::set_system_keyboard_cues(bool)                (SPI_GETKEYBOARDCUES test seam)
@@ -19,13 +19,13 @@ struct Fixture {
     ScrollState scroll;
     test::FakeMeasure measure;
     Fixture() {
-        first = ui.add_button({.id = "first", .label = u"First"}).value.value();
-        second = ui.add_button({.id = "second", .label = u"Second"}).value.value();
-        edit = ui.add_text_field({.id = "edit", .value = u"abc"}).value.value();
-        readonly = ui.add_text_field({.id = "readonly", .value = u"abc", .read_only = true}).value.value();
-        note = ui.add_text_field({.id = "note", .value = u"a\nb\nc", .multiline = true, .visible_lines = 3}).value.value();
-        note_readonly = ui.add_text_field({.id = "note_readonly", .value = u"a\nb\nc", .read_only = true, .multiline = true, .visible_lines = 3}).value.value();
-        slider = ui.add_slider({.id = "volume", .label = u"Volume"}, SliderRange{0, 100, 1}).value.value();
+        first = ui.addButton({.id = "first", .label = u"First"}).value.value();
+        second = ui.addButton({.id = "second", .label = u"Second"}).value.value();
+        edit = ui.addTextField({.id = "edit", .value = u"abc"}).value.value();
+        readonly = ui.addTextField({.id = "readonly", .value = u"abc", .readOnly = true}).value.value();
+        note = ui.addTextField({.id = "note", .value = u"a\nb\nc", .multiline = true, .visibleLines = 3}).value.value();
+        note_readonly = ui.addTextField({.id = "note_readonly", .value = u"a\nb\nc", .readOnly = true, .multiline = true, .visibleLines = 3}).value.value();
+        slider = ui.addSlider({.id = "volume", .label = u"Volume"}, SliderRange{0, 100, 1}).value.value();
         detail::access(ui).window_active(true);
     }
     detail::UiState& state() { return detail::access(ui); }
@@ -40,7 +40,7 @@ struct Fixture {
         return nullptr;
     }
     // How many focus rings (#90) one component draws, from a fresh frame. A ring is a pair of rounded fills marked
-    // focus_indicator (the band in the ring color, then what it frames), so the marks always come in twos.
+    // focusIndicator (the band in the ring color, then what it frames), so the marks always come in twos.
     int indicator(std::string_view id) {
         auto laid = frame();
         auto semantic = state().describe(id);
@@ -48,7 +48,7 @@ struct Fixture {
         check(item && semantic, "focus visibility fixture finds the placement");
         PaintRoleProbe probe(state(), *item, *semantic, *appearance, 1.f, true);
         detail::component_type(item->kind).paint(probe);
-        const int rings = focus_marks::rings(probe.count(detail::PaintRole::focus_indicator));
+        const int rings = focus_marks::rings(probe.count(detail::PaintRole::focusIndicator));
         check(rings >= 0, "focus indicator marks come as ring pairs (no strip, bar or dot)");
         return rings;
     }
@@ -69,52 +69,52 @@ void every_real_key_opens_but_modifier_chords_do_not() {
     for (auto key : {Key::tab, Key::up, Key::down, Key::left, Key::right, Key::enter, Key::space, Key::escape,
                      Key::home, Key::end, Key::backspace, Key::del}) {
         Fixture f; f.first.focus();
-        check(!f.ui.focus_indicator_visible(), "A fresh UI hides the indicator");
+        check(!f.ui.focusIndicatorVisible(), "A fresh UI hides the indicator");
         f.state().key_down({key});
-        check(f.ui.focus_indicator_visible(), "A plain key shows the indicator");
+        check(f.ui.focusIndicatorVisible(), "A plain key shows the indicator");
     }
     Fixture f; f.first.focus();
     KeyPress save; save.key = Key::other; save.ctrl = true; save.letter = u'S';
     KeyPress undo = save; undo.letter = u'Z';
     f.state().key_down(save); f.state().key_down(undo);
-    check(!f.ui.focus_indicator_visible() && f.indicator("first") == 0, "Ctrl+S and Ctrl+Z do not show the indicator");
+    check(!f.ui.focusIndicatorVisible() && f.indicator("first") == 0, "Ctrl+S and Ctrl+Z do not show the indicator");
     f.state().key_down({Key::enter});
-    check(f.ui.focus_indicator_visible(), "Enter shows it");
+    check(f.ui.focusIndicatorVisible(), "Enter shows it");
     f.state().key_down(save);
-    check(f.ui.focus_indicator_visible(), "A Ctrl chord does not hide it either");
+    check(f.ui.focusIndicatorVisible(), "A Ctrl chord does not hide it either");
 }
 // Code review 2026-11-12 item 2: a modifier on its own changes nothing. Alt closes menus and F10 does too when a menu is open
 // (the host forwards both to the core); neither is a key that uses the keyboard, so neither shows the indicator.
 void a_lone_alt_or_a_menu_closing_f10_does_not_show_the_indicator() {
     Fixture f; f.first.focus();
-    auto menu_open = [&] { return f.ui.context_menu_open().value.value_or(false); };
+    auto menu_open = [&] { return f.ui.contextMenuOpen().value.value_or(false); };
     f.state().key_down({.key = Key::alt});
-    check(!f.ui.focus_indicator_visible() && f.indicator("first") == 0, "A lone Alt does not show it");
+    check(!f.ui.focusIndicatorVisible() && f.indicator("first") == 0, "A lone Alt does not show it");
     f.state().key_down({.key = Key::right});
-    check(f.ui.focus_indicator_visible(), "A real key shows it");
+    check(f.ui.focusIndicatorVisible(), "A real key shows it");
     f.state().key_down({.key = Key::alt});
-    check(f.ui.focus_indicator_visible(), "And a lone Alt does not hide it either");
+    check(f.ui.focusIndicatorVisible(), "And a lone Alt does not hide it either");
     f.state().pointer_pressed();
-    check(!f.ui.focus_indicator_visible(), "A press hides it");
-    check(bool(f.ui.open_context_menu(f.edit)) && menu_open(), "A menu opens on the editable field");
-    check(!f.ui.focus_indicator_visible(), "Opening it through the typed API leaves the indicator hidden");
+    check(!f.ui.focusIndicatorVisible(), "A press hides it");
+    check(bool(f.ui.openContextMenu(f.edit)) && menu_open(), "A menu opens on the editable field");
+    check(!f.ui.focusIndicatorVisible(), "Opening it through the typed API leaves the indicator hidden");
     f.state().key_down({.key = Key::f10});
-    check(!menu_open() && !f.ui.focus_indicator_visible(), "F10 closes the menu without showing the indicator");
+    check(!menu_open() && !f.ui.focusIndicatorVisible(), "F10 closes the menu without showing the indicator");
     f.state().key_down({.key = Key::f10, .shift = true});
-    check(menu_open() && f.ui.focus_indicator_visible(), "Shift+F10 opens a menu from the keyboard: that is keyboard use");
+    check(menu_open() && f.ui.focusIndicatorVisible(), "Shift+F10 opens a menu from the keyboard: that is keyboard use");
 }
 void pointer_hides_everywhere_but_wheel_does_not() {
     Fixture f; f.first.focus();
     f.state().key_down({Key::right});
     auto laid = f.frame();
-    check(f.ui.focus_indicator_visible(), "Keyboard use shows the indicator");
+    check(f.ui.focusIndicatorVisible(), "Keyboard use shows the indicator");
     laid.wheel(f.ui, 1, 1, 48);
-    check(f.ui.focus_indicator_visible(), "The wheel does not change the state");
+    check(f.ui.focusIndicatorVisible(), "The wheel does not change the state");
     f.state().pointer_pressed();  // empty space or a component that ignores the pointer
-    check(!f.ui.focus_indicator_visible() && f.indicator("first") == 0, "A press on nothing hides it");
+    check(!f.ui.focusIndicatorVisible() && f.indicator("first") == 0, "A press on nothing hides it");
     f.state().key_down({Key::tab});
-    check(f.ui.focus_indicator_visible(), "A key shows it again");
-    check(f.state().pointer_down("missing").status != Status::ok && !f.ui.focus_indicator_visible(), "A refused pointer press still hides it");
+    check(f.ui.focusIndicatorVisible(), "A key shows it again");
+    check(f.state().pointer_down("missing").status != Status::ok && !f.ui.focusIndicatorVisible(), "A refused pointer press still hides it");
 }
 void programmatic_focus_keeps_the_current_state() {
     Fixture f;
@@ -130,7 +130,7 @@ void programmatic_focus_keeps_the_current_state() {
 void editable_text_always_draws_but_read_only_follows_the_rule() {
     Fixture f;
     f.state().pointer_down("edit"); f.state().pointer_up("edit");
-    check(f.edit.describe()->focused && !f.ui.focus_indicator_visible() && f.indicator("edit") > 0, "Clicked editable text draws the indicator");
+    check(f.edit.describe()->focused && !f.ui.focusIndicatorVisible() && f.indicator("edit") > 0, "Clicked editable text draws the indicator");
     f.state().pointer_down("readonly"); f.state().pointer_up("readonly");
     check(f.readonly.describe()->focused && f.indicator("readonly") == 0, "Clicked read-only text draws none");
     check(bool(f.edit.focus()) && f.indicator("edit") > 0, "Programmatic focus on editable text draws it too");
@@ -142,44 +142,44 @@ void editable_text_always_draws_but_read_only_follows_the_rule() {
 void multiline_text_follows_the_text_field_rule() {
     Fixture f;
     f.state().pointer_down("note"); f.state().pointer_up("note");
-    check(f.note.describe()->focused && !f.ui.focus_indicator_visible() && f.indicator("note") > 0,
+    check(f.note.describe()->focused && !f.ui.focusIndicatorVisible() && f.indicator("note") > 0,
           "Clicked editable multi-line text draws the indicator");
     f.state().pointer_down("note_readonly"); f.state().pointer_up("note_readonly");
     check(f.note_readonly.describe()->focused && f.indicator("note_readonly") == 0, "Clicked read-only multi-line text draws none");
     check(f.note.describe() && !f.note.describe()->focused && f.indicator("note") == 0, "An unfocused multi-line field draws none");
     check(bool(f.note.focus()) && f.indicator("note") > 0, "Programmatic focus on editable multi-line text draws it too");
     f.state().key_down({Key::tab});
-    check(f.ui.focus_indicator_visible(), "A key shows indicators");
+    check(f.ui.focusIndicatorVisible(), "A key shows indicators");
     check(bool(f.note_readonly.focus()) && f.indicator("note_readonly") > 0, "After a key, read-only multi-line text draws it by the normal rule");
 }
 void system_setting_forces_display_and_follows_changes() {
     Fixture f;
     f.state().set_system_keyboard_cues(true);
     f.state().pointer_down("first"); f.state().pointer_up("first");
-    check(f.ui.focus_indicator_visible() && f.indicator("first") > 0, "System keyboard cues on: a click still draws");
+    check(f.ui.focusIndicatorVisible() && f.indicator("first") > 0, "System keyboard cues on: a click still draws");
     f.state().set_system_keyboard_cues(false);
-    check(!f.ui.focus_indicator_visible() && f.indicator("first") == 0, "System setting turned off: the next paint follows the normal rule");
+    check(!f.ui.focusIndicatorVisible() && f.indicator("first") == 0, "System setting turned off: the next paint follows the normal rule");
     f.state().key_down({Key::right});
     f.state().set_system_keyboard_cues(true); f.state().pointer_pressed(); f.state().set_system_keyboard_cues(false);
-    check(!f.ui.focus_indicator_visible(), "The recorded state is not rewritten by the system setting");
+    check(!f.ui.focusIndicatorVisible(), "The recorded state is not rewritten by the system setting");
 }
 void always_mode_forces_display_and_reverts_live() {
     Fixture f;
     f.state().pointer_down("first"); f.state().pointer_up("first");
     int invalidations = 0; f.state().on_invalidate([&] { ++invalidations; });
-    auto settings = f.ui.presentation(); settings.focus_indicator = FocusIndicatorMode::always;
-    check(bool(f.ui.set_presentation(settings)) && invalidations > 0, "Switching the mode repaints");
-    check(f.ui.focus_indicator_visible() && f.indicator("first") > 0, "Always: a click still draws");
+    auto settings = f.ui.presentation(); settings.focusIndicator = FocusIndicatorMode::always;
+    check(bool(f.ui.setPresentation(settings)) && invalidations > 0, "Switching the mode repaints");
+    check(f.ui.focusIndicatorVisible() && f.indicator("first") > 0, "Always: a click still draws");
     check(f.ui.presentation() == settings && !(f.ui.presentation() == PresentationSettings{}), "operator== covers the mode");
-    settings.focus_indicator = FocusIndicatorMode::automatic;
-    check(bool(f.ui.set_presentation(settings)) && !f.ui.focus_indicator_visible() && f.indicator("first") == 0, "Back to automatic follows the rule");
-    settings.focus_indicator = static_cast<FocusIndicatorMode>(7);
-    check(f.ui.set_presentation(settings).status == Status::invalid_value, "Unknown modes are rejected");
+    settings.focusIndicator = FocusIndicatorMode::automatic;
+    check(bool(f.ui.setPresentation(settings)) && !f.ui.focusIndicatorVisible() && f.indicator("first") == 0, "Back to automatic follows the rule");
+    settings.focusIndicator = static_cast<FocusIndicatorMode>(7);
+    check(f.ui.setPresentation(settings).status == Status::invalidValue, "Unknown modes are rejected");
 }
 void tooltip_waits_for_keyboard_after_a_click() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"Source"}).value.value();
-    auto tip = ui.add_tooltip("source.tip", source, u"Help", 100).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"Source"}).value.value();
+    auto tip = ui.addTooltip("source.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);
     host.pointer_down("source"); host.pointer_up("source");
@@ -206,7 +206,7 @@ SliderPaint paint_slider(Fixture& f) {
     detail::component_type(item->kind).paint(probe);
     SliderPaint out;
     for (const auto& [role, rect] : probe.emitted) {
-        if (static_cast<unsigned>(role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) out.ring.push_back(rect);
+        if (static_cast<unsigned>(role) & static_cast<unsigned>(detail::PaintRole::focusIndicator)) out.ring.push_back(rect);
         else if (out.title_x < 0) out.title_x = rect.x;
     }
     for (const auto& command : probe.recording.list.commands)
@@ -217,8 +217,8 @@ SliderPaint paint_slider(Fixture& f) {
 void slider_focus_is_a_ring_around_the_title_and_the_track() {
     for (int size : {12, 16, 28}) {
         Fixture f;
-        auto settings = f.ui.presentation(); settings.text_size = size;
-        check(bool(f.ui.set_presentation(settings)), "text size accepted");
+        auto settings = f.ui.presentation(); settings.textSize = size;
+        check(bool(f.ui.setPresentation(settings)), "text size accepted");
         f.slider.focus();
         auto hidden = paint_slider(f);
         check(hidden.ring.empty(), "Hidden: no ring");
@@ -241,8 +241,8 @@ void slider_thumb_stays_normal_after_pointer_use() {
     check(item != nullptr, "slider placed");
     auto normal = paint_slider(f).thumb;
     f.state().pointer_down("volume");
-    const int middle = item->slider_track.x + item->slider_track.w / 2;
-    f.state().slider_pointer_down("volume", middle, item->slider_track);
+    const int middle = item->sliderTrack.x + item->sliderTrack.w / 2;
+    f.state().slider_pointer_down("volume", middle, item->sliderTrack);
     f.state().slider_pointer("volume", middle + 3);
     auto dragging = paint_slider(f);
     check(dragging.thumb == normal && dragging.ring.empty(), "Dragging with the mouse keeps the normal thumb and no ring");

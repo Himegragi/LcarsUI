@@ -10,7 +10,7 @@ void round_trip() {
     settings_demo::Demo demo; auto document = demo.document();
     document.name=u"Station A"; document.notices=false; document.mode=lcars::OptionValue{"focus"}; document.region=lcars::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.next_item_id=22;
-    document.presentation.font_family=u"NoSuchFont"; document.presentation.text_size=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact; document.accent="green";
+    document.presentation.fontFamily=u"NoSuchFont"; document.presentation.textSize=23; document.presentation.variant=lcars::ThemeVariant::dark(); document.presentation.density=lcars::Density::compact; document.accent="green";
     auto bytes = settings_demo::write_settings(document);
     test::check(bytes.starts_with("{\n  \"format\"") && bytes.back()=='\n' && bytes.find('\r')==std::string::npos && !bytes.starts_with("\xef\xbb\xbf"), "UTF-8 without BOM uses LF and fixed first key");
     test::check(bytes.find("\"general\"") < bytes.find("\"items\"") && bytes.find("\"items\"") < bytes.find("\"next_item_id\"") && bytes.find("\"next_item_id\"") < bytes.find("\"presentation\""), "top-level keys have specified order");
@@ -75,7 +75,7 @@ void save_from_draft() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-draft";
     std::filesystem::remove_all(path); settings_demo::SettingsStore store(path); settings_demo::Demo demo;
     demo.on_save([&](const auto& doc) { return store.save(doc); });
-    demo.name.focus(); demo.name.set_value(u"工作站 A");
+    demo.name.focus(); demo.name.setValue(u"工作站 A");
     test::check(bool(lcars::detail::access(demo.ui).key_down({.ctrl=true,.letter=u'S'})), "save focused draft with Ctrl+S");
     auto loaded=store.load(); test::check(loaded.document && loaded.document->name==u"工作站 A", "draft is present in file");
     std::filesystem::remove_all(path);
@@ -86,11 +86,11 @@ void close_persistence() {
     settings_demo::SettingsStore store(path); settings_demo::Demo demo;
     int closes=0; demo.on_close([&] { ++closes; });
     demo.on_save([&](const auto& document) { return store.save(document); });
-    test::check(bool(demo.volume.set_value(65)) && !demo.request_close(), "close asks to save");
+    test::check(bool(demo.volume.setValue(65)) && !demo.request_close(), "close asks to save");
     test::check(bool(demo.close_save.invoke()) && closes==1 && store.load().document->volume==65, "close save writes and exits");
     auto bytes=[&] { std::ifstream file(path/"settings.json", std::ios::binary); return std::string(std::istreambuf_iterator<char>(file), {}); };
     auto before=bytes();
-    test::check(bool(demo.volume.set_value(70)) && !demo.request_close(), "close asks again");
+    test::check(bool(demo.volume.setValue(70)) && !demo.request_close(), "close asks again");
     test::check(bool(demo.close_discard.invoke()) && closes==2, "discard exits");
     auto loaded=store.load();
     test::check(loaded.document && bytes()==before, "discard leaves file bytes unchanged");
@@ -111,12 +111,12 @@ void appearance_persistence() {
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-appearance";
     std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
     settings_demo::Demo demo; demo.on_save([&](const auto& doc) { return store.save(doc); });
-    auto settings=demo.ui.presentation(); settings.font_family=u"NoSuchFont"; settings.text_size=20;
-    test::check(bool(demo.set_presentation(settings)) && bool(demo.save()), "save appearance settings");
-    settings.text_size=28; test::check(bool(demo.set_presentation(settings)), "make unsaved size change");
+    auto settings=demo.ui.presentation(); settings.fontFamily=u"NoSuchFont"; settings.textSize=20;
+    test::check(bool(demo.setPresentation(settings)) && bool(demo.save()), "save appearance settings");
+    settings.textSize=28; test::check(bool(demo.setPresentation(settings)), "make unsaved size change");
     auto loaded=store.load(); test::check(bool(loaded.document), "load saved appearance");
     settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
-    test::check(reopened.ui.presentation().text_size==20, "reopen retains saved size");
+    test::check(reopened.ui.presentation().textSize==20, "reopen retains saved size");
     auto font=reopened.ui.semantics().get({"appearance.font",lcars::OptionValue{"family:NoSuchFont"}});
     test::check(font && font->selected && font->name==u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "saved missing font stays selected");
     std::filesystem::remove_all(path);
@@ -138,7 +138,7 @@ void accent_persistence() {
     auto loaded=store.load(); test::check(loaded.document && loaded.document->accent=="green", "saved accent is in the file");
     settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
     test::check(reopened.accent_id()=="green" && reopened.ui.semantics().get({"appearance.accent",lcars::OptionValue{"green"}})->selected, "reopened demo shows the saved accent");
-    test::check(reopened.ui.effective_palette(lcars::web_appearance(),lcars::ThemeVariant::light())->accent==lcars::Color{20,110,50}, "reopened demo paints the saved accent");
+    test::check(reopened.ui.effectivePalette(lcars::webAppearance(),lcars::ThemeVariant::light())->accent==lcars::Color{20,110,50}, "reopened demo paints the saved accent");
     std::filesystem::remove_all(path);
 }
 // #90: the focus ring settings are saved with the presentation. Unknown or out-of-range values make the whole file corrupt (as an
@@ -150,17 +150,17 @@ void focus_ring_persistence() {
                 written.find("\"focus_ring_radius\": null")!=std::string::npos && written.find("\"focus_color\": \"default\"")!=std::string::npos, "the defaults are written: automatic, empty, empty, default");
     const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto old=settings_demo::parse_settings(old_file);
-    test::check(old && old->presentation.focus_indicator==lcars::FocusIndicatorMode::automatic && !old->presentation.focus_ring_width && !old->presentation.focus_ring_radius && old->focus_color=="default",
+    test::check(old && old->presentation.focusIndicator==lcars::FocusIndicatorMode::automatic && !old->presentation.focusRingWidth && !old->presentation.focusRingRadius && old->focusColor=="default",
                 "a file without the four settings is not corrupt and loads the defaults");
     const std::string density="\"density\":\"standard\"";
     auto with=[&](const std::string& key, const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\""+key+"\":"+value); return copy; };
     for (auto [value,mode] : {std::pair{"\"automatic\"",lcars::FocusIndicatorMode::automatic},std::pair{"\"always\"",lcars::FocusIndicatorMode::always},std::pair{"\"never\"",lcars::FocusIndicatorMode::never}}) {
-        auto loaded=settings_demo::parse_settings(with("focus_indicator",value)); test::check(loaded && loaded->presentation.focus_indicator==mode, "each indicator mode loads");
+        auto loaded=settings_demo::parse_settings(with("focus_indicator",value)); test::check(loaded && loaded->presentation.focusIndicator==mode, "each indicator mode loads");
     }
-    for (int width : {2,3,6}) { auto loaded=settings_demo::parse_settings(with("focus_ring_width",std::to_string(width))); test::check(loaded && loaded->presentation.focus_ring_width==width, "2-6 load as the thickness"); }
-    for (int radius : {0,1,32}) { auto loaded=settings_demo::parse_settings(with("focus_ring_radius",std::to_string(radius))); test::check(loaded && loaded->presentation.focus_ring_radius==radius, "0-32 load as the radius"); }
-    for (const char* key : {"focus_ring_width","focus_ring_radius"}) { auto loaded=settings_demo::parse_settings(with(key,"null")); test::check(loaded && !loaded->presentation.focus_ring_width && !loaded->presentation.focus_ring_radius, "null is the empty setting"); }
-    for (const char* color : {"\"default\"","\"green\"","\"orange\""}) { auto loaded=settings_demo::parse_settings(with("focus_color",color)); test::check(loaded && loaded->focus_color==std::string(color).substr(1,std::string(color).size()-2), "each ring color loads"); }
+    for (int width : {2,3,6}) { auto loaded=settings_demo::parse_settings(with("focus_ring_width",std::to_string(width))); test::check(loaded && loaded->presentation.focusRingWidth==width, "2-6 load as the thickness"); }
+    for (int radius : {0,1,32}) { auto loaded=settings_demo::parse_settings(with("focus_ring_radius",std::to_string(radius))); test::check(loaded && loaded->presentation.focusRingRadius==radius, "0-32 load as the radius"); }
+    for (const char* key : {"focus_ring_width","focus_ring_radius"}) { auto loaded=settings_demo::parse_settings(with(key,"null")); test::check(loaded && !loaded->presentation.focusRingWidth && !loaded->presentation.focusRingRadius, "null is the empty setting"); }
+    for (const char* color : {"\"default\"","\"green\"","\"orange\""}) { auto loaded=settings_demo::parse_settings(with("focus_color",color)); test::check(loaded && loaded->focusColor==std::string(color).substr(1,std::string(color).size()-2), "each ring color loads"); }
     for (const char* bad : {"\"off\"","\"\"","1","null","true"}) test::check(!settings_demo::parse_settings(with("focus_indicator",bad)), "an unknown indicator mode rejects the whole document");
     for (const char* bad : {"1","7","0","-2","\"3\"","3.5","true","[]"}) test::check(!settings_demo::parse_settings(with("focus_ring_width",bad)), "a thickness out of range or of the wrong type rejects the whole document");
     for (const char* bad : {"-1","33","100","\"6\"","6.5","false","{}"}) test::check(!settings_demo::parse_settings(with("focus_ring_radius",bad)), "a radius out of range or of the wrong type rejects the whole document");
@@ -169,29 +169,29 @@ void focus_ring_persistence() {
     std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
     settings_demo::Demo saving; saving.on_save([&](const auto& doc) { return store.save(doc); });
     saving.nav.select({"appearance"}); auto& tree=saving.ui.semantics();
-    test::check(bool(tree.perform({"appearance.focus_mode",lcars::OptionValue{"always"}},lcars::Verb::select)) && bool(tree.perform({"appearance.focus_width"},lcars::Verb::set_value,5)) &&
-                bool(tree.perform({"appearance.focus_radius_same"},lcars::Verb::toggle)) && bool(tree.perform({"appearance.focus_radius"},lcars::Verb::set_value,12)) &&
+    test::check(bool(tree.perform({"appearance.focus_mode",lcars::OptionValue{"always"}},lcars::Verb::select)) && bool(tree.perform({"appearance.focus_width"},lcars::Verb::setValue,5)) &&
+                bool(tree.perform({"appearance.focus_radius_same"},lcars::Verb::toggle)) && bool(tree.perform({"appearance.focus_radius"},lcars::Verb::setValue,12)) &&
                 bool(tree.perform({"appearance.focus_color",lcars::OptionValue{"green"}},lcars::Verb::select)) && bool(saving.save()), "choose all four and save");
     test::check(bool(tree.perform({"appearance.focus_mode",lcars::OptionValue{"never"}},lcars::Verb::select)), "make an unsaved change");
     auto loaded=store.load();
-    test::check(loaded.document && loaded.document->presentation.focus_indicator==lcars::FocusIndicatorMode::always && loaded.document->presentation.focus_ring_width==5 &&
-                loaded.document->presentation.focus_ring_radius==12 && loaded.document->focus_color=="green", "the file has the saved values");
+    test::check(loaded.document && loaded.document->presentation.focusIndicator==lcars::FocusIndicatorMode::always && loaded.document->presentation.focusRingWidth==5 &&
+                loaded.document->presentation.focusRingRadius==12 && loaded.document->focusColor=="green", "the file has the saved values");
     settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
     auto& again=reopened.ui.semantics();
-    test::check(again.get({"appearance.focus_mode",lcars::OptionValue{"always"}})->selected && again.get({"appearance.focus_width"})->numeric_value==5 && again.get({"appearance.focus_radius"})->numeric_value==12 &&
+    test::check(again.get({"appearance.focus_mode",lcars::OptionValue{"always"}})->selected && again.get({"appearance.focus_width"})->numericValue==5 && again.get({"appearance.focus_radius"})->numericValue==12 &&
                 *again.get({"appearance.focus_radius_same"})->checked==false && again.get({"appearance.focus_color",lcars::OptionValue{"green"}})->selected, "the reopened demo shows them on the page");
-    test::check(reopened.ui.presentation().focus_ring_width==5 && reopened.ui.effective_palette(lcars::web_appearance(),lcars::ThemeVariant::light())->focus==lcars::Color{20,110,50}, "and applies them");
+    test::check(reopened.ui.presentation().focusRingWidth==5 && reopened.ui.effectivePalette(lcars::webAppearance(),lcars::ThemeVariant::light())->focus==lcars::Color{20,110,50}, "and applies them");
     std::filesystem::remove_all(path);
 }
 // #84: the "justified text as left" setting is saved with the presentation and comes back on load.
 void justify_as_left_persistence() {
     settings_demo::Demo demo; auto document=demo.document();
-    test::check(!document.presentation.justify_as_left && settings_demo::write_settings(document).find("\"justify_as_left\": false")!=std::string::npos, "the default is written as off");
+    test::check(!document.presentation.justifyAsLeft && settings_demo::write_settings(document).find("\"justify_as_left\": false")!=std::string::npos, "the default is written as off");
     const std::string old_file=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
-    auto old=settings_demo::parse_settings(old_file); test::check(old && !old->presentation.justify_as_left, "a file without the setting loads as off");
+    auto old=settings_demo::parse_settings(old_file); test::check(old && !old->presentation.justifyAsLeft, "a file without the setting loads as off");
     const std::string density="\"density\":\"standard\"";
     auto with=[&](const std::string& value) { auto copy=old_file; copy.replace(copy.find(density),density.size(),density+",\"justify_as_left\":"+value); return copy; };
-    auto on=settings_demo::parse_settings(with("true")); test::check(on && on->presentation.justify_as_left, "the setting loads as on");
+    auto on=settings_demo::parse_settings(with("true")); test::check(on && on->presentation.justifyAsLeft, "the setting loads as on");
     for (const char* bad : {"\"yes\"","1","null"}) test::check(!settings_demo::parse_settings(with(bad)), "a non-boolean rejects the whole document");
     auto path=std::filesystem::temp_directory_path()/"lcars-persistence-justify";
     std::filesystem::remove_all(path); settings_demo::SettingsStore store(path);
@@ -199,9 +199,9 @@ void justify_as_left_persistence() {
     saving.nav.select({"appearance"});
     test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)) && bool(saving.save()), "turn it on and save");
     test::check(bool(saving.ui.semantics().perform({"appearance.justify_left"}, lcars::Verb::toggle)), "turn it off again, unsaved");
-    auto loaded=store.load(); test::check(loaded.document && loaded.document->presentation.justify_as_left, "the saved file has it on");
+    auto loaded=store.load(); test::check(loaded.document && loaded.document->presentation.justifyAsLeft, "the saved file has it on");
     settings_demo::Demo reopened; reopened.load_document(*loaded.document); reopened.nav.select({"appearance"});
-    test::check(reopened.ui.presentation().justify_as_left && *reopened.ui.semantics().get({"appearance.justify_left"})->checked, "the reopened demo applies it and shows the checkbox on");
+    test::check(reopened.ui.presentation().justifyAsLeft && *reopened.ui.semantics().get({"appearance.justify_left"})->checked, "the reopened demo applies it and shows the checkbox on");
     std::filesystem::remove_all(path);
 }
 void failures();
@@ -282,7 +282,7 @@ void dialog_failures() {
 }
 void edge_documents() {
     const std::string base=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"NoSuchFont","text_size":16,"variant":"light","density":"standard"}})";
-    auto good=settings_demo::parse_settings(base); test::check(good && good->presentation.font_family==u"NoSuchFont","uninstalled family retained");
+    auto good=settings_demo::parse_settings(base); test::check(good && good->presentation.fontFamily==u"NoSuchFont","uninstalled family retained");
     auto mutate=[&](std::string from,std::string to) { auto value=base; auto at=value.find(from); test::check(at!=std::string::npos,"edge fixture field"); value.replace(at,from.size(),to); return value; };
     for (const auto& value : {mutate("{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"}","{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"},{\"id\":\"T005\",\"name\":\"B\",\"note\":\"\"}"), mutate("\"next_item_id\":6","\"next_item_id\":5"), mutate("\"presentation\":{","\"ignored\":{"), mutate("\"name\":\"A\"","\"name\":\"  \""), mutate("\"format\":\"lcars-settings-demo\"",std::string("\"extra\":\"\xff\",\"format\":\"lcars-settings-demo\""))})
         test::check(!settings_demo::parse_settings(value),"edge document rejected");

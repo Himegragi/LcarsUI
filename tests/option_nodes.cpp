@@ -29,22 +29,22 @@ struct World {
         const std::vector<OptionItem> items = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta", second_enabled}};
         const std::vector<TabPage> pages = {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", second_enabled, {}}};
         auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
-        auto radio = ui.add_radio_group(config("radio"), items).value.value();
-        radio.connect_source(source(std::optional{OptionValue{"a"}}));
-        radio.connect_confirmed([](const auto&) { return Result{}; }); keep(radio);
-        auto list = ui.add_list(config("list"), items).value.value();
-        list.connect_source(source(std::optional{OptionValue{"a"}}));
-        list.connect_immediate([](const auto&) { return Result{}; }); keep(list);
-        auto dropdown = ui.add_dropdown(config("dropdown"), items).value.value();
-        dropdown.connect_source(source(std::optional{OptionValue{"a"}}));
-        dropdown.connect_confirmed([](const auto&) { return Result{}; }); keep(dropdown);
-        keep(ui.add_tabs(config("tabs"), pages).value.value());
-        keep(ui.add_navigation_list(config("navigation"), pages, {"a"}).value.value());
+        auto radio = ui.addRadioGroup(config("radio"), items).value.value();
+        radio.connectSource(source(std::optional{OptionValue{"a"}}));
+        radio.connectConfirmed([](const auto&) { return Result{}; }); keep(radio);
+        auto list = ui.addList(config("list"), items).value.value();
+        list.connectSource(source(std::optional{OptionValue{"a"}}));
+        list.connectImmediate([](const auto&) { return Result{}; }); keep(list);
+        auto dropdown = ui.addDropdown(config("dropdown"), items).value.value();
+        dropdown.connectSource(source(std::optional{OptionValue{"a"}}));
+        dropdown.connectConfirmed([](const auto&) { return Result{}; }); keep(dropdown);
+        keep(ui.addTabs(config("tabs"), pages).value.value());
+        keep(ui.addNavigationList(config("navigation"), pages, {"a"}).value.value());
         for (const auto& subject : subjects) {
             for (auto kind : {LabelKind::name, LabelKind::description, LabelKind::error}) {
                 auto label = ComponentConfig{.id = subject.id + ".label." + std::to_string(static_cast<int>(kind)),
-                                             .value = u"Parent text", .target = subject.id, .label_kind = kind};
-                check(bool(ui.add_label(label)), "option fixture: attach parent label");
+                                             .value = u"Parent text", .target = subject.id, .labelKind = kind};
+                check(bool(ui.addLabel(label)), "option fixture: attach parent label");
             }
         }
     }
@@ -53,7 +53,7 @@ struct World {
         for (const auto& subject : subjects) nodes.push_back(layout::component(subject.component()));
         return layout::column(std::move(nodes));
     }
-    void arrange_page() { arrange(root(), ui, web_appearance(), measure, 600, 1600, 1.f, scroll); }
+    void arrange_page() { arrange(root(), ui, webAppearance(), measure, 600, 1600, 1.f, scroll); }
 };
 
 struct State {
@@ -90,15 +90,15 @@ void compare_all(World& w, const char* state_name, const State& state = {}) {
             if (state.enabled && expected.enabled && !state.hidden && !state.blocked) {
                 expected.verbs = {Verb::select};
                 if (std::holds_alternative<ListHandle>(subject.handle)) expected.verbs.push_back(Verb::focus);
-                if (subject.row() && state.menus) expected.verbs.push_back(Verb::context_menu);
+                if (subject.row() && state.menus) expected.verbs.push_back(Verb::contextMenu);
             }
             check(static_cast<const CommonState&>(*node) == expected, (context + ": option-only CommonState").c_str());
             const bool rejected = state.field_errors && (std::holds_alternative<RadioGroupHandle>(subject.handle) || subject.dropdown());
             check(node->selected == (item.value.id == (rejected ? "b" : "a")), (context + ": own selection").c_str());
-            check(node->labelled_by.empty() && node->described_by.empty() && !node->selection_required,
+            check(node->labelledBy.empty() && node->describedBy.empty() && !node->selectionRequired,
                   (context + ": no parent labels or selection requirement").c_str());
             check(node->hidden == parent->hidden && node->hidden == state.hidden &&
-                  node->blocked_by_modal == parent->blocked_by_modal && node->blocked_by_modal == state.blocked,
+                  node->blockedByModal == parent->blockedByModal && node->blockedByModal == state.blocked,
                   (context + ": hidden and modal state follow parent").c_str());
             check(node->bounds.has_value() == expected.visible, (context + ": bounds belong to visible option").c_str());
         }
@@ -131,18 +131,18 @@ void hidden() {
     World w; w.arrange_page();
     std::vector<ComponentHandle> members;
     for (const auto& subject : w.subjects) members.push_back(subject.component());
-    const auto gate = w.ui.add_navigation_list({.id = "gate"},
+    const auto gate = w.ui.addNavigationList({.id = "gate"},
         {{{"shown"}, u"Shown", true, members}, {{"hidden"}, u"Hidden", true, {}}}, {"shown"}).value.value();
     check(bool(gate.select({"hidden"})), "hidden: switch away from every option component");
     w.arrange_page(); compare_all(w, "hidden", {.hidden = true});
 }
-void blocked_by_modal() {
+void blockedByModal() {
     World w;
-    auto opener = w.ui.add_button({.id = "opener", .label = u"Open"}).value.value();
-    auto inside = w.ui.add_button({.id = "dialog.close", .label = u"Close"}).value.value();
-    const auto dialog = w.ui.add_dialog("dialog", {inside}, inside, opener, [](bool) {}).value.value();
+    auto opener = w.ui.addButton({.id = "opener", .label = u"Open"}).value.value();
+    auto inside = w.ui.addButton({.id = "dialog.close", .label = u"Close"}).value.value();
+    const auto dialog = w.ui.addDialog("dialog", {inside}, inside, opener, [](bool) {}).value.value();
     check(bool(dialog.open()), "modal: open dialog over every option component");
-    arrange(layout::modal(w.root(), layout::component(inside), dialog), w.ui, web_appearance(), w.measure, 600, 1600, 1.f, w.scroll);
+    arrange(layout::modal(w.root(), layout::component(inside), dialog), w.ui, webAppearance(), w.measure, 600, 1600, 1.f, w.scroll);
     compare_all(w, "blocked_by_modal", {.blocked = true});
 }
 void errors() {
@@ -151,9 +151,9 @@ void errors() {
         // Only the radio group and dropdown support a rejected confirmed write. Lists have
         // no retained error, and page containers get their marks from members in page_errors.
         std::visit([&](auto h) {
-            if constexpr (requires { h.connect_confirmed([](const auto&) { return Result{}; }); }) {
-                check(bool(h.connect_confirmed([](const auto&) { return Result{Status::invalid_value, u"Parent error"}; })) &&
-                      bool(h.select({"b"})) && h.confirm().status == Status::invalid_value,
+            if constexpr (requires { h.connectConfirmed([](const auto&) { return Result{}; }); }) {
+                check(bool(h.connectConfirmed([](const auto&) { return Result{Status::invalidValue, u"Parent error"}; })) &&
+                      bool(h.select({"b"})) && h.confirm().status == Status::invalidValue,
                       ("component_error/" + subject.id + ": rejected confirmation").c_str());
                 const auto parent = h.describe();
                 check(parent->invalid && parent->error == u"Parent error", ("component_error/" + subject.id + ": error reached").c_str());
@@ -165,9 +165,9 @@ void errors() {
 void page_errors() {
     World w;
     for (const auto& subject : w.subjects) std::visit([&](auto h) {
-        if constexpr (requires { h.add_member(OptionValue{"b"}, ComponentHandle{}); }) {
-            auto member = w.ui.add_text_field({.id = subject.id + ".member", .label = u"Member"}).value.value();
-            check(bool(member.set_error(u"Member error")) && bool(h.add_member({"b"}, member)),
+        if constexpr (requires { h.addMember(OptionValue{"b"}, ComponentHandle{}); }) {
+            auto member = w.ui.addTextField({.id = subject.id + ".member", .label = u"Member"}).value.value();
+            check(bool(member.setError(u"Member error")) && bool(h.addMember({"b"}, member)),
                   ("page_error/" + subject.id + "/b: erroneous member attached to inactive page").c_str());
         }
     }, subject.handle);
@@ -187,25 +187,25 @@ void dropdown_open() {
     }
     compare_all(w, "dropdown_open", {.dropdown_open = true});
 }
-void context_menu_open() {
+void contextMenuOpen() {
     World w; w.arrange_page();
     for (const auto& subject : w.subjects)
-        check(bool(w.ui.add_context_menu(subject.component(), {{.id = "inspect", .label = u"Inspect", .shortcut_hint = {},
+        check(bool(w.ui.addContextMenu(subject.component(), {{.id = "inspect", .label = u"Inspect", .shortcutHint = {},
                    .action = [](const auto&) { return Result{}; }}})), ("context_menu/" + subject.id + ": register menu").c_str());
     for (const auto& subject : w.subjects) {
         check(std::visit([](auto h) { return bool(h.focus()); }, subject.handle), ("context_menu/" + subject.id + ": focus parent").c_str());
         compare_all(w, "before_context_menu", {.menus = true, .focused = subject.id});
-        check(bool(w.ui.open_context_menu(subject.component())), ("context_menu/" + subject.id + ": open menu").c_str());
+        check(bool(w.ui.openContextMenu(subject.component())), ("context_menu/" + subject.id + ": open menu").c_str());
         w.arrange_page();
         compare_all(w, "context_menu_open", {.menus = true, .menu_open = true, .focused = subject.id});
-        check(bool(w.ui.close_context_menu()), ("context_menu/" + subject.id + ": close menu").c_str());
+        check(bool(w.ui.closeContextMenu()), ("context_menu/" + subject.id + ": close menu").c_str());
         compare_all(w, "context_menu_closed", {.menus = true, .focused = subject.id});
     }
 }
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"option_disabled", option_disabled},
-                              {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal}, {"errors", errors},
-                              {"page_errors", page_errors}, {"dropdown_open", dropdown_open}, {"context_menu_open", context_menu_open}};
+                              {"hidden", hidden}, {"blocked_by_modal", blockedByModal}, {"errors", errors},
+                              {"page_errors", page_errors}, {"dropdown_open", dropdown_open}, {"context_menu_open", contextMenuOpen}};
     return test::run("option_nodes", cases);
 }

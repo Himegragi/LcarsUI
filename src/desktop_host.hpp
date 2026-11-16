@@ -1,5 +1,5 @@
 #pragma once
-// Internal host type shared by run_desktop and the native verification driver.
+// Internal host type shared by runDesktop and the native verification driver.
 #include "lcars/desktop.hpp"
 #include "renderer.hpp"
 #include "text.hpp"
@@ -27,8 +27,8 @@ class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
     bool write(std::u16string_view text) override;
-    bool write_rich(std::u16string_view text, std::string_view payload) override;
-    Query<std::string> read_rich() override;
+    bool writeRich(std::u16string_view text, std::string_view payload) override;
+    Query<std::string> readRich() override;
     Query<std::u16string> read() override;
 private:
     HWND window_;
@@ -87,7 +87,7 @@ public:
     unsigned atlas_batches() const { return text_.atlas_batches(); }
     unsigned atlas_peak_pages() const { return text_.atlas_peak_pages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
-    void perf_enable(int delay_ms=0, bool offscreen=false) { perf_enabled_=true; perf_delay_=delay_ms; perf_offscreen_=offscreen; }
+    void perf_enable(int delayMs=0, bool offscreen=false) { perf_enabled_=true; perf_delay_=delayMs; perf_offscreen_=offscreen; }
     void perf_reset() { perf_samples_.clear(); perf_breakdown_.clear(); }
     const PerfSamples& perf_samples() const { return perf_samples_; }
     const PerfBreakdown& perf_breakdown() const { return perf_breakdown_; }
@@ -96,10 +96,10 @@ public:
     double input_present_ms() const { return input_present_ms_; }
     int frames() const { return frames_; }
     bool failed() const { return failed_; }
-    bool renderer_failed() const { return renderer_failure_.has_value(); }
+    bool rendererFailed() const { return renderer_failure_.has_value(); }
     const std::optional<RendererFailure>& renderer_failure() const { return renderer_failure_; }
     void on_renderer_failure(std::function<void(const RendererFailure&)> callback) { failure_callback_ = std::move(callback); }
-    Result rebuild_renderer();
+    Result rebuildRenderer();
     // #75: the system "Show animations in Windows" preference, re-read on WM_SETTINGCHANGE. Tests may
     // replace the reader to simulate it being on or off (and flip it while running).
     void system_animation_source(std::function<bool()> reader) { animation_reader_ = std::move(reader); refresh_system_animations(); }
@@ -150,7 +150,7 @@ private:
     std::function<CloseDecision()> close_callback_;
     std::thread::id owner_ = std::this_thread::get_id();
     RendererTestHooks* hooks_ = nullptr;
-    DebugContext debug_context_ = DebugContext::build_default;
+    DebugContext debug_context_ = DebugContext::buildDefault;
     RendererCapabilities capabilities_;
     std::optional<RendererFailure> renderer_failure_;
     std::function<void(const RendererFailure&)> failure_callback_;

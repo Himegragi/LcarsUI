@@ -33,6 +33,8 @@ foreach ($header in $Headers) {
         $_.Value -match '^(?:[a-zA-Z_][a-zA-Z_0-9]*|::|->|[{}:;<>.()=,*&])$'
     })
     $scopes = [Collections.Generic.List[object]]::new()
+    $privateMembers = @{}
+    $candidates = [Collections.Generic.List[object]]::new()
     $pendingClass = $null
     $standard = $false
     for ($i = 0; $i -lt $tokens.Count; ++$i) {
@@ -59,6 +61,8 @@ foreach ($header in $Headers) {
         if (-not $isStandard) { $standard = $false }
         if ($token -notmatch '_' -or $token -notmatch '^[a-zA-Z_][a-zA-Z_0-9]*$' -or
             $token -cmatch '^[A-Z][A-Z_0-9]*$' -or $macros.ContainsKey($token) -or $isStandard) { continue }
+        if ($token -in @('char16_t', 'char32_t', 'wchar_t', 'static_assert', 'static_cast',
+                        'const_cast', 'dynamic_cast', 'reinterpret_cast', 'thread_local')) { continue }
         # A member access is an expression, never the name being declared. This
         # also leaves standard container members (value_or, push_back) alone.
         if ($i -gt 0 -and $tokens[$i - 1].Value -in @('.', '->')) { continue }
@@ -66,9 +70,17 @@ foreach ($header in $Headers) {
         for ($scope = $scopes.Count - 1; $scope -ge 0; --$scope) {
             if ($scopes[$scope].Access) { $access = $scopes[$scope].Access; break }
         }
-        if ($access -in @('private', 'protected') -and $token -match '^[a-z][a-zA-Z0-9]*_$') { continue }
+        if ($access -in @('private', 'protected') -and $token -match '^[a-z][a-zA-Z0-9]*_$') {
+            $privateMembers[$token] = $true
+            continue
+        }
         $line = 1 + [regex]::Matches($source.Substring(0, $tokens[$i].Index), "`n").Count
-        $problems.Add("${header}:${line}: snake_case public name '$token'")
+        $candidates.Add(@{ Name = $token; Line = $line })
+    }
+    foreach ($candidate in $candidates) {
+        # A public inline method can refer to a private field declared later.
+        if ($privateMembers.ContainsKey($candidate.Name)) { continue }
+        $problems.Add("${header}:$($candidate.Line): snake_case public name '$($candidate.Name)'")
     }
 }
 if ($problems.Count) {

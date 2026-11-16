@@ -7,8 +7,8 @@ inline void report_startup_failure(const std::optional<lcars::StartupFailure>& f
     const char* kind = "resource";
     switch (failure->kind) {
     case lcars::StartupFailureKind::window: kind = "window"; break;
-    case lcars::StartupFailureKind::context_version: kind = "context_version"; break;
-    case lcars::StartupFailureKind::context_creation: kind = "context_creation"; break;
+    case lcars::StartupFailureKind::contextVersion: kind = "context_version"; break;
+    case lcars::StartupFailureKind::contextCreation: kind = "context_creation"; break;
     case lcars::StartupFailureKind::shader: kind = "shader"; break;
     case lcars::StartupFailureKind::resource: break;
     }

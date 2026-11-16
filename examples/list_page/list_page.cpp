@@ -7,11 +7,11 @@ using namespace lcars;
 
 Result ImmediateSearchConnection::connect(TextFieldHandle field, std::function<Result()> refresh) {
     field_ = field;
-    auto source = field_.connect_source({[this] { return value_; }, [this](auto changed) {
+    auto source = field_.connectSource({[this] { return value_; }, [this](auto changed) {
         changed_ = std::move(changed); return [this] { changed_ = {}; };
     }});
     if (!source) return source;
-    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const Change<TextFieldHandle>& change) {
+    auto write = field_.connectImmediate([this, refresh = std::move(refresh)](const Change<TextFieldHandle>& change) {
         value_ = change.value; if (changed_) changed_(); return refresh();
     });
     connected_ = bool(write);
@@ -22,10 +22,10 @@ Result ImmediateSearchConnection::reset() {
     if (!semantic) return {semantic.status, semantic.message};
     // Reset is an owner action and remains available when the field is restricted.
     if (!semantic->enabled) field_.enable(true);
-    if (semantic->read_only) field_.read_only(false);
-    auto result = field_.set_value(u"");
-    if (result) result = field_.reset_to_source();
-    if (semantic->read_only) field_.read_only(true);
+    if (semantic->readOnly) field_.readOnly(false);
+    auto result = field_.setValue(u"");
+    if (result) result = field_.resetToSource();
+    if (semantic->readOnly) field_.readOnly(true);
     if (!semantic->enabled) field_.enable(false);
     return result;
 }
@@ -33,33 +33,33 @@ Result ImmediateSearchConnection::reset() {
 Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     : owned_ui_(shared_ui ? nullptr : std::make_unique<Ui>()),
       ui(shared_ui ? *shared_ui : *owned_ui_), scroll(shared_scroll ? *shared_scroll : owned_scroll_) {
-    handles.title = ui.add_label({.id = prefix + "title", .value = u"範本清單"}).value.value();
+    handles.title = ui.addLabel({.id = prefix + "title", .value = u"範本清單"}).value.value();
     auto title_id = handles.title.describe()->id;
     auto title_text = handles.title.describe()->value;
-    handles.title.connect_source([this, title_id, title_text] {
+    handles.title.connectSource([this, title_id, title_text] {
         return clip_padding_id_ == title_id ? clip_padding_text_ : title_text;
     });
-    handles.zero = ui.add_button({.id = prefix + "zero", .label = u"0 筆"}).value.value();
-    handles.one = ui.add_button({.id = prefix + "one", .label = u"1 筆"}).value.value();
-    handles.twenty = ui.add_button({.id = prefix + "twenty", .label = u"20 筆"}).value.value();
-    handles.hundred = ui.add_button({.id = prefix + "hundred", .label = u"100 筆"}).value.value();
-    handles.sort = ui.add_button({.id = prefix + "sort", .label = u"反轉排序"}).value.value();
-    handles.disable_eight = ui.add_button({.id = prefix + "disable", .label = u"停用／啟用 T008"}).value.value();
-    handles.reset = ui.add_button({.id = prefix + "reset", .label = u"重設"}).value.value();
-    handles.search = ui.add_text_field({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
-    handles.list = ui.add_list({.id = prefix + "list", .label = u"範本"}, {}).value.value();
-    handles.erase = ui.add_button({.id = prefix + "erase", .label = u"刪除選中項", .enabled = false}).value.value();
-    handles.detail = ui.add_label({.id = prefix + "detail"}).value.value();
+    handles.zero = ui.addButton({.id = prefix + "zero", .label = u"0 筆"}).value.value();
+    handles.one = ui.addButton({.id = prefix + "one", .label = u"1 筆"}).value.value();
+    handles.twenty = ui.addButton({.id = prefix + "twenty", .label = u"20 筆"}).value.value();
+    handles.hundred = ui.addButton({.id = prefix + "hundred", .label = u"100 筆"}).value.value();
+    handles.sort = ui.addButton({.id = prefix + "sort", .label = u"反轉排序"}).value.value();
+    handles.disable_eight = ui.addButton({.id = prefix + "disable", .label = u"停用／啟用 T008"}).value.value();
+    handles.reset = ui.addButton({.id = prefix + "reset", .label = u"重設"}).value.value();
+    handles.search = ui.addTextField({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
+    handles.list = ui.addList({.id = prefix + "list", .label = u"範本"}, {}).value.value();
+    handles.erase = ui.addButton({.id = prefix + "erase", .label = u"刪除選中項", .enabled = false}).value.value();
+    handles.detail = ui.addLabel({.id = prefix + "detail"}).value.value();
     search_.connect(handles.search, [this] { return refresh(); });
-    handles.list.connect_source({[this] { return selection_; }, [this](auto changed) {
+    handles.list.connectSource({[this] { return selection_; }, [this](auto changed) {
         selection_changed_ = std::move(changed); return [this] { selection_changed_ = {}; };
     }});
-    handles.list.connect_immediate([this](const Change<ListHandle>& change) {
+    handles.list.connectImmediate([this](const Change<ListHandle>& change) {
         selection_ = change.value; handles.erase.enable(selection_.has_value());
         if (selection_changed_) selection_changed_(); return Result{};
     });
     auto detail_id = handles.detail.describe()->id;
-    handles.detail.connect_source([this, detail_id] {
+    handles.detail.connectSource([this, detail_id] {
         if (clip_padding_id_ == detail_id) return clip_padding_text_;
         if (!selection_) return std::u16string(u"尚未選取範本");
         auto it = std::find_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == *selection_; });
@@ -71,7 +71,7 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     bind_action(handles.sort, [this] { descending_ = !descending_; return refresh(); });
     bind_action(handles.disable_eight, [this] { disabled_eight_ = !disabled_eight_; return refresh(); });
     bind_action(handles.erase, [this] {
-        if (!selection_) return Result{Status::invalid_value, u"沒有選取項目"};
+        if (!selection_) return Result{Status::invalidValue, u"沒有選取項目"};
         auto selected = *selection_;
         items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == selected; }), items_.end());
         return refresh();
@@ -90,12 +90,12 @@ Result Page::restore_fixture_action(ButtonHandle button) const {
     if (!semantic) return {semantic.status, semantic.message};
     auto found = fixture_actions_.find(semantic->id);
     if (found != fixture_actions_.end()) return button.bind(found->second);
-    return {Status::not_found, u"No original fixture action"};
+    return {Status::notFound, u"No original fixture action"};
 }
 Result Page::set_clip_padding(LabelHandle label, std::u16string text) {
     auto semantic = label.describe();
     if (!semantic || (semantic->id != handles.title.describe()->id && semantic->id != handles.detail.describe()->id))
-        return {Status::invalid_value, u"Unknown clipping fixture label"};
+        return {Status::invalidValue, u"Unknown clipping fixture label"};
     clip_padding_id_ = semantic->id; clip_padding_text_ = std::move(text); return {};
 }
 void Page::clear_clip_padding() { clip_padding_id_.clear(); clip_padding_text_.clear(); }
@@ -107,7 +107,7 @@ Result Page::refresh() {
         visible.push_back(std::move(item));
     }
     if (descending_) std::reverse(visible.begin(), visible.end());
-    return handles.list.set_items(std::move(visible));
+    return handles.list.setItems(std::move(visible));
 }
 Result Page::sample(int count) {
     if (auto result = search_.reset(); !result) return result;

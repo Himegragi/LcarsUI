@@ -88,7 +88,7 @@ std::vector<VerticalSegment> segment_vertical(std::u16string_view text, int max_
         if (part.upright_sequence) form = VerticalForm::upright;
         else if (is_point(part.first)) form = VerticalForm::point;
         else if (is_line(part.first)) form = VerticalForm::line;
-        else if (is_middle_dot(part.first)) form = VerticalForm::middle_dot;
+        else if (is_middle_dot(part.first)) form = VerticalForm::middleDot;
         else if (orientation == VerticalOrientation::R) form = VerticalForm::sideways;
         else if (orientation == VerticalOrientation::Tr) form = VerticalForm::bracket;
         else form = VerticalForm::upright;
@@ -100,10 +100,10 @@ std::vector<VerticalSegment> segment_vertical(std::u16string_view text, int max_
 VerticalParams vertical_params(const ComponentConfig& control, float scale) {
     VerticalParams params;
     // Anything else (left; #84's justify/distribute are meaningless for vertical text) reads from the top.
-    if (control.text_align == TextAlign::center) params.align = VerticalParams::Align::center;
-    else if (control.text_align == TextAlign::right) params.align = VerticalParams::Align::bottom;
-    params.line_spacing = control.line_spacing;
-    params.paragraph_spacing = paragraph_gap(control, scale);
+    if (control.textAlign == TextAlign::center) params.align = VerticalParams::Align::center;
+    else if (control.textAlign == TextAlign::right) params.align = VerticalParams::Align::bottom;
+    params.lineSpacing = control.lineSpacing;
+    params.paragraphSpacing = paragraph_gap(control, scale);
     return params;
 }
 
@@ -120,7 +120,7 @@ std::vector<VerticalColumn> flow_vertical(TextMeasure& measure, std::u16string_v
         column.begin = column.end = base;
         int y = 0;
         auto finish = [&](bool paragraph_end = false) {
-            column.last_in_paragraph = paragraph_end;
+            column.lastInParagraph = paragraph_end;
             column.bounds = {0, 0, 0, y};
             columns.push_back(std::move(column));
             column = {};

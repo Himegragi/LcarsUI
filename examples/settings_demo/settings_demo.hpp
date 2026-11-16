@@ -13,7 +13,7 @@ struct SettingsDocument {
     int next_item_id;
     lcars::PresentationSettings presentation;
     std::string accent = "default";  // "default", "green" or "orange": the palette override set chosen on the appearance page
-    std::string focus_color = "default";  // "default" (the ring follows the accent), "green" or "orange": overrides the palette's `focus` role
+    std::string focusColor = "default";  // "default" (the ring follows the accent), "green" or "orange": overrides the palette's `focus` role
     bool operator==(const SettingsDocument&) const = default;
 };
 // The one spelling of FocusIndicatorMode in the focus-mode dropdown and in the settings file; unknown ids have no mode.
@@ -80,7 +80,7 @@ private:
     lcars::ButtonHandle reset_appearance_;
     std::string accent_value_ = "default", focus_color_value_ = "default";
     std::function<void()> accent_changed_, focus_color_changed_;
-    // One palette override list stands for both choices (set_palette_overrides replaces the whole list).
+    // One palette override list stands for both choices (setPaletteOverrides replaces the whole list).
     lcars::Result apply_palette(const std::string& accent_id, const std::string& focus_id);
     lcars::Result apply_accent(const std::string& id);
     lcars::Result apply_focus_color(const std::string& id);
@@ -116,23 +116,23 @@ public:
     bool is_dirty() const;
     bool blank_name_draft() const;
     std::u16string save_failed_renderer();
-    lcars::CheckboxHandle notices, dark, compact, justify_left;  // justify_left: PresentationSettings::justify_as_left (#84)
+    lcars::CheckboxHandle notices, dark, compact, justify_left;  // justify_left: PresentationSettings::justifyAsLeft (#84)
     lcars::RadioGroupHandle mode;
     lcars::DropdownHandle region, font, accent;
-    lcars::SliderHandle volume, text_size;
+    lcars::SliderHandle volume, textSize;
     // The focus ring (#90): when and how it shows. Width, radius and color are disabled while the indicator is off.
-    lcars::DropdownHandle focus_mode, focus_color;    // PresentationSettings::focus_indicator; the palette's `focus` role
-    lcars::SliderHandle focus_width, focus_radius;    // focus_ring_width (2-6 DIP); focus_ring_radius (0-32 DIP, shown unless "same as the component")
-    lcars::CheckboxHandle focus_radius_same;          // checked = focus_ring_radius left empty
+    lcars::DropdownHandle focus_mode, focusColor;    // PresentationSettings::focusIndicator; the palette's `focus` role
+    lcars::SliderHandle focus_width, focus_radius;    // focusRingWidth (2-6 DIP); focusRingRadius (0-32 DIP, shown unless "same as the component")
+    lcars::CheckboxHandle focus_radius_same;          // checked = focusRingRadius left empty
     void on_save(std::function<std::u16string(const SettingsDocument&)> handler, std::u16string path = {}) { save_handler_ = std::move(handler); settings_path_ = std::move(path); }
     lcars::Result save() { return save_.invoke(); }
     lcars::Result load_document(const SettingsDocument&);  // a part that cannot be applied is also announced in the load notice
     void show_load_notice(std::u16string title, std::u16string message);
     SettingsDocument document() const { return snapshot(); }
     void on_dirty_changed(std::function<void(bool)> callback);
-    lcars::Result set_presentation(const lcars::PresentationSettings& settings, bool coalesce = false);
+    lcars::Result setPresentation(const lcars::PresentationSettings& settings, bool coalesce = false);
     // Accent choices: "default" clears the palette overrides; "green" and "orange" override accent,
-    // on_accent and selection for every linked built-in appearance in light and dark.
+    // onAccent and selection for every linked built-in appearance in light and dark.
     lcars::Result set_accent(const std::string& id);
     const std::string& accent_id() const { return accent_value_; }
     // The palette overrides one accent choice stands for (appearances that are not linked are skipped).

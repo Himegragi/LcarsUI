@@ -18,12 +18,12 @@ bool integer(const json& o, const char* key, int& out) {
 // A multi-line value keeps its line breaks as LF (JSON writes them as \n); CR and other controls stay invalid.
 bool text(const json& o, const char* key, std::u16string& out, size_t max, bool required, bool multiline = false) {
     std::string s; if (!string(o,key,s)) return false; out=utf16_from_utf8(s);
-    return (multiline ? lcars::valid_multi_line(out,max) : lcars::valid_single_line(out,max)) && (!required || std::any_of(out.begin(),out.end(),[](char16_t c){return c!=u' ' && c!=u'\t' && c!=u'\u3000';}));
+    return (multiline ? lcars::validMultiLine(out,max) : lcars::validSingleLine(out,max)) && (!required || std::any_of(out.begin(),out.end(),[](char16_t c){return c!=u' ' && c!=u'\t' && c!=u'\u3000';}));
 }
 }
 // An item's note: a plain string (files written before rich text existed: no styles) or {"text": ..., "spans": [...]},
 // each span {"start", "length", and any of "bold", "italic", "underline" (true) and "color" (a name)}. The spans
-// are normalized (lcars::normalize_rich_text) on the way in, so a file reads back as the canonical value.
+// are normalized (lcars::normalizeRichText) on the way in, so a file reads back as the canonical value.
 static bool note_value(const json& item, Item& out) {
     auto it=item.find("note"); if (it==item.end()) return false;
     if (it->is_string()) return text(item,"note",out.note,200,false,true);
@@ -47,7 +47,7 @@ static bool note_value(const json& item, Item& out) {
         }
         value.spans.push_back(std::move(span));
     }
-    auto normal=lcars::normalize_rich_text(std::move(value),200);
+    auto normal=lcars::normalizeRichText(std::move(value),200);
     if (!normal) return false;
     out.note=std::move(normal->text); out.note_spans=std::move(normal->spans);
     return true;
@@ -73,31 +73,31 @@ std::optional<SettingsDocument> parse_settings(const std::string& bytes) {
             if (!text(x,"name",item.name,64,true) || !note_value(x,item)) return {}; d.items.push_back(std::move(item));
         }
         if (!integer(j,"next_item_id",d.next_item_id) || d.next_item_id<=max_id) return {};
-        if (!string(p,"font_family",v)) return {}; d.presentation.font_family=utf16_from_utf8(v);
-        if (d.presentation.font_family.size()>128 || !integer(p,"text_size",d.presentation.text_size) || d.presentation.text_size<12 || d.presentation.text_size>28) return {};
+        if (!string(p,"font_family",v)) return {}; d.presentation.fontFamily=utf16_from_utf8(v);
+        if (d.presentation.fontFamily.size()>128 || !integer(p,"text_size",d.presentation.textSize) || d.presentation.textSize<12 || d.presentation.textSize>28) return {};
         if (!string(p,"variant",v) || (v!="light" && v!="dark")) return {}; d.presentation.variant={v};
         if (!string(p,"density",v) || (v!="standard" && v!="compact")) return {}; d.presentation.density=v=="compact"?lcars::Density::compact:lcars::Density::standard;
         // Files written before the accent choice existed have no "accent": they mean the default.
         if (p.contains("accent")) { if (!string(p,"accent",v) || (v!="default" && v!="green" && v!="orange")) return {}; d.accent=v; }
-        // The focus ring (#90): "focus_indicator" ("automatic", "always", "never"), "focus_ring_width" (2-6 or null = the appearance's own),
-        // "focus_ring_radius" (0-32 or null = the component's own) and "focus_color" ("default", "green", "orange"). Older files have
+        // The focus ring (#90): "focusIndicator" ("automatic", "always", "never"), "focusRingWidth" (2-6 or null = the appearance's own),
+        // "focusRingRadius" (0-32 or null = the component's own) and "focusColor" ("default", "green", "orange"). Older files have
         // none of them and mean the defaults; a value out of range or not recognized makes the whole file corrupt.
         if (p.contains("focus_indicator")) {
             const auto mode = string(p,"focus_indicator",v) ? focus_mode_from_id(v) : std::nullopt;
             if (!mode) return {};
-            d.presentation.focus_indicator=*mode;
+            d.presentation.focusIndicator=*mode;
         }
         if (p.contains("focus_ring_width") && !p["focus_ring_width"].is_null()) {
-            if (!integer(p,"focus_ring_width",n) || n<lcars::min_focus_ring_width || n>lcars::max_focus_ring_width) return {};
-            d.presentation.focus_ring_width=n;
+            if (!integer(p,"focus_ring_width",n) || n<lcars::minFocusRingWidth || n>lcars::maxFocusRingWidth) return {};
+            d.presentation.focusRingWidth=n;
         }
         if (p.contains("focus_ring_radius") && !p["focus_ring_radius"].is_null()) {
-            if (!integer(p,"focus_ring_radius",n) || n<lcars::min_focus_ring_radius || n>lcars::max_focus_ring_radius) return {};
-            d.presentation.focus_ring_radius=n;
+            if (!integer(p,"focus_ring_radius",n) || n<lcars::minFocusRingRadius || n>lcars::maxFocusRingRadius) return {};
+            d.presentation.focusRingRadius=n;
         }
-        if (p.contains("focus_color")) { if (!string(p,"focus_color",v) || (v!="default" && v!="green" && v!="orange")) return {}; d.focus_color=v; }
-        // Likewise "justify_as_left" (justified text drawn left-aligned): older files mean off.
-        if (p.contains("justify_as_left")) { if (!p["justify_as_left"].is_boolean()) return {}; d.presentation.justify_as_left=p["justify_as_left"].get<bool>(); }
+        if (p.contains("focus_color")) { if (!string(p,"focus_color",v) || (v!="default" && v!="green" && v!="orange")) return {}; d.focusColor=v; }
+        // Likewise "justifyAsLeft" (justified text drawn left-aligned): older files mean off.
+        if (p.contains("justify_as_left")) { if (!p["justify_as_left"].is_boolean()) return {}; d.presentation.justifyAsLeft=p["justify_as_left"].get<bool>(); }
         return d;
     } catch (const std::exception&) { return {}; }
 }
@@ -118,12 +118,12 @@ std::string write_settings(const SettingsDocument& d) {
     j["general"]={{"name",utf8_from_utf16(d.name)},{"notices",d.notices},{"mode",d.mode->id},{"region",d.region->id},{"volume",d.volume}};
     j["items"]=json::array(); for (auto& x:d.items) j["items"].push_back({{"id",x.id.id},{"name",utf8_from_utf16(x.name)},{"note",note_json(x)}});
     j["next_item_id"]=d.next_item_id;
-    j["presentation"]={{"font_family",utf8_from_utf16(d.presentation.font_family)},{"text_size",d.presentation.text_size},{"variant",d.presentation.variant.name},{"density",d.presentation.density==lcars::Density::compact?"compact":"standard"},{"accent",d.accent},{"justify_as_left",d.presentation.justify_as_left}};
+    j["presentation"]={{"font_family",utf8_from_utf16(d.presentation.fontFamily)},{"text_size",d.presentation.textSize},{"variant",d.presentation.variant.name},{"density",d.presentation.density==lcars::Density::compact?"compact":"standard"},{"accent",d.accent},{"justify_as_left",d.presentation.justifyAsLeft}};
     const auto& focus=d.presentation;
-    j["presentation"]["focus_indicator"]=focus_mode_id(focus.focus_indicator);
-    j["presentation"]["focus_ring_width"]=focus.focus_ring_width?json(*focus.focus_ring_width):json(nullptr);
-    j["presentation"]["focus_ring_radius"]=focus.focus_ring_radius?json(*focus.focus_ring_radius):json(nullptr);
-    j["presentation"]["focus_color"]=d.focus_color;
+    j["presentation"]["focus_indicator"]=focus_mode_id(focus.focusIndicator);
+    j["presentation"]["focus_ring_width"]=focus.focusRingWidth?json(*focus.focusRingWidth):json(nullptr);
+    j["presentation"]["focus_ring_radius"]=focus.focusRingRadius?json(*focus.focusRingRadius):json(nullptr);
+    j["presentation"]["focus_color"]=d.focusColor;
     return j.dump(2)+"\n";
 }
 }

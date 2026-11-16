@@ -116,18 +116,18 @@ const WordBreaker& script_run_breaker() { static const ScriptRun breaker; return
 const WordBreaker& system_icu_breaker() { static const SystemIcu breaker; return breaker; }
 
 WordSegmentation segmentation_in_use(WordSegmentation mode, const WordBreaker& dictionary) {
-    return mode == WordSegmentation::dictionary && !dictionary.usable() ? WordSegmentation::per_character : mode;
+    return mode == WordSegmentation::dictionary && !dictionary.usable() ? WordSegmentation::perCharacter : mode;
 }
 Words segment_words(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
     Words words;
     std::vector<unsigned> raw;
-    const WordBreaker* breaker = mode == WordSegmentation::per_character ? &per_character_breaker()
-                               : mode == WordSegmentation::script_run ? &script_run_breaker() : &dictionary;
+    const WordBreaker* breaker = mode == WordSegmentation::perCharacter ? &per_character_breaker()
+                               : mode == WordSegmentation::scriptRun ? &script_run_breaker() : &dictionary;
     words.used = mode;
     if (!breaker->boundaries(text, raw)) {
         raw.clear();
         per_character_breaker().boundaries(text, raw);
-        words.used = WordSegmentation::per_character;
+        words.used = WordSegmentation::perCharacter;
     }
     // Whatever the breaker said: every line feed is a word of its own, no boundary splits a surrogate pair.
     for (unsigned at = 0; at < text.size(); ++at)
@@ -165,7 +165,7 @@ std::vector<unsigned> word_stops(std::u16string_view text, const Words& words) {
     if (text.size() > 0) stops.push_back(static_cast<unsigned>(text.size()));
     return stops;
 }
-unsigned next_word_stop(std::u16string_view text, const Words& words, unsigned offset, bool forward) {
+unsigned nextWordStop(std::u16string_view text, const Words& words, unsigned offset, bool forward) {
     const auto stops = word_stops(text, words);
     if (forward) {
         auto it = std::upper_bound(stops.begin(), stops.end(), offset);

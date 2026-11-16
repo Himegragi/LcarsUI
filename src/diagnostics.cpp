@@ -6,18 +6,18 @@ void Diagnostics::record(const RenderDiagnostic& event) {
     if (recent_.size() == capacity_) recent_.pop_front();
     recent_.push_back(event);
 }
-void Diagnostics::record_failure(const RenderDiagnostic& event) {
+void Diagnostics::recordFailure(const RenderDiagnostic& event) {
     if (!first_) {
         first_ = event;
         constexpr std::size_t limit = 4096;
         auto trim=[](std::string& value) { if (value.size()>limit) { std::size_t end=limit; while (end && (static_cast<unsigned char>(value[end]) & 0xc0)==0x80) --end; value.resize(end); } };
         if (first_->backend.size()>limit) first_->backend.resize(limit);
-        trim(first_->code); trim(first_->native_message); trim(first_->component_id);
-        trim(first_->operation_id); trim(first_->backend_detail);
+        trim(first_->code); trim(first_->nativeMessage); trim(first_->componentId);
+        trim(first_->operationId); trim(first_->backendDetail);
     }
     record(event);
 }
-const std::optional<RenderDiagnostic>& Diagnostics::first_failure() const { return first_; }
+const std::optional<RenderDiagnostic>& Diagnostics::firstFailure() const { return first_; }
 const std::deque<RenderDiagnostic>& Diagnostics::recent() const { return recent_; }
 }
 #include <istream>
@@ -53,19 +53,19 @@ std::string pack(const RenderDiagnostic& e) {
     for (char16_t c : e.backend) { backend += static_cast<char>(c >> 8); backend += static_cast<char>(c & 255); }
     auto ticks=[](auto t) { return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count(); };
     std::ostringstream s;
-    s << hex(backend) << ' ' << static_cast<int>(e.severity) << ' ' << static_cast<int>(e.kind) << ' ' << hex(e.code) << ' ' << e.native_code << ' ' << hex(e.native_message) << ' ' << ticks(e.received_at) << ' ' << (e.source_time ? 1 : 0) << ' ' << (e.source_time ? ticks(*e.source_time) : 0) << ' ' << hex(e.component_id) << ' ' << hex(e.operation_id) << ' ' << hex(e.backend_detail) << ' ' << e.omitted_before;
+    s << hex(backend) << ' ' << static_cast<int>(e.severity) << ' ' << static_cast<int>(e.kind) << ' ' << hex(e.code) << ' ' << e.nativeCode << ' ' << hex(e.nativeMessage) << ' ' << ticks(e.receivedAt) << ' ' << (e.sourceTime ? 1 : 0) << ' ' << (e.sourceTime ? ticks(*e.sourceTime) : 0) << ' ' << hex(e.componentId) << ' ' << hex(e.operationId) << ' ' << hex(e.backendDetail) << ' ' << e.omittedBefore;
     return s.str();
 }
 bool unpack(const std::string& line, RenderDiagnostic& e) {
     std::istringstream s(line); std::string b,c,m,component,operation,detail,extra; int severity,category,has; long long received,source;
-    if (!(s>>b>>severity>>category>>c>>e.native_code>>m>>received>>has>>source>>component>>operation>>detail>>e.omitted_before) || (s>>extra) || severity<0 || severity>2 || category<0 || category>5 || (has!=0 && has!=1)) return false;
+    if (!(s>>b>>severity>>category>>c>>e.nativeCode>>m>>received>>has>>source>>component>>operation>>detail>>e.omittedBefore) || (s>>extra) || severity<0 || severity>2 || category<0 || category>5 || (has!=0 && has!=1)) return false;
     std::string backend;
-    if (!unhex(b,backend) || backend.size()%2 || !unhex(c,e.code) || !unhex(m,e.native_message) || !unhex(component,e.component_id) || !unhex(operation,e.operation_id) || !unhex(detail,e.backend_detail)) return false;
+    if (!unhex(b,backend) || backend.size()%2 || !unhex(c,e.code) || !unhex(m,e.nativeMessage) || !unhex(component,e.componentId) || !unhex(operation,e.operationId) || !unhex(detail,e.backendDetail)) return false;
     for (std::size_t i=0;i<backend.size();i+=2) e.backend += static_cast<char16_t>((static_cast<unsigned char>(backend[i])<<8)|static_cast<unsigned char>(backend[i+1]));
     e.severity=static_cast<DiagnosticSeverity>(severity); e.kind=static_cast<DiagnosticKind>(category);
-    e.received_at=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(received)));
-    if (has) e.source_time=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(source)));
-    e.backend_detail_uninterpreted=!e.backend_detail.empty();
+    e.receivedAt=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(received)));
+    if (has) e.sourceTime=std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(source)));
+    e.backendDetailUninterpreted=!e.backendDetail.empty();
     return true;
 }
 }
@@ -87,8 +87,8 @@ DiagnosticLoadResult Diagnostics::load(std::istream& in) {
         auto body=line.substr(0,pos); RenderDiagnostic event;
         if (converted.ec!=std::errc{} || converted.ptr!=line.data()+line.size() || crc32(body)!=expected || body.size()<2 || body[1]!=' ' || (body[0]!='F' && body[0]!='R') || !unpack(body.substr(2),event)) { result.incomplete=true; break; }
         if (body[0]=='F') {
-            if (result.first_failure || !result.records.empty()) { result.incomplete=true; break; }
-            result.first_failure=std::move(event);
+            if (result.firstFailure || !result.records.empty()) { result.incomplete=true; break; }
+            result.firstFailure=std::move(event);
         } else result.records.push_back(std::move(event));
     }
     if (in.bad()) result.incomplete=true;

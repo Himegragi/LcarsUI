@@ -6,5 +6,5 @@ namespace lcars {
 struct ThirdPartyNotice {
     std::u16string_view name, version, license, source, text;
 };
-std::span<const ThirdPartyNotice> third_party_notices() noexcept;
+std::span<const ThirdPartyNotice> thirdPartyNotices() noexcept;
 }

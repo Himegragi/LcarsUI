@@ -23,7 +23,7 @@ std::u16string normalized(std::u16string value) {
 }
 
 void verify_about() {
-    for (const auto* appearance : {&lcars::web_appearance(), &lcars::material_appearance()}) {
+    for (const auto* appearance : {&lcars::webAppearance(), &lcars::materialAppearance()}) {
         auto info = settings_demo::desktop_about_info(*appearance);
         settings_demo::Demo demo(info);
         auto desktop = lcars::Desktop::create(demo.ui, *appearance, [&] { return demo.page(); }, demo.scroll);
@@ -36,9 +36,9 @@ void verify_about() {
             auto node = tree.get({id});
             test::check(node && !node->value.empty(), "About label is populated");
         }
-        test::check(tree.get({"about.framework"})->value.find(lcars::framework_version) != std::u16string::npos, "framework version");
+        test::check(tree.get({"about.framework"})->value.find(lcars::frameworkVersion) != std::u16string::npos, "framework version");
         test::check(tree.get({"about.renderer"})->value == u"繪製：" + caps.version + u" — " + caps.renderer, "renderer capabilities");
-        auto notices = lcars::third_party_notices();
+        auto notices = lcars::thirdPartyNotices();
         test::check(info.licenses.size() == 6 && notices.size() == 4, "six license entries");
         test::check(normalized(info.licenses[0].text) == license_file(LCARS_SOURCE_DIR "/LICENSE"), "framework license matches source");
         test::check(normalized(info.licenses[5].text) == license_file(LCARS_SOURCE_DIR "/examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT"), "JSON license matches source");

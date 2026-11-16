@@ -21,7 +21,7 @@ struct ThumbProbe : detail::ComponentPaint {
     void role(detail::PaintRole r) override { current = r; }
     void fill(Rect, Color) override {}
     void rounded(Rect rect, int, Color) override {
-        if (current == detail::PaintRole::focus_indicator) dots.push_back(rect);
+        if (current == detail::PaintRole::focusIndicator) dots.push_back(rect);
         else if (focus_marks::is_thumb(rect)) thumbs.push_back(rect);
     }
     void clip(Rect) override {}
@@ -39,10 +39,10 @@ struct Volume {
     const Appearance& appearance;
     Rect track{};
     int width = 400;  // the window the slider is arranged in; a test narrows it to move the track under the pointer
-    explicit Volume(const Appearance& look = web_appearance()) : appearance(look) {
-        slider = ui.add_slider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
-        slider.connect_source({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
-        slider.connect_immediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
+    explicit Volume(const Appearance& look = webAppearance()) : appearance(look) {
+        slider = ui.addSlider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
+        slider.connectSource({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
+        slider.connectImmediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
         detail::access(ui).animation_time([this] { return now; });
         slider.focus();
         paint();
@@ -53,7 +53,7 @@ struct Volume {
         auto frame = arrange(layout::component(slider), ui, appearance, measure, width, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
         check(item != nullptr, "slider is arranged");
-        track = item->slider_track;
+        track = item->sliderTrack;
         auto semantic = state().describe(item->id);
         ThumbProbe probe(state(), *item, *semantic, appearance, 1.f, true);
         detail::component_type(ComponentKind::slider).paint(probe);
@@ -86,11 +86,11 @@ void keyboard_step_slides_the_thumb() {
 // #72 x #75: the focus dot beside the title and the enlarged thumb belong to the focus-visible state, not to the
 // thumb's position, so they hold while the thumb slides and follow the indicator when it hides and shows again.
 void focus_dot_and_thumb_size_hold_while_the_thumb_slides() {
-    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         Volume v(*look);
         const int enlarged = focus_marks::enlarged_thumb(*look), plain = focus_marks::plain_thumb(*look);
         check(enlarged > plain, "the focus-visible thumb is larger than the plain one");
-        check(bool(v.press(Key::right)) && v.state().focus_indicator_visible(), "the arrow key shows the indicator and starts a slide");
+        check(bool(v.press(Key::right)) && v.state().focusIndicatorVisible(), "the arrow key shows the indicator and starts a slide");
         auto start = v.paint();
         check(v.ui.animating().value.value() && near_px(start.center(), v.tick(45)), "sliding, thumb still on the 45 tick at t=0");
         check(start.thumbs.size() == 1 && focus_marks::is_one_ring(static_cast<int>(start.dots.size())), "one thumb and one focus ring (two fills) at t=0");
@@ -106,7 +106,7 @@ void focus_dot_and_thumb_size_hold_while_the_thumb_slides() {
         auto hidden = v.paint();
         check(v.ui.animating().value.value() && near_px(hidden.center(), middle.center()), "hiding the indicator does not restart or stop the slide");
         check(hidden.dots.empty() && hidden.thumbs.back().w == plain, "no focus ring and a plain thumb mid-slide once hidden");
-        check(bool(v.press(Key::right)) && v.state().focus_indicator_visible(), "a key shows the indicator again, retargeting the slide");
+        check(bool(v.press(Key::right)) && v.state().focusIndicatorVisible(), "a key shows the indicator again, retargeting the slide");
         auto again = v.paint();
         check(focus_marks::is_one_ring(static_cast<int>(again.dots.size())) && again.thumbs.back().w == enlarged && again.dots.back().x == start.dots.back().x, "ring and enlarged thumb are back mid-slide");
         v.now = 75 + 150;
@@ -257,10 +257,10 @@ void the_click_drag_threshold_scales_with_dpi() {
 void other_value_changes_land_at_once() {
     struct Change { const char* name; void (*apply)(Volume&, int); };
     const Change changes[] = {
-        {"application code", [](Volume& v, int value) { check(bool(v.slider.set_value(value)), "set_value"); }},
-        {"semantic set_value", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::set_value, value)), "semantic set_value"); }},
+        {"application code", [](Volume& v, int value) { check(bool(v.slider.setValue(value)), "set_value"); }},
+        {"semantic set_value", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::setValue, value)), "semantic set_value"); }},
         // The UIA RangeValue provider receives a double and performs the same semantic verb with its int.
-        {"UIA SetValue", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::set_value, static_cast<int>(static_cast<double>(value)))), "UIA SetValue"); }},
+        {"UIA SetValue", [](Volume& v, int value) { check(bool(v.ui.semantics().perform({"volume"}, Verb::setValue, static_cast<int>(static_cast<double>(value)))), "UIA SetValue"); }},
         {"data source", [](Volume& v, int value) { v.model = value; v.changed(); }},
     };
     for (const auto& change : changes) {
@@ -297,11 +297,11 @@ void motion_off_and_system_setting_play_nothing() {
     for (int source = 0; source < 2; ++source) {
         Volume v;
         auto switch_off = [&] {
-            if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::off; check(bool(v.ui.set_presentation(s)), "motion off accepted"); }
+            if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::off; check(bool(v.ui.setPresentation(s)), "motion off accepted"); }
             else v.state().set_system_animations(false);
         };
         auto switch_on = [&] {
-            if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::automatic; check(bool(v.ui.set_presentation(s)), "motion automatic accepted"); }
+            if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::automatic; check(bool(v.ui.setPresentation(s)), "motion automatic accepted"); }
             else v.state().set_system_animations(true);
         };
         switch_off();
@@ -326,18 +326,18 @@ void presentation_motion_is_validated_and_compared() {
     PresentationSettings settings = ui.presentation();
     check(settings.motion == Motion::automatic, "the default follows the system");
     settings.motion = static_cast<Motion>(7);
-    check(ui.set_presentation(settings).status == Status::invalid_value, "an unknown motion value is refused");
+    check(ui.setPresentation(settings).status == Status::invalidValue, "an unknown motion value is refused");
     check(ui.presentation().motion == Motion::automatic, "and nothing changed");
     settings.motion = Motion::off;
     check(!(settings == ui.presentation()), "motion takes part in settings equality");
-    check(bool(ui.set_presentation(settings)) && ui.presentation().motion == Motion::off, "off is accepted");
+    check(bool(ui.setPresentation(settings)) && ui.presentation().motion == Motion::off, "off is accepted");
 }
 void switching_off_asks_for_a_final_frame() {
     Volume v; int invalidations = 0;
     v.state().on_invalidate([&] { ++invalidations; });
     check(bool(v.press(Key::right)), "start");
     auto s = v.ui.presentation(); s.motion = Motion::off;
-    v.ui.set_presentation(s);
+    v.ui.setPresentation(s);
     check(invalidations > 0, "the host is asked to draw the landed frame");
 }
 void hidden_window_ends_and_prevents_slides() {
@@ -354,10 +354,10 @@ void hidden_window_ends_and_prevents_slides() {
 }
 void without_a_time_source_changes_are_instant() {
     Ui ui;
-    auto slider = ui.add_slider({.id = "v", .label = u"V"}, {0, 100, 5}).value.value();
+    auto slider = ui.addSlider({.id = "v", .label = u"V"}, {0, 100, 5}).value.value();
     int model = 45; std::function<void()> changed;
-    slider.connect_source({[&] { return model; }, [&](std::function<void()> n) { changed = std::move(n); return [] {}; }});
-    slider.connect_immediate([&](const Change<SliderHandle>& c) { model = c.value; if (changed) changed(); return Result{}; });
+    slider.connectSource({[&] { return model; }, [&](std::function<void()> n) { changed = std::move(n); return [] {}; }});
+    slider.connectImmediate([&](const Change<SliderHandle>& c) { model = c.value; if (changed) changed(); return Result{}; });
     slider.focus();
     check(bool(detail::access(ui).key_down({.key = Key::right})) && model == 50, "step");
     check(!ui.animating().value.value(), "a core-only host that gave no clock never animates");
@@ -373,7 +373,7 @@ void animating_query_agrees_between_entries() {
     check(bool(v.press(Key::right)), "start again");
     Status typed{}, semantic{};
     std::thread([&] { typed = v.ui.animating().status; semantic = v.ui.semantics().animating().status; }).join();
-    check(typed == Status::wrong_thread && semantic == Status::wrong_thread, "the same wrong_thread admission from both");
+    check(typed == Status::wrongThread && semantic == Status::wrongThread, "the same wrong_thread admission from both");
 }
 void clock_ease_out_and_retarget() {
     detail::AnimationClock clock; std::uint64_t now = 0;

@@ -10,23 +10,23 @@
 #include <string>
 
 namespace lcars {
-enum class DebugContext { build_default, on, off };
-enum class RendererFailureKind { frame_error, device_reset, present_failed, resource_failed };
-struct RendererFailure { RendererFailureKind kind; std::uint32_t native_code = 0; std::u16string message; };
-enum class StartupFailureKind { window, context_version, context_creation, shader, resource };
+enum class DebugContext { buildDefault, on, off };
+enum class RendererFailureKind { frameError, deviceReset, presentFailed, resourceFailed };
+struct RendererFailure { RendererFailureKind kind; std::uint32_t nativeCode = 0; std::u16string message; };
+enum class StartupFailureKind { window, contextVersion, contextCreation, shader, resource };
 struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; };
-struct RendererCapabilities { std::u16string version, vendor, renderer; bool debug_context = false, debug_messages = false, reset_detection = false; };
-enum class CloseDecision { close, keep_open };
+struct RendererCapabilities { std::u16string version, vendor, renderer; bool debugContext = false, debugMessages = false, resetDetection = false; };
+enum class CloseDecision { close, keepOpen };
 class Desktop;
 struct CreateResult;
 namespace detail { class DesktopHost; }
 struct DesktopConfig {
     std::u16string title = u"LcarsUI";
     int width = 960, height = 720;  // client size in DIP
-    std::function<void(const RenderDiagnostic&)> on_diagnostic;
-    DebugContext debug_context = DebugContext::build_default;
-    std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;
-    std::function<CloseDecision(Desktop&)> on_close_requested;
+    std::function<void(const RenderDiagnostic&)> onDiagnostic;
+    DebugContext debugContext = DebugContext::buildDefault;
+    std::function<void(Desktop&, const RendererFailure&)> onRendererFailed;
+    std::function<CloseDecision(Desktop&)> onCloseRequested;
 };
 struct CreateResult;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
@@ -35,11 +35,11 @@ public:
     ~Desktop();
     static CreateResult create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig = {});
     RunResult run();
-    Result rebuild_renderer();
+    Result rebuildRenderer();
     Result close();
-    void* native_window() const;
-    Result set_title(std::u16string title);
-    bool renderer_failed() const;
+    void* nativeWindow() const;
+    Result setTitle(std::u16string title);
+    bool rendererFailed() const;
     RendererCapabilities capabilities() const;
 private:
     friend class detail::DesktopHost;
@@ -48,6 +48,6 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 struct CreateResult { Status status; std::optional<StartupFailure> failure; std::unique_ptr<Desktop> desktop; };
-RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
+RunResult runDesktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                 DesktopConfig config = {});
 }

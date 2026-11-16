@@ -33,7 +33,7 @@ using lcars::detail::Image;
 namespace {
 edit_form::Ids alternate_ids() {
     edit_form::Ids i;
-    i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
+    i.title = "t"; i.intro = "i"; i.normal = "f1"; i.readOnly = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
     i.volume_latest = "volume.latest"; i.volume = "volume"; i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
     i.region = "region.alt"; i.region_empty = "region.empty.alt";
@@ -177,10 +177,10 @@ void atlas_native(const Appearance& appearance, Report& report) {
     bool same=f.host.compare_legacy(960,720,1.f);
     report.check("GA03-CPU", same && f.host.atlas_batches()>0 && f.host.atlas_peak_pages()<=1, "small atlas batches retain S1 pixels within one page");
     f.host.configure_atlas(1024,4);
-    auto settings=f.form.ui.presentation(); settings.text_size=18;
-    f.form.ui.set_presentation(settings); f.host.paint();
-    auto previous=f.host.atlas_clears(); settings.text_size=24;
-    bool changed=bool(f.form.ui.set_presentation(settings)); f.host.paint();
+    auto settings=f.form.ui.presentation(); settings.textSize=18;
+    f.form.ui.setPresentation(settings); f.host.paint();
+    auto previous=f.host.atlas_clears(); settings.textSize=24;
+    bool changed=bool(f.form.ui.setPresentation(settings)); f.host.paint();
     bool invalidated=f.host.atlas_clears()==previous+1 && f.host.compare_legacy(960,720,1.f);
     detail::Text text;
     auto old_layout=text.shape(u"Station",18);
@@ -202,16 +202,16 @@ void presentation_before_input(const Appearance& appearance, Report& report) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
     h.name.focus(); h.name.select(1, 1); f.settle();
-    auto settings = f.form.ui.presentation(); settings.text_size = 28;
-    auto result = f.form.ui.set_presentation(settings);
+    auto settings = f.form.ui.presentation(); settings.textSize = 28;
+    auto result = f.form.ui.setPresentation(settings);
     auto* field = f.host.frame().find(h.name);
     IMECHARPOSITION position{}; position.dwSize = sizeof(position);
     bool query = SendMessageW(f.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
-    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->text_field.editor.y : 0};
+    POINT expected{field ? field->caretX(1) : 0, field ? field->bounds.y + field->textField.editor.y : 0};
     ClientToScreen(f.host.window(), &expected);
-    bool geometry = field && field->text_size == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
-    int x = field ? field->caret_x(2) : 0;
-    int y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
+    bool geometry = field && field->textSize == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
+    int x = field ? field->caretX(2) : 0;
+    int y = field ? field->bounds.y + field->textField.editor.y + field->textField.editor.h / 2 : 0;
     SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
     SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
     auto* session = detail::access(f.form.ui).edit(f.ids.name);
@@ -253,7 +253,7 @@ void gpu_draw_list_smoke(const Appearance& appearance, Report& report, const std
     report.check("GPU-draw-list", bool(f.host.compare_gpu(960, 720, 1.f)),
                  "offscreen GPU execution agrees with the CPU reference");
     auto dark = f.form.ui.presentation(); dark.variant = ThemeVariant::dark();
-    bool accepted = bool(f.form.ui.set_presentation(dark));
+    bool accepted = bool(f.form.ui.setPresentation(dark));
     auto dark_image = f.host.compare_gpu(960, 720, 1.f);
     auto background = appearance.palette(dark.variant).background;
     report.check("GPU-dark-background", accepted && bool(dark_image) &&
@@ -282,12 +282,12 @@ void palette_override_native(const Appearance& appearance, Report& report) {
     auto first_pixel = [](const auto& image) { return Color{image.reference.pixels[0], image.reference.pixels[1], image.reference.pixels[2]}; };
     auto before = f.host.compare_gpu(960, 720, 1.f);
     report.check("PO-before", bool(before) && first_pixel(before) == original, "built-in background paints before any override");
-    auto result = f.form.ui.set_palette_overrides({{std::string(appearance.name()), ThemeVariant::light(), "background", changed}});
+    auto result = f.form.ui.setPaletteOverrides({{std::string(appearance.name()), ThemeVariant::light(), "background", changed}});
     auto after = f.host.compare_gpu(960, 720, 1.f);
     report.check("PO-override", bool(result) && bool(after) && first_pixel(after) == changed, "the next host frame paints the overridden background and the GPU agrees");
-    auto semantic = f.form.ui.semantics().effective_palette();
+    auto semantic = f.form.ui.semantics().effectivePalette();
     report.check("PO-semantic", semantic && semantic->background == changed, "the host binds its appearance so the semantic layer reads the overridden palette");
-    report.check("PO-clear", bool(f.form.ui.set_palette_overrides({})) && first_pixel(f.host.compare_gpu(960, 720, 1.f)) == original, "clearing the list restores the built-in background");
+    report.check("PO-clear", bool(f.form.ui.setPaletteOverrides({})) && first_pixel(f.host.compare_gpu(960, 720, 1.f)) == original, "clearing the list restores the built-in background");
 }
 
 std::string windows_build() {
@@ -309,7 +309,7 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
             setup=bool(h.name.focus());
             if(scenario==1) setup=setup && bool(state.select(f.ids.name,0,2));
             if(scenario==2) setup=setup && bool(state.composition_update(u"\u3118\u311c\u02cb",3));
-            if(scenario==3) { setup=setup && bool(h.name.set_value(u"")); h.apply.invoke(); setup=setup && h.name.describe()->invalid; }
+            if(scenario==3) { setup=setup && bool(h.name.setValue(u"")); h.apply.invoke(); setup=setup && h.name.describe()->invalid; }
             if(scenario==4) { setup=bool(h.region.focus()) && bool(h.region.open()); f.tap(VK_DOWN); f.tap(VK_DOWN); setup=setup && h.region.describe()->candidate==OptionValue{"south"}; }
         } else if(scenario<8) {
             setup=bool(h.tabs.activate({"v02"})); auto& list=*f.form.list;
@@ -320,7 +320,7 @@ void draw_list_initial(const Appearance& appearance, Report& report, std::ofstre
         } else {
             setup=bool(h.tabs.activate({"v03"}));
             if(scenario==8) { std::uint64_t now=GetTickCount64(); state.tooltip_clock([&]{return now;}); SendMessageW(f.host.window(),WM_SETFOCUS,0,0); setup=setup && bool(h.progress_half.focus()); f.tap(VK_RIGHT); f.settle(); now+=600; state.tooltip_time(now); setup=setup && *h.progress_tip.visible(); state.tooltip_clock({}); }
-            if(scenario==9) { state.set_system_keyboard_cues(true); setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.is_open(); }
+            if(scenario==9) { state.set_system_keyboard_cues(true); setup=setup && bool(h.dialog_open.invoke()) && *h.dialog.isOpen(); }
         }
         int width=960,height=720;
         if(scenario==6 && setup) {
@@ -374,7 +374,7 @@ int demo_compare(const std::filesystem::path& evidence) {
     std::ofstream out(evidence / "demo-render-compare.tsv");
     out << "scenario\tappearance\tvariant\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\troles\tfailed_roles\tregions\tstatus\n";
     int failures=0, rows=0;
-    for (const auto* appearance : {&web_appearance(), &material_appearance()})
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()})
     for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<9; ++scenario) {
         settings_demo::AboutInfo info;
         info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
@@ -385,18 +385,18 @@ int demo_compare(const std::filesystem::path& evidence) {
         ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.force_scale(scale); host.client_size(scale==1.f?960:640,scale==1.f?720:480);
         SendMessageW(host.window(),WM_SETFOCUS,0,0); host.pump();
         auto settings=demo.ui.presentation(); settings.variant=dark?ThemeVariant::dark():ThemeVariant::light();
-        bool setup=bool(demo.ui.set_presentation(settings));
+        bool setup=bool(demo.ui.setPresentation(settings));
         auto tap=[&](WPARAM key){ PostMessageW(host.window(),WM_KEYDOWN,key,key_lparam(key,false,false)); PostMessageW(host.window(),WM_KEYUP,key,key_lparam(key,false,true)); host.pump(); };
         if(scenario==2 || scenario==7) detail::access(demo.ui).set_system_keyboard_cues(true);  // indicator shown, as after a key press; programmatic focus alone does not show it
         if(scenario==0) setup &= bool(demo.name.focus());
-        if(scenario==1) { setup &= bool(demo.name.focus()) && bool(demo.name.set_value(u"")); tap(VK_TAB); setup &= demo.name.describe()->invalid; }
+        if(scenario==1) { setup &= bool(demo.name.focus()) && bool(demo.name.setValue(u"")); tap(VK_TAB); setup &= demo.name.describe()->invalid; }
         if(scenario==2 || scenario==3) {
             setup &= bool(demo.nav.select({"items"})) && bool(demo.items_list.select({"T003"})) && bool(demo.items_list.focus());
-            if(scenario==3) setup &= bool(demo.items_edit.invoke()) && demo.item_dialog.is_open().value.value_or(false);
+            if(scenario==3) setup &= bool(demo.items_edit.invoke()) && demo.item_dialog.isOpen().value.value_or(false);
         }
         if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
         if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
-        if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.is_open().value.value_or(false); }
+        if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.request_close() && demo.close_dialog.isOpen().value.value_or(false); }
         if(scenario==7) {
             setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
             // The About page is taller since #82 added the vertical label, which pushes the centered navigation list
@@ -429,9 +429,9 @@ int demo_compare(const std::filesystem::path& evidence) {
         }
         bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
         std::string name="SD-"+std::string(1,char('a'+scenario));
-        std::string key=name+"-"+(appearance==&web_appearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
+        std::string key=name+"-"+(appearance==&webAppearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
         write_comparison_bmp(evidence/(key+"-cpu.bmp"),result.reference); emit_failure_if_needed(evidence,key,result,pass);
-        out << name << '\t' << (appearance==&web_appearance()?"web":"material") << '\t' << (dark?"dark":"light") << '\t' << (scale==1.f?"960x720":"640x480") << '\t' << scale << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
+        out << name << '\t' << (appearance==&webAppearance()?"web":"material") << '\t' << (dark?"dark":"light") << '\t' << (scale==1.f?"960x720":"640x480") << '\t' << scale << '\t' << host.renderer_name() << '\t' << windows_build() << '\t'
 #ifdef NDEBUG
             << "Release"
 #else
@@ -448,17 +448,17 @@ int demo_compare(const std::filesystem::path& evidence) {
 void tabs_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
     Fixture f(appearance, true);
     auto& h = f.form.handles;
-    h.name.set_value(u"draft");
+    h.name.setValue(u"draft");
     h.tabs.focus(); f.settle();
     f.tap(VK_RIGHT);
     bool candidate = *h.tabs.active() == OptionValue{"v01"} && h.tabs.describe()->candidate == OptionValue{"v02"};
     f.tap(VK_RETURN); f.settle();
     bool activated = *h.tabs.active() == OptionValue{"v02"} && !f.host.frame().find(h.name) && f.host.frame().find(f.form.list->handles.search);
-    f.form.list->handles.search.set_value(u"\u5171\u7528\u7bc4\u672c"); f.form.list->handles.list.select({"T006"});
+    f.form.list->handles.search.setValue(u"\u5171\u7528\u7bc4\u672c"); f.form.list->handles.list.select({"T006"});
     f.host.paint(); auto tab = f.host.frame().find(h.tabs);
     auto first = tab->options[0]; POINT point{first.x + first.w / 2, first.y + first.h / 2};
     f.mouse(WM_LBUTTONDOWN, point, MK_LBUTTON); f.mouse(WM_LBUTTONUP, point); f.settle();
-    bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && f.form.list->handles.search.set_value(u"blocked").status == Status::hidden;
+    bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && f.form.list->handles.search.setValue(u"blocked").status == Status::hidden;
     h.tabs.activate({"v02"});
     bool retained = *f.form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && f.form.list->selection() == OptionValue{"T006"};
     f.form.list->handles.reset.invoke();
@@ -483,8 +483,8 @@ void progress_native(const Appearance& appearance, Report& report, const std::fi
         auto path = folder / (report.appearance + (c.source == 50 ? "-v03-50.bmp" : "-v03-p07.bmp"));
         auto frame = f.host.render(960, 720, 1.f, path, &pixels);
         const auto* item = frame.find(h.progress);
-        if (!item || item->progress_track.w < 4) { passed = false; continue; }
-        auto track = item->progress_track;
+        if (!item || item->progressTrack.w < 4) { passed = false; continue; }
+        auto track = item->progressTrack;
         auto at = [&](int x) {
             auto i = (static_cast<std::size_t>((track.y + track.h / 2)) * pixels.width + x) * 4;
             return Color{pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]};
@@ -495,7 +495,7 @@ void progress_native(const Appearance& appearance, Report& report, const std::fi
         auto expected_left = c.displayed >= 50 ? palette.accent : palette.border;
         auto expected_right = c.displayed == 100 ? palette.accent : palette.border;
         auto number = std::to_string(c.source);
-        passed = passed && f.form.progress() == c.source && h.progress.describe()->numeric_value == c.displayed &&
+        passed = passed && f.form.progress() == c.source && h.progress.describe()->numericValue == c.displayed &&
             h.progress_source.describe()->value.find(std::u16string(number.begin(), number.end())) != std::u16string::npos &&
             matches(quarter, expected_left) && matches(three_quarters, expected_right);
     }
@@ -601,7 +601,7 @@ void hover_native(const Appearance& appearance, Report& report) {
     activate();
     // The switch hides the overlay while the target stays queryable.
     auto settings = ui.presentation(); settings.hover = Hover::off;
-    ui.set_presentation(settings);
+    ui.setPresentation(settings);
     send(WM_MOUSEMOVE, f.center(half));
     auto switched = f.host.compare_gpu(960, 720, 1.f);
     bool off_hidden = hovered(half) && bool(switched) && (switched.roles & static_cast<unsigned>(detail::PaintRole::hover)) == 0;
@@ -653,7 +653,7 @@ void focus_visibility_native(const Appearance& appearance, Report& report) {
     Fixture f(appearance, true);
     auto& state = detail::access(f.form.ui);
     BOOL system_on = FALSE; SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &system_on, 0);
-    auto shown = [&] { return f.form.ui.focus_indicator_visible(); };
+    auto shown = [&] { return f.form.ui.focusIndicatorVisible(); };
     state.set_system_keyboard_cues(false);  // deterministic start whatever the desktop setting is
     bool started_hidden = !shown();
     f.tap(VK_TAB);
@@ -718,28 +718,28 @@ void dialog_native(const Appearance& appearance, Report& report, const std::file
     }
     POINT mask{1, 1};
     f.mouse(WM_LBUTTONDOWN, mask, MK_LBUTTON); f.mouse(WM_LBUTTONUP, mask); f.settle();
-    bool shield = *h.dialog.is_open() && h.dialog_cancel.describe()->focused && f.form.progress() == 50;
+    bool shield = *h.dialog.isOpen() && h.dialog_cancel.describe()->focused && f.form.progress() == 50;
     f.tap(VK_TAB);
     bool tab = h.dialog_confirm.describe()->focused;
     f.key(VK_RETURN); f.key(VK_RETURN, true); f.key_up(VK_RETURN); f.settle();
-    bool once = f.form.progress() == 0 && f.form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused && !*h.dialog.is_open();
+    bool once = f.form.progress() == 0 && f.form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused && !*h.dialog.isOpen();
     report.check("P02-P03-dialog", initial && shield && tab && once,
         "Dialog overlays the window, mask blocks pointer, Tab reaches confirm, held Enter settles once and restores focus");
     report.check("P03-dialog-layout", geometry, "Dialog buttons are visible and hit at 960x720 and 640x480 DIP, at forced 100% and 150%");
     h.reset_v03.invoke(); h.dialog_open.invoke(); f.tap(VK_ESCAPE); f.settle();
-    report.check("P01-dialog-escape", f.form.progress() == 50 && f.form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused && !*h.dialog.is_open(),
+    report.check("P01-dialog-escape", f.form.progress() == 50 && f.form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused && !*h.dialog.isOpen(),
         "Escape cancels and returns focus without changing progress");
 }
 
 void font_diagnostic_reaches_application(const Appearance& appearance, Report& report) {
     Ui ui;
-    auto label=ui.add_label({.id="missing-font-glyph",.value=u"\U0010ffff"});
+    auto label=ui.addLabel({.id="missing-font-glyph",.value=u"\U0010ffff"});
     std::vector<RenderDiagnostic> events;
     DesktopHost* active=nullptr; int depth=0, maximum_depth=0;
-    auto initial=ui.presentation(); initial.font_family=u"LcarsUI definitely absent";
-    ui.set_presentation(initial);
+    auto initial=ui.presentation(); initial.fontFamily=u"LcarsUI definitely absent";
+    ui.setPresentation(initial);
     DesktopConfig options;
-    options.on_diagnostic=[&](const RenderDiagnostic& event) {
+    options.onDiagnostic=[&](const RenderDiagnostic& event) {
         ++depth; maximum_depth=std::max(maximum_depth,depth); events.push_back(event);
         if(active && event.code=="font.family_unavailable") active->paint();
         --depth;
@@ -749,7 +749,7 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
     active=&host;
     host.client_size(200,100); host.paint(); host.paint();
     auto dark=ui.presentation(); dark.variant=ThemeVariant::dark();
-    bool dark_accepted=bool(ui.set_presentation(dark));
+    bool dark_accepted=bool(ui.setPresentation(dark));
     host.observe_paint(true); host.paint();
     auto dark_text=appearance.palette(ThemeVariant::dark()).text;
     bool dark_missing=std::any_of(host.paint_observations().begin(),host.paint_observations().end(),[&](const auto& event) {
@@ -757,13 +757,13 @@ void font_diagnostic_reaches_application(const Appearance& appearance, Report& r
             event.color.r==dark_text.r && event.color.g==dark_text.g && event.color.b==dark_text.b;
     });
     report.check("dark-missing-glyph",dark_accepted && dark_missing,"Missing glyph receives the dark text color");
-    auto changed=ui.presentation(); changed.font_family=u"LcarsUI another absent family";
-    bool accepted=bool(ui.set_presentation(changed)); host.pump();
+    auto changed=ui.presentation(); changed.fontFamily=u"LcarsUI another absent family";
+    bool accepted=bool(ui.setPresentation(changed)); host.pump();
     auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {
-        return e.code=="text.glyph_missing" && e.native_code==0x10ffff && e.ui_environment==&ui && e.severity==DiagnosticSeverity::info;
+        return e.code=="text.glyph_missing" && e.nativeCode==0x10ffff && e.uiEnvironment==&ui && e.severity==DiagnosticSeverity::info;
     });
-    bool family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.native_message.find("LcarsUI definitely absent")!=std::string::npos;})==1;
-    bool changed_family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.native_message.find("LcarsUI another absent family")!=std::string::npos;})==1;
+    bool family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("LcarsUI definitely absent")!=std::string::npos;})==1;
+    bool changed_family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("LcarsUI another absent family")!=std::string::npos;})==1;
     report.check("font-diagnostic",count==1 && family && accepted && changed_family && maximum_depth==1,"font diagnostics reach the application once without recursive callbacks");
 }
 
@@ -804,10 +804,10 @@ void long_dropdown_native(const Appearance& appearance, Report& report) {
     std::optional<OptionValue> value=OptionValue{"0"}; std::function<void()> changed; bool invoked=false;
     Ui ui; ScrollState scroll; std::vector<OptionItem> options;
     for (int i=0; i<150; ++i) { auto id=std::to_string(i); options.push_back({{id},std::u16string(id.begin(),id.end())}); }
-    auto dropdown=ui.add_dropdown({.id="native.dropdown",.label=u"Font"},std::move(options)).value.value();
-    auto other=ui.add_button({.id="native.other",.label=u"Other"}).value.value();
-    dropdown.connect_source({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
-    dropdown.connect_immediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
+    auto dropdown=ui.addDropdown({.id="native.dropdown",.label=u"Font"},std::move(options)).value.value();
+    auto other=ui.addButton({.id="native.other",.label=u"Other"}).value.value();
+    dropdown.connectSource({[&] { return value; },[&](auto f) { changed=std::move(f); return [&] { changed={}; }; }});
+    dropdown.connectImmediate([&](const Change<DropdownHandle>& c) { value=c.value; if (changed) changed(); return Result{}; });
     other.bind([&] { invoked=true; return Result{}; });
     auto root=layout::row({layout::component(dropdown),layout::component(other)},8);
     DesktopConfig settings; DesktopHost host(ui,appearance,[&] { return root; },scroll,settings,false,true);
@@ -1002,13 +1002,13 @@ void pointer_activation_rules(const Appearance& appearance, Report& report) {
 void pointer_selection_and_clipboard(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
     auto& ui = f.form.ui;
-    detail::access(ui).set_value(f.ids.name, u"Alpha 中文");
+    detail::access(ui).setValue(f.ids.name, u"Alpha 中文");
     f.host.paint();
     const Placement field = *detail::find_placement(f.host.frame(), f.ids.name);  // a copy: repaints replace the frame
     auto x_of = [&](unsigned offset) {
-        return field.bounds.x + field.text_field.editor.x + static_cast<int>(field.run.x(offset) - field.offset);
+        return field.bounds.x + field.textField.editor.x + static_cast<int>(field.run.x(offset) - field.offset);
     };
-    int y = field.bounds.y + field.text_field.editor.y + field.text_field.editor.h / 2;
+    int y = field.bounds.y + field.textField.editor.y + field.textField.editor.h / 2;
     f.mouse(WM_LBUTTONDOWN, {x_of(5), y}, MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, {x_of(5), y});
     auto placed = detail::access(ui).edit(f.ids.name)->selection;
@@ -1021,7 +1021,7 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto dragged = detail::access(ui).edit(f.ids.name)->selection;
     detail::WindowsClipboard clipboard(f.host.window());
     auto saved = clipboard.read();
-    if (saved.status != Status::ok && saved.status != Status::not_supported) {
+    if (saved.status != Status::ok && saved.status != Status::notSupported) {
         report.check("AC08-pointer-clipboard", false, "Could not save clipboard text; test did not overwrite it");
         return;
     }
@@ -1033,7 +1033,7 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     auto pasted = detail::access(ui).text(f.ids.name);
     f.chord('Z');
     auto undone = detail::access(ui).text(f.ids.name);
-    bool restored = saved.status == Status::not_supported || (saved && clipboard.write(*saved));
+    bool restored = saved.status == Status::notSupported || (saved && clipboard.write(*saved));
     report.check("AC08-pointer-clipboard",
                  placed.anchor == 5 && placed.caret == 5 && extended.anchor == 5 && extended.caret == 8 && dragged.anchor == 0 &&
                      dragged.caret == 5 && (copied && *copied == u"Alpha") && supplied && pasted == u"X Y" && undone == u"Alpha \u4e2d\u6587" && restored,
@@ -1042,31 +1042,31 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
                      ", Ctrl+C=" + ((copied && *copied == u"Alpha") ? "ok" : copied ? "unexpected" : "unavailable") +
                      ", fixture write=" + (supplied ? "ok" : "failed") + ", Ctrl+V=" + (pasted == u"X Y" ? "ok" : "unexpected") +
                      ", Ctrl+Z=" + (undone == u"Alpha \u4e2d\u6587" ? "ok" : "unexpected") +
-                     "; user clipboard text restored=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "yes" : "FAILED"));
+                     "; user clipboard text restored=" + (saved.status == Status::notSupported ? "no text saved" : restored ? "yes" : "FAILED"));
 }
 
 // Context menu (#85) through the real window procedure: right button, menu key, Shift+F10, Alt, Space.
-// The core-seam twin is tests/context_menu.cpp; this proves the messages reach it and the menu is painted.
+// The core-seam twin is tests/contextMenu.cpp; this proves the messages reach it and the menu is painted.
 void context_menu_native(const Appearance& appearance, Report& report) {
     Fixture f(appearance);
     auto& ui = f.form.ui;
     auto& core = detail::access(ui);
     const std::string field = f.ids.name;
-    core.set_value(field, u"Alpha 中文");
+    core.setValue(field, u"Alpha 中文");
     f.settle();
     const Placement name = *detail::find_placement(f.host.frame(), field);
-    const int y = name.bounds.y + name.text_field.editor.y + name.text_field.editor.h / 2;
-    auto x_of = [&](unsigned offset) { return name.bounds.x + name.text_field.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
-    auto panel = [&]() -> const Placement* { return f.host.frame().menu_panel(); };
+    const int y = name.bounds.y + name.textField.editor.y + name.textField.editor.h / 2;
+    auto x_of = [&](unsigned offset) { return name.bounds.x + name.textField.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
+    auto panel = [&]() -> const Placement* { return f.host.frame().menuPanel(); };
     auto open = [&] { return core.menu_open(); };
     auto selection = [&] { return core.edit(field)->selection; };
     auto highlighted = [&]() -> std::string {
-        auto menu = ui.context_menu();
+        auto menu = ui.contextMenu();
         if (menu) for (const auto& item : menu->items) if (item.highlighted) return item.id;
         return {};
     };
     auto row_center = [&](std::string_view id) -> POINT {
-        for (const auto& row : panel()->menu_rows) if (row.id == id) return {row.bounds.x + row.bounds.w / 2, row.bounds.y + row.bounds.h / 2};
+        for (const auto& row : panel()->menuRows) if (row.id == id) return {row.bounds.x + row.bounds.w / 2, row.bounds.y + row.bounds.h / 2};
         return {-1, -1};
     };
     auto right_click = [&](POINT p) { f.mouse(WM_RBUTTONDOWN, p, MK_RBUTTON); f.mouse(WM_RBUTTONUP, p); f.settle(); };
@@ -1093,15 +1093,15 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     f.host.observe_paint(false);
     report.check("CM-painted", inked, std::string("labels and hints drawn as visible popup ink: ") + (inked ? "yes" : "NO"));
     // 3. Hover highlights a row; a press and release on a disabled row leaves the menu open.
-    f.mouse(WM_MOUSEMOVE, row_center(menu_cut), 0);
+    f.mouse(WM_MOUSEMOVE, row_center(menuCut), 0);
     f.settle();
-    const bool hovered = highlighted() == menu_cut;
-    left_click(row_center(menu_cut));
-    const bool stays = open() && !ui.context_menu()->items[3].enabled;
+    const bool hovered = highlighted() == menuCut;
+    left_click(row_center(menuCut));
+    const bool stays = open() && !ui.contextMenu()->items[3].enabled;
     f.mouse(WM_LBUTTONDOWN, row_center("separator:2"), MK_LBUTTON); f.mouse(WM_LBUTTONUP, row_center("separator:2")); f.settle();
     report.check("CM-hover-disabled-line", hovered && stays && open(), std::string("hover highlights cut=") + (hovered ? "yes" : "NO") + ", disabled click keeps it open=" + (stays ? "yes" : "NO") + ", a line does nothing=" + (open() ? "yes" : "NO"));
     // 4. Release on an enabled item runs it and closes the menu; focus is on the field.
-    left_click(row_center(menu_select_all));
+    left_click(row_center(menuSelectAll));
     report.check("CM-click-runs-item", !open() && selection().anchor == 0 && selection().caret == 8 && core.focused() == field,
                  "select all: selection " + std::to_string(selection().anchor) + ".." + std::to_string(selection().caret) + ", closed=" + (!open() ? "yes" : "NO"));
     // 5. Right button inside the selection keeps it; outside it moves the caret.
@@ -1118,15 +1118,15 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     // 6. Menu key opens at the caret; Down/Up walk; Escape closes and focus stays on the field.
     core.select(field, 3, 3); f.settle();
     f.tap(VK_APPS); f.settle();
-    const int caret_x = name.bounds.x + name.text_field.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
-    const int line_bottom = name.bounds.y + name.text_field.editor.y + name.text_field.editor.h;
-    const bool at_caret = open() && panel() && panel()->bounds.x == caret_x && panel()->bounds.y == line_bottom;
+    const int caretX = name.bounds.x + name.textField.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
+    const int line_bottom = name.bounds.y + name.textField.editor.y + name.textField.editor.h;
+    const bool at_caret = open() && panel() && panel()->bounds.x == caretX && panel()->bounds.y == line_bottom;
     const std::string placed = panel() ? str(panel()->bounds) : "none";
     f.key(VK_DOWN); f.key(VK_DOWN); f.key(VK_DOWN); f.settle();
-    const bool walked = highlighted() == menu_cut;
+    const bool walked = highlighted() == menuCut;
     f.tap(VK_ESCAPE); f.settle();
     report.check("CM-menu-key", at_caret && walked && !open() && core.focused() == field,
-                 std::string("menu key at caret=") + (at_caret ? "yes" : "NO") + " (panel " + placed + ", caret " + std::to_string(caret_x) + "," + std::to_string(line_bottom) + "), Down x3 lands on cut=" + (walked ? "yes" : "NO") + ", Escape closed=" + (!open() ? "yes" : "NO"));
+                 std::string("menu key at caret=") + (at_caret ? "yes" : "NO") + " (panel " + placed + ", caret " + std::to_string(caretX) + "," + std::to_string(line_bottom) + "), Down x3 lands on cut=" + (walked ? "yes" : "NO") + ", Escape closed=" + (!open() ? "yes" : "NO"));
     // 7. Shift+F10 (a system key message) opens; F10 and Alt close; their releases are not left for the system menu.
     auto with_shift = [&](auto&& act) {
         BYTE state[256]{}; GetKeyboardState(state); state[VK_SHIFT] = 0x80; SetKeyboardState(state);
@@ -1188,11 +1188,11 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     // So the application adds enough items that the menu is taller than any client this window can have.
     std::vector<MenuItem> extra;
     for (int i = 0; i < 8; ++i) extra.push_back({.id = "cm.extra" + std::to_string(i), .label = u"Extra item " + std::u16string(1, static_cast<char16_t>(u'A' + i)), .action = [](const MenuContext&) { return Result{}; }});
-    const bool extras_added = bool(ui.add_context_menu(f.form.handles.name, extra, MenuMode::append));
+    const bool extras_added = bool(ui.addContextMenu(f.form.handles.name, extra, MenuMode::append));
     core.open_menu(field, MenuPosition{20, 20}, std::nullopt); f.settle();
-    const bool scrolls = extras_added && panel() && panel()->menu_maximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
+    const bool scrolls = extras_added && panel() && panel()->menuMaximum > 0 && panel()->bounds.x >= 0 && panel()->bounds.y >= 0 &&
         panel()->bounds.x + panel()->bounds.w <= client.right && panel()->bounds.y + panel()->bounds.h <= client.bottom;
-    const int panel_height = panel() ? panel()->bounds.h : -1, panel_maximum = panel() ? panel()->menu_maximum : -1;
+    const int panel_height = panel() ? panel()->bounds.h : -1, panel_maximum = panel() ? panel()->menuMaximum : -1;
     f.mouse(WM_MOUSEWHEEL, {panel() ? panel()->bounds.x + 4 : 0, panel() ? panel()->bounds.y + 4 : 0}, MAKEWPARAM(0, -WHEEL_DELTA));
     core.close_menu();
     report.check("CM-flip-and-scroll", flipped && scrolls, std::string("flips up-left=") + (flipped ? "yes" : "NO") + ", small window scrolls inside it=" + (scrolls ? "yes" : "NO") +
@@ -1205,10 +1205,10 @@ void context_menu_native(const Appearance& appearance, Report& report) {
 // (12 cells each in 200 DIP), more than the window's minimum width shows, so the label must scroll.
 void vertical_label_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
-    auto note = ui.add_label({.id = "note", .value = std::u16string(300, u'字'),
-                              .writing_mode = WritingMode::vertical}).value.value();
+    auto note = ui.addLabel({.id = "note", .value = std::u16string(300, u'字'),
+                              .writingMode = WritingMode::vertical}).value.value();
     DesktopConfig options; options.title = u"LcarsUI vertical label verification";
-    DesktopHost host(ui, appearance, [&] { return layout::column({layout::vertical_text(note, 200)}, 0, 8); }, scroll, options, true, true);
+    DesktopHost host(ui, appearance, [&] { return layout::column({layout::verticalText(note, 200)}, 0, 8); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.force_scale(1.f);
     host.client_size(420, 300);
@@ -1224,7 +1224,7 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
     auto screen = [&](POINT p) { ClientToScreen(hwnd, &p); return MAKELPARAM(p.x, p.y); };
     auto start = region();
     report.check("VT01-starts-at-the-text-start", start && start->offset == 0 && start->maximum > 0 && label().vertical &&
-                     label().column_layout.columns[0].bounds.x + label().column_layout.columns[0].bounds.w == label().bounds.x + label().bounds.w - (label().column_layout.track.x - label().bounds.x),  // a ring's thickness in from the edge (#90): the bar starts at x = ring
+                     label().columnLayout.columns[0].bounds.x + label().columnLayout.columns[0].bounds.w == label().bounds.x + label().bounds.w - (label().columnLayout.track.x - label().bounds.x),  // a ring's thickness in from the edge (#90): the bar starts at x = ring
         "The label scrolls sideways and starts with the first column at the right edge; maximum=" + std::to_string(start ? start->maximum : -1));
     const auto bounds = label().bounds;
     POINT inside{bounds.x + bounds.w / 2, bounds.y + 40};
@@ -1278,9 +1278,9 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
 void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>();
-    auto note = ui.add_text_field({.id = "note", .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
-    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    auto note = ui.addTextField({.id = "note", .label = u"Note", .multiline = true, .visibleLines = 3}).value.value();
+    note.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     DesktopConfig options; options.title = u"LcarsUI multi-line verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1300,7 +1300,7 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     };
     auto placed = [&]() { return *detail::find_placement(host.frame(), "note"); };  // a copy: repaints replace the frame
     auto caret = [&]() { return detail::access(ui).edit("note")->selection; };
-    auto line = [&] { return note.scroll_line().value.value_or(~0u); };
+    auto line = [&] { return note.scrollLine().value.value_or(~0u); };
     note.focus(); host.pump(); host.paint();
     for (char16_t digit = u'1'; digit <= u'6'; ++digit) {
         post(WM_CHAR, digit, 1);
@@ -1310,12 +1310,12 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     report.check("ML01-enter-and-reveal", first_text == u"1\n2\n3\n4\n5\n6" && line() == 3 && placed().view.lines.size() == 6,
         "Enter breaks lines through WM_KEYDOWN, typing to line six scrolls to the caret; first line=" + std::to_string(line()));
     key(VK_PRIOR);
-    const bool page_up = caret().caret == 5 && line() == 0;  // three lines up, keeping the column after the last character
+    const bool pageUp = caret().caret == 5 && line() == 0;  // three lines up, keeping the column after the last character
     key(VK_END, true);
     const bool ctrl_end = caret().caret == 11 && line() == 3;
     key(VK_HOME, true, true);
-    report.check("ML02-cursor-keys", page_up && ctrl_end && caret().anchor == 11 && caret().caret == 0 && line() == 0,
-        "PageUp moves a page, Ctrl+End and Shift+Ctrl+Home move over the whole text and extend the selection; PageUp=" + std::to_string(page_up) + ", Ctrl+End=" + std::to_string(ctrl_end) +
+    report.check("ML02-cursor-keys", pageUp && ctrl_end && caret().anchor == 11 && caret().caret == 0 && line() == 0,
+        "PageUp moves a page, Ctrl+End and Shift+Ctrl+Home move over the whole text and extend the selection; PageUp=" + std::to_string(pageUp) + ", Ctrl+End=" + std::to_string(ctrl_end) +
         ", selection=" + std::to_string(caret().anchor) + ".." + std::to_string(caret().caret) + ", first line=" + std::to_string(line()));
 
     auto field = placed();
@@ -1338,14 +1338,14 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     report.check("ML04-thumb-drag", thumb.h > 0 && top == 0, "Dragging the field's scrollbar thumb to the top scrolls to the first line; line " + std::to_string(top));
 
     field = placed();
-    auto row = [&](int index) { return POINT{field.view.text.x + 2, field.view.text.y + index * field.view.line_height + 3}; };
+    auto row = [&](int index) { return POINT{field.view.text.x + 2, field.view.text.y + index * field.view.lineHeight + 3}; };
     post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(1).x, row(1).y));
     post(WM_LBUTTONUP, 0, MAKELPARAM(row(1).x, row(1).y));
     const auto clicked = caret();
     post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(row(0).x, row(0).y));
     post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, row(2).y));
     const auto dragged = caret();
-    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, field.view.text.y + 3 * field.view.line_height + 8));
+    post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(row(2).x, field.view.text.y + 3 * field.view.lineHeight + 8));
     const unsigned scrolled_by_drag = line();
     post(WM_LBUTTONUP, 0, MAKELPARAM(row(2).x, row(2).y));
     report.check("ML05-click-and-drag", clicked.caret == 2 && clicked.anchor == 2 && dragged.anchor == 0 && dragged.caret == 4 && scrolled_by_drag >= 1,
@@ -1357,9 +1357,9 @@ void multiline_native(const Appearance& appearance, Report& report, const std::f
     detail::access(ui).composition_update(u"你", 1); host.paint();
     IMECHARPOSITION info{}; info.dwSize = sizeof(info); info.dwCharPos = 0;
     auto handled = SendMessageW(hwnd, WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&info));
-    auto anchor = placed().caret_rect(8);  // dwCharPos 0 is the start of the composition
+    auto anchor = placed().caretRect(8);  // dwCharPos 0 is the start of the composition
     POINT expected{anchor.x, anchor.y}; ClientToScreen(hwnd, &expected);
-    report.check("ML06-ime-anchor", handled == 1 && info.pt.x == expected.x && info.pt.y == expected.y && info.cLineHeight == static_cast<UINT>(anchor.h) && anchor.h == placed().view.line_height,
+    report.check("ML06-ime-anchor", handled == 1 && info.pt.x == expected.x && info.pt.y == expected.y && info.cLineHeight == static_cast<UINT>(anchor.h) && anchor.h == placed().view.lineHeight,
         "The input method asks where the caret is and is told the caret's own line, not the field's top; y=" + std::to_string(info.pt.y) + " expected " + std::to_string(expected.y));
     detail::access(ui).composition_cancel();
 }
@@ -1371,14 +1371,14 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     Ui ui; ScrollState scroll;
     auto make = [&](const char* id, std::u16string value) {
         auto model = std::make_shared<RichText>(RichText{value, {}});
-        auto field = ui.add_text_field({.id = id, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
-        field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-        field.connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; });
+        auto field = ui.addTextField({.id = id, .label = u"Note", .value = std::move(value), .multiline = true, .visibleLines = 3, .rich = true}).value.value();
+        field.connectRichSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+        field.connectRichConfirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; });
         return field;
     };
     auto note = make("note", u"Alpha 重要 Beta");
     auto other = make("other", u"");
-    note.set_colors({{"red", {200, 0, 0}, {255, 140, 140}}});
+    note.setColors({{"red", {200, 0, 0}, {255, 140, 140}}});
     DesktopConfig options; options.title = u"LcarsUI rich text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note), layout::component(other)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1396,7 +1396,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
         state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
         SetKeyboardState(state);
     };
-    auto spans = [&](const TextFieldHandle& field) { return field.rich_value()->spans; };
+    auto spans = [&](const TextFieldHandle& field) { return field.richValue()->spans; };
 
     note.focus(); host.pump(); host.paint();
     note.select(0, 5);
@@ -1405,26 +1405,26 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     key('I', true); key('U', true);
     note.select(6, 8);
     key('U', true);
-    note.set_style(9, 13, {.color = "red"});
+    note.setStyle(9, 13, {.color = "red"});
     host.observe_paint(true); host.paint();
     const auto& seen = host.paint_observations();
     auto find_text = [&](std::u16string_view text) { return std::find_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == text; }); };
     auto alpha = find_text(u"Alpha"), red = find_text(u"Beta");
-    const auto light_text = detail::access(ui).effective_palette(appearance).text;
+    const auto light_text = detail::access(ui).effectivePalette(appearance).text;
     report.check("RT01-faces-colors-underline", bold_applied && alpha != seen.end() && alpha->bold && alpha->italic && alpha->color == light_text &&
                      red != seen.end() && !red->bold && red->color == Color{200, 0, 0} &&
                      std::count_if(seen.begin(), seen.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::fill && o.owner == "note" && o.bounds.h <= 2 && o.bounds.w > 8 && o.color == light_text; }) >= 1,
                  std::string("Ctrl+B/I/U through WM_KEYDOWN style the selection; the host draws the run bold+italic with a thin underline rect, and the red run in the light value of its name; bold=") +
                      (alpha != seen.end() && alpha->bold ? "yes" : "no") + ", italic=" + (alpha != seen.end() && alpha->italic ? "yes" : "no"));
     if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-light.bmp"));  // evidence: faces and colors, light theme
-    ui.set_presentation({.variant = ThemeVariant::dark()});
+    ui.setPresentation({.variant = ThemeVariant::dark()});
     host.paint();
     const auto& dark = host.paint_observations();
     auto dark_red = std::find_if(dark.begin(), dark.end(), [&](const auto& o) { return o.type == detail::PaintObservation::Type::text && o.owner == "note" && o.text == u"Beta"; });
     report.check("RT02-theme-recolors-by-name", dark_red != dark.end() && dark_red->color == Color{255, 140, 140},
                  "After switching to the dark theme the same color name is drawn in its dark value");
     if (!folder.empty()) host.render(600, 260, 1.f, folder / (report.appearance + "-richtext-dark.bmp"));
-    ui.set_presentation({});
+    ui.setPresentation({});
     host.observe_paint(false); host.paint();
 
     // Typing takes the previous character's style; the real clipboard carries the styles between two fields
@@ -1435,17 +1435,17 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     detail::WindowsClipboard clipboard(host.window());
     auto saved = clipboard.read();
     bool kept = false, plain_ok = false, copied = false;
-    if (saved.status == Status::ok || saved.status == Status::not_supported) {
+    if (saved.status == Status::ok || saved.status == Status::notSupported) {
         note.select(0, 5);
         key('C', true);
         other.focus(); host.pump(); host.paint();
         key('V', true);
-        kept = other.rich_value()->text == u"Alpha" && !spans(other).empty() && spans(other).front().bold && spans(other).front().italic && spans(other).front().underline;
+        kept = other.richValue()->text == u"Alpha" && !spans(other).empty() && spans(other).front().bold && spans(other).front().italic && spans(other).front().underline;
         copied = true;
         other.select(5, 5);
         clipboard.write(u"plain");
         key('V', true);
-        plain_ok = other.rich_value()->text == u"Alphaplain" && !spans(other).empty() && spans(other).front().length == 10;  // plain text from elsewhere follows the previous character
+        plain_ok = other.richValue()->text == u"Alphaplain" && !spans(other).empty() && spans(other).front().length == 10;  // plain text from elsewhere follows the previous character
         if (saved.status == Status::ok) clipboard.write(*saved);
     }
     report.check("RT03-typing-and-real-clipboard", typed_bold && (!copied || (kept && plain_ok)),
@@ -1460,15 +1460,15 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
 void word_select_native(const Appearance& appearance, Report& report) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
-    auto field_handle = ui.add_text_field({.id = "line", .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
-    field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    field_handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    auto field_handle = ui.addTextField({.id = "line", .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    field_handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    field_handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
-    auto note = ui.add_text_field({.id = "note", .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
-    note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
-    field_handle.set_word_segmentation(WordSegmentation::per_character);
-    note.set_word_segmentation(WordSegmentation::per_character);
+    auto note = ui.addTextField({.id = "note", .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visibleLines = 4}).value.value();
+    note.connectSource({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
+    note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    field_handle.setWordSegmentation(WordSegmentation::perCharacter);
+    note.setWordSegmentation(WordSegmentation::perCharacter);
     DesktopConfig options; options.title = u"LcarsUI word selection verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(field_handle), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1489,7 +1489,7 @@ void word_select_native(const Appearance& appearance, Report& report) {
     auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
     auto selection = [&](const char* id) { return detail::access(ui).edit(id)->selection; };
     // The middle of the character starting at `offset` in the single-line field, and of a row's first characters in the note.
-    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, p.bounds.y + p.text_field.editor.y + p.text_field.editor.h / 2}; };
+    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caretX(offset) + p.caretX(offset + 1)) / 2, p.bounds.y + p.textField.editor.y + p.textField.editor.h / 2}; };
     auto click = [&](POINT point) { post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y)); post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y)); };
     auto range = [&](const char* id) { auto s = selection(id); return std::to_string(std::min(s.anchor, s.caret)) + ".." + std::to_string(std::max(s.anchor, s.caret)); };
     field_handle.focus(); host.pump(); host.paint();
@@ -1532,7 +1532,7 @@ void word_select_native(const Appearance& appearance, Report& report) {
         "Ctrl+Right stops at 6 10 11 16; Ctrl+Shift+Left selects " + extended + "; Ctrl+Backspace then removes only the selection (text length " + std::to_string(after_delete.size()) + ")");
 
     note.focus(); host.pump(); host.paint();
-    auto row = [&](int index) { auto p = placed("note"); return POINT{p.view.text.x + 10, p.view.text.y + index * p.view.line_height + p.view.line_height / 2}; };
+    auto row = [&](int index) { auto p = placed("note"); return POINT{p.view.text.x + 10, p.view.text.y + index * p.view.lineHeight + p.view.lineHeight / 2}; };
     Sleep(GetDoubleClickTime() + 150);
     click(row(1)); click(row(1)); click(row(1));
     report.check("WS05-triple-click-paragraph", range("note") == "8..18",
@@ -1549,10 +1549,10 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
         u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(text);
-    auto sample = ui.add_label({.id = "sample", .value = text, .text_align = TextAlign::justify}).value.value();
-    auto note = ui.add_text_field({.id = "note", .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
-    note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    auto sample = ui.addLabel({.id = "sample", .value = text, .textAlign = TextAlign::justify}).value.value();
+    auto note = ui.addTextField({.id = "note", .label = u"Note", .value = text, .multiline = true, .visibleLines = 6, .textAlign = TextAlign::justify}).value.value();
+    note.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     DesktopConfig options; options.title = u"LcarsUI justified text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(sample), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1577,7 +1577,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
         const auto content_end = static_cast<unsigned>(line.text.find_last_not_of(u' ') + 1);
         float right = 0;
         for (const auto& piece : line.segments)
-            if (piece.begin < content_end) right = static_cast<float>(line.bounds.x - label.bounds.x) + piece.x + measure.measure(line.text.substr(piece.begin, std::min(piece.end, content_end) - piece.begin), label.text_size).width;
+            if (piece.begin < content_end) right = static_cast<float>(line.bounds.x - label.bounds.x) + piece.x + measure.measure(line.text.substr(piece.begin, std::min(piece.end, content_end) - piece.begin), label.textSize).width;
         label_flush &= std::abs(right - static_cast<float>(label.bounds.w)) <= 2.f;
         label_detail += " line " + std::to_string(i) + " right=" + std::to_string(right) + ";";
     }
@@ -1591,7 +1591,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
         const auto& line = field.view.lines[i];
         const auto visible = std::u16string_view(text).substr(line.begin, line.end - line.begin);
         const auto content_end = line.begin + static_cast<unsigned>(visible.find_last_not_of(u' ') + 1);
-        const float right = field.view.x_in_line(i, content_end); field_detail += " [" + std::to_string(i) + ": soft=" + std::to_string(line.soft) + " pieces=" + std::to_string(line.segments.size()) + " right=" + std::to_string(right) + "]";
+        const float right = field.view.xInLine(i, content_end); field_detail += " [" + std::to_string(i) + ": soft=" + std::to_string(line.soft) + " pieces=" + std::to_string(line.segments.size()) + " right=" + std::to_string(right) + "]";
         // A line that happens to fill the width exactly (31 wide characters) needs no stretching and has no pieces.
         if (line.soft) { if (edge == 0) edge = right; stretched_lines += line.segments.size() > 1; field_flush &= std::abs(right - edge) <= 2.f; }
         else field_flush &= line.segments.empty();
@@ -1601,14 +1601,14 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     // JU03: a real click at every drawn caret stop of line 0 puts the caret there.
     detail::access(ui).focus("note"); host.pump(); host.paint();
     field = placed("note");
-    const int y0 = field.view.row_y(0) + field.view.row_height / 2;
+    const int y0 = field.view.rowY(0) + field.view.rowHeight / 2;
     unsigned wrong = 0, probed = 0;
     std::string wrong_detail;
-    const int y_reset = field.view.row_y(3) + field.view.row_height / 2;
+    const int y_reset = field.view.rowY(3) + field.view.rowHeight / 2;
     const auto first_stops = field.view.lines[0].run.stops;  // a copy: repainting replaces the view
     for (const auto& stop : first_stops) {
         const unsigned offset = field.view.lines[0].begin + stop.first;
-        const int x = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(0, offset)));
+        const int x = field.view.text.x + static_cast<int>(std::lround(field.view.xInLine(0, offset)));
         // A click elsewhere first, so two probes close together are never taken for a double click.
         post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y_reset)); post(WM_LBUTTONUP, 0, MAKELPARAM(field.view.text.x + 1, y_reset));
         post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y0)); post(WM_LBUTTONUP, 0, MAKELPARAM(x, y0));
@@ -1621,8 +1621,8 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     // JU04: a drag into the second line selects up to the character under the pointer.
     const auto& second = field.view.lines[1];
     const unsigned target = second.begin + second.run.stops[second.run.stops.size() / 2].first;
-    const int y1 = field.view.row_y(1) + field.view.row_height / 2;
-    const int x1 = field.view.text.x + static_cast<int>(std::lround(field.view.x_in_line(1, target)));
+    const int y1 = field.view.rowY(1) + field.view.rowHeight / 2;
+    const int x1 = field.view.text.x + static_cast<int>(std::lround(field.view.xInLine(1, target)));
     post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(field.view.text.x + 1, y0));
     post(WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x1, y1));
     const auto dragged = caret();
@@ -1631,12 +1631,12 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     report.check("JU04-drag-select", dragged.anchor == 0 && dragged.caret == target, "A drag into the second line selects to the drawn character; selection=" + std::to_string(dragged.anchor) + ".." + std::to_string(dragged.caret) + ", expected " + std::to_string(target));
 
     // JU05: the user's setting draws both left-aligned and changes no property; the UIA-facing node still says justify.
-    auto settings = ui.presentation(); settings.justify_as_left = true;
-    ui.set_presentation(settings); host.pump(); host.paint();
+    auto settings = ui.presentation(); settings.justifyAsLeft = true;
+    ui.setPresentation(settings); host.pump(); host.paint();
     label = placed("sample"); field = placed("note");
     bool left = std::all_of(label.lines.begin(), label.lines.end(), [](const Line& l) { return l.segments.empty(); }) &&
                 std::all_of(field.view.lines.begin(), field.view.lines.end(), [](const TextFieldLine& l) { return l.segments.empty() && l.shift == 0; });
-    report.check("JU05-user-setting", left && *sample.text_align() == TextAlign::justify && *note.text_align() == TextAlign::justify,
+    report.check("JU05-user-setting", left && *sample.textAlign() == TextAlign::justify && *note.textAlign() == TextAlign::justify,
                  "With 'justified text as left' on both draw left-aligned and keep their property");
 }
 
@@ -1646,11 +1646,11 @@ void clipboard_contention(const Appearance& appearance, Report& report) {
     auto& ui = detail::access(f.form.ui);
     detail::WindowsClipboard clipboard(f.host.window());
     auto saved = clipboard.read();
-    if (saved.status != Status::ok && saved.status != Status::not_supported) {
+    if (saved.status != Status::ok && saved.status != Status::notSupported) {
         report.check("AC08-clipboard-contention", false, "Could not save clipboard text; test did not overwrite it");
         return;
     }
-    ui.set_value(f.ids.name, u"Alpha");
+    ui.setValue(f.ids.name, u"Alpha");
     ui.focus(f.ids.name);
     ui.select(f.ids.name, 0, 5);
 
@@ -1678,10 +1678,10 @@ void clipboard_contention(const Appearance& appearance, Report& report) {
     f.chord('A');
     bool held_paste = held_during([&] { f.chord('V'); });
     auto pasted = ui.text(f.ids.name);
-    bool restored = saved.status == Status::not_supported || (saved && clipboard.write(*saved));
+    bool restored = saved.status == Status::notSupported || (saved && clipboard.write(*saved));
     report.check("AC08-clipboard-contention", held_copy && (copied && *copied == u"Alpha") && supplied && held_paste && pasted == u"X Y" && restored,
                  std::string("60ms clipboard hold: copy=") + ((copied && *copied == u"Alpha") ? "ok" : "failed") + ", paste=" + (pasted == u"X Y" ? "ok" : "failed") +
-                     ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (saved.status == Status::not_supported ? "no text saved" : restored ? "ok" : "failed"));
+                     ", fixture write=" + (supplied ? "ok" : "failed") + ", clipboard text restore=" + (saved.status == Status::notSupported ? "no text saved" : restored ? "ok" : "failed"));
 }
 
 void checkbox_and_radio_native(const Appearance& appearance, Report& report) {
@@ -1711,7 +1711,7 @@ void checkbox_and_radio_native(const Appearance& appearance, Report& report) {
         f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
     }
     bool disabled = *f.form.handles.mode.draft() == OptionValue{"focus"};
-    f.form.handles.mode.enable_option({"offline"}, true);
+    f.form.handles.mode.enableOption({"offline"}, true);
     f.host.paint(); item = f.host.frame().find(f.form.handles.mode);
     if (item && item->options.size() == 3) {
         auto r = item->options[2]; POINT p{r.x + r.w / 2, r.y + r.h / 2};
@@ -1735,7 +1735,7 @@ void slider_native(const Appearance& appearance, Report& report) {
     const auto* item = f.host.frame().find(f.form.handles.volume);
     bool dragged = false, held = false, released = false, canceled = false;
     if (item) {
-        auto r = item->slider_track; const std::string id = item->id;
+        auto r = item->sliderTrack; const std::string id = item->id;
         POINT start{r.x, r.y + r.h / 2}, middle{r.x + r.w / 2, r.y + r.h / 2};
         f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON);
         bool at_start = *f.form.handles.volume.draft() == 0;
@@ -1758,7 +1758,7 @@ void slider_native(const Appearance& appearance, Report& report) {
     dragged = dragged && held && released && canceled;
     bool applied = f.form.volume_applied() == 40 && bool(f.form.handles.apply.invoke()) && f.form.volume_applied() == 50;
     f.form.handles.disabled.invoke();
-    bool disabled = f.form.handles.volume.set_value(75).status == Status::disabled && *f.form.handles.volume.draft() == 50;
+    bool disabled = f.form.handles.volume.setValue(75).status == Status::disabled && *f.form.handles.volume.draft() == 50;
     report.check("F09-slider", step && home && end && dragged && applied && disabled,
         "arrow=" + std::to_string(step) + ", Home=" + std::to_string(home) + ", End=" + std::to_string(end) +
         ", native drag=" + std::to_string(dragged) + " (held=" + std::to_string(held) + ", released=" + std::to_string(released) + ", canceled=" + std::to_string(canceled) + "), apply=" + std::to_string(applied) + ", disabled=" + std::to_string(disabled));
@@ -1818,7 +1818,7 @@ void slider_animation_native(const Appearance& appearance, Report& report) {
         state.set_system_keyboard_cues(!cues_on);  // the recorded values are stale on purpose
         system_on = false;
         SendMessageW(f.host.window(), WM_SETTINGCHANGE, 0, 0); f.host.pump();
-        const bool cues_reread = ui.focus_indicator_visible() == (cues_on != FALSE);
+        const bool cues_reread = ui.focusIndicatorVisible() == (cues_on != FALSE);
         tap_now(VK_RIGHT);
         const bool animation_reread = !animating();  // off now: the arrow key lands at once
         state.pointer_pressed();
@@ -2209,12 +2209,12 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 } else {
                     for (int y = bar.track.y; y < bar.track.y + bar.track.h && target < 0; ++y) {
                         int top = y - bar.thumb.h / 2;
-                        int n = bar.offset_for_thumb(top);
+                        int n = bar.offsetForThumb(top);
                         if (!desired(n)) continue;
                         for (int start = 0; start <= bar.maximum; ++start) {
                             if (n == start || height_at(start) <= 0) continue;
-                            int thumb_top = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
-                            if (input == 1 && y >= thumb_top && y < thumb_top + bar.thumb.h) continue;
+                            int thumbTop = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
+                            if (input == 1 && y >= thumbTop && y < thumbTop + bar.thumb.h) continue;
                             target = n; before = start; pointer_y = y; break;
                         }
                     }
@@ -2224,7 +2224,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 if (target < 0) { report.na(case_id, detail + ": no visible starting offset and reachable endpoint; anchor top=" +
                     std::to_string(original_top) + ", height=" + std::to_string(anchor->bounds.h) + ", clip=" + str(anchor->clip) +
                     ", maximum=" + std::to_string(bar.maximum) + ", track=" + str(bar.track) + ", thumb height=" + std::to_string(bar.thumb.h)); continue; }
-                geometry.scroll_to(f.form.ui, f.form.scroll, before); f.host.paint();
+                geometry.scrollTo(f.form.ui, f.form.scroll, before); f.host.paint();
                 region.focus(); region.open(); f.tap(VK_DOWN); f.tap(VK_DOWN); f.settle();
                 bool candidate = region.describe()->expanded && region.describe()->candidate == OptionValue{"south"};
                 if (input == 0) {
@@ -2276,7 +2276,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 ", wheel=" + std::to_string(wheel) + ", End again=" + std::to_string(restored));
 
             h.tabs.activate({"v03"}); f.settle();
-            auto open_dialog = [&] { h.dialog_open.focus(); h.dialog_open.invoke(); f.settle(); return *h.dialog.is_open(); };
+            auto open_dialog = [&] { h.dialog_open.focus(); h.dialog_open.invoke(); f.settle(); return *h.dialog.isOpen(); };
             bool opened = open_dialog();
             auto frame = f.host.frame();
             int before = f.form.scroll.offset;
@@ -2291,9 +2291,9 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-120)), MAKELPARAM(p.x, p.y));
                 f.settle();
             }
-            bool blocked = has_viewport && first_wheel_unchanged && f.form.scroll.offset == before && *h.dialog.is_open() && h.dialog_cancel.describe()->focused;
+            bool blocked = has_viewport && first_wheel_unchanged && f.form.scroll.offset == before && *h.dialog.isOpen() && h.dialog_cancel.describe()->focused;
             f.tap(VK_ESCAPE); f.settle();
-            bool dialog_escape = !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
+            bool dialog_escape = !*h.dialog.isOpen() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
                 f.form.dialog_confirmations() == 0 && !f.host.frame().modal;
             opened = open_dialog() && opened;
             auto click_button = [&](const ButtonHandle& button) {
@@ -2308,11 +2308,11 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                 return correct;
             };
             bool cancel_hit = click_button(h.dialog_cancel);
-            bool cancel = cancel_hit && !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
+            bool cancel = cancel_hit && !*h.dialog.isOpen() && h.dialog_open.describe()->focused && f.form.progress() == 50 &&
                 f.form.dialog_confirmations() == 0 && !f.host.frame().modal;
             opened = open_dialog() && opened;
             bool confirm_hit = click_button(h.dialog_confirm);
-            bool confirm = confirm_hit && !*h.dialog.is_open() && h.dialog_open.describe()->focused && f.form.progress() == 0 &&
+            bool confirm = confirm_hit && !*h.dialog.isOpen() && h.dialog_open.describe()->focused && f.form.progress() == 0 &&
                 f.form.dialog_confirmations() == 1 && !f.host.frame().modal;
             report.check("X02-v03-dialog", opened && blocked && dialog_escape && cancel && confirm,
                 sample + ": modal wheel=" + (maximum == 0 ? std::string("N/A (no overflow)") : std::to_string(blocked)) + ", scroll maximum=" + std::to_string(maximum) + ", Esc=" + std::to_string(dialog_escape) +
@@ -2387,12 +2387,12 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                         }
                 } else {
                     for (int y = bar.track.y; y < bar.track.y + bar.track.h && target < 0; ++y) {
-                        int n = bar.offset_for_thumb(y - bar.thumb.h / 2);
+                        int n = bar.offsetForThumb(y - bar.thumb.h / 2);
                         if (!desired(n)) continue;
                         for (int start = 0; start <= bar.maximum; ++start) {
                             if (n == start || height_at(start) <= 0) continue;
-                            int thumb_top = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
-                            if (input == 1 && y >= thumb_top && y < thumb_top + bar.thumb.h) continue;
+                            int thumbTop = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
+                            if (input == 1 && y >= thumbTop && y < thumbTop + bar.thumb.h) continue;
                             target = n; before = start; pointer_y = y; break;
                         }
                     }
@@ -2403,7 +2403,7 @@ void popup_dismissal_matrix(const Appearance& appearance, Report& report) {
                         ", maximum=" + std::to_string(bar.maximum) + ", track=" + str(bar.track) + ", thumb height=" + std::to_string(bar.thumb.h));
                     continue;
                 }
-                geometry.scroll_to(f.form.ui, f.form.scroll, before); f.host.paint();
+                geometry.scrollTo(f.form.ui, f.form.scroll, before); f.host.paint();
                 now += 600; state.tooltip_time(now); f.host.paint();
                 bool opened = *h.progress_tip.visible();
                 if (input == 0) {
@@ -2553,7 +2553,7 @@ void semantic_observation_sweep(const Appearance& appearance, const std::filesys
                         << '\t' << text_status(s->name) << '\t' << text_status(s->value) << '\t' << applicable(restricted) << '\t'
                         << (!active && std::string_view(entry.page) != "modal" && !s->visible && !any && !placement && !associated ? "P" : active ? "N/A" : "O") << '\t'
                         << (scroll && !*scroll ? "N/A" : active && placement && !s->visible && !any && !associated ? "P" : "O") << '\t'
-                        << applicable(restricted) << '\t' << applicable(type.supports_state(S::read_only)) << '\t' << applicable(selected) << '\t'
+                        << applicable(restricted) << '\t' << applicable(type.supports_state(S::readOnly)) << '\t' << applicable(selected) << '\t'
                         << applicable(candidate) << '\t' << applicable(error) << '\t' << applicable(conflict) << '\t'
                         << applicable(type.supports_state(S::executing)) << '\t' << applicable(std::string_view(entry.page) == "modal") << '\t'
                         << applicable(s->id == h.progress_half.describe()->id) << '\n';
@@ -2655,7 +2655,7 @@ void x04_selected_matrix(const Appearance& appearance, Report& report) {
                 f.host.layout(int(size.first * scale), int(size.second * scale), scale, f.form.scroll, semantic->id);
                 f.host.paint(); semantic = x04::describe(entry.handle);
                 const auto palette = appearance.palette(f.form.ui.presentation().variant);
-                auto cue = semantic->kind == ComponentKind::checkbox || semantic->kind == ComponentKind::radio_group
+                auto cue = semantic->kind == ComponentKind::checkbox || semantic->kind == ComponentKind::radioGroup
                     ? palette.accent : palette.selection;
                 std::u16string ink; bool cue_visible = false;
                 for (const auto& draw : f.host.paint_observations()) {
@@ -2700,7 +2700,7 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                     observed = item && semantic->visible && semantic->executing && button->invoke().status == Status::busy &&
                         std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::invoke) == semantic->verbs.end() &&
                         ink.find(semantic->name) != std::u16string::npos &&
-                        ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
+                        ink.find(appearance.componentPresentation().executingSuffix) != std::u16string::npos;
                     return Result{};
                 });
                 bool invoked = bound && bool(button->invoke()) && observed && !*button->executing();
@@ -2746,9 +2746,9 @@ void x04_clipped_matrix(const Appearance& appearance, Report& report) {
                     auto area = intersect(*geometry, owner->clip);
                     const std::vector<Line>* associated = nullptr;
                     if (!semantic->target.empty()) {
-                        if (semantic->label_kind == LabelKind::name) associated = &owner->label_lines;
-                        else if (semantic->label_kind == LabelKind::description) associated = &owner->description_lines;
-                        else if (semantic->label_kind == LabelKind::error) associated = &owner->error_lines;
+                        if (semantic->labelKind == LabelKind::name) associated = &owner->labelLines;
+                        else if (semantic->labelKind == LabelKind::description) associated = &owner->descriptionLines;
+                        else if (semantic->labelKind == LabelKind::error) associated = &owner->errorLines;
                     }
                     bool visible_paint = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         if (draw.owner != owner->id || !draw.visible) return false;
@@ -2795,7 +2795,7 @@ void x04_error_matrix(const Appearance& appearance, Report& report) {
                     if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
                     if (draw.color.r == error_color.r && draw.color.g == error_color.g && draw.color.b == error_color.b) color = true;
                 }
-                bool cue = semantic->kind == ComponentKind::tabs ? ink.find(appearance.component_presentation().invalid_tab_marker) != std::u16string::npos :
+                bool cue = semantic->kind == ComponentKind::tabs ? ink.find(appearance.componentPresentation().invalidTabMarker) != std::u16string::npos :
                     ink.find(x04::error_message) != std::u16string::npos && color;
                 bool semantic_state = x04::error_semantics(f.form, *semantic);
                 bool compared = item && semantic->visible && semantic_state && cue;
@@ -2857,13 +2857,13 @@ void x04_search_read_only_matrix(const Appearance& appearance, Report& report) {
             f.host.paint(); auto semantic = search.describe(); std::u16string ink;
             for (const auto& draw : f.host.paint_observations())
                 if (draw.owner == semantic->id && draw.visible && draw.type == detail::PaintObservation::Type::text) ink += draw.text;
-            bool restricted = search.set_value(u"blocked").status == Status::read_only;
+            bool restricted = search.setValue(u"blocked").status == Status::readOnly;
             SendMessageW(f.host.window(), WM_CHAR, L'x', 0);
             restricted = restricted && search.describe()->value == semantic->value;
-            bool compared = semantic->visible && semantic->enabled && semantic->read_only &&
+            bool compared = semantic->visible && semantic->enabled && semantic->readOnly &&
                 ink.find(semantic->name) != std::u16string::npos && ink.find(semantic->value) != std::u16string::npos &&
-                ink.find(appearance.component_presentation().read_only_suffix) != std::u16string::npos;
-            bool restored = x04::restore_search_read_only(f.form) && !search.describe()->read_only;
+                ink.find(appearance.componentPresentation().readOnlySuffix) != std::u16string::npos;
+            bool restored = x04::restore_search_read_only(f.form) && !search.describe()->readOnly;
             std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                 std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + semantic->id;
             report.check("X04-search-read-only", driven && restricted && compared && restored,
@@ -2876,7 +2876,7 @@ void x04_modal_matrix(const Appearance& appearance, Report& report) {
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); f.x04_size(size.first, size.second, scale);
             f.host.observe_paint(true); bool opened = x04::open_modal(f.form); f.host.paint();
-            bool blocked = f.host.frame().modal && f.form.handles.progress_zero.invoke().status == Status::blocked_by_modal;
+            bool blocked = f.host.frame().modal && f.form.handles.progress_zero.invoke().status == Status::blockedByModal;
             struct Row { std::string id; bool passed; }; std::vector<Row> rows;
             for (const auto& entry : x04::inventory(f.form)) {
                 if (entry.page != "modal") continue;
@@ -2888,7 +2888,7 @@ void x04_modal_matrix(const Appearance& appearance, Report& report) {
                 for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
                 rows.push_back({semantic->id, compared});
             }
-            bool restored = x04::close_modal(f.form) && !*f.form.handles.dialog.is_open();
+            bool restored = x04::close_modal(f.form) && !*f.form.handles.dialog.isOpen();
             for (const auto& row : rows) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                     std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "% " + row.id;
@@ -2961,16 +2961,16 @@ void x04_normal_matrix(const Appearance& appearance, Report& report) {
                 }
                 if (!semantic->visible && semantic->kind == ComponentKind::label && semantic->value.empty()) {
                     compared = compared && (semantic->target.empty() ? !visible_owner_ink :
-                        semantic->label_kind == LabelKind::error && state.describe(semantic->target)->error.empty());
+                        semantic->labelKind == LabelKind::error && state.describe(semantic->target)->error.empty());
                 } else {
                     compared = compared && item && semantic->visible;
                     for (const auto& expected : x04::normal_text(*semantic)) compared = compared && ink.find(expected) != std::u16string::npos;
                     if (semantic->kind == ComponentKind::checkbox && semantic->checked == true) compared = compared && accent;
-                    if (semantic->kind == ComponentKind::radio_group && !semantic->value.empty()) compared = compared && accent;
+                    if (semantic->kind == ComponentKind::radioGroup && !semantic->value.empty()) compared = compared && accent;
                     if ((semantic->kind == ComponentKind::list || semantic->kind == ComponentKind::tabs) && !semantic->value.empty()) compared = compared && selected;
-                    if (semantic->kind == ComponentKind::progress && item && semantic->numeric_value)
-                        compared = compared && item->progress_fill.w == item->progress_track.w * *semantic->numeric_value / 100 &&
-                            (*semantic->numeric_value == 0 || accent);
+                    if (semantic->kind == ComponentKind::progress && item && semantic->numericValue)
+                        compared = compared && item->progressFill.w == item->progressTrack.w * *semantic->numericValue / 100 &&
+                            (*semantic->numericValue == 0 || accent);
                 }
                 bool restored = (!modal || (bool(f.form.handles.dialog.settle(false)) && bool(f.form.handles.reset_v03.invoke()))) &&
                     x04::baseline_context(f.form);
@@ -3002,11 +3002,11 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     std::to_string(int(scale * 100)) + "% " + initial->id;
                 if (initial->kind == ComponentKind::tabs) {
                     auto tabs = std::get<TabsHandle>(entry.handle);
-                    bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus());
+                    bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus());
                     f.host.paint(); auto sem = tabs.describe(); auto* placed = f.host.frame().find(tabs);
                     bool cue = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
-                               draw.text.find(appearance.component_presentation().disabled_tab_marker) != std::u16string::npos;
+                               draw.text.find(appearance.componentPresentation().disabledTabMarker) != std::u16string::npos;
                     });
                     bool rejected = tabs.activate({"v02"}).status == Status::disabled && !sem->items[1].enabled;
                     bool pointer = false;
@@ -3021,7 +3021,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
                     SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
                     bool keyboard = tabs.describe()->candidate == OptionValue{"v03"} && *tabs.active() == OptionValue{"v01"};
-                    bool recovered = bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})) &&
+                    bool recovered = bool(tabs.enablePage({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})) &&
                         x04::baseline_context(f.form) && x04::same_model(baseline_model, x04::snapshot(f.form));
                     report.check("X04-disabled-member", driven && cue && rejected && pointer && keyboard && recovered,
                         sample + ": tab cue=" + std::to_string(cue) + ", rejected=" + std::to_string(rejected) +
@@ -3039,7 +3039,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     if (draw.bounds.w > 0 && visible_width == draw.bounds.w) visible_text += draw.text;
                 }
                 bool cue = sem->visible && !sem->enabled && !sem->focused &&
-                    visible_text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+                    visible_text.find(appearance.componentPresentation().disabledSuffix) != std::u16string::npos;
                 auto snapshot = x04::snapshot(f.form);
                 bool rejected = x04::disabled_retry(entry.handle);
                 bool pointer = false;
@@ -3058,20 +3058,20 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                 bool recovered = x04::set_enabled(entry.handle, true) && x04::focus(f.form.ui, entry.handle) &&
                     x04::set_enabled(entry.handle, initial->enabled);
                 bool option_checks = true;
-                if (sem->kind == ComponentKind::radio_group && initial->enabled) {
+                if (sem->kind == ComponentKind::radioGroup && initial->enabled) {
                     auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
-                    bool option = previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus());
+                    bool option = previous && bool(radio.select({"focus"})) && bool(radio.enableOption({"offline"}, false)) && bool(radio.focus());
                     reveal(sem->id); auto option_semantic = radio.describe(); auto* option_item = f.host.frame().find(radio);
                     bool public_reject = !option_semantic->items[2].enabled && radio.select({"offline"}).status == Status::disabled;
                     bool cue_option = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& draw) {
                         return draw.owner == sem->id && draw.visible && draw.type == detail::PaintObservation::Type::text &&
-                            draw.text.find(option_semantic->items[2].label + appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+                            draw.text.find(option_semantic->items[2].label + appearance.componentPresentation().disabledSuffix) != std::u16string::npos;
                     });
                     bool pointer_option = false;
                     if (option_item && option_item->options.size() > 2) {
                         auto r = intersect(option_item->options[2], option_item->clip); POINT pt{r.x + r.w / 2, r.y + r.h / 2};
                         auto* hit = f.host.frame().hit(pt.x, pt.y);
-                        bool target = hit && hit->id == sem->id && f.host.frame().option_at(*option_item, pt.x, pt.y) == 2;
+                        bool target = hit && hit->id == sem->id && f.host.frame().optionAt(*option_item, pt.x, pt.y) == 2;
                         SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(pt.x, pt.y));
                         SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(pt.x, pt.y));
                         pointer_option = r.w > 0 && r.h > 0 && target && *radio.draft() == OptionValue{"focus"};
@@ -3079,7 +3079,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     SendMessageW(f.host.window(), WM_KEYDOWN, VK_RIGHT, key_lparam(VK_RIGHT, false, false));
                     SendMessageW(f.host.window(), WM_KEYUP, VK_RIGHT, key_lparam(VK_RIGHT, false, true));
                     bool keyboard_option = *radio.draft() == OptionValue{"focus"};
-                    bool option_restored = bool(radio.enable_option({"offline"}, true)) && previous &&
+                    bool option_restored = bool(radio.enableOption({"offline"}, true)) && previous &&
                         bool(radio.select({"offline"})) && bool(radio.select(*previous));
                     option_checks = option && public_reject && cue_option && pointer_option && keyboard_option && option_restored;
                     recovered = recovered && option_checks;
@@ -3092,7 +3092,7 @@ void x04_disabled_matrix(const Appearance& appearance, Report& report) {
                     sample + ": driven=" + std::to_string(driven) + ", cue=" + std::to_string(cue) +
                     ", public=" + std::to_string(rejected) + ", pointer=" + std::to_string(pointer) +
                     ", unchanged=" + std::to_string(unchanged) + ", recovered=" + std::to_string(recovered) +
-                    (sem->kind == ComponentKind::radio_group ? ", option checks=" + std::to_string(option_checks) : ""));
+                    (sem->kind == ComponentKind::radioGroup ? ", option checks=" + std::to_string(option_checks) : ""));
             }
         }
 }
@@ -3121,8 +3121,8 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                     if (draw.type == detail::PaintObservation::Type::text) ink += draw.text;
                     else if (draw.color.r == accent.r && draw.color.g == accent.g && draw.color.b == accent.b) checked_cue = true;
                 }
-                bool field = semantic->visible && semantic->source_conflict && ink.find(semantic->name) != std::u16string::npos &&
-                    ink.find(appearance.component_presentation().conflict_suffix) != std::u16string::npos &&
+                bool field = semantic->visible && semantic->sourceConflict && ink.find(semantic->name) != std::u16string::npos &&
+                    ink.find(appearance.componentPresentation().conflictSuffix) != std::u16string::npos &&
                     (semantic->kind == ComponentKind::checkbox ? semantic->checked == true && checked_cue :
                         semantic->value.empty() || ink.find(semantic->value) != std::u16string::npos);
                 auto latest = x04::latest_for(f.form, entry); auto action = latest.describe();
@@ -3130,7 +3130,7 @@ void x04_group_conflict_matrix(const Appearance& appearance, Report& report) {
                 bool action_painted = action->visible && std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(),
                     [&](const auto& draw) { return draw.owner == action->id && draw.visible &&
                         draw.type == detail::PaintObservation::Type::text && draw.text.find(action->name) != std::u16string::npos; });
-                bool restored = bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict && bool(f.form.handles.reset.invoke()) && x04::baseline_context(f.form);
+                bool restored = bool(latest.invoke()) && !x04::describe(entry.handle)->sourceConflict && bool(f.form.handles.reset.invoke()) && x04::baseline_context(f.form);
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + semantic->id;
@@ -3149,25 +3149,25 @@ void x04_name_read_only_matrix(const Appearance& appearance, Report& report) {
             f.x04_size(size.first, size.second, scale);
             bool driven = bool(x04::name_read_only.drive(f.form)) && bool(name.focus());
             f.host.observe_paint(true); f.settle();
-            auto semantic = name.describe(); auto suffix = appearance.component_presentation().read_only_suffix;
+            auto semantic = name.describe(); auto suffix = appearance.componentPresentation().readOnlySuffix;
             std::u16string ink;
             for (const auto& event : f.host.paint_observations())
                 if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
-            bool restricted = name.set_value(u"rejected").status == Status::read_only &&
-                std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::set_value) == semantic->verbs.end();
+            bool restricted = name.setValue(u"rejected").status == Status::readOnly &&
+                std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::setValue) == semantic->verbs.end();
             auto& h = f.form.handles;
-            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
-                h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
-                h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error &&
-                semantic->labels.size() == 3 && !semantic->invalid && !semantic->source_conflict;
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->labelKind == LabelKind::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->labelKind == LabelKind::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->labelKind == LabelKind::error &&
+                semantic->labels.size() == 3 && !semantic->invalid && !semantic->sourceConflict;
             bool painted = associations && !suffix.empty() && ink.find(semantic->name) != std::u16string::npos &&
                 ink.find(semantic->value) != std::u16string::npos && ink.find(semantic->description) != std::u16string::npos &&
                 ink.find(suffix) != std::u16string::npos;
-            bool restored = bool(x04::name_read_only.restore(f.form)) && !name.describe()->read_only;
+            bool restored = bool(x04::name_read_only.restore(f.form)) && !name.describe()->readOnly;
             std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                 std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "%";
-            report.check("X04-name-read-only", driven && semantic->visible && semantic->enabled && semantic->read_only && restricted && painted && restored,
-                sample + ": semantic=" + std::to_string(semantic->read_only) + ", restricted=" + std::to_string(restricted) +
+            report.check("X04-name-read-only", driven && semantic->visible && semantic->enabled && semantic->readOnly && restricted && painted && restored,
+                sample + ": semantic=" + std::to_string(semantic->readOnly) + ", restricted=" + std::to_string(restricted) +
                 ", name and read-only cue painted=" + std::to_string(painted) + ", restored=" + std::to_string(restored));
         }
 }
@@ -3184,12 +3184,12 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
             std::u16string ink;
             for (const auto& event : f.host.paint_observations())
                 if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
-            const auto& cue = appearance.component_presentation().conflict_suffix;
-            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
-                h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
-                h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error &&
+            const auto& cue = appearance.componentPresentation().conflictSuffix;
+            bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->labelKind == LabelKind::name &&
+                h.name_help.describe()->target == semantic->id && h.name_help.describe()->labelKind == LabelKind::description &&
+                h.name_error.describe()->target == semantic->id && h.name_error.describe()->labelKind == LabelKind::error &&
                 semantic->labels.size() == 3 && !semantic->invalid;
-            bool field_painted = semantic->visible && semantic->enabled && !semantic->read_only && semantic->source_conflict && !cue.empty() && associations &&
+            bool field_painted = semantic->visible && semantic->enabled && !semantic->readOnly && semantic->sourceConflict && !cue.empty() && associations &&
                 ink.find(semantic->name) != std::u16string::npos && ink.find(semantic->value) != std::u16string::npos &&
                 ink.find(semantic->description) != std::u16string::npos && ink.find(cue) != std::u16string::npos;
             bool latest_enabled = h.latest.describe()->enabled && bool(h.latest.focus()); f.settle();
@@ -3198,7 +3198,7 @@ void x04_name_conflict_matrix(const Appearance& appearance, Report& report) {
                 return event.owner == latest->id && event.visible && event.type == detail::PaintObservation::Type::text &&
                        event.text.find(latest->name) != std::u16string::npos;
             });
-            bool restored = bool(x04::name_conflict.restore(f.form)) && !h.name.describe()->source_conflict && *h.name.draft() == u"Latest";
+            bool restored = bool(x04::name_conflict.restore(f.form)) && !h.name.describe()->sourceConflict && *h.name.draft() == u"Latest";
             std::string sample = std::string(alternate ? "alternate" : "shipped") + " " + std::to_string(size.first) + "x" +
                 std::to_string(size.second) + " " + std::to_string(int(scale * 100)) + "%";
             report.check("X04-name-conflict", driven && field_painted && latest_enabled && action_painted && restored,
@@ -3221,18 +3221,18 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
     {
         Fixture dark(appearance, true); auto& d = dark.form.handles;
         auto settings = dark.form.ui.presentation(); settings.variant = ThemeVariant::dark();
-        bool applied = bool(dark.form.ui.set_presentation(settings));
+        bool applied = bool(dark.form.ui.setPresentation(settings));
         d.error.invoke();
         dark.host.layout(960, 720, 1.f, dark.form.scroll, d.name.describe()->id);
         Image image{1, 1, {}};
         auto dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-dark.bmp"), &image);
         auto* field = dark_frame.find(d.name); auto colors = appearance.palette(ThemeVariant::dark());
-        bool error_ink = field && !field->error_lines.empty() && contains_color(image, intersect(field->error_lines.front().bounds, field->clip), colors.error);
+        bool error_ink = field && !field->errorLines.empty() && contains_color(image, intersect(field->errorLines.front().bounds, field->clip), colors.error);
         bool invalid = d.name.describe()->invalid;
         auto error_compare = dark.host.compare_gpu(960, 720, 1.f);
         write_comparison_bmp(folder / (report.appearance + "-pv03-error-cpu.bmp"), error_compare.reference);
         emit_failure_if_needed(folder, report.appearance + "-pv03-error", error_compare, bool(error_compare));
-        d.name.set_value(u"Tester"); d.name.focus(); d.name.select(1, 4);
+        d.name.setValue(u"Tester"); d.name.focus(); d.name.select(1, 4);
         dark_frame = dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-selection.bmp"), &image);
         field = dark_frame.find(d.name);
         bool selection = field && contains_color(image, intersect(field->bounds, field->clip), colors.selection);
@@ -3243,7 +3243,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         d.disabled.invoke();
         dark.host.observe_paint(true); dark.host.paint();
         bool disabled = !d.name.describe()->enabled && std::any_of(dark.host.paint_observations().begin(), dark.host.paint_observations().end(), [&](const auto& event) {
-            return event.visible && event.text.find(appearance.component_presentation().disabled_suffix) != std::u16string::npos;
+            return event.visible && event.text.find(appearance.componentPresentation().disabledSuffix) != std::u16string::npos;
         });
         dark.host.render(960, 720, 1.f, folder / (report.appearance + "-pv03-disabled.bmp"));
         auto disabled_compare = dark.host.compare_gpu(960, 720, 1.f);
@@ -3262,36 +3262,36 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
     f.host.observe_paint(true);
     f.host.paint();
     const auto* actual_field = f.host.frame().find(h.name);
-    bool observed_error = actual_field && !actual_field->error_lines.empty() &&
+    bool observed_error = actual_field && !actual_field->errorLines.empty() &&
         std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
-            return event.owner == h.name.describe()->id && event.text == actual_field->error_lines.front().text && event.visible;
+            return event.owner == h.name.describe()->id && event.text == actual_field->errorLines.front().text && event.visible;
         });
     report.check("X04-native-paint-observation", observed_error,
                  "The actual host paint path records visible error text under its owning field");
     Image pixels{1, 1, {}};
     auto frame = sample("v01-error", pixels);
     auto* field = frame.find(h.name);
-    bool error = field && h.name.describe()->invalid && !h.name.describe()->error.empty() && !field->error_lines.empty() &&
-        contains_color(pixels, intersect(field->error_lines.front().bounds, field->clip), appearance.palette().error);
+    bool error = field && h.name.describe()->invalid && !h.name.describe()->error.empty() && !field->errorLines.empty() &&
+        contains_color(pixels, intersect(field->errorLines.front().bounds, field->clip), appearance.palette().error);
     report.check("X04-v01-raster", error, "Name semantics report an error and the real host raster contains error-colored pixels in the error line");
 
-    h.normal.invoke(); h.name.set_value(u"Tester"); h.notices.toggle();
+    h.normal.invoke(); h.name.setValue(u"Tester"); h.notices.toggle();
     f.form.reject_next_apply_with_notices_source_change();
     auto rejected = h.apply.invoke();
     h.notices.focus(); f.settle();
     auto box_id = h.notices.describe()->id;
     bool conflict_ink = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
         return event.owner == box_id && event.visible && event.type == detail::PaintObservation::Type::text &&
-               event.text.find(appearance.component_presentation().conflict_suffix) != std::u16string::npos;
+               event.text.find(appearance.componentPresentation().conflictSuffix) != std::u16string::npos;
     });
-    bool checkbox_conflict = rejected.status == Status::invalid_value && h.notices.describe()->source_conflict &&
+    bool checkbox_conflict = rejected.status == Status::invalidValue && h.notices.describe()->sourceConflict &&
         h.notices_latest.describe()->enabled && conflict_ink;
     h.notices_latest.focus(); f.settle();
     auto latest = h.notices_latest.describe();
     bool latest_ink = std::any_of(f.host.paint_observations().begin(), f.host.paint_observations().end(), [&](const auto& event) {
         return event.owner == latest->id && event.visible && event.text.find(latest->name) != std::u16string::npos;
     });
-    bool recovered = bool(h.notices_latest.invoke()) && !h.notices.describe()->source_conflict && !*h.notices.draft();
+    bool recovered = bool(h.notices_latest.invoke()) && !h.notices.describe()->sourceConflict && !*h.notices.draft();
     report.check("X04-checkbox-conflict", checkbox_conflict && latest_ink && recovered,
         "Assembled checkbox conflict and latest action are painted, then latest adopts the source");
 
@@ -3307,7 +3307,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
         executing_painted = semantic->executing &&
             std::none_of(semantic->verbs.begin(), semantic->verbs.end(), [](Verb op) { return op == Verb::invoke; }) &&
             executing_ink.find(semantic->name) != std::u16string::npos &&
-            executing_ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
+            executing_ink.find(appearance.componentPresentation().executingSuffix) != std::u16string::npos;
         return Result{};
     });
     bool invoked = bool(h.normal.invoke());
@@ -3500,11 +3500,11 @@ int run_uia_ime(const std::filesystem::path& folder, const std::wstring& appeara
     HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(init)) { report.check("UIA21", false, "COM initialization failed"); return 1; }
     try {
-        Live live(appearance == L"material" ? material_appearance() : web_appearance());
+        Live live(appearance == L"material" ? materialAppearance() : webAppearance());
         Profiles profiles;
         if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo could not be activated");
         live.start_in_name();
-        if (!live.form.handles.name.set_value(u"UIA baseline") || !live.form.handles.name.select(4, 4)) throw Blocked("Unable to prepare committed value");
+        if (!live.form.handles.name.setValue(u"UIA baseline") || !live.form.handles.name.select(4, 4)) throw Blocked("Unable to prepare committed value");
         if (auto imc = ImmGetContext(live.host.window())) {
             DWORD conversion = 0, sentence = 0; ImmGetConversionStatus(imc, &conversion, &sentence);
             ImmSetConversionStatus(imc, conversion | IME_CMODE_NATIVE, sentence); ImmReleaseContext(live.host.window(), imc);
@@ -3618,10 +3618,10 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         auto dialog_before = live.state();
         live.host.paint();
         live.form.handles.dialog.open(live.form.handles.name);
-        bool opened = *live.form.handles.dialog.is_open() && live.form.handles.dialog_cancel.describe()->focused &&
+        bool opened = *live.form.handles.dialog.isOpen() && live.form.handles.dialog_cancel.describe()->focused &&
             !session->composing && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005\u6211" &&
             live.form.progress() == 50 && live.form.dialog_confirmations() == 0;
-        if (*live.form.handles.dialog.is_open()) live.form.handles.dialog_cancel.invoke();
+        if (*live.form.handles.dialog.isOpen()) live.form.handles.dialog_cancel.invoke();
         record("E01-dialog-open", opened && live.history() == 1 && live.form.handles.name.describe()->focused,
                "Host seam opens the dialog and completes composition once, focuses cancel, and cancellation restores the field; before: " + dialog_before);
 
@@ -3736,8 +3736,8 @@ int run_ime(const std::filesystem::path& folder) {
     Report report(folder / "ime.tsv");
     std::ofstream events(folder / "ime-events.log");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         events << "=== " << report.appearance << " ===\n";
         if (!ime_session(*appearance, report, events)) break;
     }
@@ -3780,7 +3780,7 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         std::sort(monitors.begin(), monitors.end(), [](const auto& a, const auto& b) { return a.rcMonitor.left < b.rcMonitor.left; });
         Live live(appearance);
         DpiObserver observer(live.host.window());
-        if (presentation) { auto settings = live.form.ui.presentation(); settings.text_size = 28; if (!live.form.ui.set_presentation(settings)) throw Blocked("28 DIP setting rejected"); }
+        if (presentation) { auto settings = live.form.ui.presentation(); settings.textSize = 28; if (!live.form.ui.setPresentation(settings)) throw Blocked("28 DIP setting rejected"); }
         auto& ui = live.form.ui;
         const auto& ids = live.ids;
         auto move = [&](const MONITORINFOEXW& monitor) {
@@ -3802,13 +3802,13 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         auto sharp_text = [&] {
             RECT client{}; GetClientRect(live.host.window(), &client);
             auto comparison = live.host.compare_gpu(client.right, client.bottom, live.host.scale());
-            const auto* text_field = live.host.frame().find(live.form.handles.name);
+            const auto* textField = live.host.frame().find(live.form.handles.name);
             Rect text_area{};
-            if (text_field) text_area = {text_field->bounds.x + text_field->text_field.editor.x,
-                text_field->bounds.y + text_field->text_field.editor.y,
-                text_field->text_field.editor.w, text_field->text_field.editor.h};
+            if (textField) text_area = {textField->bounds.x + textField->textField.editor.x,
+                textField->bounds.y + textField->textField.editor.y,
+                textField->textField.editor.w, textField->textField.editor.h};
             auto text_compare = compare_images(comparison.reference, comparison.actual, {text_area});
-            return text_field && text_area.w > 0 && text_area.h > 0 && bool(comparison) && text_compare.regions_ok;
+            return textField && text_area.w > 0 && text_area.h > 0 && bool(comparison) && text_compare.regions_ok;
         };
         bool forward_sharp = !presentation && first == 96 && second == 144 && sharp_text();
         if (presentation && !((first == 96 && second == 144) || (first == 144 && second == 96)))
@@ -3824,11 +3824,11 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
                      session->selection.caret == 3 && detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
         // Field-part rectangles are relative to the containing placement.
-        int hit_x = field ? field->bounds.x + field->text_field.editor.x + field->text_field.editor.w / 2 : 0;
-        int hit_y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
+        int hit_x = field ? field->bounds.x + field->textField.editor.x + field->textField.editor.w / 2 : 0;
+        int hit_y = field ? field->bounds.y + field->textField.editor.y + field->textField.editor.h / 2 : 0;
         auto* hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
         bool hit = hit_item && hit_item->id == ids.name;
-        unsigned expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
+        unsigned expected_caret = hit ? live.host.frame().textOffset(live.form.handles.name, hit_x) : 0;
         if (hit) live.click_point({hit_x, hit_y});
         bool pointer = hit && session->selection.anchor == expected_caret && session->selection.caret == expected_caret;
         report.check("D01-selection-forward", first != second && dpi_messages > before && state && hit && pointer,
@@ -3846,11 +3846,11 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         bool selection_back = field && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005" &&
                               session->selection.anchor == 1 && session->selection.caret == 3 &&
                               detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
-        hit_x = field ? field->bounds.x + field->text_field.editor.x + field->text_field.editor.w / 2 : 0;
-        hit_y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
+        hit_x = field ? field->bounds.x + field->textField.editor.x + field->textField.editor.w / 2 : 0;
+        hit_y = field ? field->bounds.y + field->textField.editor.y + field->textField.editor.h / 2 : 0;
         hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
         hit = hit_item && hit_item->id == ids.name;
-        expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
+        expected_caret = hit ? live.host.frame().textOffset(live.form.handles.name, hit_x) : 0;
         if (hit) live.click_point({hit_x, hit_y});
         pointer = hit && session->selection.anchor == expected_caret && session->selection.caret == expected_caret;
         report.check("D01-selection-return", selection_return == first && dpi_messages > before && selection_back && hit && pointer,
@@ -3885,15 +3885,15 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
             IMECHARPOSITION position{}; position.dwSize = sizeof(position);
             bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION,
                                       reinterpret_cast<LPARAM>(&position)) != 0;
-            POINT caret{field ? field->caret_x(session->begin()) : 0,
-                        field ? field->bounds.y + field->text_field.editor.y : 0};
+            POINT caret{field ? field->caretX(session->begin()) : 0,
+                        field ? field->bounds.y + field->textField.editor.y : 0};
             ClientToScreen(live.host.window(), &caret);
             CANDIDATEFORM candidate{}; bool candidate_ok = false;
             if (auto imc = ImmGetContext(live.host.window())) {
                 candidate.dwIndex = 0;
                 candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field &&
-                               candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) &&
-                               candidate.ptCurrentPos.y == field->bounds.y + field->text_field.editor.y + field->text_field.editor.h;
+                               candidate.ptCurrentPos.x == field->caretX(session->visibleCaret()) &&
+                               candidate.ptCurrentPos.y == field->bounds.y + field->textField.editor.y + field->textField.editor.h;
                 ImmReleaseContext(live.host.window(), imc);
             }
             bool caret_ok = query && position.pt.x == caret.x && position.pt.y == caret.y;
@@ -3948,8 +3948,8 @@ int run_dpi(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "dpi.tsv");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         if (!dpi_session(*appearance, report)) break;
     }
     CoUninitialize();
@@ -3960,8 +3960,8 @@ int run_dpi(const std::filesystem::path& folder) {
 int run(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "host.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        std::string tag = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        std::string tag = appearance == &webAppearance() ? "web" : "material";
         report.appearance = tag;
         presentation_before_input(*appearance, report);
         draw_list_initial(*appearance, report);
@@ -4026,8 +4026,8 @@ int run(const std::filesystem::path& folder) {
 int run_focus(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "focus.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         focus_visibility_native(*appearance, report);
     }
     std::cout << report.checks << " focus native checks, " << report.failures << " failures\n";
@@ -4036,8 +4036,8 @@ int run_focus(const std::filesystem::path& folder) {
 int run_hover(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "hover.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         hover_native(*appearance, report);
     }
     std::cout << report.checks << " hover native checks, " << report.failures << " failures\n";
@@ -4046,8 +4046,8 @@ int run_hover(const std::filesystem::path& folder) {
 int run_x02(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x02.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         popup_dismissal_matrix(*appearance, report);
     }
     std::cout << report.checks << " X02 native checks, " << report.failures << " failures\n";
@@ -4057,8 +4057,8 @@ int run_x02(const std::filesystem::path& folder) {
 int run_x04(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         semantic_raster_samples(*appearance, report, folder);
         x04_client_size_matrix(*appearance, report);
         x04_fixed_placement_matrix(*appearance, report);
@@ -4085,8 +4085,8 @@ int run_x04(const std::filesystem::path& folder) {
 int run_x04_selection(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-selection.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         x04_selected_matrix(*appearance, report);
         x04_candidate_matrix(*appearance, report);
     }
@@ -4097,8 +4097,8 @@ int run_x04_selection(const std::filesystem::path& folder) {
 int run_x04_disabled(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-disabled.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         x04_disabled_matrix(*appearance, report);
     }
     std::cout << report.checks << " X04 disabled checks, " << report.failures << " failures\n";
@@ -4108,8 +4108,8 @@ int run_x04_disabled(const std::filesystem::path& folder) {
 int run_x04_executing(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-executing.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         x04_executing_matrix(*appearance, report);
     }
     std::cout << report.checks << " X04 executing checks, " << report.failures << " failures\n";
@@ -4119,8 +4119,8 @@ int run_x04_executing(const std::filesystem::path& folder) {
 int run_x04_clipped(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "x04-clipped.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         x04_clipped_matrix(*appearance, report);
     }
     std::cout << report.checks << " X04 clipped checks, " << report.failures << " failures\n";
@@ -4132,8 +4132,8 @@ int run_clipboard(const std::filesystem::path& folder, int repeat) {
     std::filesystem::create_directories(folder);
     Report report(folder / "clipboard.tsv");
     for (int i = 0; i < repeat; ++i) {
-        for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-            report.appearance = (appearance == &web_appearance() ? "web-" : "material-") + std::to_string(i + 1);
+        for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+            report.appearance = (appearance == &webAppearance() ? "web-" : "material-") + std::to_string(i + 1);
             pointer_selection_and_clipboard(*appearance, report);
             clipboard_contention(*appearance, report);
         }
@@ -4146,35 +4146,35 @@ int run_presentation_idle(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "presentation.tsv");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         try {
             Live live(*appearance); Profiles profiles;
             if (!profiles.chinese()) throw Blocked("Microsoft Bopomofo unavailable");
-            if (!system_font_catalog().contains(u"Microsoft JhengHei") || !system_font_catalog().contains(u"MingLiU"))
+            if (!systemFontCatalog().contains(u"Microsoft JhengHei") || !systemFontCatalog().contains(u"MingLiU"))
                 throw Blocked("PR01 requires installed Microsoft JhengHei and MingLiU");
-            auto settings = live.form.ui.presentation(); settings.font_family = u"Microsoft JhengHei";
-            if (!live.form.ui.set_presentation(settings)) throw Blocked("initial font setting rejected");
+            auto settings = live.form.ui.presentation(); settings.fontFamily = u"Microsoft JhengHei";
+            if (!live.form.ui.setPresentation(settings)) throw Blocked("initial font setting rejected");
             live.start_in_name(); live.type("JI3");
             auto* session = detail::access(live.form.ui).edit(live.ids.name);
             bool composing = session && session->composing && !session->preedit.empty();
             if (!composing) throw Blocked("Microsoft Bopomofo did not start composition");
             bool positions = composing;
             for (int step = 0; step < 4; ++step) {
-                if (step == 0) settings.text_size = 28;
-                if (step == 1) settings.font_family = u"MingLiU";
+                if (step == 0) settings.textSize = 28;
+                if (step == 1) settings.fontFamily = u"MingLiU";
                 if (step == 2) settings.variant = ThemeVariant::dark();
                 if (step == 3) settings.density = Density::compact;
-                positions &= bool(live.form.ui.set_presentation(settings));
+                positions &= bool(live.form.ui.setPresentation(settings));
                 auto* field = live.host.frame().find(live.form.handles.name);
                 IMECHARPOSITION position{}; position.dwSize = sizeof(position);
                 bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
-                POINT caret{field ? field->caret_x(session->begin()) : 0, field ? field->bounds.y + field->text_field.editor.y : 0};
+                POINT caret{field ? field->caretX(session->begin()) : 0, field ? field->bounds.y + field->textField.editor.y : 0};
                 ClientToScreen(live.host.window(), &caret);
                 CANDIDATEFORM candidate{}; bool candidate_ok = false;
                 if (auto imc = ImmGetContext(live.host.window())) {
                     candidate.dwIndex = 0;
-                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) && candidate.ptCurrentPos.y == field->bounds.y + field->text_field.editor.y + field->text_field.editor.h;
+                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caretX(session->visibleCaret()) && candidate.ptCurrentPos.y == field->bounds.y + field->textField.editor.y + field->textField.editor.h;
                     ImmReleaseContext(live.host.window(), imc);
                 }
                 positions &= session->composing && query && position.pt.x == caret.x && position.pt.y == caret.y && candidate_ok;
@@ -4194,8 +4194,8 @@ int run_presentation_idle(const std::filesystem::path& folder) {
 int native_presentation_matrix(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "presentation-matrix.tsv");
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        report.appearance = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        report.appearance = appearance == &webAppearance() ? "web" : "material";
         try {
             presentation_matrix::run(edit_form::default_ids(), *appearance, [&](edit_form::Form& form) {
                 DesktopConfig options; options.title = u"Presentation matrix";
@@ -4220,25 +4220,25 @@ int trial_screenshots(const std::filesystem::path& folder) {
     std::ofstream timing(folder / "font-switch-timing.tsv");
     timing << "appearance\tfont\tmilliseconds\tstatus\n";
     manifest << "appearance\tvariant\tdensity\ttext_size\tfile\n";
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-        const std::string name = appearance == &web_appearance() ? "web" : "material";
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        const std::string name = appearance == &webAppearance() ? "web" : "material";
         Fixture f(*appearance, true);
-        if (system_font_catalog().contains(u"MingLiU")) {
-            auto settings = f.form.ui.presentation(); settings.font_family = u"MingLiU";
+        if (systemFontCatalog().contains(u"MingLiU")) {
+            auto settings = f.form.ui.presentation(); settings.fontFamily = u"MingLiU";
             auto start = std::chrono::steady_clock::now();
-            bool accepted = bool(f.form.ui.set_presentation(settings));
+            bool accepted = bool(f.form.ui.setPresentation(settings));
             f.host.paint();
             auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             timing << name << "\tMingLiU\t" << elapsed << '\t' << (accepted ? "recorded" : "FAIL") << '\n';
             if (!accepted) return 1;
-            settings.font_family.clear(); if (!f.form.ui.set_presentation(settings)) return 1;
+            settings.fontFamily.clear(); if (!f.form.ui.setPresentation(settings)) return 1;
         } else timing << name << "\tMingLiU\t\tN/A (font absent)\n";
         for (bool dark : {false, true}) for (bool compact : {false, true}) for (int size : {16, 28}) {
             auto settings = f.form.ui.presentation();
             settings.variant = dark ? ThemeVariant::dark() : ThemeVariant::light();
             settings.density = compact ? Density::compact : Density::standard;
-            settings.text_size = size;
-            if (!f.form.ui.set_presentation(settings) || !f.form.handles.tabs.activate({"v01"})) return 1;
+            settings.textSize = size;
+            if (!f.form.ui.setPresentation(settings) || !f.form.handles.tabs.activate({"v01"})) return 1;
             f.form.scroll.offset = 0;
             auto file = name + "-" + (dark ? "dark" : "light") + "-" + (compact ? "compact" : "standard") + "-" + std::to_string(size) + ".bmp";
             f.host.render(960, 720, 1.f, folder / file);
@@ -4255,7 +4255,7 @@ int run_perf(const std::filesystem::path& evidence, const std::wstring& scenario
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
-    const auto& selected_appearance=appearance==L"web" ? web_appearance() : material_appearance();
+    const auto& selected_appearance=appearance==L"web" ? webAppearance() : materialAppearance();
     edit_form::Form form(edit_form::default_ids(),true);
     DesktopHost host(form.ui,selected_appearance,[&]{return form.page();},form.scroll,Fixture::options());
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
@@ -4323,14 +4323,14 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         throw std::runtime_error("Unknown perf scenario");
     if (appearance!=L"web" && appearance!=L"material") throw std::runtime_error("Unknown perf appearance");
     if (delay<0 || duration_ms<0) throw std::runtime_error("Invalid perf duration or delay");
-    const auto& selected_appearance=appearance==L"web" ? web_appearance() : material_appearance();
+    const auto& selected_appearance=appearance==L"web" ? webAppearance() : materialAppearance();
     settings_demo::Demo form;
     if (alternate_font) {
         auto document=form.document();
-        const auto& fonts=system_font_catalog().families();
+        const auto& fonts=systemFontCatalog().families();
         auto found=std::find_if(fonts.begin(),fonts.end(),[](const auto& family) { return family.key!=u"Segoe UI" && !family.key.empty(); });
         if(found==fonts.end()) throw std::runtime_error("No non-default font available");
-        document.presentation.font_family=found->key; form.load_document(document);
+        document.presentation.fontFamily=found->key; form.load_document(document);
     }
     if (scenario==L"list-hold-down") {
         auto document=form.document();
@@ -4369,10 +4369,10 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
     } else if(slider_drag) {
         const std::string slider_id="appearance.text_size";
         auto thumb=[&]() -> POINT {
-            const auto* item=host.frame().find(form.text_size);
-            if (!item) { host.paint(); item=host.frame().find(form.text_size); }
-            if (!item || item->slider_track.w<=0) throw std::runtime_error("Perf slider track not arranged");
-            const auto& track=item->slider_track; int value=*form.text_size.draft();
+            const auto* item=host.frame().find(form.textSize);
+            if (!item) { host.paint(); item=host.frame().find(form.textSize); }
+            if (!item || item->sliderTrack.w<=0) throw std::runtime_error("Perf slider track not arranged");
+            const auto& track=item->sliderTrack; int value=*form.textSize.draft();
             return {track.x+static_cast<int>(std::lround(track.w*(value-12)/16.0)), track.y+track.h/2};
         };
         auto mouse=[&](POINT client, DWORD flags) {
@@ -4397,12 +4397,12 @@ int run_demo_perf(const std::filesystem::path& evidence, const std::wstring& sce
         while(std::chrono::steady_clock::now()<until) {
             double t=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count()/2000.0;
             double phase=t-std::floor(t), ratio=phase<.5 ? phase*2 : 2-phase*2;
-            const auto* item=host.frame().find(form.text_size);
-            if (item && item->slider_track.w>0) mouse({item->slider_track.x+static_cast<int>(std::lround(item->slider_track.w*ratio)), item->slider_track.y+item->slider_track.h/2},MOUSEEVENTF_MOVE);
+            const auto* item=host.frame().find(form.textSize);
+            if (item && item->sliderTrack.w>0) mouse({item->sliderTrack.x+static_cast<int>(std::lround(item->sliderTrack.w*ratio)), item->sliderTrack.y+item->sliderTrack.h/2},MOUSEEVENTF_MOVE);
             wait(16);
         }
         POINT release_point=start_point;
-        if (const auto* item=host.frame().find(form.text_size)) release_point={item->slider_track.x, item->slider_track.y+item->slider_track.h/2};
+        if (const auto* item=host.frame().find(form.textSize)) release_point={item->sliderTrack.x, item->sliderTrack.y+item->sliderTrack.h/2};
         mouse(release_point,MOUSEEVENTF_LEFTUP); wait(100);
     } else if(scenario==L"typing") {
         int duration=duration_ms ? duration_ms : 10000; auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(duration); int i=0;
@@ -4517,24 +4517,24 @@ int wmain(int argc, wchar_t** argv) {
         if (uia_ime) return run_uia_ime(evidence, perf_appearance);
         if (animation_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "animation.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 slider_animation_native(*appearance, report);
             }
             return report.failures ? 1 : 0;
         }
         if (dd_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "dd.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 long_dropdown_native(*appearance, report);
             }
             return report.failures ? 1 : 0;
         }
         if (context_menu_only) {
             std::filesystem::create_directories(evidence); Report report(evidence / "context-menu.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 context_menu_native(*appearance, report);
             }
             std::cout << report.checks << " context menu checks, " << report.failures << " not passing\n";
@@ -4542,40 +4542,40 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (vertical_only) {  // #82 native checks alone, for quick runs
             std::filesystem::create_directories(evidence); Report report(evidence / "vertical.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 vertical_label_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
         if (multiline_only) {  // #79 native checks alone, for quick runs
             std::filesystem::create_directories(evidence); Report report(evidence / "multiline.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 multiline_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
         if (richtext_only) {  // #81 native checks alone (uses the real clipboard: run on an idle desktop)
             std::filesystem::create_directories(evidence); Report report(evidence / "richtext.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 richtext_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
         }
         if (word_select_only) {  // #83 native checks alone, for quick runs
             std::filesystem::create_directories(evidence); Report report(evidence / "word-select.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 word_select_native(*appearance, report);
             }
             return report.failures ? 1 : 0;
         }
         if (justify_only) {  // #84 native checks alone, for quick runs
             std::filesystem::create_directories(evidence); Report report(evidence / "justify.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 justify_native(*appearance, report, evidence);
             }
             return report.failures ? 1 : 0;
@@ -4586,8 +4586,8 @@ int wmain(int argc, wchar_t** argv) {
         if (r06_only) {
             std::filesystem::create_directories(evidence);
             Report report(evidence / "r06.tsv");
-            for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
-                report.appearance = appearance == &web_appearance() ? "web" : "material";
+            for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+                report.appearance = appearance == &webAppearance() ? "web" : "material";
                 resize_first_frame_matches_next(*appearance, report, 1.f);
                 resize_first_frame_matches_next(*appearance, report, 1.5f);
                 resize_first_frame_matches_next(*appearance, report, 1.5f, true);
@@ -4595,7 +4595,7 @@ int wmain(int argc, wchar_t** argv) {
             return report.failures ? 1 : 0;
         }
         if (backend_check) {
-            Fixture fixture(web_appearance(), true);
+            Fixture fixture(webAppearance(), true);
             const auto renderer = fixture.host.renderer_name();
             std::cout << "OpenGL renderer: " << renderer << '\n';
             if (renderer.find("llvmpipe") == std::string::npos) {
@@ -4615,7 +4615,7 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return run_demo_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration,false,"perf.tsv");
         if (!perf.empty()) return run_perf(evidence,perf,perf_appearance,perf_large,perf_delay,perf_duration);
-        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&web_appearance(), &material_appearance()}) { report.appearance = appearance == &web_appearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
+        if (dl01_only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpu_tsv(evidence/"render-compare.tsv"); gpu_tsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; draw_list_initial(*appearance, report, &gpu_tsv, evidence); gpu_draw_list_smoke(*appearance, report, evidence); } gpu_tsv.flush(); bool written=bool(gpu_tsv); gpu_tsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboard_only) || int(ime) + int(clipboard_only) + int(dpi) + int(x02_only) + int(x04_only) + int(x04_clipped_only) + int(x04_executing_only) + int(x04_disabled_only) + int(x04_selection_only) + int(hover_only) + int(focus_only) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? run_ime(evidence) : hover_only ? run_hover(evidence) : focus_only ? run_focus(evidence) : dpi ? run_dpi(evidence) : clipboard_only ? run_clipboard(evidence, repeat) : x02_only ? run_x02(evidence) : x04_only ? run_x04(evidence) : x04_clipped_only ? run_x04_clipped(evidence) : x04_executing_only ? run_x04_executing(evidence) : x04_disabled_only ? run_x04_disabled(evidence) : x04_selection_only ? run_x04_selection(evidence) : run(evidence);

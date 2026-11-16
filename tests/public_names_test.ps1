@@ -9,3 +9,6 @@ foreach ($name in @('deliberately_bad', 'component_id', 'default_limit', 'radio_
 $fixture = Join-Path $PSScriptRoot 'public_names/allowed.hpp.txt'
 $output = & powershell -NoProfile -File $checker -Headers $fixture 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) { throw "Ignored C++ tokens must not fail the check: $output" }
+$output = & powershell -NoProfile -File $checker 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { throw "Public headers violate the naming rule: $output" }
+Write-Output $output

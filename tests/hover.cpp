@@ -14,7 +14,7 @@
 using namespace lcars;
 using test::check;
 namespace {
-const Appearance* const builtins[] = {&web_appearance(), &material_appearance()};
+const Appearance* const builtins[] = {&webAppearance(), &materialAppearance()};
 const ThemeVariant variants[] = {ThemeVariant::light(), ThemeVariant::dark()};
 std::string name_of(const Appearance& a) { return std::string(a.name()); }
 std::string label_of(const Appearance& a, const ThemeVariant& v) { return name_of(a) + " " + v.name; }
@@ -31,39 +31,39 @@ struct Page {
     bool list_first = false;  // lets a scroll test reach the list rows inside a short window
     Page() {
         auto& s = detail::access(ui);
-        save = ui.add_button({.id = "save", .label = u"Save"}).value.value();
-        off = ui.add_button({.id = "off", .label = u"Off", .enabled = false}).value.value();
-        ok = ui.add_button({.id = "ok", .label = u"OK"}).value.value();
-        box = ui.add_checkbox({.id = "box", .label = u"Box"}).value.value();
-        radio = ui.add_radio_group({.id = "radio", .label = u"Radio"},
+        save = ui.addButton({.id = "save", .label = u"Save"}).value.value();
+        off = ui.addButton({.id = "off", .label = u"Off", .enabled = false}).value.value();
+        ok = ui.addButton({.id = "ok", .label = u"OK"}).value.value();
+        box = ui.addCheckbox({.id = "box", .label = u"Box"}).value.value();
+        radio = ui.addRadioGroup({.id = "radio", .label = u"Radio"},
             {{{"a"}, u"A"}, {{"b"}, u"B", false}, {{"c"}, u"C"}}).value.value();
-        drop = ui.add_dropdown({.id = "drop", .label = u"Drop"},
+        drop = ui.addDropdown({.id = "drop", .label = u"Drop"},
             {{{"d1"}, u"One"}, {{"d2"}, u"Two"}, {{"d3"}, u"Three", false}}).value.value();
-        drop.connect_source({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
-        drop.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
+        drop.connectSource({[] { return std::optional<OptionValue>{}; }, [](auto) { return [] {}; }});
+        drop.connectImmediate([](const Change<DropdownHandle>&) { return Result{}; });
         std::vector<OptionItem> items;
         for (int i = 1; i <= 40; ++i) items.push_back({{"l" + std::to_string(i)}, u"Item " + std::u16string(1, char16_t(u'0' + i % 10)), i != 3});
-        list = ui.add_list({.id = "list", .label = u"List"}, items).value.value();
-        tabs = ui.add_tabs({.id = "tabs", .label = u"Tabs"},
+        list = ui.addList({.id = "list", .label = u"List"}, items).value.value();
+        tabs = ui.addTabs({.id = "tabs", .label = u"Tabs"},
             {{{"t1"}, u"One", true, {}}, {{"t2"}, u"Two", true, {}}, {{"t3"}, u"Three", false, {}}}).value.value();
-        nav = ui.add_navigation_list({.id = "nav", .label = u"Nav"},
+        nav = ui.addNavigationList({.id = "nav", .label = u"Nav"},
             {{{"n1"}, u"General", true, {}}, {{"n2"}, u"Other", true, {}}, {{"n3"}, u"Locked", false, {}}}, {"n1"}).value.value();
-        slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
-        slider.connect_source({[] { return 50; }, [](auto) { return [] {}; }});
-        slider.connect_immediate([](const Change<SliderHandle>&) { return Result{}; });
-        field = ui.add_text_field({.id = "field", .label = u"Name", .value = u"abc"}).value.value();
-        notes = ui.add_text_field({.id = "notes", .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visible_lines = 3}).value.value();
-        aligned = ui.add_text_field({.id = "aligned", .label = u"Right", .value = u"abc"}).value.value();
-        check(bool(aligned.set_text_align(TextAlign::right)), "a single-line field takes an alignment");
-        aligned_notes = ui.add_text_field({.id = "aligned_notes", .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visible_lines = 3}).value.value();
-        check(bool(aligned_notes.set_text_align(TextAlign::center)) && bool(aligned_notes.set_line_spacing(1.5)) && bool(aligned_notes.set_paragraph_spacing(8)),
+        slider = ui.addSlider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
+        slider.connectSource({[] { return 50; }, [](auto) { return [] {}; }});
+        slider.connectImmediate([](const Change<SliderHandle>&) { return Result{}; });
+        field = ui.addTextField({.id = "field", .label = u"Name", .value = u"abc"}).value.value();
+        notes = ui.addTextField({.id = "notes", .label = u"Notes", .value = u"one\ntwo", .multiline = true, .visibleLines = 3}).value.value();
+        aligned = ui.addTextField({.id = "aligned", .label = u"Right", .value = u"abc"}).value.value();
+        check(bool(aligned.setTextAlign(TextAlign::right)), "a single-line field takes an alignment");
+        aligned_notes = ui.addTextField({.id = "aligned_notes", .label = u"Centered", .value = u"one\ntwo\nthree", .multiline = true, .visibleLines = 3}).value.value();
+        check(bool(aligned_notes.setTextAlign(TextAlign::center)) && bool(aligned_notes.setLineSpacing(1.5)) && bool(aligned_notes.setParagraphSpacing(8)),
               "a multi-line field takes alignment, line spacing and paragraph spacing");
-        progress = ui.add_progress({.id = "progress", .label = u"Progress"}).value.value();
-        label = ui.add_label({.id = "label", .value = u"Hello"}).value.value();
-        vertical = ui.add_label({.id = "vertical", .value = u"Vertical"}).value.value();
-        check(bool(vertical.set_writing_mode(WritingMode::vertical)), "a label can be written vertically (#82)");
-        dialog = ui.add_dialog("dlg", {ok}, ok, save, [](bool) {}).value.value();
-        tip = ui.add_tooltip("save.tip", save, u"Save it", 100).value.value();
+        progress = ui.addProgress({.id = "progress", .label = u"Progress"}).value.value();
+        label = ui.addLabel({.id = "label", .value = u"Hello"}).value.value();
+        vertical = ui.addLabel({.id = "vertical", .value = u"Vertical"}).value.value();
+        check(bool(vertical.setWritingMode(WritingMode::vertical)), "a label can be written vertically (#82)");
+        dialog = ui.addDialog("dlg", {ok}, ok, save, [](bool) {}).value.value();
+        tip = ui.addTooltip("save.tip", save, u"Save it", 100).value.value();
         s.window_active(true);
         s.tooltip_time(0);
     }
@@ -74,7 +74,7 @@ struct Page {
             layout::component(label), layout::component(vertical), layout::component(list)}));
         return layout::modal(std::move(page), layout::component(ok), dialog);
     }
-    Frame arrange(const Appearance& look = web_appearance(), int width = 480) {
+    Frame arrange(const Appearance& look = webAppearance(), int width = 480) {
         return lcars::arrange(root(), ui, look, measure, width, height, 1.f, scroll);
     }
     detail::UiState& state() { return detail::access(ui); }
@@ -200,15 +200,15 @@ void opening_a_dialog_clears_the_hover_and_blocks_the_background() {
     check(target_of(page) == on("ok"), "components inside the dialog hover as usual");
     move(page, frame, empty_space());
     check(!target_of(page), "the blocked background hovers nothing");
-    check(page.ui.simulate_hover(page.save).status == Status::blocked_by_modal, "simulation on the background is blocked");
-    check(bool(page.ui.simulate_hover(page.ok)) && target_of(page) == on("ok"), "simulation inside the dialog works");
+    check(page.ui.simulateHover(page.save).status == Status::blockedByModal, "simulation on the background is blocked");
+    check(bool(page.ui.simulateHover(page.ok)) && target_of(page) == on("ok"), "simulation inside the dialog works");
 }
 
 void dragging_a_slider_keeps_the_hover_on_it() {
     Page page; auto frame = page.arrange();
     auto& s = page.state();
     move(page, frame, middle_of(frame, "slider"));
-    check(bool(s.pointer_down("slider")) && bool(s.slider_pointer_down("slider", middle_of(frame, "slider").first, placed(frame, "slider").slider_track)), "slider press");
+    check(bool(s.pointer_down("slider")) && bool(s.slider_pointer_down("slider", middle_of(frame, "slider").first, placed(frame, "slider").sliderTrack)), "slider press");
     move(page, frame, middle_of(frame, "save"));
     check(target_of(page) == on("slider"), "the hover stays on the dragged slider over another button");
     move(page, frame, empty_space());
@@ -240,41 +240,41 @@ void captured_hover_holds_until_released() {
 
 void simulated_hover_has_the_effect_of_the_pointer() {
     Page page; auto frame = page.arrange();
-    check(bool(page.ui.simulate_hover(page.save)), "simulation accepted");
+    check(bool(page.ui.simulateHover(page.save)), "simulation accepted");
     check(target_of(page) == on("save"), "the simulated target is queryable");
     check(!*page.tip.visible(), "the tooltip waits for its delay");
     page.state().tooltip_time(100);
     check(*page.tip.visible(), "the tooltip appears after the C11 delay");
     move(page, frame, middle_of(frame, "box"));
     check(target_of(page) == on("box") && !*page.tip.visible(), "the real pointer takes over at its first move");
-    check(bool(page.ui.simulate_hover(page.list, OptionValue{"l4"})) && target_of(page) == on("list", "l4"), "an item can be simulated");
-    check(bool(page.ui.clear_simulated_hover()) && !target_of(page), "the simulation can be cleared");
-    check(bool(page.ui.clear_simulated_hover()), "clearing again is harmless");
-    check(bool(page.ui.simulate_hover(page.save)), "simulate before clearing a real hover");
+    check(bool(page.ui.simulateHover(page.list, OptionValue{"l4"})) && target_of(page) == on("list", "l4"), "an item can be simulated");
+    check(bool(page.ui.clearSimulatedHover()) && !target_of(page), "the simulation can be cleared");
+    check(bool(page.ui.clearSimulatedHover()), "clearing again is harmless");
+    check(bool(page.ui.simulateHover(page.save)), "simulate before clearing a real hover");
     move(page, frame, middle_of(frame, "box"));
-    check(bool(page.ui.clear_simulated_hover()) && target_of(page) == on("box"), "clearing leaves a real hover alone");
+    check(bool(page.ui.clearSimulatedHover()) && target_of(page) == on("box"), "clearing leaves a real hover alone");
 }
 
 void simulation_is_admitted_like_the_typed_operations() {
     Page page; page.arrange();
-    check(page.ui.simulate_hover(page.off).status == Status::disabled, "a disabled component answers disabled");
-    check(page.ui.simulate_hover(page.list, OptionValue{"l3"}).status == Status::disabled, "a disabled item answers disabled");
-    check(page.ui.simulate_hover(page.list, OptionValue{"nope"}).status == Status::not_found, "a missing item answers not_found");
-    check(page.ui.simulate_hover(page.save, OptionValue{"x"}).status == Status::not_found, "an item on an item-less component answers not_found");
-    check(page.ui.simulate_hover(ComponentHandle{}).status == Status::not_found, "an empty handle answers not_found");
+    check(page.ui.simulateHover(page.off).status == Status::disabled, "a disabled component answers disabled");
+    check(page.ui.simulateHover(page.list, OptionValue{"l3"}).status == Status::disabled, "a disabled item answers disabled");
+    check(page.ui.simulateHover(page.list, OptionValue{"nope"}).status == Status::notFound, "a missing item answers not_found");
+    check(page.ui.simulateHover(page.save, OptionValue{"x"}).status == Status::notFound, "an item on an item-less component answers not_found");
+    check(page.ui.simulateHover(ComponentHandle{}).status == Status::notFound, "an empty handle answers not_found");
     check(!target_of(page), "refusals leave no hover");
     ButtonHandle stale;
-    { Ui other; stale = other.add_button({.id = "x"}).value.value(); }
-    check(page.ui.simulate_hover(stale).status == Status::not_found, "a handle of a dead Ui answers not_found");
-    check(page.ui.simulate_hover(page.tabs, OptionValue{"t2"}).status == Status::ok, "tab items can be simulated");
+    { Ui other; stale = other.addButton({.id = "x"}).value.value(); }
+    check(page.ui.simulateHover(stale).status == Status::notFound, "a handle of a dead Ui answers not_found");
+    check(page.ui.simulateHover(page.tabs, OptionValue{"t2"}).status == Status::ok, "tab items can be simulated");
 }
 
 void a_simulated_hover_waits_while_a_drag_holds_the_hover() {
     Page page; auto frame = page.arrange();
     auto& s = page.state();
     move(page, frame, middle_of(frame, "slider"));
-    s.pointer_down("slider"); s.slider_pointer_down("slider", 100, placed(frame, "slider").slider_track);
-    check(page.ui.simulate_hover(page.save).status == Status::busy && target_of(page) == on("slider"), "no simulation during a drag");
+    s.pointer_down("slider"); s.slider_pointer_down("slider", 100, placed(frame, "slider").sliderTrack);
+    check(page.ui.simulateHover(page.save).status == Status::busy && target_of(page) == on("slider"), "no simulation during a drag");
     s.pointer_up("slider");
 }
 
@@ -335,10 +335,10 @@ void hover_commands_follow_the_target_everywhere() {
     for (const auto* look : builtins) for (const auto& variant : variants) for (auto density : {Density::standard, Density::compact}) for (bool popup : {false, true}) {
         Page page;
         auto settings = page.ui.presentation(); settings.variant = variant; settings.density = density;
-        check(bool(page.ui.set_presentation(settings)), "settings accepted");
+        check(bool(page.ui.setPresentation(settings)), "settings accepted");
         if (popup) check(bool(page.drop.open()), "the dropdown opens so its panel is part of the frame");  // the panel covers what lies below it
         auto frame = page.arrange(*look);
-        auto palette = page.state().effective_palette(*look);
+        auto palette = page.state().effectivePalette(*look);
         for (const auto* source : painted_placements(frame)) for (const auto& rest : rests(*source)) {
             auto context = label_of(*look, variant) + " " + (density == Density::compact ? "compact " : "standard ") + (popup ? "popup " : "") + rest.context;
             move(page, frame, rest.at);
@@ -350,18 +350,18 @@ void hover_commands_follow_the_target_everywhere() {
                 bool item_based = !q->options.empty();
                 bool expected = target && target->id == q->id && kind_clickable &&
                     (item_based ? target->item.has_value() : !target->item.has_value());
-                check(expected == !hovers.empty(), (context + ": hover commands for " + q->id + (q->dropdown_panel ? " panel" : "")).c_str());
+                check(expected == !hovers.empty(), (context + ": hover commands for " + q->id + (q->dropdownPanel ? " panel" : "")).c_str());
                 if (!expected) continue;
-                seen.insert(std::to_string(static_cast<int>(q->kind)) + (q->dropdown_panel ? "p" : ""));
+                seen.insert(std::to_string(static_cast<int>(q->kind)) + (q->dropdownPanel ? "p" : ""));
                 seen_ids.insert(q->id);
                 for (const auto& command : hovers) {
                     check(command.color.r == palette.hover.r && command.color.g == palette.hover.g && command.color.b == palette.hover.b &&
-                          command.color.a == palette.hover_alpha, (context + ": overlay uses the palette's hover color").c_str());
+                          command.color.a == palette.hoverAlpha, (context + ": overlay uses the palette's hover color").c_str());
                     Rect region = intersect(q->bounds, q->clip);
                     if (target->item) {
                         auto semantics = page.state().describe(q->id);
                         auto index = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *target->item; }) - semantics->items.begin();
-                        region = q->options.at(static_cast<std::size_t>(index) - q->option_start);
+                        region = q->options.at(static_cast<std::size_t>(index) - q->optionStart);
                     }
                     check(inside(rect_of(command), region) || q->kind == ComponentKind::slider, (context + ": hover stays inside the hovered component or item").c_str());
                 }
@@ -370,7 +370,7 @@ void hover_commands_follow_the_target_everywhere() {
     }
     // Not vacuous: every clickable kind, and the open dropdown's panel, showed an overlay.
     std::set<std::string> expected_kinds;
-    for (auto kind : {ComponentKind::text_field, ComponentKind::button, ComponentKind::checkbox, ComponentKind::radio_group, ComponentKind::slider, ComponentKind::dropdown, ComponentKind::list, ComponentKind::tabs, ComponentKind::navigation_list})
+    for (auto kind : {ComponentKind::textField, ComponentKind::button, ComponentKind::checkbox, ComponentKind::radioGroup, ComponentKind::slider, ComponentKind::dropdown, ComponentKind::list, ComponentKind::tabs, ComponentKind::navigationList})
         expected_kinds.insert(std::to_string(static_cast<int>(kind)));
     expected_kinds.insert(std::to_string(static_cast<int>(ComponentKind::dropdown)) + "p");
     std::string missing;
@@ -384,7 +384,7 @@ void hover_commands_follow_the_target_everywhere() {
 // ---- context menu (#85) --------------------------------------------------------------------
 
 std::string highlighted_item(Page& page) {
-    auto menu = page.ui.context_menu();
+    auto menu = page.ui.contextMenu();
     if (!menu) return "<closed>";
     for (const auto& item : menu->items) if (item.highlighted) return item.id;
     return "<none>";
@@ -396,23 +396,23 @@ void context_menu_rows_hover_as_their_highlight() {
     for (const auto* look : builtins) for (const auto& variant : variants) for (auto density : {Density::standard, Density::compact}) {
         Page page;
         auto settings = page.ui.presentation(); settings.variant = variant; settings.density = density;
-        check(bool(page.ui.set_presentation(settings)), "settings accepted");
+        check(bool(page.ui.setPresentation(settings)), "settings accepted");
         auto frame = page.arrange(*look);
         move(page, frame, middle_of(frame, "save"));
         check(target_of(page) == on("save"), "the button is hovered before the menu opens");
-        check(bool(page.ui.open_context_menu(page.field)), "the field's menu opens");
+        check(bool(page.ui.openContextMenu(page.field)), "the field's menu opens");
         check(!target_of(page), "an open menu takes the pointer: no component is hovered");
         frame = page.arrange(*look);
-        const auto* panel = frame.menu_panel();
-        check(panel != nullptr && !panel->menu_rows.empty(), "the menu is placed");
+        const auto* panel = frame.menuPanel();
+        check(panel != nullptr && !panel->menuRows.empty(), "the menu is placed");
         if (!panel) continue;
         auto context = label_of(*look, variant) + (density == Density::compact ? " compact" : " standard");
-        for (const auto& row : panel->menu_rows) {
+        for (const auto& row : panel->menuRows) {
             auto at = middle(row.bounds);
-            check(frame.menu_item_at(at.first, at.second) == row.id, (context + ": the row is under its own middle").c_str());
+            check(frame.menuItemAt(at.first, at.second) == row.id, (context + ": the row is under its own middle").c_str());
             auto before = highlighted_item(page);
             move(page, frame, at);  // the host's WM_MOUSEMOVE: hover first, then the menu row
-            if (auto id = frame.menu_item_at(at.first, at.second)) page.state().menu_highlight(*id);
+            if (auto id = frame.menuItemAt(at.first, at.second)) page.state().menu_highlight(*id);
             if (row.separator) { check(highlighted_item(page) == before, (context + ": a line keeps the highlight").c_str()); continue; }
             ++rows_seen;
             check(highlighted_item(page) == row.id, (context + ": hovering " + row.id + " highlights it").c_str());
@@ -423,14 +423,14 @@ void context_menu_rows_hover_as_their_highlight() {
             }
         }
         // Touch moves do not highlight; the typed simulation is refused while the menu owns the pointer.
-        check(page.ui.simulate_hover(page.save).status == Status::blocked_by_modal, "typed simulation answers blocked_by_modal");
+        check(page.ui.simulateHover(page.save).status == Status::blockedByModal, "typed simulation answers blocked_by_modal");
         auto& tree = page.ui.semantics();
-        const auto menu = menu_node_id("field");
-        check(tree.perform({"field"}, Verb::hover).status == Status::blocked_by_modal, "the semantic verb agrees with the typed entry");
-        check(tree.perform({menu}, Verb::hover).status == Status::not_supported, "the menu panel itself is not hoverable");
+        const auto menu = menuNodeId("field");
+        check(tree.perform({"field"}, Verb::hover).status == Status::blockedByModal, "the semantic verb agrees with the typed entry");
+        check(tree.perform({menu}, Verb::hover).status == Status::notSupported, "the menu panel itself is not hoverable");
         check(bool(tree.perform({menu, OptionValue{"lcars.select_all"}}, Verb::hover)) && highlighted_item(page) == "lcars.select_all", "the semantic hover on a row highlights it");
         // Closing the menu gives the pointer back at once, to what lies under its resting position.
-        check(bool(page.ui.close_context_menu()), "the menu closes");
+        check(bool(page.ui.closeContextMenu()), "the menu closes");
         frame = page.arrange(*look);
         move(page, frame, middle_of(frame, "box"));
         check(target_of(page) == on("box"), "after the menu the real pointer hovers again");
@@ -442,7 +442,7 @@ void hovering_the_slider_track_far_from_the_thumb_still_marks_the_thumb() {
     for (const auto* look : builtins) {
         Page page; auto frame = page.arrange(*look);
         const auto& slider = placed(frame, "slider");
-        auto track = slider.slider_track;
+        auto track = slider.sliderTrack;
         move(page, frame, {track.x + track.w - 3, track.y + track.h / 2});
         check(target_of(page) == on("slider"), "the pointer on the far end of the track hovers the slider");
         auto hovers = paint(page, slider, *look).commands_with(PaintRole::hover);
@@ -472,18 +472,18 @@ void a_hovered_selected_item_keeps_its_selection_and_gains_the_overlay() {
 void the_hover_switch_hides_the_overlay_but_not_the_target_or_the_tooltip() {
     Page page; auto frame = page.arrange();
     auto settings = page.ui.presentation(); settings.hover = Hover::off;
-    check(bool(page.ui.set_presentation(settings)), "switch off");
+    check(bool(page.ui.setPresentation(settings)), "switch off");
     move(page, frame, middle_of(frame, "save"));
     check(target_of(page) == on("save"), "the target is still reported with the switch off");
     for (const auto* q : painted_placements(frame))
-        check(paint(page, *q, web_appearance()).commands_with(PaintRole::hover).empty(), "no hover command with the switch off");
+        check(paint(page, *q, webAppearance()).commands_with(PaintRole::hover).empty(), "no hover command with the switch off");
     page.state().tooltip_time(100);
     check(*page.tip.visible(), "the tooltip still follows the pointer");
-    check(bool(page.ui.simulate_hover(page.box)), "simulation is accepted with the switch off");
-    check(paint(page, placed(frame, "box"), web_appearance()).commands_with(PaintRole::hover).empty(), "simulated hover is hidden too");
+    check(bool(page.ui.simulateHover(page.box)), "simulation is accepted with the switch off");
+    check(paint(page, placed(frame, "box"), webAppearance()).commands_with(PaintRole::hover).empty(), "simulated hover is hidden too");
     settings.hover = Hover::on;
-    check(bool(page.ui.set_presentation(settings)), "switch on");
-    check(!paint(page, placed(frame, "box"), web_appearance()).commands_with(PaintRole::hover).empty(), "switching back on shows the overlay at once");
+    check(bool(page.ui.setPresentation(settings)), "switch on");
+    check(!paint(page, placed(frame, "box"), webAppearance()).commands_with(PaintRole::hover).empty(), "switching back on shows the overlay at once");
 }
 
 void hover_overlay_blends_over_the_surface_with_the_palette_alpha() {
@@ -516,12 +516,12 @@ void the_default_overlay_path_keeps_the_alpha_visible() {
     const auto& item = placed(frame, "save");
     auto semantics = page.state().describe("save");
     check(semantics.has_value(), "the button describes");
-    AlphaProbe probe(page.state(), item, *semantics, web_appearance(), 1.f, true);
+    AlphaProbe probe(page.state(), item, *semantics, webAppearance(), 1.f, true);
     detail::component_type(item.kind).paint(probe);
-    auto palette = page.state().effective_palette(web_appearance());
+    auto palette = page.state().effectivePalette(webAppearance());
     int translucent = 0, opaque = 0;
     for (const auto& s : probe.seen) {
-        if (s.role == PaintRole::hover) { ++translucent; check(s.alpha == palette.hover_alpha, "the hover fill carries the palette alpha"); }
+        if (s.role == PaintRole::hover) { ++translucent; check(s.alpha == palette.hoverAlpha, "the hover fill carries the palette alpha"); }
         else { ++opaque; check(s.alpha == 255, "every other fill is opaque"); }
     }
     check(translucent == 1 && opaque > 0, "one translucent fill among the opaque ones");
@@ -529,10 +529,10 @@ void the_default_overlay_path_keeps_the_alpha_visible() {
 
 void hover_never_paints_for_a_zero_alpha_palette() {
     Page page;
-    check(bool(page.ui.set_palette_overrides({{name_of(web_appearance()), ThemeVariant::light(), "hover_alpha", 0}})), "alpha 0 accepted");
+    check(bool(page.ui.setPaletteOverrides({{name_of(webAppearance()), ThemeVariant::light(), "hover_alpha", 0}})), "alpha 0 accepted");
     auto frame = page.arrange();
     move(page, frame, middle_of(frame, "save"));
-    check(paint(page, placed(frame, "save"), web_appearance()).commands_with(PaintRole::hover).empty(), "alpha 0 paints nothing");
+    check(paint(page, placed(frame, "save"), webAppearance()).commands_with(PaintRole::hover).empty(), "alpha 0 paints nothing");
 }
 
 // ---- re-evaluation after scrolling and reflow -----------------------------------------------
@@ -565,7 +565,7 @@ void scrolling_under_a_resting_pointer_moves_the_hover_at_once() {
     auto scrolled = tall.arrange();
     auto now = target_of(tall);
     check(now && now->id == "list" && now->item && !(now->item == before->item), "another row is now under the pointer and hovered");
-    check(scrolled.option_at(placed(scrolled, "list"), row.first, row.second).has_value(), "and that row is the one the frame puts there");
+    check(scrolled.optionAt(placed(scrolled, "list"), row.first, row.second).has_value(), "and that row is the one the frame puts there");
 }
 
 void reflow_under_a_resting_pointer_moves_the_hover_at_once() {
@@ -575,15 +575,15 @@ void reflow_under_a_resting_pointer_moves_the_hover_at_once() {
     move(page, frame, at);
     auto before = target_of(page);
     check(before && before->id == "field", "the pointer rests on the text field");
-    auto settings = page.ui.presentation(); settings.text_size = 28;
-    check(bool(page.ui.set_presentation(settings)), "a keyboard shortcut enlarges the text");
+    auto settings = page.ui.presentation(); settings.textSize = 28;
+    check(bool(page.ui.setPresentation(settings)), "a keyboard shortcut enlarges the text");
     auto after = page.arrange();
     auto expected = id_under(after, at);
     auto target = target_of(page);
     check(expected && *expected != "field", "the larger text moved another component under the pointer");
     check(target && target->id == *expected, "the hover follows the reflow without a mouse move");
     settings.density = Density::compact;
-    check(bool(page.ui.set_presentation(settings)), "density changes");
+    check(bool(page.ui.setPresentation(settings)), "density changes");
     auto compact = page.arrange();
     auto now = id_under(compact, at);
     auto after_density = target_of(page);
@@ -595,11 +595,11 @@ void a_frame_does_not_move_a_simulated_hover() {
     auto frame = page.arrange();
     auto save_at = middle_of(frame, "save");
     move(page, frame, save_at);
-    check(bool(page.ui.simulate_hover(page.box)), "simulated hover");
+    check(bool(page.ui.simulateHover(page.box)), "simulated hover");
     frame.wheel(page.ui, 40, 20, -120);
     page.arrange();
     check(target_of(page) == on("box"), "a re-layout leaves a simulated hover alone");
-    check(bool(page.ui.clear_simulated_hover()), "clear");
+    check(bool(page.ui.clearSimulatedHover()), "clear");
     auto fresh = page.arrange();
     auto expected = id_under(fresh, save_at);
     auto target = target_of(page);
@@ -616,7 +616,7 @@ void the_semantic_layer_queries_and_simulates_hover_like_the_typed_entry() {
     check(tree.hover() && *tree.hover() == NodeRef{"save"} && target_of(page) == on("save"), "the semantic query equals the typed one");
     check(bool(tree.perform({"list", OptionValue{"l2"}}, Verb::hover)), "an item is named by id and value");
     check(tree.hover() && *tree.hover() == (NodeRef{"list", OptionValue{"l2"}}) && target_of(page) == on("list", "l2"), "the item is reported by both");
-    check(bool(tree.clear_simulated_hover()) && !target_of(page) && !*tree.hover(), "the semantic layer clears the simulation");
+    check(bool(tree.clearSimulatedHover()) && !target_of(page) && !*tree.hover(), "the semantic layer clears the simulation");
     // Same admission and Status words as the typed entry, target by target.
     struct Case { std::string id; std::optional<std::string> item; ComponentHandle handle; };
     std::vector<Case> cases{
@@ -624,15 +624,15 @@ void the_semantic_layer_queries_and_simulates_hover_like_the_typed_entry() {
         {"list", "nope", page.list}, {"save", "x", page.save}, {"tabs", "t3", page.tabs}, {"nav", "n2", page.nav}};
     for (const auto& c : cases) {
         std::optional<OptionValue> item = c.item ? std::optional<OptionValue>(OptionValue{*c.item}) : std::nullopt;
-        auto typed = page.ui.simulate_hover(c.handle, item).status;
+        auto typed = page.ui.simulateHover(c.handle, item).status;
         auto semantic = tree.perform({c.id, item}, Verb::hover).status;
         check(typed == semantic, ("typed and semantic statuses agree for " + c.id + (c.item ? "/" + *c.item : "")).c_str());
-        page.ui.clear_simulated_hover();
+        page.ui.clearSimulatedHover();
     }
-    check(tree.perform({"missing"}, Verb::hover).status == Status::not_found, "an unknown id is not_found");
+    check(tree.perform({"missing"}, Verb::hover).status == Status::notFound, "an unknown id is not_found");
     check(bool(page.dialog.open()), "dialog opens");
-    check(page.ui.simulate_hover(page.save).status == Status::blocked_by_modal &&
-          tree.perform({"save"}, Verb::hover).status == Status::blocked_by_modal, "both entries report blocked_by_modal behind a dialog");
+    check(page.ui.simulateHover(page.save).status == Status::blockedByModal &&
+          tree.perform({"save"}, Verb::hover).status == Status::blockedByModal, "both entries report blocked_by_modal behind a dialog");
     check(tree.perform({"ok"}, Verb::hover).status == Status::ok, "and accept a component inside it");
     check(tree.perform({"dlg"}, Verb::hover).status != Status::ok, "the dialog node itself is not hoverable");
 }
@@ -660,11 +660,11 @@ void hover_is_invisible_to_the_semantic_tree_and_its_events() {
     auto before = snapshot();
     int events = 0;
     auto subscription = tree.subscribe([&](const SemanticEvent&) { ++events; });
-    tree.dispatch_events();
+    tree.dispatchEvents();
     events = 0;
     move(page, frame, middle_of(frame, "save")); move(page, frame, item_middle(frame, "list", 1)); move(page, frame, middle_of(frame, "slider"));
     tree.perform({"box"}, Verb::hover); tree.perform({"nav", OptionValue{"n2"}}, Verb::hover);
-    tree.dispatch_events();
+    tree.dispatchEvents();
     check(events == 0, "hover changes raise no semantic event");
     check(snapshot() == before, "no node property or verb list changes with hover");
 }
@@ -674,39 +674,39 @@ void hover_is_invisible_to_the_semantic_tree_and_its_events() {
 // Literal proposal values of the ticket: Material overlays the text color at 8% (20/255);
 // Minimal Web overlays 6% black on light (15/255) and 8% white on dark (20/255).
 void hover_overlay_values_are_the_proposed_ones() {
-    auto material_light = material_appearance().palette(ThemeVariant::light());
-    auto material_dark = material_appearance().palette(ThemeVariant::dark());
-    auto web_light = web_appearance().palette(ThemeVariant::light());
-    auto web_dark = web_appearance().palette(ThemeVariant::dark());
+    auto material_light = materialAppearance().palette(ThemeVariant::light());
+    auto material_dark = materialAppearance().palette(ThemeVariant::dark());
+    auto web_light = webAppearance().palette(ThemeVariant::light());
+    auto web_dark = webAppearance().palette(ThemeVariant::dark());
     // 8% would leave the muted field label at 4.22:1 on the hovered surface; 10/255 (4%) keeps 4.56:1.
-    check(material_light.hover == material_light.text && material_light.hover_alpha == 10, "material light: text color at 4% (the contrast rule caps it below 8%)");
-    check(material_dark.hover == material_dark.text && material_dark.hover_alpha == 20, "material dark: text color at 8%");
-    check(web_light.hover == Color{0, 0, 0} && web_light.hover_alpha == 15, "web light: 6% black");
-    check(web_dark.hover == Color{255, 255, 255} && web_dark.hover_alpha == 20, "web dark: 8% white");
+    check(material_light.hover == material_light.text && material_light.hoverAlpha == 10, "material light: text color at 4% (the contrast rule caps it below 8%)");
+    check(material_dark.hover == material_dark.text && material_dark.hoverAlpha == 20, "material dark: text color at 8%");
+    check(web_light.hover == Color{0, 0, 0} && web_light.hoverAlpha == 15, "web light: 6% black");
+    check(web_dark.hover == Color{255, 255, 255} && web_dark.hoverAlpha == 20, "web dark: 8% white");
 }
 
 void hover_roles_are_named_palette_roles() {
-    auto roles = palette_roles();
+    auto roles = paletteRoles();
     check(std::find(roles.begin(), roles.end(), "hover") != roles.end(), "hover is a color role");
     check(std::find(roles.begin(), roles.end(), "hover_alpha") != roles.end(), "hover_alpha is an int role");
-    Palette p = web_appearance().palette();
-    check(set_palette_value(p, "hover", Color{9, 8, 7}) && p.hover == Color{9, 8, 7}, "hover color is settable");
-    check(set_palette_value(p, "hover_alpha", 31) && p.hover_alpha == 31, "hover_alpha is settable");
-    check(!set_palette_value(p, "hover_alpha", 256) && !set_palette_value(p, "hover_alpha", -1), "hover_alpha is 0-255");
-    check(!set_palette_value(p, "hover_alpha", Color{1, 2, 3}) && !set_palette_value(p, "hover", 5), "hover roles check the value kind");
+    Palette p = webAppearance().palette();
+    check(setPaletteValue(p, "hover", Color{9, 8, 7}) && p.hover == Color{9, 8, 7}, "hover color is settable");
+    check(setPaletteValue(p, "hover_alpha", 31) && p.hoverAlpha == 31, "hover_alpha is settable");
+    check(!setPaletteValue(p, "hover_alpha", 256) && !setPaletteValue(p, "hover_alpha", -1), "hover_alpha is 0-255");
+    check(!setPaletteValue(p, "hover_alpha", Color{1, 2, 3}) && !setPaletteValue(p, "hover", 5), "hover roles check the value kind");
 }
 
 void hover_roles_can_be_overridden_through_the_ui() {
     Ui ui;
-    auto result = ui.set_palette_overrides({{name_of(web_appearance()), ThemeVariant::light(), "hover", Color{10, 20, 30}},
-                                            {name_of(web_appearance()), ThemeVariant::light(), "hover_alpha", 20}});
+    auto result = ui.setPaletteOverrides({{name_of(webAppearance()), ThemeVariant::light(), "hover", Color{10, 20, 30}},
+                                            {name_of(webAppearance()), ThemeVariant::light(), "hover_alpha", 20}});
     check(bool(result), "hover overrides are accepted");
-    auto effective = ui.effective_palette(web_appearance(), ThemeVariant::light());
-    check(effective && effective->hover == Color{10, 20, 30} && effective->hover_alpha == 20, "override reaches the effective palette");
-    check(ui.effective_palette(web_appearance(), ThemeVariant::dark())->hover == Color{255, 255, 255}, "other variants keep their value");
+    auto effective = ui.effectivePalette(webAppearance(), ThemeVariant::light());
+    check(effective && effective->hover == Color{10, 20, 30} && effective->hoverAlpha == 20, "override reaches the effective palette");
+    check(ui.effectivePalette(webAppearance(), ThemeVariant::dark())->hover == Color{255, 255, 255}, "other variants keep their value");
     // #86: an overlay strong enough to take the outline under 3:1 on the hovered surface is refused, naming the pair.
-    auto strong = ui.set_palette_overrides({{name_of(web_appearance()), ThemeVariant::light(), "hover_alpha", 90}});
-    check(strong.status == Status::invalid_value && std::u16string_view(strong.message).find(u"outline/hovered") != std::u16string_view::npos, "a hover overlay that drowns the outline is rejected");
+    auto strong = ui.setPaletteOverrides({{name_of(webAppearance()), ThemeVariant::light(), "hover_alpha", 90}});
+    check(strong.status == Status::invalidValue && std::u16string_view(strong.message).find(u"outline/hovered") != std::u16string_view::npos, "a hover overlay that drowns the outline is rejected");
 }
 
 // ---- contrast ------------------------------------------------------------------------------
@@ -723,10 +723,10 @@ void hover_keeps_text_and_accent_readable_on_every_hovered_surface() {
         auto p = look->palette(variant);
         struct Surface { const char* name; Color color; };
         for (const auto& surface : {Surface{"background", p.background}, Surface{"panel", p.panel}, Surface{"surface", p.surface}, Surface{"selection", p.selection}}) {
-            auto hovered = blended(p.hover, p.hover_alpha, surface.color);
+            auto hovered = blended(p.hover, p.hoverAlpha, surface.color);
             auto context = label_of(*look, variant) + " " + surface.name;
             auto expect = [&](const char* what, Color foreground, double required) {
-                double ratio = contrast_ratio(foreground, hovered);
+                double ratio = contrastRatio(foreground, hovered);
                 if (ratio < required) failures += context + ": " + what + " " + std::to_string(ratio).substr(0, 4) + ":1 (needs " + std::to_string(required).substr(0, 3) + "); ";
             };
             expect("text", p.text, 4.5);
@@ -749,11 +749,11 @@ void presentation_has_a_hover_switch_on_by_default() {
     check(ui.presentation().hover == Hover::on, "hover is on by default");
     auto settings = ui.presentation();
     settings.hover = Hover::off;
-    check(bool(ui.set_presentation(settings)) && ui.presentation().hover == Hover::off, "hover can be switched off at run time");
+    check(bool(ui.setPresentation(settings)) && ui.presentation().hover == Hover::off, "hover can be switched off at run time");
     check(!(settings == PresentationSettings{}), "the switch takes part in operator==");
     int repaints = 0; detail::access(ui).on_invalidate([&] { ++repaints; });
     settings.hover = Hover::on;
-    check(bool(ui.set_presentation(settings)) && repaints == 1, "switching back on repaints");
+    check(bool(ui.setPresentation(settings)) && repaints == 1, "switching back on repaints");
 }
 }
 int main() {

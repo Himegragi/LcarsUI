@@ -18,7 +18,7 @@ using test::check;
 namespace {
 KeyPress press(Key key, bool shift = false, bool control = false) { return {.key = key, .shift = shift, .ctrl = control}; }
 
-// A dictionary stand-in with fixed rules: the script_run words, except that a run of Chinese characters
+// A dictionary stand-in with fixed rules: the scriptRun words, except that a run of Chinese characters
 // is cut into pieces of two. 設定管理示範 -> 設定|管理|示範; the last piece may be one character.
 struct PairBreaker final : detail::WordBreaker {
     bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override {
@@ -43,22 +43,22 @@ struct Field {
     Ui ui; TextFieldHandle handle;
     explicit Field(std::u16string value, bool multiline = false, WordSegmentation mode = WordSegmentation::dictionary,
                    std::shared_ptr<const detail::WordBreaker> breaker = std::make_shared<PairBreaker>()) {
-        ComponentConfig control{.id = "t", .value = value, .multiline = multiline, .visible_lines = 4};
+        ComponentConfig control{.id = "t", .value = value, .multiline = multiline, .visibleLines = 4};
         auto model = std::make_shared<std::u16string>(std::move(value));
-        auto query = ui.add_text_field(std::move(control));
+        auto query = ui.addTextField(std::move(control));
         check(bool(query), "Create the text field");
         handle = *query;
-        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-        check(bool(handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
+        check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
+        check(bool(handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
         host().set_word_breaker(std::move(breaker));
-        check(bool(handle.set_word_segmentation(mode)), "Choose the segmentation");
+        check(bool(handle.setWordSegmentation(mode)), "Choose the segmentation");
     }
     detail::UiState& host() { return detail::access(ui); }
     Selection selection() { return host().edit("t")->selection; }
     std::u16string text() { return host().text("t"); }
     // The selected range after a double click on the character starting at `offset`.
     TextSpan double_clicked(unsigned offset) {
-        check(bool(handle.double_click(offset)), "Double click");
+        check(bool(handle.doubleClick(offset)), "Double click");
         auto s = selection();
         return {std::min(s.anchor, s.caret), std::max(s.anchor, s.caret)};
     }
@@ -86,17 +86,17 @@ void punctuation_and_spaces_stand_alone_and_the_end_selects_the_last_word() {
     check(blank.double_clicked(1) == TextSpan{0, 3}, "A text of spaces selects the run");
     Field empty(u"");
     check(empty.double_clicked(0) == TextSpan{0, 0}, "An empty field selects nothing");
-    check(f.handle.double_click(10).status == Status::invalid_value, "An offset past the end is invalid");
+    check(f.handle.doubleClick(10).status == Status::invalidValue, "An offset past the end is invalid");
 }
 
 void triple_click_selects_everything_in_a_single_line_field_and_a_paragraph_in_a_multi_line_one() {
     Field single(u"設定管理 abc");
-    check(bool(single.handle.triple_click(1)) && single.selection().anchor == 0 && single.selection().caret == 8, "Single line: everything");
-    check(bool(single.handle.triple_click(8)) && single.selection().anchor == 0 && single.selection().caret == 8, "Single line: past the end too");
+    check(bool(single.handle.tripleClick(1)) && single.selection().anchor == 0 && single.selection().caret == 8, "Single line: everything");
+    check(bool(single.handle.tripleClick(8)) && single.selection().anchor == 0 && single.selection().caret == 8, "Single line: past the end too");
     // a0 b1 ' '2 c3 d4 LF5 e6 f7 ' '8 g9 h10 LF11 LF12 i13 j14
     Field multi(u"ab cd\nef gh\n\nij", true);
     auto triple = [&](unsigned at) {
-        check(bool(multi.handle.triple_click(at)), "Triple click");
+        check(bool(multi.handle.tripleClick(at)), "Triple click");
         return TextSpan{multi.selection().anchor, multi.selection().caret};
     };
     check(triple(7) == TextSpan{6, 11}, "A paragraph does not include its line feed");
@@ -104,7 +104,7 @@ void triple_click_selects_everything_in_a_single_line_field_and_a_paragraph_in_a
     check(triple(11) == TextSpan{6, 11}, "Likewise for the second line feed");
     check(triple(12) == TextSpan{12, 12}, "An empty paragraph selects nothing but takes the caret there");
     check(triple(14) == TextSpan{13, 15} && triple(15) == TextSpan{13, 15}, "The last paragraph, and past the end of it");
-    check(*multi.handle.paragraph_at(8) == TextSpan{6, 11}, "paragraph_at reports the same range");
+    check(*multi.handle.paragraphAt(8) == TextSpan{6, 11}, "paragraph_at reports the same range");
 }
 
 void double_click_in_a_multi_line_field_stays_in_its_paragraph() {
@@ -120,44 +120,44 @@ void double_click_in_a_multi_line_field_stays_in_its_paragraph() {
 // LcarsUI 0..6, space 7, 設8 定9 管10 理11 示12 範13, （14, 第15, space 16, 1 17, 2 18, space 19, 版20, ）21, ，22, O23, K24, 。25
 constexpr const char16_t* mixed = u"LcarsUI 設定管理示範（第 12 版），OK。";
 void the_three_segmentations_split_mixed_text_differently_and_switch_at_once() {
-    Field f(mixed, false, WordSegmentation::per_character);
+    Field f(mixed, false, WordSegmentation::perCharacter);
     check(f.double_clicked(2) == TextSpan{0, 8}, "Latin letters are one word and take the space");
     check(f.double_clicked(8) == TextSpan{8, 9} && f.double_clicked(12) == TextSpan{12, 13}, "Per character: each Chinese character is a word");
     check(f.double_clicked(14) == TextSpan{14, 15} && f.double_clicked(22) == TextSpan{22, 23}, "Each punctuation mark is a word");
     check(f.double_clicked(15) == TextSpan{15, 17} && f.double_clicked(17) == TextSpan{17, 20}, "第 and 12 each take the space after them");
     check(f.double_clicked(23) == TextSpan{23, 25} && f.double_clicked(7) == TextSpan{7, 8}, "OK is one word; a single space stands alone");
-    check(bool(f.handle.set_word_segmentation(WordSegmentation::script_run)), "Switch while the field is in use");
+    check(bool(f.handle.setWordSegmentation(WordSegmentation::scriptRun)), "Switch while the field is in use");
     check(f.double_clicked(8) == TextSpan{8, 14} && f.double_clicked(13) == TextSpan{8, 14}, "Script run: the six characters are one word");
     check(f.double_clicked(2) == TextSpan{0, 8}, "Latin and digits behave as before");
-    check(bool(f.handle.set_word_segmentation(WordSegmentation::dictionary)), "Switch to the dictionary");
+    check(bool(f.handle.setWordSegmentation(WordSegmentation::dictionary)), "Switch to the dictionary");
     check(f.double_clicked(8) == TextSpan{8, 10} && f.double_clicked(12) == TextSpan{12, 14}, "Dictionary (fixed pairs): 設定|管理|示範");
-    check(*f.handle.word_segmentation() == WordSegmentation::dictionary && *f.handle.word_segmentation_in_use() == WordSegmentation::dictionary,
+    check(*f.handle.wordSegmentation() == WordSegmentation::dictionary && *f.handle.wordSegmentationInUse() == WordSegmentation::dictionary,
           "The mode as set and the mode in use agree while the dictionary works");
-    check(*f.handle.word_at(9) == TextSpan{8, 10}, "word_at reports what the double click selected");
+    check(*f.handle.wordAt(9) == TextSpan{8, 10}, "word_at reports what the double click selected");
 }
 
 void a_failing_dictionary_falls_back_to_per_character_without_interrupting() {
     auto broken = std::make_shared<FailingBreaker>();
     Field f(mixed, false, WordSegmentation::dictionary, broken);
     check(f.double_clicked(9) == TextSpan{9, 10}, "A failing dictionary segments per character");
-    check(*f.handle.word_segmentation() == WordSegmentation::dictionary, "The mode as set stays the dictionary");
-    check(*f.handle.word_segmentation_in_use() == WordSegmentation::per_character, "The mode in use reports the fallback");
-    check(bool(f.handle.set_word_segmentation(WordSegmentation::script_run)) && *f.handle.word_segmentation_in_use() == WordSegmentation::script_run,
+    check(*f.handle.wordSegmentation() == WordSegmentation::dictionary, "The mode as set stays the dictionary");
+    check(*f.handle.wordSegmentationInUse() == WordSegmentation::perCharacter, "The mode in use reports the fallback");
+    check(bool(f.handle.setWordSegmentation(WordSegmentation::scriptRun)) && *f.handle.wordSegmentationInUse() == WordSegmentation::scriptRun,
           "Another mode is not affected by the failure");
-    f.handle.set_word_segmentation(WordSegmentation::per_character);
+    f.handle.setWordSegmentation(WordSegmentation::perCharacter);
     const int calls = broken->calls;
-    f.handle.double_click(3);
+    f.handle.doubleClick(3);
     check(broken->calls == calls, "The rule modes never ask the dictionary");
 }
 
 void read_only_fields_select_but_disabled_ones_do_nothing() {
     Field f(u"ab cd ef");
-    check(bool(f.handle.read_only(true)), "Make it read-only");
+    check(bool(f.handle.readOnly(true)), "Make it read-only");
     check(f.double_clicked(3) == TextSpan{3, 6}, "A read-only field still selects a word");
-    check(bool(f.handle.triple_click(1)) && f.selection().caret == 8, "And a paragraph");
+    check(bool(f.handle.tripleClick(1)) && f.selection().caret == 8, "And a paragraph");
     check(bool(f.handle.enable(false)), "Disable it");
-    check(f.handle.double_click(3).status == Status::disabled && f.handle.select_word(3).status == Status::disabled, "A disabled field refuses");
-    check(f.handle.triple_click(1).status == Status::disabled && f.handle.select_paragraph(1).status == Status::disabled, "Also a triple click");
+    check(f.handle.doubleClick(3).status == Status::disabled && f.handle.selectWord(3).status == Status::disabled, "A disabled field refuses");
+    check(f.handle.tripleClick(1).status == Status::disabled && f.handle.selectParagraph(1).status == Status::disabled, "Also a triple click");
 }
 
 void composing_refuses_word_selection_like_a_single_click_does() {
@@ -166,15 +166,15 @@ void composing_refuses_word_selection_like_a_single_click_does() {
     host.focus("t");
     host.select("t", 3, 3);
     check(bool(host.composition_update(u"你", 1)), "Start composing");
-    check(f.handle.double_click(5).status == Status::busy && f.handle.triple_click(5).status == Status::busy && f.handle.select_word(5).status == Status::busy,
+    check(f.handle.doubleClick(5).status == Status::busy && f.handle.tripleClick(5).status == Status::busy && f.handle.selectWord(5).status == Status::busy,
           "Word and paragraph selection wait for the input method, as select() does");
     check(host.select("t", 0, 1).status == Status::busy, "The single-click path reports the same status");
     check(host.key_down(press(Key::right, false, true)).status == Status::busy && host.key_down(press(Key::backspace, false, true)).status == Status::busy,
           "Ctrl+arrow and Ctrl+Backspace belong to the input method");
     check(f.text() == u"abc def" && f.selection().caret == 3, "Nothing changed meanwhile");
-    check(bool(f.handle.word_at(5)) && *f.handle.word_at(5) == TextSpan{4, 7}, "Queries stay available");
+    check(bool(f.handle.wordAt(5)) && *f.handle.wordAt(5) == TextSpan{4, 7}, "Queries stay available");
     host.composition_cancel();
-    check(bool(f.handle.double_click(5)) && f.selection().anchor == 4 && f.selection().caret == 7, "Afterwards it works again");
+    check(bool(f.handle.doubleClick(5)) && f.selection().anchor == 4 && f.selection().caret == 7, "Afterwards it works again");
 }
 
 void keyboard_moves_by_the_same_word_stops() {
@@ -195,7 +195,7 @@ void keyboard_moves_by_the_same_word_stops() {
     host.select("t", 6, 6);
     host.key_down(press(Key::left, false, true));
     check(f.selection().caret == 5, "From the middle of a word Ctrl+Left goes to its start");
-    check(*f.handle.next_word_stop(0) == 5 && *f.handle.previous_word_stop(14) == 12 && *f.handle.next_word_stop(14) == 14 && *f.handle.previous_word_stop(0) == 0,
+    check(*f.handle.nextWordStop(0) == 5 && *f.handle.previousWordStop(14) == 12 && *f.handle.nextWordStop(14) == 14 && *f.handle.previousWordStop(0) == 0,
           "The stop queries answer the same");
     host.select("t", 0, 0);
     host.key_down(press(Key::right, true, true));
@@ -229,10 +229,10 @@ void ctrl_backspace_and_delete_remove_exactly_up_to_the_stop() {
     host.select("t", 14, 14);
     check(bool(host.key_down(press(Key::backspace, false, true))) && f.text() == u"abc  def, 設定", "Ctrl+Backspace removes the word before the caret");
     host.select("t", 8, 8);
-    check(*f.handle.previous_word_stop(8) == 5, "The stop before 8 is 5");
+    check(*f.handle.previousWordStop(8) == 5, "The stop before 8 is 5");
     host.key_down(press(Key::backspace, false, true));
     check(f.text() == u"abc  , 設定" && f.selection().caret == 5, "It removed exactly up to that stop");
-    check(*f.handle.next_word_stop(5) == 7, "The stop after 5 is 7, past the comma and the space");
+    check(*f.handle.nextWordStop(5) == 7, "The stop after 5 is 7, past the comma and the space");
     host.key_down(press(Key::del, false, true));
     check(f.text() == u"abc  設定" && f.selection().caret == 5, "Ctrl+Delete removed exactly up to that stop");
     check(bool(host.undo("t")) && f.text() == u"abc  , 設定", "One Ctrl+Delete is one undo step");
@@ -246,10 +246,10 @@ void ctrl_backspace_and_delete_remove_exactly_up_to_the_stop() {
     Field g(u"abc");
     g.host().focus("t");
     g.host().select("t", 0, 0);
-    check(bool(g.host().key_down(press(Key::backspace, false, true))) && g.text() == u"abc" && g.host().undo("t").status == Status::empty_history,
+    check(bool(g.host().key_down(press(Key::backspace, false, true))) && g.text() == u"abc" && g.host().undo("t").status == Status::emptyHistory,
           "Ctrl+Backspace at the start changes nothing and records nothing");
     g.host().select("t", 3, 3);
-    check(bool(g.host().key_down(press(Key::del, false, true))) && g.text() == u"abc" && g.host().undo("t").status == Status::empty_history,
+    check(bool(g.host().key_down(press(Key::del, false, true))) && g.text() == u"abc" && g.host().undo("t").status == Status::emptyHistory,
           "Ctrl+Delete at the end changes nothing and records nothing");
 }
 
@@ -258,9 +258,9 @@ void read_only_and_disabled_fields_keep_their_text_under_ctrl_backspace() {
     auto& host = f.host();
     host.focus("t");
     host.select("t", 7, 7);
-    f.handle.read_only(true);
-    check(host.key_down(press(Key::backspace, false, true)).status == Status::read_only && f.text() == u"abc def", "Read-only: nothing changes and the status says so");
-    check(host.key_down(press(Key::del, false, true)).status == Status::read_only && f.text() == u"abc def", "Also Ctrl+Delete");
+    f.handle.readOnly(true);
+    check(host.key_down(press(Key::backspace, false, true)).status == Status::readOnly && f.text() == u"abc def", "Read-only: nothing changes and the status says so");
+    check(host.key_down(press(Key::del, false, true)).status == Status::readOnly && f.text() == u"abc def", "Also Ctrl+Delete");
     host.key_down(press(Key::left, false, true));
     check(f.selection().caret == 4, "Read-only fields still move by words");
     host.key_down(press(Key::left, true, true));
@@ -274,56 +274,56 @@ constexpr int box = 200;
 struct Laid {
     test::FakeMeasure measure; ScrollState scroll; Frame frame; Field& field;
     explicit Laid(Field& f, int width = box) : field(f) { relayout(width); }
-    void relayout(int width = box) { frame = arrange(layout::component(field.handle), field.ui, web_appearance(), measure, width, 400, 1.f, scroll); }
+    void relayout(int width = box) { frame = arrange(layout::component(field.handle), field.ui, webAppearance(), measure, width, 400, 1.f, scroll); }
     const Placement& placed() const { return *frame.find(field.handle); }
     // The pointer position in the middle of the character starting at `offset`.
-    int x_of(unsigned offset) const { return (placed().caret_x(offset) + placed().caret_x(offset + 1)) / 2; }
-    int y() const { return placed().bounds.y + placed().text_field.editor.y + 2; }
+    int x_of(unsigned offset) const { return (placed().caretX(offset) + placed().caretX(offset + 1)) / 2; }
+    int y() const { return placed().bounds.y + placed().textField.editor.y + 2; }
 };
 
 void dragging_after_a_double_click_grows_by_words_and_keeps_the_first_word() {
     Field f(u"aa bb cc dd");  // aa 0-2, space 2, bb 3-5, space 5, cc 6-8, space 8, dd 9-11
     f.host().focus("t");
     Laid laid(f);
-    check(bool(f.handle.double_click(4)) && f.selection().anchor == 3 && f.selection().caret == 6, "bb and its space");
-    check(laid.frame.select_to(f.ui, f.handle, laid.x_of(9), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 11, "Dragging into dd selects through it");
-    check(laid.frame.select_to(f.ui, f.handle, laid.x_of(7), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 9, "Back into cc ends after cc and its space");
-    check(laid.frame.select_to(f.ui, f.handle, laid.x_of(4), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 6, "Back inside the first word it stays selected");
-    check(laid.frame.select_to(f.ui, f.handle, laid.x_of(0), laid.y()) && f.selection().anchor == 6 && f.selection().caret == 0, "Before it, the selection starts at the new word and the first word stays");
-    check(!laid.frame.select_to(f.ui, f.handle, laid.x_of(0), laid.y()), "Dragging to the same place changes nothing");
+    check(bool(f.handle.doubleClick(4)) && f.selection().anchor == 3 && f.selection().caret == 6, "bb and its space");
+    check(laid.frame.selectTo(f.ui, f.handle, laid.x_of(9), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 11, "Dragging into dd selects through it");
+    check(laid.frame.selectTo(f.ui, f.handle, laid.x_of(7), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 9, "Back into cc ends after cc and its space");
+    check(laid.frame.selectTo(f.ui, f.handle, laid.x_of(4), laid.y()) && f.selection().anchor == 3 && f.selection().caret == 6, "Back inside the first word it stays selected");
+    check(laid.frame.selectTo(f.ui, f.handle, laid.x_of(0), laid.y()) && f.selection().anchor == 6 && f.selection().caret == 0, "Before it, the selection starts at the new word and the first word stays");
+    check(!laid.frame.selectTo(f.ui, f.handle, laid.x_of(0), laid.y()), "Dragging to the same place changes nothing");
 }
 
 void dragging_after_a_triple_click_grows_by_paragraphs() {
     Field f(u"one two\nthree four\nfive", true);  // paragraphs 0-7, 8-18, 19-23
     f.host().focus("t");
     Laid laid(f);
-    check(bool(f.handle.triple_click(10)) && f.selection().anchor == 8 && f.selection().caret == 18, "The middle paragraph");
+    check(bool(f.handle.tripleClick(10)) && f.selection().anchor == 8 && f.selection().caret == 18, "The middle paragraph");
     const auto& p = laid.placed();
-    const int line_h = p.view.line_height, top = p.view.text.y;
-    check(laid.frame.select_to(f.ui, f.handle, p.view.text.x + 8, top + 2 * line_h + 2) && f.selection().anchor == 8 && f.selection().caret == 23, "Into the last paragraph");
-    check(laid.frame.select_to(f.ui, f.handle, p.view.text.x + 8, top + 2) && f.selection().anchor == 18 && f.selection().caret == 0, "Into the first paragraph");
+    const int line_h = p.view.lineHeight, top = p.view.text.y;
+    check(laid.frame.selectTo(f.ui, f.handle, p.view.text.x + 8, top + 2 * line_h + 2) && f.selection().anchor == 8 && f.selection().caret == 23, "Into the last paragraph");
+    check(laid.frame.selectTo(f.ui, f.handle, p.view.text.x + 8, top + 2) && f.selection().anchor == 18 && f.selection().caret == 0, "Into the first paragraph");
 }
 
 void a_selection_change_ends_the_unit_drag() {
     Field f(u"aa bb cc dd");
     f.host().focus("t");
     Laid laid(f);
-    f.handle.double_click(4);
+    f.handle.doubleClick(4);
     check(bool(f.handle.select(3, 5)), "Select by program");
-    check(laid.frame.select_to(f.ui, f.handle, laid.x_of(9), laid.y()) && f.selection().anchor == 3 && (f.selection().caret == 9 || f.selection().caret == 10),
+    check(laid.frame.selectTo(f.ui, f.handle, laid.x_of(9), laid.y()) && f.selection().anchor == 3 && (f.selection().caret == 9 || f.selection().caret == 10),
           "A drag after an unrelated selection moves by character from its anchor");
-    f.handle.double_click(4);
+    f.handle.doubleClick(4);
     f.host().end_text_drag();
-    laid.frame.select_to(f.ui, f.handle, laid.x_of(9), laid.y());
+    laid.frame.selectTo(f.ui, f.handle, laid.x_of(9), laid.y());
     check(f.selection().anchor == 3 && f.selection().caret != 11, "After the button is released a stray drag is by character");
 }
 
 void clicks_count_by_time_distance_and_target() {
     Field f(u"aa bb cc");
-    auto second = *f.ui.add_text_field({.id = "u", .value = u"aa bb cc"});
+    auto second = *f.ui.addTextField({.id = "u", .value = u"aa bb cc"});
     auto model = std::make_shared<std::u16string>(u"aa bb cc");
-    second.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    second.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    second.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
+    second.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     auto& host = f.host();
     std::uint64_t now = 0;
     host.set_click_clock([&] { return now; });
@@ -364,7 +364,7 @@ void clicks_count_by_time_distance_and_target() {
 // the UIA seam (tests/uia_demo_client.cpp UA11) through tests/text_unit_expectations.hpp.
 bool bounds_start_and_end(const std::vector<unsigned>& bounds, std::size_t size) { return !bounds.empty() && bounds.front() == 0 && bounds.back() == size; }
 void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
-    for (auto mode : {WordSegmentation::dictionary, WordSegmentation::per_character, WordSegmentation::script_run}) {
+    for (auto mode : {WordSegmentation::dictionary, WordSegmentation::perCharacter, WordSegmentation::scriptRun}) {
         Field f(test::units::text, true, mode);
         const std::u16string text = test::units::text;
         auto pieces = [&](const std::vector<unsigned>& bounds) {
@@ -386,7 +386,7 @@ void uia_units_are_the_double_click_words_and_paragraphs_in_every_mode() {
                 while (expected.begin > 0 && text[expected.begin - 1] == u' ') --expected.begin;
                 while (expected.end < text.size() && text[expected.end] == u' ') ++expected.end;
             }
-            check(*f.handle.word_at(at) == expected, "A double click selects its unit, or the run of spaces when it lands on spaces");
+            check(*f.handle.wordAt(at) == expected, "A double click selects its unit, or the run of spaces when it lands on spaces");
         }
         check(f.host().word_unit_boundaries("missing").empty(), "Nothing for an unknown field");
     }
@@ -399,45 +399,45 @@ void the_semantic_layer_reads_selects_and_queries_like_the_typed_handle() {
     Field f(mixed, false, WordSegmentation::dictionary);
     auto& tree = f.ui.semantics();
     auto node = tree.get({"t"});
-    check(bool(node) && node->word_segmentation == WordSegmentation::dictionary && node->word_segmentation_in_use == WordSegmentation::dictionary,
+    check(bool(node) && node->wordSegmentation == WordSegmentation::dictionary && node->wordSegmentationInUse == WordSegmentation::dictionary,
           "The node carries the mode as set and the mode in use");
-    for (auto verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
+    for (auto verb : {Verb::setWordSegmentation, Verb::selectWord, Verb::selectParagraph, Verb::doubleClick, Verb::tripleClick})
         check(has(*node, verb), "A text field offers every word verb");
-    check(bool(tree.perform({"t"}, Verb::select_word, 12)) && f.selection().anchor == 12 && f.selection().caret == 14, "select_word selects 示範 (fixed pairs)");
-    check(f.handle.select_word(12) && f.selection().anchor == 12 && f.selection().caret == 14, "The typed select_word does the same");
-    check(bool(tree.perform({"t"}, Verb::set_word_segmentation, WordSegmentation::script_run)) && *f.handle.word_segmentation() == WordSegmentation::script_run,
+    check(bool(tree.perform({"t"}, Verb::selectWord, 12)) && f.selection().anchor == 12 && f.selection().caret == 14, "select_word selects 示範 (fixed pairs)");
+    check(f.handle.selectWord(12) && f.selection().anchor == 12 && f.selection().caret == 14, "The typed select_word does the same");
+    check(bool(tree.perform({"t"}, Verb::setWordSegmentation, WordSegmentation::scriptRun)) && *f.handle.wordSegmentation() == WordSegmentation::scriptRun,
           "set_word_segmentation changes the field the handle sees");
-    check(tree.get({"t"})->word_segmentation == WordSegmentation::script_run, "and the node");
-    check(bool(tree.perform({"t"}, Verb::select_word, 12)) && f.selection().anchor == 8 && f.selection().caret == 14, "Now the whole run");
-    check(*tree.text_unit("t", TextUnitKind::word, 12) == *f.handle.word_at(12) && *tree.text_unit("t", TextUnitKind::paragraph, 3) == *f.handle.paragraph_at(3) &&
-          *tree.text_unit("t", TextUnitKind::paragraph, 3) == TextSpan{0, 26}, "text_unit equals word_at and paragraph_at");
-    check(*tree.word_stop("t", 0, true) == *f.handle.next_word_stop(0) && *tree.word_stop("t", 14, false) == *f.handle.previous_word_stop(14), "word_stop equals the stop queries");
-    check(bool(tree.perform({"t"}, Verb::double_click, 17)) && f.selection().anchor == 17 && f.selection().caret == 20, "double_click selects the word (12 and its space)");
-    check(bool(tree.perform({"t"}, Verb::triple_click, 17)) && f.selection().anchor == 0 && f.selection().caret == 26, "triple_click selects the paragraph");
-    check(tree.perform({"t"}, Verb::select_word, 27).status == Status::invalid_value && f.handle.select_word(27).status == Status::invalid_value, "An offset past the end is invalid in both");
-    check(tree.perform({"t"}, Verb::select_word, -1).status == Status::invalid_value && tree.perform({"t"}, Verb::select_word, std::u16string(u"x")).status == Status::invalid_value,
+    check(tree.get({"t"})->wordSegmentation == WordSegmentation::scriptRun, "and the node");
+    check(bool(tree.perform({"t"}, Verb::selectWord, 12)) && f.selection().anchor == 8 && f.selection().caret == 14, "Now the whole run");
+    check(*tree.textUnit("t", TextUnitKind::word, 12) == *f.handle.wordAt(12) && *tree.textUnit("t", TextUnitKind::paragraph, 3) == *f.handle.paragraphAt(3) &&
+          *tree.textUnit("t", TextUnitKind::paragraph, 3) == TextSpan{0, 26}, "text_unit equals word_at and paragraph_at");
+    check(*tree.wordStop("t", 0, true) == *f.handle.nextWordStop(0) && *tree.wordStop("t", 14, false) == *f.handle.previousWordStop(14), "word_stop equals the stop queries");
+    check(bool(tree.perform({"t"}, Verb::doubleClick, 17)) && f.selection().anchor == 17 && f.selection().caret == 20, "double_click selects the word (12 and its space)");
+    check(bool(tree.perform({"t"}, Verb::tripleClick, 17)) && f.selection().anchor == 0 && f.selection().caret == 26, "triple_click selects the paragraph");
+    check(tree.perform({"t"}, Verb::selectWord, 27).status == Status::invalidValue && f.handle.selectWord(27).status == Status::invalidValue, "An offset past the end is invalid in both");
+    check(tree.perform({"t"}, Verb::selectWord, -1).status == Status::invalidValue && tree.perform({"t"}, Verb::selectWord, std::u16string(u"x")).status == Status::invalidValue,
           "A wrong argument is invalid_value");
-    check(tree.perform({"t"}, Verb::set_word_segmentation, 3).status == Status::invalid_value, "So is a mode that is not a WordSegmentation");
-    check(tree.text_unit("t", TextUnitKind::word, 27).status == Status::invalid_value && tree.word_stop("t", 27, true).status == Status::invalid_value, "Queries agree on a bad offset");
+    check(tree.perform({"t"}, Verb::setWordSegmentation, 3).status == Status::invalidValue, "So is a mode that is not a WordSegmentation");
+    check(tree.textUnit("t", TextUnitKind::word, 27).status == Status::invalidValue && tree.wordStop("t", 27, true).status == Status::invalidValue, "Queries agree on a bad offset");
 }
 
 void the_semantic_layer_reports_a_dictionary_fallback_and_the_same_admission() {
     Field f(mixed, false, WordSegmentation::dictionary, std::make_shared<FailingBreaker>());
     auto& tree = f.ui.semantics();
     auto node = tree.get({"t"});
-    check(node->word_segmentation == WordSegmentation::dictionary && node->word_segmentation_in_use == WordSegmentation::per_character, "The node reports the fallback");
-    check(bool(tree.perform({"t"}, Verb::select_word, 9)) && f.selection().anchor == 9 && f.selection().caret == 10, "and operates per character");
-    f.handle.read_only(true);
-    check(bool(tree.perform({"t"}, Verb::select_word, 9)) && bool(tree.perform({"t"}, Verb::triple_click, 9)), "A read-only field still selects through the layer");
+    check(node->wordSegmentation == WordSegmentation::dictionary && node->wordSegmentationInUse == WordSegmentation::perCharacter, "The node reports the fallback");
+    check(bool(tree.perform({"t"}, Verb::selectWord, 9)) && f.selection().anchor == 9 && f.selection().caret == 10, "and operates per character");
+    f.handle.readOnly(true);
+    check(bool(tree.perform({"t"}, Verb::selectWord, 9)) && bool(tree.perform({"t"}, Verb::tripleClick, 9)), "A read-only field still selects through the layer");
     f.handle.enable(false);
     node = tree.get({"t"});
-    check(!has(*node, Verb::select_word) && !has(*node, Verb::double_click), "A disabled field offers no select verbs");
-    check(tree.perform({"t"}, Verb::select_word, 9).status == Status::disabled && f.handle.select_word(9).status == Status::disabled, "Both refuse with the same status");
-    check(tree.perform({"t"}, Verb::triple_click, 9).status == Status::disabled && f.handle.triple_click(9).status == Status::disabled, "Also for triple click");
-    check(bool(tree.text_unit("t", TextUnitKind::word, 9)) && bool(f.handle.word_at(9)), "Queries still work on a disabled field, as for the handle");
-    auto button = *f.ui.add_button({.id = "b", .label = u"OK"});
+    check(!has(*node, Verb::selectWord) && !has(*node, Verb::doubleClick), "A disabled field offers no select verbs");
+    check(tree.perform({"t"}, Verb::selectWord, 9).status == Status::disabled && f.handle.selectWord(9).status == Status::disabled, "Both refuse with the same status");
+    check(tree.perform({"t"}, Verb::tripleClick, 9).status == Status::disabled && f.handle.tripleClick(9).status == Status::disabled, "Also for triple click");
+    check(bool(tree.textUnit("t", TextUnitKind::word, 9)) && bool(f.handle.wordAt(9)), "Queries still work on a disabled field, as for the handle");
+    auto button = *f.ui.addButton({.id = "b", .label = u"OK"});
     (void)button;
-    check(!has(*tree.get({"b"}), Verb::select_word) && tree.text_unit("b", TextUnitKind::word, 0).status == Status::not_supported && tree.word_stop("b", 0, true).status == Status::not_supported,
+    check(!has(*tree.get({"b"}), Verb::selectWord) && tree.textUnit("b", TextUnitKind::word, 0).status == Status::notSupported && tree.wordStop("b", 0, true).status == Status::notSupported,
           "Other controls have no word verbs or queries");
 }
 
@@ -446,14 +446,14 @@ void the_semantic_layer_announces_a_segmentation_change() {
     auto& tree = f.ui.semantics();
     std::vector<SemanticEvent> seen;
     auto subscription = tree.subscribe([&](const SemanticEvent& e) { seen.push_back(e); });
-    f.handle.set_word_segmentation(WordSegmentation::script_run);
-    tree.dispatch_events();
-    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::property_changed && e.property == "word_segmentation"; }),
+    f.handle.setWordSegmentation(WordSegmentation::scriptRun);
+    tree.dispatchEvents();
+    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::propertyChanged && e.property == "word_segmentation"; }),
           "A property_changed event names word_segmentation");
     seen.clear();
-    f.handle.double_click(0);
-    tree.dispatch_events();
-    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::text_selection_changed; }), "A double click raises the usual selection event");
+    f.handle.doubleClick(0);
+    tree.dispatchEvents();
+    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::textSelectionChanged; }), "A double click raises the usual selection event");
 }
 
 // ---- Real ICU (only with --icu): rules no dictionary update can change ------------------------------
@@ -470,7 +470,7 @@ void the_system_dictionary_always_breaks_between_scripts_and_around_punctuation(
     Field f(text, false, WordSegmentation::dictionary, nullptr);
     check(f.double_clicked(3) == TextSpan{2, 6}, "Through a field: abc and its space");
     check(f.double_clicked(9) == TextSpan{9, 10}, "and the comma alone");
-    check(*f.handle.word_segmentation_in_use() == WordSegmentation::dictionary, "The dictionary is what is in use");
+    check(*f.handle.wordSegmentationInUse() == WordSegmentation::dictionary, "The dictionary is what is in use");
     check(f.double_clicked(0) != TextSpan{0, 0} && f.double_clicked(0).end <= 2, "A Chinese word never reaches into the Latin letters");
 }
 }
@@ -481,8 +481,8 @@ struct Pointer {
     std::uint64_t now = 0;
     // The middle of the character starting at `offset`, in frame coordinates.
     static Pt middle(const Placement& p, unsigned offset) {
-        const auto rect = p.caret_rect(offset);
-        return {(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, rect.y + rect.h / 2};
+        const auto rect = p.caretRect(offset);
+        return {(p.caretX(offset) + p.caretX(offset + 1)) / 2, rect.y + rect.h / 2};
     }
     // Presses the primary button `count` times in quick succession there, the way the host does.
     void press(Ui& ui, const Frame& frame, std::string_view id, Pt at, int count) {
@@ -508,11 +508,11 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
     for (const bool multiline : {true, false}) {
         Ui ui;
         auto model = std::make_shared<std::u16string>(multiline ? text : u"aa bb cc");
-        auto handle = *ui.add_text_field({.id = "c", .value = *model, .multiline = multiline, .visible_lines = 4, .text_align = TextAlign::center});
-        check(bool(handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect the field");
-        check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
+        auto handle = *ui.addTextField({.id = "c", .value = *model, .multiline = multiline, .visibleLines = 4, .textAlign = TextAlign::center});
+        check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect the field");
+        check(bool(handle.setWordSegmentation(WordSegmentation::scriptRun)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, webAppearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         if (multiline) check(p.view.lines[0].shift > 0 && p.view.lines[0].shift != p.view.lines[1].shift, "The lines of a centered field start at different x");
         else check(p.shift > 0, "A short centered single line starts right of the left edge");
@@ -533,10 +533,10 @@ void double_click_on_a_centered_line_selects_the_word_under_the_pointer() {
 }
 
 TextFieldHandle rich_field(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
-    auto handle = *ui.add_text_field({.id = "r", .value = model->text, .multiline = true, .visible_lines = 4, .text_align = align, .rich = true});
-    check(bool(handle.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
-    check(bool(handle.connect_rich_immediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
-    check(bool(handle.set_word_segmentation(WordSegmentation::script_run)), "Words without a dictionary");
+    auto handle = *ui.addTextField({.id = "r", .value = model->text, .multiline = true, .visibleLines = 4, .textAlign = align, .rich = true});
+    check(bool(handle.connectRichSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
+    check(bool(handle.connectRichImmediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
+    check(bool(handle.setWordSegmentation(WordSegmentation::scriptRun)), "Words without a dictionary");
     return handle;
 }
 StyleSpan bold_span(unsigned start, unsigned length) { return {.start = start, .length = length, .bold = true}; }
@@ -550,7 +550,7 @@ void rich_text_words_select_through_the_styled_runs_and_keep_the_styles() {
         auto model = std::make_shared<RichText>(RichText{u"alpha bravo charlie", {bold_span(6, 5)}});
         auto handle = rich_field(ui, model, align);
         test::FakeMeasure measure; ScrollState scroll;
-        auto frame = arrange(layout::component(handle), ui, web_appearance(), measure, 200, 400, 1.f, scroll);
+        auto frame = arrange(layout::component(handle), ui, webAppearance(), measure, 200, 400, 1.f, scroll);
         const auto& p = *frame.find(handle);
         check(p.view.lines[0].pieces.size() == 3, "The line has a plain, a bold and a plain piece");
         Pointer pointer;
@@ -560,13 +560,13 @@ void rich_text_words_select_through_the_styled_runs_and_keep_the_styles() {
         check(selected(ui, "r") == TextSpan{12, 19}, "Double click right of the bold run selects charlie");
         pointer.press(ui, frame, "r", Pointer::middle(p, 1), 3);
         check(selected(ui, "r") == TextSpan{0, 19}, "Triple click selects the whole paragraph");
-        check(handle.rich_value()->spans == std::vector<StyleSpan>{bold_span(6, 5)} && handle.rich_value()->text == u"alpha bravo charlie", "Selecting by word changes neither text nor styles");
+        check(handle.richValue()->spans == std::vector<StyleSpan>{bold_span(6, 5)} && handle.richValue()->text == u"alpha bravo charlie", "Selecting by word changes neither text nor styles");
     }
     Ui ui;
     auto model = std::make_shared<RichText>(RichText{u"alpha bravo charlie", {bold_span(6, 5)}});
     auto handle = rich_field(ui, model);
-    check(*handle.word_at(8) == TextSpan{6, 12} && *handle.paragraph_at(8) == TextSpan{0, 19}, "word_at and paragraph_at work on a rich field");
-    check(bool(handle.select_word(8)) && selected(ui, "r") == TextSpan{6, 12}, "select_word selects the bold word");
+    check(*handle.wordAt(8) == TextSpan{6, 12} && *handle.paragraphAt(8) == TextSpan{0, 19}, "word_at and paragraph_at work on a rich field");
+    check(bool(handle.selectWord(8)) && selected(ui, "r") == TextSpan{6, 12}, "select_word selects the bold word");
 }
 
 void ctrl_backspace_over_a_styled_word_keeps_the_other_styles_and_undo_restores_them() {
@@ -577,17 +577,17 @@ void ctrl_backspace_over_a_styled_word_keeps_the_other_styles_and_undo_restores_
     host.focus("r");
     host.select("r", 9, 9);
     const std::vector<StyleSpan> before{bold_span(0, 6), italic_span(10, 2)};
-    check(bool(host.key_down(press(Key::backspace, false, true))) && handle.rich_value()->text == u"xx  yy", "Ctrl+Backspace removes the word abcdef, half of it bold");
-    check(handle.rich_value()->spans == std::vector<StyleSpan>{bold_span(0, 3), italic_span(4, 2)}, "The bold run is cut at the deletion and the italic run moves with its text");
+    check(bool(host.key_down(press(Key::backspace, false, true))) && handle.richValue()->text == u"xx  yy", "Ctrl+Backspace removes the word abcdef, half of it bold");
+    check(handle.richValue()->spans == std::vector<StyleSpan>{bold_span(0, 3), italic_span(4, 2)}, "The bold run is cut at the deletion and the italic run moves with its text");
     check(selected(ui, "r") == TextSpan{3, 3}, "The caret sits where the word began");
-    check(bool(host.undo("r")) && handle.rich_value()->text == u"xx abcdef yy" && handle.rich_value()->spans == before, "One undo restores the text and every style");
+    check(bool(host.undo("r")) && handle.richValue()->text == u"xx abcdef yy" && handle.richValue()->spans == before, "One undo restores the text and every style");
     host.select("r", 3, 3);
-    check(bool(host.key_down(press(Key::del, false, true))) && handle.rich_value()->text == u"xx yy" && handle.rich_value()->spans == std::vector<StyleSpan>{bold_span(0, 3), italic_span(3, 2)},
+    check(bool(host.key_down(press(Key::del, false, true))) && handle.richValue()->text == u"xx yy" && handle.richValue()->spans == std::vector<StyleSpan>{bold_span(0, 3), italic_span(3, 2)},
           "Ctrl+Delete over the same word keeps the styles around it");
-    check(bool(host.undo("r")) && handle.rich_value()->spans == before, "and undo restores them");
+    check(bool(host.undo("r")) && handle.richValue()->spans == before, "and undo restores them");
     host.select("r", 12, 12);
     host.key_down(press(Key::left, true, true));
-    check(selected(ui, "r") == TextSpan{10, 12} && handle.rich_value()->spans == before, "Ctrl+Shift+Left selects the word before the caret without touching styles");
+    check(selected(ui, "r") == TextSpan{10, 12} && handle.richValue()->spans == before, "Ctrl+Shift+Left selects the word before the caret without touching styles");
 }
 
 int main(int argc, char** argv) {

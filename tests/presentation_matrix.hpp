@@ -21,8 +21,8 @@ void run(const edit_form::Ids& ids, const lcars::Appearance&, Layout layout, Che
     for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true);
         auto driver = layout(form);
-        auto settings = form.ui.presentation(); settings.variant = variant; settings.density = density; settings.text_size = size;
-        check(bool(form.ui.set_presentation(settings)), "MX01 settings accepted");
+        auto settings = form.ui.presentation(); settings.variant = variant; settings.density = density; settings.textSize = size;
+        check(bool(form.ui.setPresentation(settings)), "MX01 settings accepted");
         int width = int(std::lround(dimensions.first * scale)), height = int(std::lround(dimensions.second * scale));
         auto entries = x04::inventory(form);
         for (const auto& entry : entries) {

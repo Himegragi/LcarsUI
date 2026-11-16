@@ -111,7 +111,7 @@ void a_middle_dot_is_centered() {
         if (!weight_available(weight.file)) continue;
         auto text = text_with(weight);
         for (auto dot : {u"·", u"‧", u"・"}) {
-            auto ink = ink_of(draw_in(*text, dot, VerticalForm::middle_dot));
+            auto ink = ink_of(draw_in(*text, dot, VerticalForm::middleDot));
             check(ink.any() && std::abs(ink.cx() - (cell.x + em / 2.0)) <= tolerance && std::abs(ink.cy() - (cell.y + em / 2.0)) <= tolerance, "The dot sits in the middle of its cell");
         }
     }

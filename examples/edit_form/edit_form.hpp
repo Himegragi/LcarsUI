@@ -12,7 +12,7 @@
 namespace edit_form {
 struct Ids {
     std::string title, intro;
-    std::string normal, read_only, disabled, error, long_text, reset;  // recoverable test entries
+    std::string normal, readOnly, disabled, error, long_text, reset;  // recoverable test entries
     std::string name_label, name, name_help, name_error, apply;
     std::string notices, mode, volume, volume_latest, offline_disabled, region, region_empty;
     std::string state, draft, result, count, latest;                        // displayed results
@@ -21,7 +21,7 @@ Ids default_ids();
 
 class Form {
 private:
-    enum class Mode { normal, read_only, disabled };
+    enum class Mode { normal, readOnly, disabled };
     Ids ids_;
     std::u16string applied_;
     std::u16string preview_ = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f";
@@ -54,11 +54,11 @@ public:
     Form& operator=(const Form&) = delete;
     struct Handles {
         lcars::TextFieldHandle name, preview;
-        lcars::SliderHandle text_size;
+        lcars::SliderHandle textSize;
         lcars::LabelHandle v04_title, font_status;
         // #84: a mixed-script paragraph with its alignment and justification-method dropdowns, and short labels to compare distribute with left.
         lcars::LabelHandle justify_sample, distribute_name, distribute_plain;
-        lcars::DropdownHandle justify_align, justify_method;
+        lcars::DropdownHandle justify_align, justifyMethod;
         lcars::DropdownHandle font;
         lcars::ButtonHandle reset_v04;
         lcars::CheckboxHandle dark;
@@ -74,7 +74,7 @@ public:
         lcars::RadioGroupHandle mode;
         lcars::SliderHandle volume;
         lcars::DropdownHandle region;
-        lcars::ButtonHandle normal, read_only, disabled, error, long_text, reset, apply, latest, volume_latest, notices_latest, mode_latest, region_latest, offline_disabled, region_empty;
+        lcars::ButtonHandle normal, readOnly, disabled, error, long_text, reset, apply, latest, volume_latest, notices_latest, mode_latest, region_latest, offline_disabled, region_empty;
         lcars::LabelHandle title, intro, name_label, name_help, name_error, state, draft, result, count;
     } handles;
     // Page model must outlive Ui subscriptions and their disconnect callbacks.
@@ -115,6 +115,6 @@ private:
     bool validate();
     lcars::ConfirmationResult apply(const std::vector<lcars::ConfirmFieldChange>& changes);
     void refresh_conflict();
-    void set_mode(Mode mode);
+    void setMode(Mode mode);
     lcars::Result reset();
 };}

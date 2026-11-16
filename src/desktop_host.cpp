@@ -75,8 +75,8 @@ Key map_key(WPARAM vk) {
     case VK_DOWN: return Key::down;
     case VK_HOME: return Key::home;
     case VK_END: return Key::end;
-    case VK_PRIOR: return Key::page_up;
-    case VK_NEXT: return Key::page_down;
+    case VK_PRIOR: return Key::pageUp;
+    case VK_NEXT: return Key::pageDown;
     case VK_BACK: return Key::backspace;
     case VK_DELETE: return Key::del;
     case VK_APPS: return Key::menu;
@@ -156,10 +156,10 @@ HGLOBAL global_bytes(std::string_view bytes) {  // NUL-terminated: a global bloc
     return memory;
 }
 }
-bool WindowsClipboard::write(std::u16string_view text) { return write_rich(text, {}); }
+bool WindowsClipboard::write(std::u16string_view text) { return writeRich(text, {}); }
 // One clipboard transaction: the plain text and, for a copy from a rich field, the private payload beside it.
 // EmptyClipboard drops every older format, so a payload never outlives the text it belonged to.
-bool WindowsClipboard::write_rich(std::u16string_view text, std::string_view payload) {
+bool WindowsClipboard::writeRich(std::u16string_view text, std::string_view payload) {
     if (!open_clipboard(window_)) return false;
     auto memory = global_text(text);
     auto rich = payload.empty() ? nullptr : global_bytes(payload);
@@ -176,9 +176,9 @@ bool WindowsClipboard::write_rich(std::u16string_view text, std::string_view pay
     CloseClipboard();
     return ok;
 }
-Query<std::string> WindowsClipboard::read_rich() {
+Query<std::string> WindowsClipboard::readRich() {
     if (!open_clipboard(window_)) return {Status::failed, u"無法開啟剪貼簿", std::nullopt};
-    Query<std::string> result{Status::not_supported, u"No rich text", std::nullopt};
+    Query<std::string> result{Status::notSupported, u"No rich text", std::nullopt};
     if (IsClipboardFormatAvailable(rich_format())) {
         result = {Status::failed, u"Cannot read rich text", std::nullopt};
         if (auto memory = GetClipboardData(rich_format())) {
@@ -196,7 +196,7 @@ Query<std::string> WindowsClipboard::read_rich() {
 }
 Query<std::u16string> WindowsClipboard::read() {
     if (!open_clipboard(window_)) return {Status::failed, u"\u7121\u6cd5\u958b\u555f\u526a\u8cbc\u7c3f", std::nullopt};
-    Query<std::u16string> result{Status::not_supported, u"\u526a\u8cbc\u7c3f\u6c92\u6709\u6587\u5b57", std::nullopt};
+    Query<std::u16string> result{Status::notSupported, u"\u526a\u8cbc\u7c3f\u6c92\u6709\u6587\u5b57", std::nullopt};
     if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
         result = {Status::failed, u"\u7121\u6cd5\u8b80\u53d6\u526a\u8cbc\u7c3f\u6587\u5b57", std::nullopt};
         if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
@@ -215,11 +215,11 @@ Query<std::u16string> WindowsClipboard::read() {
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                          const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.on_diagnostic,&ui),
+    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.onDiagnostic,&ui),
       text_(system_font_file, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
-    hooks_ = hooks; debug_context_ = options.debug_context;
+    hooks_ = hooks; debug_context_ = options.debugContext;
     text_.set_styled_lookup(system_styled_font_file);
-    configure_font(ui.presentation().font_family);
+    configure_font(ui.presentation().fontFamily);
     tracing_ = trace;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW wc{};
@@ -247,7 +247,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         if (input_context_) ImmReleaseContext(window_, input_context_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
         detail::access(ui_).set_clipboard(clipboard_.get());
-        detail::access(ui_).bind_appearance(&appearance_);
+        detail::access(ui_).bindAppearance(&appearance_);
         detail::access(ui_).tooltip_clock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         detail::access(ui_).set_system_keyboard_cues(system_keyboard_cues());
         detail::access(ui_).animation_time(animation_now_ms);
@@ -259,16 +259,16 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         detail::access(ui_).on_relayout([this] { relayout(); });
         detail::access(ui_).on_semantic_pending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
         detail::access(ui_).on_reveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
-        atlas_text_size_ = ui_.presentation().text_size;
-        atlas_font_family_ = ui_.presentation().font_family;
+        atlas_text_size_ = ui_.presentation().textSize;
+        atlas_font_family_ = ui_.presentation().fontFamily;
         detail::access(ui_).on_presentation([this] {
             const auto& settings = ui_.presentation();
             const auto clears = text_.atlas_clears();
-            configure_font(settings.font_family);
-            if ((settings.text_size != atlas_text_size_ || settings.font_family != atlas_font_family_) && text_.atlas_clears() == clears)
+            configure_font(settings.fontFamily);
+            if ((settings.textSize != atlas_text_size_ || settings.fontFamily != atlas_font_family_) && text_.atlas_clears() == clears)
                 text_.clear_atlas();
-            atlas_text_size_ = settings.text_size;
-            atlas_font_family_ = settings.font_family;
+            atlas_text_size_ = settings.textSize;
+            atlas_font_family_ = settings.fontFamily;
             if (!window_) return;
             RECT client{}; GetClientRect(window_, &client);
             if (client.right <= 0 || client.bottom <= 0) return;
@@ -287,10 +287,10 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         throw;
     }
 }
-Result DesktopHost::rebuild_renderer() {
-    if (std::this_thread::get_id() != owner_) return {Status::wrong_thread, u"Operation requires the UI thread"};
+Result DesktopHost::rebuildRenderer() {
+    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
     if (painting_) return {Status::busy, u"Painting in progress"};
-    if (!renderer_failure_) return {Status::invalid_value, u"Renderer is not failed"};
+    if (!renderer_failure_) return {Status::invalidValue, u"Renderer is not failed"};
     if (hooks_) ++hooks_->rebuild_attempts;
     renderer_.reset();
     struct ShaderOverride {
@@ -307,7 +307,7 @@ Result DesktopHost::rebuild_renderer() {
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
       catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,utf16_from_utf8(text)}; }
-    renderer_failure_.reset(); detail::access(ui_).renderer_failed(false);
+    renderer_failure_.reset(); detail::access(ui_).rendererFailed(false);
     schedule_tooltip();
     InvalidateRect(window_,nullptr,FALSE);
     return {};
@@ -316,7 +316,7 @@ void DesktopHost::fail_renderer(RendererFailure failure) {
     renderer_failure_=std::move(failure);
     if (window_) { KillTimer(window_, tooltip_timer); KillTimer(window_, animation_timer); }
     detail::access(ui_).finish_animations();
-    detail::access(ui_).renderer_failed(true);
+    detail::access(ui_).rendererFailed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
         detail::access(ui_).composition_cancel();
@@ -325,11 +325,11 @@ void DesktopHost::fail_renderer(RendererFailure failure) {
 }
 void DesktopHost::configure_font(std::u16string_view family) {
     if(font_configured_ && requested_font_==family) return;
-    PresentationSettings settings; settings.font_family=family;
-    auto resolution=system_font_catalog().resolve(settings);
+    PresentationSettings settings; settings.fontFamily=family;
+    auto resolution=systemFontCatalog().resolve(settings);
     enqueue_font_diagnostics(diagnostics_,font_configured_?0:system_font_catalog_error(),resolution);
     requested_font_=family; font_configured_=true;
-    text_.set_primary_family(!family.empty() && resolution.requested_available ? resolution.primary : std::u16string{}, true);
+    text_.set_primary_family(!family.empty() && resolution.requestedAvailable ? resolution.primary : std::u16string{}, true);
     if(window_) PostMessageW(window_,WM_APP+43,0,0);
 }
 DesktopHost::~DesktopHost() { release(); }
@@ -347,7 +347,7 @@ void DesktopHost::release() {
         detail::access(ui_).composition_cancel();
     }
     detail::access(ui_).on_presentation({});
-    if (detail::access(ui_).bound_appearance() == &appearance_) detail::access(ui_).bind_appearance(nullptr);
+    if (detail::access(ui_).bound_appearance() == &appearance_) detail::access(ui_).bindAppearance(nullptr);
     detail::access(ui_).on_invalidate({});
     detail::access(ui_).on_relayout({});
     detail::access(ui_).on_semantic_pending({});
@@ -446,7 +446,7 @@ void DesktopHost::paint() {
     frame_ = arrange(r.right, r.bottom, s);
     auto after_layout=std::chrono::steady_clock::now();
     reveal_.clear();
-    RecordingCanvas recording(r.right, r.bottom, detail::access(ui_).effective_palette(appearance_).background);
+    RecordingCanvas recording(r.right, r.bottom, detail::access(ui_).effectivePalette(appearance_).background);
     paint_observations_.clear();
     recording.count_ink = observe_paint_;
     draw(recording, frame_, s, GetFocus() == window_);
@@ -470,7 +470,7 @@ void DesktopHost::paint() {
     catch (const std::exception& e) {
         std::string message=e.what();
         PostMessageW(window_,WM_APP+43,0,0);
-        fail_renderer({RendererFailureKind::resource_failed,0,utf16_from_utf8(message)}); return;
+        fail_renderer({RendererFailureKind::resourceFailed,0,utf16_from_utf8(message)}); return;
     }
     auto end=std::chrono::steady_clock::now();
     if(perf_enabled_) {
@@ -497,7 +497,7 @@ Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, s
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
     auto frame = arrange(width, height, s);
     reveal_.clear();
-    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
     auto image = render_cpu(recording.list, width, height);
     if (copy) *copy = image;
@@ -520,7 +520,7 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
 
 GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault) {
     auto frame = arrange(width, height, s);
-    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
     auto reference = render_cpu(recording.list, width, height);
     std::vector<Rect> regions;
@@ -546,7 +546,7 @@ GpuComparison DesktopHost::compare_gpu(int width, int height, float s, int fault
     for(auto& command:gpu_list.commands){
         unsigned role=static_cast<unsigned>(command.role);
         if(fault==1 && (role & static_cast<unsigned>(PaintRole::caret))) ++command.rect.x;
-        if(fault==2 && (role & static_cast<unsigned>(PaintRole::focus_indicator))) command.color.a=0;
+        if(fault==2 && (role & static_cast<unsigned>(PaintRole::focusIndicator))) command.color.a=0;
     }
     auto actual = renderer_->read_back(gpu_list, width, height);
     auto result=compare_images(reference,actual,regions);
@@ -562,16 +562,16 @@ std::string DesktopHost::renderer_name() const { return renderer_->name(); }
 
 bool DesktopHost::compare_legacy(int width, int height, float s) {
     auto frame = arrange(width, height, s);
-    Canvas old(width, height, detail::access(ui_).effective_palette(appearance_).background);
+    Canvas old(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(old, frame, s, true);
-    RecordingCanvas recording(width, height, detail::access(ui_).effective_palette(appearance_).background);
+    RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
     return old.pixels == render_cpu(recording.list, width, height).pixels;
 }
 
 template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool window_focused) {
     UiState::OperationScope operation(&access(ui_));
-    const auto p = detail::access(ui_).effective_palette(appearance_);
+    const auto p = detail::access(ui_).effectivePalette(appearance_);
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
         Target& canvas;
@@ -607,7 +607,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             observe(radius > 0 ? DrawObservation::Type::rounded : DrawObservation::Type::fill, {}, rect, color, begin);
         }
         void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
-        void vertical_text(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
+        void verticalText(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
             auto begin=cursor();
             renderer.draw_vertical(canvas, value, form, pixels, cell, color);
             observe(DrawObservation::Type::text, std::u16string(value), cell, color, begin);
@@ -639,12 +639,12 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
     if (frame.modal) {
         canvas.clip = whole;
         if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {p.scrim.r, p.scrim.g, p.scrim.b, p.scrim_alpha});
+            canvas.list.set_clip(whole); canvas.list.fill_rect(whole, {p.scrim.r, p.scrim.g, p.scrim.b, p.scrimAlpha});
         } else {
             for (int y = 0; y < canvas.height; ++y)
-                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, p.scrim, p.scrim_alpha);
+                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, p.scrim, p.scrimAlpha);
         }
-        canvas.rounded(frame.modal_panel, static_cast<int>(appearance_.radius() * s), p.surface);
+        canvas.rounded(frame.modalPanel, static_cast<int>(appearance_.radius() * s), p.surface);
     }
     for (const auto& item : frame.overlays) {
         canvas.clip = intersect(item.clip, whole);
@@ -662,7 +662,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
                 }
             };
             const int radius = static_cast<int>(appearance_.radius() * s);
-            const int border = std::max(1, static_cast<int>(std::lround(appearance_.component_presentation(ui_.presentation().density).thin * s)));
+            const int border = std::max(1, static_cast<int>(std::lround(appearance_.componentPresentation(ui_.presentation().density).thin * s)));
             auto begin = cursor();
             canvas.rounded(item.bounds, radius, p.border);
             observe_menu(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
@@ -670,12 +670,12 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             begin = cursor();
             canvas.rounded(panel, radius, p.surface);
             observe_menu(DrawObservation::Type::rounded, {}, panel, p.surface, begin);
-            canvas.clip = intersect(canvas.clip, item.menu_inner);
-            const int line = measure_.line_height(item.text_size);
-            for (const auto& row : item.menu_rows) {
-                if (row.bounds.y + row.bounds.h <= item.menu_inner.y || row.bounds.y >= item.menu_inner.y + item.menu_inner.h) continue;
+            canvas.clip = intersect(canvas.clip, item.menuInner);
+            const int line = measure_.lineHeight(item.textSize);
+            for (const auto& row : item.menuRows) {
+                if (row.bounds.y + row.bounds.h <= item.menuInner.y || row.bounds.y >= item.menuInner.y + item.menuInner.h) continue;
                 if (row.separator) {
-                    Rect rule{row.bounds.x + item.menu_pad, row.bounds.y + row.bounds.h / 2, std::max(0, row.bounds.w - 2 * item.menu_pad), std::max(1, static_cast<int>(std::lround(s)))};
+                    Rect rule{row.bounds.x + item.menuPad, row.bounds.y + row.bounds.h / 2, std::max(0, row.bounds.w - 2 * item.menuPad), std::max(1, static_cast<int>(std::lround(s)))};
                     begin = cursor(); canvas.fill(rule, p.border); observe_menu(DrawObservation::Type::fill, {}, rule, p.border, begin);
                     continue;
                 }
@@ -686,21 +686,21 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
                 const Color color = row.enabled ? p.text : p.muted;
                 const int top = row.bounds.y + (row.bounds.h - line) / 2;
                 auto draw_text = [&](const std::u16string& value, int x, Color paint_color) {
-                    auto layout = text_.shape(value, item.text_size);
+                    auto layout = text_.shape(value, item.textSize);
                     begin = cursor();
-                    text_.draw(canvas, layout, x, top + ShapedMeasure::baseline(item.text_size), paint_color);
+                    text_.draw(canvas, layout, x, top + ShapedMeasure::baseline(item.textSize), paint_color);
                     observe_menu(DrawObservation::Type::text, value, {x, top, static_cast<int>(std::ceil(layout.width)), line}, paint_color, begin);
                     return static_cast<int>(std::ceil(layout.width));
                 };
-                draw_text(row.label, row.bounds.x + item.menu_pad, color);
+                draw_text(row.label, row.bounds.x + item.menuPad, color);
                 if (!row.hint.empty()) {
-                    const int width = static_cast<int>(std::ceil(text_.shape(row.hint, item.text_size).width));
-                    draw_text(row.hint, row.bounds.x + row.bounds.w - item.menu_pad - width, p.muted);
+                    const int width = static_cast<int>(std::ceil(text_.shape(row.hint, item.textSize).width));
+                    draw_text(row.hint, row.bounds.x + row.bounds.w - item.menuPad - width, p.muted);
                 }
             }
-            if (item.menu_thumb.h) {
-                canvas.rounded(item.menu_track, item.menu_track.w / 2, p.panel);
-                canvas.rounded(item.menu_thumb, item.menu_thumb.w / 2, p.outline);
+            if (item.menuThumb.h) {
+                canvas.rounded(item.menuTrack, item.menuTrack.w / 2, p.panel);
+                canvas.rounded(item.menuThumb, item.menuThumb.w / 2, p.outline);
             }
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
             continue;
@@ -729,8 +729,8 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
             canvas.clip = intersect(canvas.clip, inner);
             for (const auto& line : item.lines) {
                 begin = cursor();
-                text_.draw(canvas, text_.shape(line.text, item.text_size), line.bounds.x,
-                           line.bounds.y + ShapedMeasure::baseline(item.text_size), p.text);
+                text_.draw(canvas, text_.shape(line.text, item.textSize), line.bounds.x,
+                           line.bounds.y + ShapedMeasure::baseline(item.textSize), p.text);
                 observe_tooltip(DrawObservation::Type::text, line.text, line.bounds, p.text, begin);
             }
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
@@ -742,7 +742,7 @@ template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame
         if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.begin_group(item.id,item.popup,item.tooltip);
         detail::component_type(item.kind).paint(adapter);
         if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.end_group();
-        if (item.dropdown_panel) for (const auto& region : frame.regions) {
+        if (item.dropdownPanel) for (const auto& region : frame.regions) {
             if (region.state != &detail::access(ui_).dropdown_scroll(item.id) || !region.thumb.h) continue;
             canvas.rounded(region.track, region.track.w / 2, p.panel);
             canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
@@ -779,7 +779,7 @@ void DesktopHost::sync_ime() {
     const auto& id = detail::access(ui_).focused();
     synced_focus_ = id;
     auto semantics = id.empty() ? std::nullopt : detail::access(ui_).describe(id);
-    bool writable = semantics && detail::access(ui_).edit(id) && semantics->enabled && !semantics->read_only;
+    bool writable = semantics && detail::access(ui_).edit(id) && semantics->enabled && !semantics->readOnly;
     const auto* focused_session = detail::access(ui_).edit(id);
     if (input_context_ && ImmGetCompositionStringW(input_context_, GCS_COMPSTR, nullptr, 0) > 0 &&
         !(focused_session && focused_session->composing)) {
@@ -794,7 +794,7 @@ void DesktopHost::sync_ime() {
     const auto* field = writable ? detail::find_placement(frame_, id) : nullptr;
     if (!field || GetFocus() != window_) return;
     const auto* session = detail::access(ui_).edit(id);
-    const auto anchor = field->caret_rect(session->visible_caret());  // a wrapped line's own row in a multi-line field
+    const auto anchor = field->caretRect(session->visibleCaret());  // a wrapped line's own row in a multi-line field
     int x = anchor.x, y = anchor.y, h = anchor.h;
     if (auto imc = ImmGetContext(window_)) {
         CANDIDATEFORM candidate{};
@@ -813,12 +813,12 @@ void DesktopHost::sync_ime() {
 void DesktopHost::open_pointer_menu(int x, int y) {
     auto before = detail::access(ui_).focused();
     const auto* hit = frame_.hit(x, y);
-    if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
-    if (!hit || hit->dropdown_panel || hit->tooltip) return;
+    if (!hit || !hit->dropdownPanel) detail::access(ui_).close_popup();
+    if (!hit || hit->dropdownPanel || hit->tooltip) return;
     finish_composition();
     std::optional<unsigned> offset;
     if (detail::component_type(hit->kind).selects_text()) offset = detail::placement_text_offset(frame_, hit->id, x);
-    detail::access(ui_).menu_pointer_open(hit->id, frame_.option_at(*hit, x, y), offset, {x, y});
+    detail::access(ui_).menu_pointer_open(hit->id, frame_.optionAt(*hit, x, y), offset, {x, y});
     after_input(before);
     if (detail::component_type(hit->kind).has_row_cursor()) reveal_.clear();  // the pressed row is already visible
 }
@@ -839,7 +839,7 @@ void DesktopHost::drag_text(int x, int y) {
     const auto& id = detail::access(ui_).focused();
     auto handle = detail::access(ui_).layout_handle(id);
     if (auto* field = std::get_if<TextFieldHandle>(&handle)) {
-        frame_.select_to(ui_, *field, x, y);
+        frame_.selectTo(ui_, *field, x, y);
         const auto* placed = detail::find_placement(frame_, id);
         const bool outside = placed && placed->multiline && (y < placed->view.text.y || y >= placed->view.text.y + placed->view.text.h);
         if (outside) SetTimer(window_, drag_scroll_timer, 60, nullptr);
@@ -890,7 +890,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_APP+43:
         diagnostics_.drain(); return 0;
     case WM_APP+45:
-        ui_.semantics().dispatch_events(); return 0;
+        ui_.semantics().dispatchEvents(); return 0;
     case WM_PAINT: {
         ++paint_messages_;
         PAINTSTRUCT ps{};
@@ -999,7 +999,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         detail::access(ui_).pointer_pressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        if (detail::access(ui_).menu_open() && !frame_.menu_contains(x, y)) {
+        if (detail::access(ui_).menu_open() && !frame_.menuContains(x, y)) {
             // A press outside only dismisses the menu; the release is swallowed with it.
             auto before = detail::access(ui_).focused();
             detail::access(ui_).close_menu();
@@ -1013,7 +1013,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (std::exchange(swallow_right_, false)) return 0;
         auto before = detail::access(ui_).focused();
         if (detail::access(ui_).menu_open()) {
-            if (auto row = frame_.menu_item_at(x, y)) { detail::access(ui_).menu_pointer_down(*row); detail::access(ui_).menu_pointer_up(*row); }
+            if (auto row = frame_.menuItemAt(x, y)) { detail::access(ui_).menu_pointer_down(*row); detail::access(ui_).menu_pointer_up(*row); }
             after_input(before);
             return 0;
         }
@@ -1041,32 +1041,32 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         const bool touch = synthesized_by_touch();
         if (detail::access(ui_).menu_open()) {
             auto before = detail::access(ui_).focused();
-            if (!frame_.menu_contains(x, y)) {
+            if (!frame_.menuContains(x, y)) {
                 // Outside the menu the press only closes it: it reaches nothing underneath.
                 detail::access(ui_).close_menu();
                 swallow_left_ = true;
-            } else if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_pointer_down(*row);
+            } else if (auto row = frame_.menuItemAt(x, y)) detail::access(ui_).menu_pointer_down(*row);
             after_input(before);
             return 0;
         }
         auto before = detail::access(ui_).focused();
         pending_high_ = 0;
         const auto* hit = frame_.hit(x, y);
-        if (!hit || !hit->dropdown_panel) detail::access(ui_).close_popup();
+        if (!hit || !hit->dropdownPanel) detail::access(ui_).close_popup();
         {
             // An open dialog blocks the page's scrollbars but not its own.
             const bool popup_hit = hit && detail::component_type(hit->kind).opens_popup() && hit->popup;
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
-                if (frame_.modal && !popup_hit && !it->modal_content) continue;
+                if (frame_.modal && !popup_hit && !it->modalContent) continue;
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
-                if (hit && hit->dropdown_panel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
+                if (hit && hit->dropdownPanel && it->state != &detail::access(ui_).dropdown_scroll(hit->id)) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
                 // A sideways-scrolling label has a horizontal bar: its thumb is dragged by x.
                 int along = it->horizontal ? x : y;
                 drag_offset_ = it->thumb.contains(x, y) ? (it->horizontal ? it->thumb.x : it->thumb.y)
                                                         : along - (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
                 drag_scroll_ = it->state;
-                frame_.scroll_to(ui_, *drag_scroll_, it->offset_for_thumb(drag_offset_));
+                frame_.scrollTo(ui_, *drag_scroll_, it->offsetForThumb(drag_offset_));
                 drag_ = Drag::thumb; drag_origin_ = along;
                 if (!touch) detail::access(ui_).hover_capture({});  // the thumb is not a component: keep what is hovered
                 SetCapture(window_);
@@ -1079,7 +1079,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         const auto& type = detail::component_type(hit->kind);
         const bool on_list = type.has_row_cursor();  // after_input may arrange again, which replaces the frame hit points into
         finish_composition();
-        if (detail::access(ui_).pointer_down(id, frame_.option_at(*hit, x, y))) {
+        if (detail::access(ui_).pointer_down(id, frame_.optionAt(*hit, x, y))) {
             if (type.selects_text()) {
                 // Core counts the clicks (double click time and box come from the current Windows settings) and
                 // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
@@ -1112,7 +1112,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         update_hover(x, y, touch);
         if (detail::access(ui_).menu_open()) {
             // A menu row's hover is its own highlight (lines are ignored); touch moves do not hover.
-            if (!touch) if (auto row = frame_.menu_item_at(x, y)) detail::access(ui_).menu_highlight(*row);
+            if (!touch) if (auto row = frame_.menuItemAt(x, y)) detail::access(ui_).menu_highlight(*row);
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         }
@@ -1124,7 +1124,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
                 [this](const ScrollRegion& item) { return item.state == drag_scroll_; });
-            if (region != frame_.regions.end()) frame_.scroll_to(ui_, *drag_scroll_, region->offset_for_thumb(drag_offset_ + ((region->horizontal ? x : y) - drag_origin_)));
+            if (region != frame_.regions.end()) frame_.scrollTo(ui_, *drag_scroll_, region->offsetForThumb(drag_offset_ + ((region->horizontal ? x : y) - drag_origin_)));
             follow_composition();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -1136,7 +1136,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (std::exchange(swallow_left_, false)) return 0;
         if (detail::access(ui_).menu_open()) {
             // Releasing over the row that was pressed runs it; lines and disabled items do nothing.
-            auto row = frame_.menu_item_at(x, y);
+            auto row = frame_.menuItemAt(x, y);
             detail::access(ui_).menu_pointer_up(row ? *row : std::string{});
             after_input(before);
             return 0;
@@ -1148,7 +1148,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         } else if (drag_ == Drag::none) {
             const auto* hit = frame_.hit(x, y);
             // Settle the press before releasing capture; capture loss would cancel it.
-            detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.option_at(*hit, x, y) : std::nullopt);
+            detail::access(ui_).pointer_up(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.optionAt(*hit, x, y) : std::nullopt);
         }
         if (drag_ == Drag::text) detail::access(ui_).end_text_drag();
         drag_ = Drag::none; drag_scroll_ = nullptr;
@@ -1251,7 +1251,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             if (!field || !session || info->dwSize < sizeof(IMECHARPOSITION)) return 0;
             auto at = session->composing ? session->begin() + std::min<unsigned>(info->dwCharPos, static_cast<unsigned>(session->preedit.size()))
                                          : session->selection.caret;
-            const auto anchor = field->caret_rect(at);
+            const auto anchor = field->caretRect(at);
             info->pt = {anchor.x, anchor.y};
             ClientToScreen(window_, &info->pt);
             info->cLineHeight = static_cast<UINT>(anchor.h);
@@ -1280,13 +1280,13 @@ CreateResult detail::DesktopHost::create_for_test(Ui& ui, const Appearance& appe
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
         impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
         auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
-        if (desktop->impl_->options.on_close_requested) {
+        if (desktop->impl_->options.onCloseRequested) {
             auto ptr = desktop.get();
-            ptr->impl_->host->on_close_request([ptr] { return ptr->impl_->options.on_close_requested(*ptr); });
+            ptr->impl_->host->on_close_request([ptr] { return ptr->impl_->options.onCloseRequested(*ptr); });
         }
-        if (desktop->impl_->options.on_renderer_failed) {
+        if (desktop->impl_->options.onRendererFailed) {
             auto ptr=desktop.get();
-            ptr->impl_->host->on_renderer_failure([ptr](const RendererFailure& failure) { ptr->impl_->options.on_renderer_failed(*ptr,failure); });
+            ptr->impl_->host->on_renderer_failure([ptr](const RendererFailure& failure) { ptr->impl_->options.onRendererFailed(*ptr,failure); });
         }
         return {Status::ok,{},std::move(desktop)};
     } catch (const detail::StartupError& e) { return {Status::failed,e.failure,{}}; }
@@ -1298,24 +1298,24 @@ RunResult Desktop::run() {
     int result=host.run();
     auto failure=host.renderer_failure();
     host.close();
-    if (failure) return {Status::renderer_failed,failure,{}};
+    if (failure) return {Status::rendererFailed,failure,{}};
     return {result ? Status::failed : Status::ok,{}, {}};
 }
-Result Desktop::set_title(std::u16string title) {
-    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
-    if (!valid_single_line(title, title.size())) return {Status::invalid_value, u"Invalid title"};
+Result Desktop::setTitle(std::u16string title) {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (!validSingleLine(title, title.size())) return {Status::invalidValue, u"Invalid title"};
     if (!SetWindowTextW(impl_->host->window(), detail::wide(title).c_str())) return {Status::failed, u"Unable to set window title"};
     return {};
 }
 Result Desktop::close() {
-    if (std::this_thread::get_id() != impl_->owner) return {Status::wrong_thread, u"Operation requires the UI thread"};
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrongThread, u"Operation requires the UI thread"};
     impl_->host->request_quit(); return {};
 }
-void* Desktop::native_window() const { return impl_->host->window(); }
-Result Desktop::rebuild_renderer() { return impl_->host->rebuild_renderer(); }
-bool Desktop::renderer_failed() const { return impl_->host->renderer_failed(); }
+void* Desktop::nativeWindow() const { return impl_->host->window(); }
+Result Desktop::rebuildRenderer() { return impl_->host->rebuildRenderer(); }
+bool Desktop::rendererFailed() const { return impl_->host->rendererFailed(); }
 RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }
-RunResult run_desktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig config) {
+RunResult runDesktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig config) {
     auto creation=Desktop::create(ui,appearance,std::move(page),scroll,std::move(config));
     if (!creation.desktop) return {creation.status,{},creation.failure};
     return creation.desktop->run();

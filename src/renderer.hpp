@@ -21,7 +21,7 @@ struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
 RenderDiagnostic frame_diagnostic(unsigned code);
 class Renderer {
 public:
-    explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::build_default, std::function<void(RenderDiagnostic)> sink = {});
+    explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
     ~Renderer();
     double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submission_ms = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
     Image read_back(const DrawList& list, int width, int height);

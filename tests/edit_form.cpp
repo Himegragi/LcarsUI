@@ -24,17 +24,17 @@ using test::check;
 namespace {
 edit_form::Ids ids = edit_form::default_ids();
 Density behavior_density = Density::standard;
-const Appearance* appearance = &web_appearance();  // every case is rerun under each appearance
+const Appearance* appearance = &webAppearance();  // every case is rerun under each appearance
 // Focus indicators draw only after keyboard input. Sweeps that inspect them start by forcing the display
 // state on through the presentation switch (the same one an application would use).
 void force_focus_indicators(Ui& ui) {
-    auto settings = ui.presentation(); settings.focus_indicator = FocusIndicatorMode::always;
-    check(bool(ui.set_presentation(settings)), "Focus indicators can be forced on");
+    auto settings = ui.presentation(); settings.focusIndicator = FocusIndicatorMode::always;
+    check(bool(ui.setPresentation(settings)), "Focus indicators can be forced on");
 }
 
 edit_form::Ids alternate_ids() {
     edit_form::Ids i;
-    i.title = "t"; i.intro = "i"; i.normal = "f1"; i.read_only = "f2"; i.disabled = "f3"; i.error = "f4";
+    i.title = "t"; i.intro = "i"; i.normal = "f1"; i.readOnly = "f2"; i.disabled = "f3"; i.error = "f4";
     i.long_text = "f5"; i.reset = "f6"; i.name_label = "n.l"; i.name = "n"; i.name_help = "n.h"; i.name_error = "n.e";
     i.volume_latest = "volume.latest"; i.volume = "volume"; i.notices = "notices"; i.mode = "mode"; i.offline_disabled = "offline";
     i.region = "region.alt"; i.region_empty = "region.empty.alt";
@@ -55,20 +55,20 @@ void theme_variants_have_accessible_palettes() {
         for (auto ink : {p.text, p.muted, p.error})
             for (auto surface : {p.background, p.panel, p.surface})
                 check(contrast(ink, surface) >= 4.5, "PV01 text contrast");
-        check(contrast(p.text, p.selection) >= 4.5 && contrast(p.on_accent, p.accent) >= 4.5, "PV01 selection and accent contrast");
-        check(p.scrim_alpha == (variant == ThemeVariant::dark() ? 160 : 110), "Variant scrim opacity");
+        check(contrast(p.text, p.selection) >= 4.5 && contrast(p.onAccent, p.accent) >= 4.5, "PV01 selection and accent contrast");
+        check(p.scrimAlpha == (variant == ThemeVariant::dark() ? 160 : 110), "Variant scrim opacity");
     }
-    check(!appearance->supports(ThemeVariant::high_contrast()), "High contrast is unsupported");
+    check(!appearance->supports(ThemeVariant::highContrast()), "High contrast is unsupported");
 }
 
 void theme_switch_preserves_showcase_geometry() {
     edit_form::Form form(ids, true); test::FakeMeasure measure;
     for (const char* page : {"v01", "v02", "v03"}) {
         form.handles.tabs.activate({page});
-        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::light(); form.ui.set_presentation(settings);
+        auto settings = form.ui.presentation(); settings.variant = ThemeVariant::light(); form.ui.setPresentation(settings);
         ScrollState a, b;
         auto light = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, a);
-        settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark accepted");
+        settings.variant = ThemeVariant::dark(); check(bool(form.ui.setPresentation(settings)), "Dark accepted");
         auto dark = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, b);
         check(light.items.size() == dark.items.size() && light.overlays.size() == dark.overlays.size(), "PV02 same placements");
         for (size_t i = 0; i < light.items.size(); ++i) {
@@ -78,12 +78,12 @@ void theme_switch_preserves_showcase_geometry() {
                 for (size_t j = 0; j < a.size(); ++j) if (a[j].bounds != b[j].bounds) return false;
                 return true;
             };
-            check(x.id == y.id && x.bounds == y.bounds && x.clip == y.clip && x.text_size == y.text_size &&
-                  x.text_field.label == y.text_field.label && x.text_field.surface == y.text_field.surface && x.text_field.editor == y.text_field.editor &&
-                  x.text_field.description == y.text_field.description && x.text_field.error == y.text_field.error && x.options == y.options &&
-                  x.slider_track == y.slider_track && x.progress_track == y.progress_track && x.progress_fill == y.progress_fill &&
-                  lines_equal(x.lines, y.lines) && lines_equal(x.label_lines, y.label_lines) &&
-                  lines_equal(x.description_lines, y.description_lines) && lines_equal(x.error_lines, y.error_lines), "PV02 geometry unchanged");
+            check(x.id == y.id && x.bounds == y.bounds && x.clip == y.clip && x.textSize == y.textSize &&
+                  x.textField.label == y.textField.label && x.textField.surface == y.textField.surface && x.textField.editor == y.textField.editor &&
+                  x.textField.description == y.textField.description && x.textField.error == y.textField.error && x.options == y.options &&
+                  x.sliderTrack == y.sliderTrack && x.progressTrack == y.progressTrack && x.progressFill == y.progressFill &&
+                  lines_equal(x.lines, y.lines) && lines_equal(x.labelLines, y.labelLines) &&
+                  lines_equal(x.descriptionLines, y.descriptionLines) && lines_equal(x.errorLines, y.errorLines), "PV02 geometry unchanged");
         }
     }
     edit_form::Form controls(ids, true); controls.handles.tabs.activate({"v04"});
@@ -93,7 +93,7 @@ void theme_switch_preserves_showcase_geometry() {
 
 void semantic_tree_reads_registered_components() {
     Ui ui;
-    ui.add_button({.id = "save", .label = u"Save"});
+    ui.addButton({.id = "save", .label = u"Save"});
     auto children = ui.semantics().children({});
     auto node = ui.semantics().get({"save"});
     check(children && children->size() == 1 && node && node->name == u"Save" && node->role == Role::button,
@@ -103,22 +103,22 @@ void semantic_tree_reads_registered_components() {
 void semantic_form_operations() {
     edit_form::Form form(ids, true);
     auto& tree = form.ui.semantics();
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "semantic name draft");
+    check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"工作站 A"))), "semantic name draft");
     auto name_node = tree.get({ids.name});
     check(name_node && std::find(name_node->verbs.begin(), name_node->verbs.end(), Verb::undo) != name_node->verbs.end(), "semantic verbs expose available undo");
     check(bool(tree.perform({ids.notices}, Verb::toggle)), "semantic checkbox");
     check(bool(tree.perform({ids.mode, OptionValue{"focus"}}, Verb::select)), "semantic radio selection");
-    check(tree.perform({ids.mode}, Verb::select, OptionValue{"normal"}).status == Status::invalid_value,
+    check(tree.perform({ids.mode}, Verb::select, OptionValue{"normal"}).status == Status::invalidValue,
           "item selection requires a logical item reference");
     check(bool(tree.perform({ids.region}, Verb::open)), "semantic dropdown open");
     check(bool(tree.perform({ids.region, OptionValue{"south"}}, Verb::select)), "semantic dropdown selection");
-    check(bool(tree.perform({ids.volume}, Verb::set_value, 65)), "semantic slider");
+    check(bool(tree.perform({ids.volume}, Verb::setValue, 65)), "semantic slider");
     check(form.applies() == 0 && form.applied() == u"測試使用者" && bool(tree.perform({ids.apply}, Verb::invoke)), "semantic apply");
     check(form.applies() == 1 && form.applied() == u"工作站 A" && !form.notices_applied() &&
           form.mode_applied() == OptionValue{"focus"} && form.region_applied() == OptionValue{"south"} &&
           form.volume_applied() == 65, "semantic F01 results");
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"  "))) &&
-          tree.perform({ids.apply}, Verb::invoke).status == Status::invalid_value &&
+    check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"  "))) &&
+          tree.perform({ids.apply}, Verb::invoke).status == Status::invalidValue &&
           tree.get({ids.name})->error == u"請填寫顯示名稱" && tree.get({ids.name})->focused && form.applies() == 1,
           "semantic apply rejects blank draft and focuses the error");
 }
@@ -133,11 +133,11 @@ void semantic_modal_operations() {
     check(dialog && dialog->name == u"重設示範進度" &&
           std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog exposes its name and cancel action");
     auto half = tree.get({prefix + "v03.half"});
-    check(half && half->blocked_by_modal && half->enabled, "modal background readable");
+    check(half && half->blockedByModal && half->enabled, "modal background readable");
     auto progress = tree.get({prefix + "v03.progress"});
-    check(progress && progress->numeric_value == 50 && progress->blocked_by_modal, "modal background progress remains readable");
-    check(tree.perform({prefix + "v03.half"}, Verb::invoke).status == Status::blocked_by_modal, "modal rejects background");
-    check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blocked_by_modal, "modal rejects tab selection");
+    check(progress && progress->numericValue == 50 && progress->blockedByModal, "modal background progress remains readable");
+    check(tree.perform({prefix + "v03.half"}, Verb::invoke).status == Status::blockedByModal, "modal rejects background");
+    check(tree.perform({prefix + "tabs", OptionValue{"v01"}}, Verb::select).status == Status::blockedByModal, "modal rejects tab selection");
     check(bool(tree.perform({prefix + "dialog"}, Verb::cancel)) && form.progress() == 50 && form.dialog_confirmations() == 0,
           "semantic cancel dialog");
     check(tree.perform({prefix + "dialog"}, Verb::cancel).status == Status::hidden &&
@@ -178,11 +178,11 @@ void semantic_list_operations() {
 
 void semantic_text_and_thread() {
     edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"A\U0001f600B"))), "semantic UTF-16 value");
-    check(tree.perform({ids.name}, Verb::select, Selection{1, 2}).status == Status::invalid_value, "semantic selection rejects surrogate split");
+    check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"A\U0001f600B"))), "semantic UTF-16 value");
+    check(tree.perform({ids.name}, Verb::select, Selection{1, 2}).status == Status::invalidValue, "semantic selection rejects surrogate split");
     check(bool(tree.perform({ids.name}, Verb::select, Selection{1, 3})), "semantic selection accepts code point");
     form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3);
-    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::busy &&
+    check(tree.perform({ids.name}, Verb::setValue, std::u16string(u"x")).status == Status::busy &&
           tree.perform({ids.name}, Verb::select, Selection{1, 3}).status == Status::busy &&
           tree.text(ids.name).value == u"A\U0001f600B", "composition blocks edits and keeps preedit out of text");
     detail::access(form.ui).composition_cancel();
@@ -194,22 +194,22 @@ void semantic_text_and_thread() {
     Status read = Status::ok, write = Status::ok;
     std::thread worker([&] { read = tree.get({ids.name}).status; write = tree.perform({ids.name}, Verb::undo).status; });
     worker.join();
-    check(read == Status::wrong_thread && write == Status::wrong_thread, "semantic access requires UI thread");
+    check(read == Status::wrongThread && write == Status::wrongThread, "semantic access requires UI thread");
 }
 
 void semantic_admission_priority() {
     edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
     form.handles.name.enable(false);
-    check(tree.perform({ids.name}, Verb::set_value, 7).status == Status::disabled, "disabled precedes invalid argument");
+    check(tree.perform({ids.name}, Verb::setValue, 7).status == Status::disabled, "disabled precedes invalid argument");
     form.handles.tabs.activate({"v03"});
-    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::hidden, "hidden precedes disabled");
+    check(tree.perform({ids.name}, Verb::setValue, std::u16string(u"x")).status == Status::hidden, "hidden precedes disabled");
     form.handles.progress_half.enable(false); form.handles.dialog_open.invoke();
     check(tree.perform({ids.title + ".pages.v03.half"}, Verb::invoke).status == Status::disabled, "disabled precedes modal block");
     form.handles.dialog.settle(false); form.handles.tabs.activate({"v01"}); form.handles.name.enable(true);
-    form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3); form.handles.name.read_only(true);
-    check(tree.perform({ids.name}, Verb::set_value, std::u16string(u"x")).status == Status::read_only, "read-only precedes composition");
+    form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3); form.handles.name.readOnly(true);
+    check(tree.perform({ids.name}, Verb::setValue, std::u16string(u"x")).status == Status::readOnly, "read-only precedes composition");
     detail::access(form.ui).composition_cancel();
-    form.handles.name.read_only(false); form.handles.tabs.activate({"v02"});
+    form.handles.name.readOnly(false); form.handles.tabs.activate({"v02"});
     form.list->handles.twenty.invoke(); form.list->handles.disable_eight.invoke(); form.list->handles.list.focus();
     check(bool(form.handles.dialog.open()), "open dialog over list");
     check(tree.perform({ids.title + ".pages.v02.list", OptionValue{"T008"}}, Verb::select).status == Status::disabled,
@@ -221,19 +221,19 @@ void semantic_admission_priority() {
 
 void semantic_renderer_failure() {
     edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"工作站 A"))), "draft before renderer failure");
-    detail::access(form.ui).renderer_failed(true);
+    check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"工作站 A"))), "draft before renderer failure");
+    detail::access(form.ui).rendererFailed(true);
     check(tree.text(ids.name).value == u"工作站 A" && tree.get({ids.name})->value == u"工作站 A", "renderer failure preserves semantic reads");
     check(renderer_failure_rejects_invoke(tree, {ids.apply}, [&] { return form.applies(); }),
           "renderer failure rejects semantic invoke");
-    check(tree.perform({ids.result}, Verb::invoke).status == Status::renderer_failed, "renderer failure precedes unsupported verb");
-    detail::access(form.ui).renderer_failed(false);
+    check(tree.perform({ids.result}, Verb::invoke).status == Status::rendererFailed, "renderer failure precedes unsupported verb");
+    detail::access(form.ui).rendererFailed(false);
     check(bool(tree.perform({ids.apply}, Verb::invoke)) && form.applies() == 1, "semantic invoke resumes after renderer recovery");
     form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke();
-    detail::access(form.ui).renderer_failed(true);
+    detail::access(form.ui).rendererFailed(true);
     auto dialog = tree.get({ids.title + ".pages.dialog"});
     check(dialog && dialog->verbs.empty(), "failed renderer removes dialog actions");
-    detail::access(form.ui).renderer_failed(false);
+    detail::access(form.ui).rendererFailed(false);
     form.handles.dialog.settle(false);
 }
 
@@ -242,66 +242,66 @@ void semantic_notifications() {
     std::vector<SemanticEvent> events; bool inside = false, recursed = false, changed = false;
     auto subscription = tree.subscribe([&](const SemanticEvent& event) {
         recursed |= inside; inside = true; events.push_back(event);
-        if (!changed && event.kind == SemanticEventKind::text_changed) { changed = true; tree.perform({ids.apply}, Verb::focus); }
+        if (!changed && event.kind == SemanticEventKind::textChanged) { changed = true; tree.perform({ids.apply}, Verb::focus); }
         inside = false;
     });
-    check(bool(tree.perform({ids.name}, Verb::set_value, std::u16string(u"new name"))), "semantic change accepted");
+    check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"new name"))), "semantic change accepted");
     check(events.empty(), "notifications wait until operation returns");
     int scheduled = 0;
     detail::access(form.ui).on_semantic_pending([&] { ++scheduled; });
     check(scheduled == 1, "new host schedules notifications queued before attachment");
-    tree.dispatch_events();
+    tree.dispatchEvents();
     check(std::count_if(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::text_changed && e.ref.id == ids.name;
+        return e.kind == SemanticEventKind::textChanged && e.ref.id == ids.name;
     }) == 1, "semantic text change delivered once");
     check(!recursed && std::any_of(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::focus_changed && e.ref.id == ids.apply;
+        return e.kind == SemanticEventKind::focusChanged && e.ref.id == ids.apply;
     }), "nested semantic operation emits focus in a later notification round");
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::property_changed && e.ref.id == ids.name && e.property == "value";
+        return e.kind == SemanticEventKind::propertyChanged && e.ref.id == ids.name && e.property == "value";
     }), "value property notification delivered");
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::text_selection_changed && e.ref.id == ids.name;
+        return e.kind == SemanticEventKind::textSelectionChanged && e.ref.id == ids.name;
     }), "text selection notification delivered");
     events.clear(); auto prefix = ids.title + ".pages.";
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v02"}}, Verb::select)), "switch for structure notification");
-    tree.dispatch_events();
-    check(std::any_of(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::structure_changed && e.ref.id.empty(); }),
+    tree.dispatchEvents();
+    check(std::any_of(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::structureChanged && e.ref.id.empty(); }),
           "page switch changes root structure");
     events.clear();
     check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "populate list");
-    tree.dispatch_events(); events.clear();
-    check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)), "reorder list"); tree.dispatch_events();
+    tree.dispatchEvents(); events.clear();
+    check(bool(tree.perform({prefix + "v02.sort"}, Verb::invoke)), "reorder list"); tree.dispatchEvents();
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::structure_changed && e.ref.id == prefix + "v02.list";
+        return e.kind == SemanticEventKind::structureChanged && e.ref.id == prefix + "v02.list";
     }), "reordering notifies list structure");
     events.clear();
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T005"}}, Verb::focus)), "focus a logical item");
-    tree.dispatch_events();
-    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::focus_changed; }) == 1 &&
+    tree.dispatchEvents();
+    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::focusChanged; }) == 1 &&
           std::any_of(events.begin(), events.end(), [&](const auto& e) {
-              return e.kind == SemanticEventKind::focus_changed && e.ref.id == prefix + "v02.list" && e.ref.item == OptionValue{"T005"};
+              return e.kind == SemanticEventKind::focusChanged && e.ref.id == prefix + "v02.list" && e.ref.item == OptionValue{"T005"};
           }), "focus event names only the focused list item");
     events.clear();
-    check(bool(tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"共用範本"))), "filter list");
-    tree.dispatch_events();
+    check(bool(tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"共用範本"))), "filter list");
+    tree.dispatchEvents();
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::structure_changed && e.ref.id == prefix + "v02.list";
+        return e.kind == SemanticEventKind::structureChanged && e.ref.id == prefix + "v02.list";
     }), "filter notifies list structure");
     events.clear();
-    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"a"));
-    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"b"));
-    tree.dispatch_events();
+    tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"a"));
+    tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"b"));
+    tree.dispatchEvents();
     check(std::count_if(events.begin(), events.end(), [&](const auto& e) {
-        return e.kind == SemanticEventKind::text_changed && e.ref.id == prefix + "v02.search";
+        return e.kind == SemanticEventKind::textChanged && e.ref.id == prefix + "v02.search";
     }) == 2, "separate operations retain separate notifications");
     events.clear(); test::FakeMeasure measure;
     arrange(form.page(), form.ui, *appearance, measure, 800, 600, 1.f, form.scroll);
-    tree.dispatch_events();
-    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::layout_changed; }) == 1,
+    tree.dispatchEvents();
+    check(std::count_if(events.begin(), events.end(), [](const auto& e) { return e.kind == SemanticEventKind::layoutChanged; }) == 1,
           "layout changes coalesce per arrangement");
     subscription.reset(); events.clear();
-    tree.perform({prefix + "v02.search"}, Verb::set_value, std::u16string(u"c")); tree.dispatch_events();
+    tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"c")); tree.dispatchEvents();
     check(events.empty(), "unsubscribed listener receives no events");
 }
 
@@ -313,19 +313,19 @@ void semantic_focus_driver() {
         if constexpr (requires { h.enable(false); }) h.enable(false);
     }, entry.handle);
     if (scenario == 2) for (const auto& entry : entries) std::visit([](const auto& h) {
-        if constexpr (requires { h.read_only(true); }) h.read_only(true);
+        if constexpr (requires { h.readOnly(true); }) h.readOnly(true);
     }, entry.handle);
     if (scenario == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
     if (scenario == 4) form.handles.tabs.activate({"v03"});
     if (scenario == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
-    if (scenario == 6) detail::access(form.ui).renderer_failed(true);
+    if (scenario == 6) detail::access(form.ui).rendererFailed(true);
     for (const auto& entry : entries) {
         auto id = state.layout_id(entry.handle); if (!id) continue;
         auto typed = std::visit([](const auto& handle) -> Status {
             if constexpr (requires { handle.focus(); }) return handle.focus().status;
-            else return Status::not_supported;
+            else return Status::notSupported;
         }, entry.handle);
-        if (scenario >= 5 && typed == Status::not_supported) continue;
+        if (scenario >= 5 && typed == Status::notSupported) continue;
         auto semantic = form.ui.semantics().perform({*id}, Verb::focus).status;
         check(typed == semantic, "semantic focus matches typed handle");
         if (auto list = std::get_if<ListHandle>(&entry.handle)) {
@@ -343,23 +343,23 @@ void semantic_subscriber_exception_boundary() {
     auto first = tree.subscribe([](const SemanticEvent&) { throw std::runtime_error("subscriber failure"); });
     auto second = tree.subscribe([&](const SemanticEvent&) { ++calls; });
     check(bool(tree.perform({ids.apply}, Verb::focus)), "focus before subscriber failure");
-    tree.dispatch_events();
+    tree.dispatchEvents();
     check(calls > 0, "a throwing subscriber does not prevent other listeners");
 }
 
 void semantic_removal_notification() {
-    Ui ui; auto button = ui.add_button({.id = "removable", .label = u"Removable"}).value.value();
+    Ui ui; auto button = ui.addButton({.id = "removable", .label = u"Removable"}).value.value();
     button.focus(); std::vector<SemanticEvent> events;
     auto subscription = ui.semantics().subscribe([&](const auto& event) { events.push_back(event); });
     check(bool(button.remove()), "remove focused component");
-    ui.semantics().dispatch_events();
+    ui.semantics().dispatchEvents();
     check(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.kind == SemanticEventKind::structure_changed && event.ref.id.empty();
+        return event.kind == SemanticEventKind::structureChanged && event.ref.id.empty();
     }), "removal notifies root structure");
 }
 
 void semantic_verb_drivers() {
-    for (int state = 0; state < 7; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel,
+    for (int state = 0; state < 7; ++state) for (auto verb : {Verb::invoke, Verb::toggle, Verb::setValue, Verb::select, Verb::open, Verb::cancel,
                       Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
         edit_form::Form a(ids, true), b(ids, true);
         auto typed_entries = x04::inventory(a); auto semantic_entries = x04::inventory(b);
@@ -368,12 +368,12 @@ void semantic_verb_drivers() {
                 if constexpr (requires { h.enable(false); }) h.enable(false);
             }, entry.handle);
             if (state == 2) for (const auto& entry : entries) std::visit([](const auto& h) {
-                if constexpr (requires { h.read_only(true); }) h.read_only(true);
+                if constexpr (requires { h.readOnly(true); }) h.readOnly(true);
             }, entry.handle);
             if (state == 3) { form.handles.tabs.activate({"v03"}); form.handles.dialog_open.invoke(); }
             if (state == 4) form.handles.tabs.activate({"v03"});
             if (state == 5) { form.handles.normal.bind([]() -> Result { throw std::runtime_error("stop fixture"); }); form.handles.normal.invoke(); }
-            if (state == 6) detail::access(form.ui).renderer_failed(true);
+            if (state == 6) detail::access(form.ui).rendererFailed(true);
         };
         prepare(a, typed_entries); prepare(b, semantic_entries);
         check(typed_entries.size() == semantic_entries.size(), "same inventory for verb driver");
@@ -384,7 +384,7 @@ void semantic_verb_drivers() {
                 if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
                 if constexpr (std::is_same_v<T, TextFieldHandle>) {
                     switch (verb) {
-                    case Verb::set_value: return h.set_value(u"example").status;
+                    case Verb::setValue: return h.setValue(u"example").status;
                     case Verb::select: return h.select(0, 0).status;
                     case Verb::undo: return h.undo().status;
                     case Verb::redo: return h.redo().status;
@@ -394,21 +394,21 @@ void semantic_verb_drivers() {
                     default: break;
                     }
                 }
-                if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::set_value) return h.set_value(50).status; }
+                if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::setValue) return h.setValue(50).status; }
                 if constexpr (std::is_same_v<T, DropdownHandle>) {
                     if (verb == Verb::open) return h.open().status;
                     if (verb == Verb::cancel) return h.cancel().status;
                 }
-                return Status::not_supported;
+                return Status::notSupported;
             }, typed_entries[i].handle);
-            if (state >= 5 && expected == Status::not_supported) continue;
+            if (state >= 5 && expected == Status::notSupported) continue;
             auto ref = detail::access(b.ui).layout_id(semantic_entries[i].handle);
-            if (!ref) { check(expected == Status::not_found, "removed handle is unavailable"); continue; }
+            if (!ref) { check(expected == Status::notFound, "removed handle is unavailable"); continue; }
             auto snapshot = b.ui.semantics().get({*ref});
-            if (snapshot && (state == 6 || snapshot->hidden || !snapshot->enabled || snapshot->blocked_by_modal))
+            if (snapshot && (state == 6 || snapshot->hidden || !snapshot->enabled || snapshot->blockedByModal))
                 check(snapshot->verbs.empty(), "restricted node omits verbs");
             Argument arg;
-            if (verb == Verb::set_value) {
+            if (verb == Verb::setValue) {
                 auto n = b.ui.semantics().get({*ref});
                 arg = n && n->role == Role::slider ? Argument{50} : Argument{std::u16string(u"example")};
             } else if (verb == Verb::select) arg = Selection{0, 0};
@@ -420,7 +420,7 @@ void semantic_verb_drivers() {
                 if (children) for (const auto& child : *children) if (child.item) {
                     if (state == 6 && verb != Verb::select) continue;
                     if (verb != Verb::select) {
-                        check(b.ui.semantics().perform(child, verb, arg).status == Status::not_supported,
+                        check(b.ui.semantics().perform(child, verb, arg).status == Status::notSupported,
                               "inapplicable logical-item verb is not supported");
                         continue;
                     }
@@ -430,7 +430,7 @@ void semantic_verb_drivers() {
                                       std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>)
                             return h.select(*child.item).status;
                         else if constexpr (std::is_same_v<T, TabsHandle>) return h.activate(*child.item).status;
-                        else return Status::not_supported;
+                        else return Status::notSupported;
                     }, typed_entries[i].handle);
                     auto semantic_status = b.ui.semantics().perform(child, verb).status;
                     check(item_status == semantic_status, "semantic item selection matches typed handle");
@@ -451,7 +451,7 @@ void semantic_wrong_thread_drivers() {
     }
     std::vector<bool> results;
     std::thread worker([&] {
-        for (auto verb : {Verb::invoke, Verb::toggle, Verb::set_value, Verb::select, Verb::open, Verb::cancel, Verb::focus,
+        for (auto verb : {Verb::invoke, Verb::toggle, Verb::setValue, Verb::select, Verb::open, Verb::cancel, Verb::focus,
                           Verb::undo, Verb::redo, Verb::copy, Verb::cut, Verb::paste, Verb::confirm}) {
             for (const auto& [ref, handle] : targets) {
                 auto status = std::visit([&](const auto& h) -> std::optional<Status> {
@@ -468,19 +468,19 @@ void semantic_wrong_thread_drivers() {
                     if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
                     if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
                     if constexpr (std::is_same_v<T, TextFieldHandle>) switch (verb) {
-                        case Verb::set_value: return h.set_value(u"x").status; case Verb::select: return h.select(0, 0).status;
+                        case Verb::setValue: return h.setValue(u"x").status; case Verb::select: return h.select(0, 0).status;
                         case Verb::undo: return h.undo().status; case Verb::redo: return h.redo().status;
                         case Verb::copy: return h.copy().status; case Verb::cut: return h.cut().status;
                         case Verb::paste: return h.paste(u"x").status; default: break;
                     }
-                    if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::set_value) return h.set_value(50).status; }
+                    if constexpr (std::is_same_v<T, SliderHandle>) { if (verb == Verb::setValue) return h.setValue(50).status; }
                     if constexpr (std::is_same_v<T, DropdownHandle>) {
                         if (verb == Verb::open) return h.open().status; if (verb == Verb::cancel) return h.cancel().status;
                     }
                     if (verb == Verb::confirm) { if constexpr (requires { h.confirm(); }) return h.confirm().status; }
                     return {};
                 }, handle);
-                if (status) results.push_back(*status == Status::wrong_thread && form.ui.semantics().perform(ref, verb).status == *status);
+                if (status) results.push_back(*status == Status::wrongThread && form.ui.semantics().perform(ref, verb).status == *status);
             }
         }
     });
@@ -491,23 +491,23 @@ void semantic_wrong_thread_drivers() {
 void semantic_busy_and_removed_drivers() {
     edit_form::Form form(ids, true); auto& tree = form.ui.semantics();
     form.handles.name.focus(); detail::access(form.ui).composition_update(u"preedit", 3);
-    for (auto verb : {Verb::set_value, Verb::select, Verb::paste, Verb::cut, Verb::undo, Verb::redo}) {
+    for (auto verb : {Verb::setValue, Verb::select, Verb::paste, Verb::cut, Verb::undo, Verb::redo}) {
         Argument arg;
-        if (verb == Verb::set_value || verb == Verb::paste) arg = std::u16string(u"x");
+        if (verb == Verb::setValue || verb == Verb::paste) arg = std::u16string(u"x");
         if (verb == Verb::select) arg = Selection{0, 0};
         check(tree.perform({ids.name}, verb, arg).status == Status::busy, "text mutation is busy during composition");
     }
     detail::access(form.ui).composition_cancel();
     form.handles.tabs.activate({"v03"}); auto removed = form.handles.dialog_temporary;
     auto id = ids.title + ".pages.v03.temporary"; check(bool(removed.remove()), "remove temporary button");
-    check(removed.invoke().status == Status::not_found && tree.perform({id}, Verb::invoke).status == Status::not_found &&
-          removed.focus().status == Status::not_found && tree.perform({id}, Verb::focus).status == Status::not_found,
+    check(removed.invoke().status == Status::notFound && tree.perform({id}, Verb::invoke).status == Status::notFound &&
+          removed.focus().status == Status::notFound && tree.perform({id}, Verb::focus).status == Status::notFound,
           "removed component rejects both typed and semantic operations");
 }
 
 void write_semantic_tsv(edit_form::Form& form, const char* state) {
     const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
-    auto filename = std::string("semantic-") + (appearance == &web_appearance() ? "web-" : "material-") + state + ".tsv";
+    auto filename = std::string("semantic-") + (appearance == &webAppearance() ? "web-" : "material-") + state + ".tsv";
     std::ofstream out(filename, std::ios::binary);
     auto clean = [&](const std::u16string& text) { auto str = detail::utf8_from_utf16(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
     out << "id\titem\trole\tname\tvalue\thidden\tvisible\tblocked_by_modal\tbounds\n";
@@ -517,7 +517,7 @@ void write_semantic_tsv(edit_form::Form& form, const char* state) {
         for (const auto& ref : *children) {
             auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
             out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
-                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blocked_by_modal << '\t';
+                << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blockedByModal << '\t';
             if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
             else out << '-';
             out << '\n'; self(self, ref);
@@ -547,7 +547,7 @@ void semantic_showcase_states_and_identity() {
     visit(visit, {});
     check(inventory.size() == tree_components.size() && unique == tree_components,
           "X04 includes every tree component exactly once");
-    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.font}, ComponentHandle{form.handles.font_status}, ComponentHandle{form.handles.reset_v04}, ComponentHandle{form.handles.text_size}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.compact}, ComponentHandle{form.handles.preview}})
+    for (const auto& handle : {ComponentHandle{form.handles.v04_title}, ComponentHandle{form.handles.font}, ComponentHandle{form.handles.font_status}, ComponentHandle{form.handles.reset_v04}, ComponentHandle{form.handles.textSize}, ComponentHandle{form.handles.dark}, ComponentHandle{form.handles.compact}, ComponentHandle{form.handles.preview}})
         check(unique.contains(x04::describe(handle)->id), "X04 includes each V04 component");
     auto mode = form.handles.mode.describe()->id;
     auto options = tree.children({mode});
@@ -563,20 +563,20 @@ void semantic_showcase_states_and_identity() {
     auto a = tree.get({list_id, OptionValue{"T005"}}); auto b = tree.get({list_id, OptionValue{"T006"}});
     check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
     form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
-    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::not_found,
+    check(tree.get({list_id, OptionValue{"T006"}})->selected && tree.get({list_id, OptionValue{"T999"}}).status == Status::notFound,
           "SEM03 selected identity survives sorting and unknown item is absent");
     form.list->handles.list.select({"T003"}); form.list->handles.erase.invoke();
-    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::not_found, "SEM03 deleted item is absent");
+    check(tree.get({list_id, OptionValue{"T003"}}).status == Status::notFound, "SEM03 deleted item is absent");
     form.handles.tabs.activate({"v04"}); draw();
     if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v04");
     form.handles.tabs.activate({"v03"}); draw();
     if (ids.name == edit_form::default_ids().name) write_semantic_tsv(form, "v03");
     auto hidden = tree.get({ids.name});
     check(hidden && hidden->hidden && !hidden->visible && hidden->value == form.handles.name.describe()->value &&
-          form.handles.name.set_value(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
+          form.handles.name.setValue(u"blocked").status == Status::hidden, "SEM08 hidden field remains readable and rejects edits");
     form.handles.dialog_open.invoke(); draw();
     auto background = tree.get({form.handles.progress_half.describe()->id});
-    check(background && background->blocked_by_modal && background->enabled, "Modal blocking is distinct from enabled state");
+    check(background && background->blockedByModal && background->enabled, "Modal blocking is distinct from enabled state");
     std::optional<NodeSnapshot> dialog;
     auto roots = tree.children({}); check(bool(roots), "SEM02 root children are readable with a dialog open");
     for (const auto& ref : *roots) { auto n = tree.get(ref); if (n && n->role == Role::dialog && !n->hidden) dialog = *n; }
@@ -591,7 +591,7 @@ void semantic_showcase_states_and_identity() {
 }
 
 void semantic_unnamed_diagnostic() {
-    Ui ui; auto button = ui.add_button({.id = "probe.unnamed"}).value.value();
+    Ui ui; auto button = ui.addButton({.id = "probe.unnamed"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
     arrange(layout::component(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
     arrange(layout::component(button), ui, *appearance, measure, 400, 200, 1.f, scroll);
@@ -606,46 +606,46 @@ void presentation_settings_are_atomic() {
     int redraws = 0;
     detail::access(ui).on_invalidate([&] { ++redraws; });
     auto initial = ui.presentation();
-    check(initial.text_size == 16, "Default text size is 16 DIP");
-    check(bool(ui.set_presentation(initial)) && redraws == 0, "Identical settings do not invalidate");
-    auto changed = initial; changed.text_size = 28;
-    check(bool(ui.set_presentation(changed)) && ui.presentation() == changed && redraws == 1, "Valid settings apply once");
-    auto invalid = changed; invalid.text_size = 29;
-    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == changed && redraws == 1, "Invalid size is atomic");
+    check(initial.textSize == 16, "Default text size is 16 DIP");
+    check(bool(ui.setPresentation(initial)) && redraws == 0, "Identical settings do not invalidate");
+    auto changed = initial; changed.textSize = 28;
+    check(bool(ui.setPresentation(changed)) && ui.presentation() == changed && redraws == 1, "Valid settings apply once");
+    auto invalid = changed; invalid.textSize = 29;
+    check(ui.setPresentation(invalid).status == Status::invalidValue && ui.presentation() == changed && redraws == 1, "Invalid size is atomic");
     invalid = changed; invalid.density = static_cast<Density>(99);
-    check(ui.set_presentation(invalid).status == Status::invalid_value && ui.presentation() == changed, "Invalid density is atomic");
-    invalid = changed; invalid.variant = ThemeVariant::high_contrast();
-    check(ui.set_presentation(invalid).status == Status::not_supported && ui.presentation() == changed, "High contrast is reserved");
+    check(ui.setPresentation(invalid).status == Status::invalidValue && ui.presentation() == changed, "Invalid density is atomic");
+    invalid = changed; invalid.variant = ThemeVariant::highContrast();
+    check(ui.setPresentation(invalid).status == Status::notSupported && ui.presentation() == changed, "High contrast is reserved");
     Status thread_result = Status::ok;
-    std::thread worker([&] { thread_result = ui.set_presentation(initial).status; }); worker.join();
-    check(thread_result == Status::wrong_thread && ui.presentation() == changed, "Wrong-thread call is rejected");
+    std::thread worker([&] { thread_result = ui.setPresentation(initial).status; }); worker.join();
+    check(thread_result == Status::wrongThread && ui.presentation() == changed, "Wrong-thread call is rejected");
     invalid.variant.name = "sepia";
-    check(ui.set_presentation(invalid).status == Status::not_found && ui.presentation() == changed, "Unknown variant is rejected");
+    check(ui.setPresentation(invalid).status == Status::notFound && ui.presentation() == changed, "Unknown variant is rejected");
 }
 
 void presentation_size_scales_explicit_and_default_text() {
     Ui ui;
-    auto body = ui.add_label({.id = "body", .value = u"Body"}).value.value();
-    auto title = ui.add_label({.id = "title", .value = u"Title"}).value.value();
+    auto body = ui.addLabel({.id = "body", .value = u"Body"}).value.value();
+    auto title = ui.addLabel({.id = "title", .value = u"Title"}).value.value();
     auto root = layout::column({layout::component(body), layout::component(title, 24)});
     test::FakeMeasure measure; ScrollState scroll;
-    auto settings = ui.presentation(); settings.text_size = 28;
-    check(bool(ui.set_presentation(settings)), "Size accepted");
+    auto settings = ui.presentation(); settings.textSize = 28;
+    check(bool(ui.setPresentation(settings)), "Size accepted");
     auto frame = arrange(root, ui, *appearance, measure, 640, 480, 1.f, scroll);
-    check(frame.find(body)->text_size == 28 && frame.find(title)->text_size == 42, "Body and explicit title scale proportionally");
+    check(frame.find(body)->textSize == 28 && frame.find(title)->textSize == 42, "Body and explicit title scale proportionally");
 }
 
 void compact_density_reflows_fields() {
     Ui ui;
-    auto field = ui.add_text_field({.id = "density.field", .label = u"Name"}).value.value();
+    auto field = ui.addTextField({.id = "density.field", .label = u"Name"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::component(field);
     auto standard = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
     auto settings = ui.presentation(); settings.density = Density::compact;
-    check(bool(ui.set_presentation(settings)), "Compact density accepted");
+    check(bool(ui.setPresentation(settings)), "Compact density accepted");
     auto compact = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
     check(compact.find(field)->bounds.h < standard.find(field)->bounds.h, "Compact field is shorter");
-    check(compact.find(field)->text_size == standard.find(field)->text_size, "Density preserves text size");
+    check(compact.find(field)->textSize == standard.find(field)->textSize, "Density preserves text size");
 }
 
 void compact_showcase_has_smaller_nonoverlapping_layout() {
@@ -653,13 +653,13 @@ void compact_showcase_has_smaller_nonoverlapping_layout() {
     test::FakeMeasure measure;
     auto standard = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
     auto settings = form.ui.presentation(); settings.density = Density::compact;
-    check(bool(form.ui.set_presentation(settings)), "Compact accepted");
+    check(bool(form.ui.setPresentation(settings)), "Compact accepted");
     auto compact = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
     check(compact.extent < standard.extent, "DN01 compact reduces V01 content height");
     for (std::size_t i = 0; i < compact.items.size(); ++i) {
         const auto& item = compact.items[i];
         for (const auto& old : standard.items) if (old.id == item.id)
-            check(old.text_size == item.text_size, "DN01 text size is unchanged");
+            check(old.textSize == item.textSize, "DN01 text size is unchanged");
         for (std::size_t j = i + 1; j < compact.items.size(); ++j) {
             auto overlap = intersect(item.bounds, compact.items[j].bounds);
             check(overlap.w == 0 || overlap.h == 0, "DN01 components do not overlap");
@@ -669,8 +669,8 @@ void compact_showcase_has_smaller_nonoverlapping_layout() {
 
 void compact_targets_meet_minimum_height() {
     edit_form::Form form(ids, true);
-    auto settings = form.ui.presentation(); settings.density = Density::compact; settings.text_size = 12;
-    check(bool(form.ui.set_presentation(settings)), "Compact 12 DIP accepted");
+    auto settings = form.ui.presentation(); settings.density = Density::compact; settings.textSize = 12;
+    check(bool(form.ui.setPresentation(settings)), "Compact 12 DIP accepted");
     test::FakeMeasure measure;
     for (const char* page : {"v01", "v02", "v03", "v04"}) {
         form.handles.tabs.activate({page});
@@ -708,38 +708,38 @@ void v04_justify_comparison_follows_its_dropdowns() {
     {
         auto frame = lay();
         const auto* sample = frame.find(h.justify_sample);
-        check(sample && sample->lines.size() > 1 && frame.find(h.justify_align) && frame.find(h.justify_method) && frame.find(h.distribute_name) && frame.find(h.distribute_plain), "The comparison section is on the page");
-        check(*h.justify_sample.text_align() == TextAlign::justify && stretched(frame) == sample->lines.size() - 1, "The paragraph starts justified: every line but the last is stretched");
-        check(h.justify_align.draft().value.value() == OptionValue{"justify"} && h.justify_method.draft().value.value() == OptionValue{"automatic"}, "The dropdowns show the paragraph's settings");
+        check(sample && sample->lines.size() > 1 && frame.find(h.justify_align) && frame.find(h.justifyMethod) && frame.find(h.distribute_name) && frame.find(h.distribute_plain), "The comparison section is on the page");
+        check(*h.justify_sample.textAlign() == TextAlign::justify && stretched(frame) == sample->lines.size() - 1, "The paragraph starts justified: every line but the last is stretched");
+        check(h.justify_align.draft().value.value() == OptionValue{"justify"} && h.justifyMethod.draft().value.value() == OptionValue{"automatic"}, "The dropdowns show the paragraph's settings");
         const auto* name = frame.find(h.distribute_name); const auto* plain = frame.find(h.distribute_plain);
         check(name->lines.size() == 1 && !name->lines[0].segments.empty() && plain->lines.size() == 1 && plain->lines[0].segments.empty(), "姓　名 is distributed, the plain one is not");
     }
-    check(bool(h.justify_align.select({"left"})) && *h.justify_sample.text_align() == TextAlign::left && stretched(lay()) == 0, "Left-aligned: nothing stretches");
-    check(bool(h.justify_align.select({"distribute"})) && *h.justify_sample.text_align() == TextAlign::distribute, "Distributed");
+    check(bool(h.justify_align.select({"left"})) && *h.justify_sample.textAlign() == TextAlign::left && stretched(lay()) == 0, "Left-aligned: nothing stretches");
+    check(bool(h.justify_align.select({"distribute"})) && *h.justify_sample.textAlign() == TextAlign::distribute, "Distributed");
     {
         auto frame = lay();
         check(stretched(frame) == frame.find(h.justify_sample)->lines.size(), "Even the last line is stretched");
     }
-    check(bool(h.justify_align.select({"justify"})) && bool(h.justify_method.select({"spaces"})) && *h.justify_sample.justify_method() == JustifyMethod::spaces, "Pick the spaces-only method");
-    check(bool(h.justify_method.select({"per_character"})) && *h.justify_sample.justify_method() == JustifyMethod::per_character && stretched(lay()) > 0, "And the per-character one");
-    check(h.justify_method.select({"nonsense"}).status != Status::ok && *h.justify_sample.justify_method() == JustifyMethod::per_character, "An unknown method is refused");
+    check(bool(h.justify_align.select({"justify"})) && bool(h.justifyMethod.select({"spaces"})) && *h.justify_sample.justifyMethod() == JustifyMethod::spaces, "Pick the spaces-only method");
+    check(bool(h.justifyMethod.select({"per_character"})) && *h.justify_sample.justifyMethod() == JustifyMethod::perCharacter && stretched(lay()) > 0, "And the per-character one");
+    check(h.justifyMethod.select({"nonsense"}).status != Status::ok && *h.justify_sample.justifyMethod() == JustifyMethod::perCharacter, "An unknown method is refused");
     check(bool(h.reset_v04.invoke()) && form.ui.presentation() == PresentationSettings{}, "Resetting the presentation does not touch the comparison");
-    auto settings = form.ui.presentation(); settings.justify_as_left = true;
-    check(bool(form.ui.set_presentation(settings)) && stretched(lay()) == 0 && *h.justify_sample.justify_method() == JustifyMethod::per_character, "The user setting turns the paragraph left-aligned without changing its properties");
+    auto settings = form.ui.presentation(); settings.justifyAsLeft = true;
+    check(bool(form.ui.setPresentation(settings)) && stretched(lay()) == 0 && *h.justify_sample.justifyMethod() == JustifyMethod::perCharacter, "The user setting turns the paragraph left-aligned without changing its properties");
 }
 
 void v04_slider_updates_global_text_size() {
     edit_form::Form form(ids, true);
     check(bool(form.handles.tabs.activate({"v04"})), "V04 available");
-    check(bool(form.handles.text_size.set_value(28)), "Slider accepts 28");
-    check(form.ui.presentation().text_size == 28, "Slider applies size globally");
+    check(bool(form.handles.textSize.setValue(28)), "Slider accepts 28");
+    check(form.ui.presentation().textSize == 28, "Slider applies size globally");
     test::FakeMeasure measure;
     for (const char* page : {"v01", "v02", "v03"}) {
         check(bool(form.handles.tabs.activate({page})), "Showcase page activates");
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
         const Placement* title = std::string_view(page) == "v01" ? frame.find(form.handles.title) :
             std::string_view(page) == "v02" ? frame.find(form.list->handles.title) : frame.find(form.handles.v03_title);
-        check(title && title->text_size == 42, "V04 slider reflows each page title");
+        check(title && title->textSize == 42, "V04 slider reflows each page title");
     }
     form.handles.tabs.activate({"v04"});
     check(form.handles.preview.describe()->value == u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f", "Preview contains sample text");
@@ -747,44 +747,44 @@ void v04_slider_updates_global_text_size() {
 
 void v04_font_choice_applies_and_reports_fallback() {
     edit_form::Form form(ids, true, [](std::u16string_view family) {
-        lcars::FontResolution r; r.requested = family; r.requested_available = family != u"Missing test font";
-        r.primary = family.empty() || !r.requested_available ? u"Segoe UI" : std::u16string(family); return r;
+        lcars::FontResolution r; r.requested = family; r.requestedAvailable = family != u"Missing test font";
+        r.primary = family.empty() || !r.requestedAvailable ? u"Segoe UI" : std::u16string(family); return r;
     });
     auto& h = form.handles; h.tabs.activate({"v04"});
     check(bool(h.font.select({"missing"})), "Select missing test font");
-    check(form.ui.presentation().font_family == u"Missing test font", "Requested font remains stored");
+    check(form.ui.presentation().fontFamily == u"Missing test font", "Requested font remains stored");
     check(h.font_status.describe()->value.find(u"Segoe UI") != std::u16string::npos &&
           h.font_status.describe()->value.find(u"\u9810\u8a2d") != std::u16string::npos, "Fallback is visible");
     check(bool(h.font.select({"mingliu"})), "Select MingLiU");
-    check(form.ui.presentation().font_family == u"MingLiU" && h.font_status.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
-    check(bool(h.text_size.set_value(28)) && bool(h.dark.toggle()) && bool(h.reset_v04.invoke()), "Reset presentation");
-    check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.text_size.describe()->value == u"16" && h.dark.describe()->value != u"true", "Reset updates controls and settings");
+    check(form.ui.presentation().fontFamily == u"MingLiU" && h.font_status.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
+    check(bool(h.textSize.setValue(28)) && bool(h.dark.toggle()) && bool(h.reset_v04.invoke()), "Reset presentation");
+    check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.textSize.describe()->value == u"16" && h.dark.describe()->value != u"true", "Reset updates controls and settings");
 }
 
 void font_switch_reflows_active_composition() {
     struct ChangingMeasure : TextMeasure {
         test::FakeMeasure base; bool wider = false;
         TextRun measure(std::u16string_view text, int pixels) override { return base.measure(text, wider ? pixels * 2 : pixels); }
-        int line_height(int pixels) override { return base.line_height(pixels); }
+        int lineHeight(int pixels) override { return base.lineHeight(pixels); }
     } measure;
     edit_form::Form form(ids, true); auto& state = detail::access(form.ui);
-    form.handles.name.set_value(u"ABCDE"); form.handles.name.focus(); form.handles.name.select(1, 3);
+    form.handles.name.setValue(u"ABCDE"); form.handles.name.focus(); form.handles.name.select(1, 3);
     check(bool(state.composition_update(u"\u6e2c", 1)), "PS03 composition starts");
     auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name); };
     auto settings = form.ui.presentation();
     for (int change = 0; change != 4; ++change) {
-        auto previous = draw().find(form.handles.name)->caret_x(2);
-        if (change == 0) settings.text_size = 28;
-        if (change == 1) { settings.font_family = u"MingLiU"; measure.wider = true; }
+        auto previous = draw().find(form.handles.name)->caretX(2);
+        if (change == 0) settings.textSize = 28;
+        if (change == 1) { settings.fontFamily = u"MingLiU"; measure.wider = true; }
         if (change == 2) settings.variant = ThemeVariant::dark();
         if (change == 3) settings.density = Density::compact;
-        check(bool(form.ui.set_presentation(settings)), "PS03 presentation change accepted");
+        check(bool(form.ui.setPresentation(settings)), "PS03 presentation change accepted");
         auto frame = draw(); auto* field = frame.find(form.handles.name); auto* edit = state.edit(ids.name);
-        check(field && edit && edit->composing && edit->preedit == u"\u6e2c" && edit->preedit_caret == 1 && form.handles.name.describe()->focused, "PS03 composition and focus survive presentation change");
-        check(field && edit && frame.text_offset(form.handles.name, field->caret_x(edit->begin())) == 1 &&
-              frame.text_offset(form.handles.name, field->caret_x(edit->visible_caret())) == 2,
+        check(field && edit && edit->composing && edit->preedit == u"\u6e2c" && edit->preeditCaret == 1 && form.handles.name.describe()->focused, "PS03 composition and focus survive presentation change");
+        check(field && edit && frame.textOffset(form.handles.name, field->caretX(edit->begin())) == 1 &&
+              frame.textOffset(form.handles.name, field->caretX(edit->visibleCaret())) == 2,
               "PS03 composition start and candidate caret hit their characters");
-        if (change < 2) check(field && field->caret_x(2) != previous, "PS03 size and font change metrics");
+        if (change < 2) check(field && field->caretX(2) != previous, "PS03 size and font change metrics");
     }
 }
 
@@ -792,25 +792,25 @@ void presentation_reflow_preserves_edit_and_popup() {
     edit_form::Form form(ids, true); auto& h = form.handles; auto& state = detail::access(form.ui);
     test::FakeMeasure measure;
     auto draw = [&](std::string_view reveal) { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, reveal); };
-    h.name.set_value(u"ABCDE"); h.name.focus(); h.name.select(1, 3); draw(ids.name);
+    h.name.setValue(u"ABCDE"); h.name.focus(); h.name.select(1, 3); draw(ids.name);
     for (int size : {28, 12}) {
-        auto settings = form.ui.presentation(); settings.text_size = size; check(bool(form.ui.set_presentation(settings)), "PS02 size accepted");
+        auto settings = form.ui.presentation(); settings.textSize = size; check(bool(form.ui.setPresentation(settings)), "PS02 size accepted");
         auto frame = draw(ids.name); auto* field = frame.find(h.name); auto* session = state.edit(ids.name);
         check(field && session && session->text == u"ABCDE" && session->selection.anchor == 1 && session->selection.caret == 3 && h.name.describe()->focused, "PS02 selection and focus survive");
-        check(frame.text_offset(h.name, field->caret_x(2)) == 2, "PS02 new caret hit");
+        check(frame.textOffset(h.name, field->caretX(2)) == 2, "PS02 new caret hit");
     }
     check(bool(state.composition_update(u"xy", 1)), "PS03 composition starts");
-    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto settings = form.ui.presentation(); settings.textSize = 28; form.ui.setPresentation(settings);
     auto frame = draw(ids.name); auto* session = state.edit(ids.name); auto* field = frame.find(h.name);
-    check(field && session->composing && session->preedit == u"xy" && session->preedit_caret == 1 && frame.text_offset(h.name, field->caret_x(session->visible_caret())) == 2, "PS03 composition preserved");
+    check(field && session->composing && session->preedit == u"xy" && session->preeditCaret == 1 && frame.textOffset(h.name, field->caretX(session->visibleCaret())) == 2, "PS03 composition preserved");
     state.composition_cancel(); h.region.focus(); draw(ids.region); h.region.open(); state.key_down({Key::down}); state.key_down({Key::down});
-    settings.text_size = 12; form.ui.set_presentation(settings); draw(ids.region); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(ids.region);
+    settings.textSize = 12; form.ui.setPresentation(settings); draw(ids.region); settings.textSize = 28; form.ui.setPresentation(settings); frame = draw(ids.region);
     check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"} && bool(test::popup_in_client(frame, {0,0,640,480}, ids.region)), "PS04 popup follows reflow");
 }
 void unfocused_field_preserves_visible_character() {
     edit_form::Form form(ids, true); auto& h = form.handles;
     test::FakeMeasure measure;
-    check(bool(h.name.set_value(u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")), "prepare long text");
+    check(bool(h.name.setValue(u"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")), "prepare long text");
     check(bool(h.name.focus()) && bool(h.name.select(30, 30)), "place caret inside long text");
     auto draw = [&] { return arrange(layout::component(h.name), form.ui, *appearance, measure, 220, 400, 1.f, form.scroll); };
     auto before = draw();
@@ -820,8 +820,8 @@ void unfocused_field_preserves_visible_character() {
     };
     auto anchor = first(*before.find(h.name));
     check(anchor > 0 && bool(h.name_label.describe()) && bool(h.notices.focus()), "unfocus scrolled field");
-    auto settings = form.ui.presentation(); settings.text_size = 28;
-    check(bool(form.ui.set_presentation(settings)), "change text size");
+    auto settings = form.ui.presentation(); settings.textSize = 28;
+    check(bool(form.ui.setPresentation(settings)), "change text size");
     auto after = draw();
     check(first(*after.find(h.name)) == anchor, "text size keeps the first visible character");
 }
@@ -831,16 +831,16 @@ void presentation_reflow_keeps_tooltip_and_modal() {
     test::FakeMeasure measure; h.tabs.activate({"v03"}); state.window_active(true); force_focus_indicators(form.ui);
     h.progress_half.focus(); state.tooltip_time(100000);
     arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.progress_half.describe()->id);
-    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    auto settings = form.ui.presentation(); settings.textSize = 28; form.ui.setPresentation(settings);
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.progress_half.describe()->id);
     check(*h.progress_tip.visible(), "PS05 tooltip remains visible");
     auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [](const Placement& p) { return p.tooltip; });
     check(it != frame.overlays.end() && test::inside(it->bounds, {0,0,640,480}), "PS05 tooltip fits client");
     for (const auto& line : it->lines) check(test::inside(line.bounds, it->bounds), "PS05 tooltip line fits");
     check(frame.hit(it->bounds.x + 1, it->bounds.y + 1) != &*it, "PS05 tooltip is pointer transparent");
-    h.dialog_open.invoke(); settings.text_size = 12; settings.density = Density::compact; form.ui.set_presentation(settings);
+    h.dialog_open.invoke(); settings.textSize = 12; settings.density = Density::compact; form.ui.setPresentation(settings);
     frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
-    check(*h.dialog.is_open() && h.dialog_cancel.describe()->focused && h.progress_full.invoke().status == Status::blocked_by_modal, "PS06 modal and focus survive");
+    check(*h.dialog.isOpen() && h.dialog_cancel.describe()->focused && h.progress_full.invoke().status == Status::blockedByModal, "PS06 modal and focus survive");
     state.key_down({Key::tab, true}); check(h.dialog_confirm.describe()->focused, "PS06 reverse tab stays inside");
     state.key_down({Key::tab}); check(h.dialog_cancel.describe()->focused, "PS06 tab stays inside");
 }
@@ -848,33 +848,33 @@ void presentation_reflow_keeps_tooltip_and_modal() {
 void ps07_list_anchor_survives_size_change() {
     edit_form::Form form(ids, true); form.handles.tabs.activate({"v02"});
     auto& page = *form.list; auto& h = page.handles; test::FakeMeasure measure;
-    auto settings = form.ui.presentation(); settings.text_size = 12; form.ui.set_presentation(settings);
+    auto settings = form.ui.presentation(); settings.textSize = 12; form.ui.setPresentation(settings);
     h.hundred.invoke(); h.list.focus(); h.list.select({"T050"});
     auto draw = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll); };
-    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id); settings.text_size = 28; form.ui.set_presentation(settings); frame = draw();
+    auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, h.list.describe()->id); settings.textSize = 28; form.ui.setPresentation(settings); frame = draw();
     auto* list = frame.find(h.list);
     check(list && test::inside(list->options[49], list->clip) && page.selection() == OptionValue{"T050"}, "PS07 focused item remains visible");
-    settings.text_size = 12; form.ui.set_presentation(settings); frame = draw();
+    settings.textSize = 12; form.ui.setPresentation(settings); frame = draw();
     h.list.enable(false); h.list.enable(true);
     list = frame.find(h.list); auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& r) { return r.state == &page.list_scroll; });
     page.list_scroll.offset += list->options[29].y - region->viewport.y;
     frame = draw(); list = frame.find(h.list);
     check(list->options[29].y == list->clip.y, "PS07 T030 starts at viewport top");
-    settings.text_size = 28; form.ui.set_presentation(settings); frame = draw(); list = frame.find(h.list);
+    settings.textSize = 28; form.ui.setPresentation(settings); frame = draw(); list = frame.find(h.list);
     check(list && list->options[29].y == list->clip.y, "PS07 unfocused top item stays anchored");
 }
 
 void ps08_large_text_wraps_without_overlap() {
     edit_form::Form form(ids, true); test::FakeMeasure measure;
-    form.handles.name.set_error(u"A long error message that must wrap onto multiple lines at the larger text size without overlapping the next control.");
-    auto settings = form.ui.presentation(); settings.text_size = 28; form.ui.set_presentation(settings);
+    form.handles.name.setError(u"A long error message that must wrap onto multiple lines at the larger text size without overlapping the next control.");
+    auto settings = form.ui.presentation(); settings.textSize = 28; form.ui.setPresentation(settings);
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name);
     auto* field = frame.find(form.handles.name); auto* next = frame.find(form.handles.notices);
-    check(field && next && field->error_lines.size() > 1, "PS08 large error wraps");
-    auto editor = field->text_field.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
-    for (const auto& line : field->label_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 label fits without editor overlap");
-    for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
-    for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
+    check(field && next && field->errorLines.size() > 1, "PS08 large error wraps");
+    auto editor = field->textField.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
+    for (const auto& line : field->labelLines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 label fits without editor overlap");
+    for (const auto& line : field->descriptionLines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
+    for (const auto& line : field->errorLines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
     check(next->bounds.y >= field->bounds.y + field->bounds.h, "PS08 following control does not overlap");
 
 }
@@ -882,20 +882,20 @@ void ps08_large_text_wraps_without_overlap() {
 void long_field_label_and_error_keep_their_association() {
     Ui ui;
     const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
-    auto label = ui.add_label({.id = "label", .value = title, .target = "field", .label_kind = LabelKind::name}).value.value();
-    auto field = ui.add_text_field({.id = "field", .value = u"value"}).value.value();
-    auto error = ui.add_label({.id = "error", .target = "field", .label_kind = LabelKind::error}).value.value();
-    auto next = ui.add_button({.id = "next", .label = u"Next"}).value.value();
+    auto label = ui.addLabel({.id = "label", .value = title, .target = "field", .labelKind = LabelKind::name}).value.value();
+    auto field = ui.addTextField({.id = "field", .value = u"value"}).value.value();
+    auto error = ui.addLabel({.id = "error", .target = "field", .labelKind = LabelKind::error}).value.value();
+    auto next = ui.addButton({.id = "next", .label = u"Next"}).value.value();
     auto root = layout::column({layout::component(field), layout::component(next)}, 12);
     test::FakeMeasure measure; ScrollState scroll;
     auto before = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
-    field.set_error(u"這是一段很長的錯誤訊息，需要換行而且不能覆蓋後面的按鈕");
+    field.setError(u"這是一段很長的錯誤訊息，需要換行而且不能覆蓋後面的按鈕");
     auto after = arrange(root, ui, *appearance, measure, 240, 600, 1.f, scroll);
     auto* p = after.find(field); auto* b = after.find(next);
-    check(p && b && p->label_lines.size() > 1 && p->error_lines.size() > 1, "Long field label and error both wrap");
+    check(p && b && p->labelLines.size() > 1 && p->errorLines.size() > 1, "Long field label and error both wrap");
     bool inside = true;
-    for (const auto& line : p->label_lines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
-    for (const auto& line : p->error_lines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
+    for (const auto& line : p->labelLines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
+    for (const auto& line : p->errorLines) inside = inside && intersect(line.bounds, p->bounds) == line.bounds;
     check(inside && b->bounds.y >= p->bounds.y + p->bounds.h && b->bounds.y > before.find(next)->bounds.y,
           "Remeasured field keeps all lines inside and pushes the next control down");
     check(field.describe()->name == title && field.describe()->invalid && label.describe()->target == "field" &&
@@ -905,12 +905,12 @@ void long_field_label_and_error_keep_their_association() {
 
 void radio_boundaries_under_the_appearance() {
     Ui ui;
-    auto radio = ui.add_radio_group({.id = "radio", .label = u"Mode"},
+    auto radio = ui.addRadioGroup({.id = "radio", .label = u"Mode"},
         {{{"first"}, u"First", false}, {{"middle"}, u"Middle", true}, {{"last"}, u"Last", false}}).value.value();
-    auto next = ui.add_button({.id = "next", .label = u"Next"}).value.value();
+    auto next = ui.addButton({.id = "next", .label = u"Next"}).value.value();
     std::optional<OptionValue> selected;
-    radio.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-    radio.connect_immediate([&](const Change<RadioGroupHandle>& change) { selected = change.value; return Result{}; });
+    radio.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+    radio.connectImmediate([&](const Change<RadioGroupHandle>& change) { selected = change.value; return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::column({layout::component(radio), layout::component(next)}, 8);
     auto frame = arrange(root, ui, *appearance, measure, 240, 300, 1.f, scroll);
@@ -921,10 +921,10 @@ void radio_boundaries_under_the_appearance() {
     detail::access(ui).key_down({Key::tab});
     check(next.describe()->focused, "Tab exits the group");
     Ui all_ui;
-    auto all = all_ui.add_radio_group({.id = "all"}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
-    auto after = all_ui.add_button({.id = "after"}).value.value();
-    all.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    all.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
+    auto all = all_ui.addRadioGroup({.id = "all"}, {{{"a"}, u"A", false}, {{"b"}, u"B", false}}).value.value();
+    auto after = all_ui.addButton({.id = "after"}).value.value();
+    all.connectSource({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    all.connectImmediate([](const Change<RadioGroupHandle>&) { return Result{}; });
     auto all_frame = arrange(layout::column({layout::component(all), layout::component(after)}), all_ui, *appearance, measure, 240, 300, 1.f, scroll);
     all.focus(); detail::access(all_ui).key_down({Key::right}); detail::access(all_ui).key_down({Key::tab});
     check(all_frame.find(all) && !all.draft()->has_value() && after.describe()->focused, "All-disabled radio remains empty and can be exited");
@@ -932,13 +932,13 @@ void radio_boundaries_under_the_appearance() {
 
 void slider_non_divisible_under_the_appearance() {
     Ui ui;
-    auto slider = ui.add_slider({.id = "slider"}, {-3, 8, 4}).value.value();
-    slider.connect_source({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
-    slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
+    auto slider = ui.addSlider({.id = "slider"}, {-3, 8, 4}).value.value();
+    slider.connectSource({[] { return -3; }, [](std::function<void()>) { return [] {}; }});
+    slider.connectConfirmed([](const Change<SliderHandle>&) { return Result{}; });
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::component(slider);
     auto frame = arrange(root, ui, *appearance, measure, 240, 120, 1.f, scroll);
-    slider.set_value(3);
+    slider.setValue(3);
     check(frame.find(slider) && *slider.draft() == 5, "Non-divisible slider renders and midpoint rounds upward");
     slider.focus(); detail::access(ui).key_down({Key::home});
     check(*slider.draft() == -3, "Home reaches minimum");
@@ -948,15 +948,15 @@ void slider_non_divisible_under_the_appearance() {
     check(*slider.draft() == 8, "End reaches non-divisible maximum");
     int rejected = 0;
     for (auto range : {SliderRange{1, 1, 1}, SliderRange{2, 1, 1}, SliderRange{0, 1, 0}, SliderRange{0, 1, -1}})
-        if (ui.add_slider({.id = "invalid"}, range).status == Status::invalid_value) ++rejected;
+        if (ui.addSlider({.id = "invalid"}, range).status == Status::invalidValue) ++rejected;
     check(rejected == 4, "Invalid ranges and steps are rejected");
 }
 
 void disabled_tabs_under_the_appearance() {
     Ui ui;
-    auto first = ui.add_button({.id = "first"}).value.value();
-    auto hidden = ui.add_button({.id = "hidden"}).value.value();
-    auto tabs = ui.add_tabs({.id = "tabs"}, {
+    auto first = ui.addButton({.id = "first"}).value.value();
+    auto hidden = ui.addButton({.id = "hidden"}).value.value();
+    auto tabs = ui.addTabs({.id = "tabs"}, {
         {{"one"}, u"One", true, {first}}, {{"blocked"}, u"Blocked", false, {}}, {{"two"}, u"Two", true, {hidden}}}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::column({layout::component(tabs), layout::component(first), layout::component(hidden)}), ui, *appearance, measure, 400, 300, 1.f, scroll);
@@ -1008,9 +1008,9 @@ void keyboard_completes_the_three_page_journey() {
     tap(Key::right); tap(Key::enter);
     check(*h.tabs.active() == OptionValue{"v03"} && walk(h.dialog_open.describe()->id), "Keyboard opens V03 and reaches dialog opener");
     tap(Key::enter);
-    check(h.dialog_cancel.describe()->focused && *h.dialog.is_open(), "Dialog starts on Cancel");
+    check(h.dialog_cancel.describe()->focused && *h.dialog.isOpen(), "Dialog starts on Cancel");
     tap(Key::tab); tap(Key::enter);
-    check(!*h.dialog.is_open() && form.progress() == 0 && form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused,
+    check(!*h.dialog.isOpen() && form.progress() == 0 && form.dialog_confirmations() == 1 && h.dialog_open.describe()->focused,
           "Keyboard confirms once and leaves the modal at its opener");
     check(walk(h.tabs.describe()->id), "Keyboard can leave V03");
 }
@@ -1020,11 +1020,11 @@ void resets_reproduce_cases_and_preserve_other_pages() {
     test::FakeMeasure measure;
     auto frame = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, detail::access(form.ui).focused()); };
     h.tabs.activate({"v02"}); auto& list = form.list->handles;
-    list.search.set_value(u"共用範本"); list.list.select({"T006"});
+    list.search.setValue(u"共用範本"); list.list.select({"T006"});
     h.tabs.activate({"v03"}); h.progress_full.invoke();
-    h.tabs.activate({"v01"}); h.name.set_value(u"draft"); h.reset.invoke();
+    h.tabs.activate({"v01"}); h.name.setValue(u"draft"); h.reset.invoke();
     check(frame().find(h.name) && *h.name.draft() == u"測試使用者" && form.applies() == 0, "V01 reset restores initial form");
-    h.name.set_value(u"工作站 A"); h.apply.invoke();
+    h.name.setValue(u"工作站 A"); h.apply.invoke();
     check(form.applies() == 1 && form.applied() == u"工作站 A", "Representative V01 apply works again after reset");
     h.tabs.activate({"v02"});
     check(*list.search.draft() == u"共用範本" && form.list->selection() == OptionValue{"T006"}, "V01 reset retained V02 state");
@@ -1050,7 +1050,7 @@ void settle(edit_form::Form& form) {
         auto frame = arrange(form.page(), form.ui, *appearance, measure, width, 480, 1.f, form.scroll, detail::access(form.ui).focused());
         auto field = frame.find(form.handles.name);
         bool invalid = form.handles.name.describe()->invalid;
-        check(field && field->label_lines.size() == 1 && field->error_lines.empty() != invalid,
+        check(field && field->labelLines.size() == 1 && field->errorLines.empty() != invalid,
               "Under this appearance the name carries its label, and an error exactly when invalid");
     }
 }
@@ -1062,24 +1062,24 @@ void region_is_in_the_form_confirmation_group() {
     check(bool(form.handles.apply.invoke()) && form.region_applied() == OptionValue{"south"} && form.applies() == 1, "Apply commits region with the form");
     form.handles.region_empty.invoke();
     check(!*form.handles.region.draft(), "Clearing options clears the draft");
-    check(form.handles.apply.invoke().status == Status::invalid_value && form.handles.region.describe()->focused &&
+    check(form.handles.apply.invoke().status == Status::invalidValue && form.handles.region.describe()->focused &&
           form.handles.region.describe()->invalid && !form.handles.name.describe()->invalid && form.applies() == 1, "Missing region is rejected and focuses its own error");
     form.handles.region_empty.invoke();
     check(!*form.handles.region.draft(), "Restoring options does not resurrect the old selection");
-    form.handles.name.set_value(u"");
+    form.handles.name.setValue(u"");
     form.handles.apply.invoke();
     check(form.handles.name.describe()->focused && form.handles.region.describe()->invalid, "Name error takes focus before region");
-    form.handles.name.set_value(u"Valid"); form.handles.region.select({"central"});
+    form.handles.name.setValue(u"Valid"); form.handles.region.select({"central"});
     check(bool(form.handles.apply.invoke()) && form.region_applied() == OptionValue{"central"} && form.applies() == 2, "Corrected region is explicitly selected and applied");
 }
 
 void all_five_fields_apply_once() {
     edit_form::Form form(ids);
     auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
-    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
-    form.handles.name.set_value(u"\u5de5\u4f5c\u7ad9 A");
+    check(bool(form.ui.setPresentation(density_settings)), "Behavior density accepted");
+    form.handles.name.setValue(u"\u5de5\u4f5c\u7ad9 A");
     form.handles.notices.toggle(); form.handles.mode.select({"focus"});
-    form.handles.region.select({"south"}); form.handles.volume.set_value(65);
+    form.handles.region.select({"south"}); form.handles.volume.setValue(65);
     check(form.applies() == 0 && form.region_applied() == OptionValue{"north"} && form.volume_applied() == 40,
           "Five edits remain drafts before Apply");
     check(bool(form.handles.apply.invoke()) && form.applies() == 1 && form.applied() == u"\u5de5\u4f5c\u7ad9 A" &&
@@ -1091,7 +1091,7 @@ void all_five_fields_apply_once() {
 void volume_is_a_confirmed_form_field() {
     edit_form::Form form(ids);
     check(*form.handles.volume.draft() == 40 && form.volume_applied() == 40 && form.handles.volume.describe()->name == u"\u97f3\u91cf", "Volume starts at 40 with its accessible name");
-    form.handles.volume.set_value(75);
+    form.handles.volume.setValue(75);
     check(*form.handles.volume.draft() == 75 && form.volume_applied() == 40 &&
           form.handles.draft.describe()->value.find(u"75") != std::u16string::npos, "Volume is shown as an unapplied draft");
     check(bool(form.handles.apply.invoke()) && form.volume_applied() == 75 && form.applies() == 1 &&
@@ -1102,30 +1102,30 @@ void volume_is_a_confirmed_form_field() {
 
 void volume_conflict_offers_latest() {
     edit_form::Form form(ids);
-    form.handles.volume.set_value(55);
+    form.handles.volume.setValue(55);
     form.update_volume_source(70);
-    check(*form.handles.volume.draft() == 55 && form.handles.volume.describe()->source_conflict &&
+    check(*form.handles.volume.draft() == 55 && form.handles.volume.describe()->sourceConflict &&
           form.handles.volume_latest.describe()->enabled, "Volume conflict preserves the draft and enables use latest");
     check(bool(form.handles.volume_latest.invoke()) && *form.handles.volume.draft() == 70 &&
-          !form.handles.volume.describe()->source_conflict, "Use latest discards the volume draft");
+          !form.handles.volume.describe()->sourceConflict, "Use latest discards the volume draft");
 }
 
 void checkbox_conflict_is_visible_and_can_use_latest() {
     bool source = true; std::function<void()> changed;
     Ui ui;
-    auto box = ui.add_checkbox({.id = "check", .label = u"Check"}).value.value();
-    box.connect_source({[&] { return source; }, [&](std::function<void()> cb) { changed = std::move(cb); return [] {}; }});
-    box.connect_confirmed([&](const Change<CheckboxHandle>&) {
+    auto box = ui.addCheckbox({.id = "check", .label = u"Check"}).value.value();
+    box.connectSource({[&] { return source; }, [&](std::function<void()> cb) { changed = std::move(cb); return [] {}; }});
+    box.connectConfirmed([&](const Change<CheckboxHandle>&) {
         box.toggle(); source = false; changed();
-        return Result{Status::invalid_value, u"Rejected"};
+        return Result{Status::invalidValue, u"Rejected"};
     });
     box.toggle(); box.confirm();
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::component(box), ui, *appearance, measure, 400, 400, 1.f, scroll);
     const auto* placed = frame.find(box);
-    check(box.describe()->source_conflict && *box.draft() && placed && !placed->description_lines.empty(),
+    check(box.describe()->sourceConflict && *box.draft() && placed && !placed->descriptionLines.empty(),
           "A source update during a rejected confirmation keeps the draft and displays a conflict");
-    check(box.use_latest() && !*box.draft() && !box.describe()->source_conflict,
+    check(box.useLatest() && !*box.draft() && !box.describe()->sourceConflict,
           "Use latest adopts the checkbox source");
 }
 
@@ -1134,14 +1134,14 @@ void assembled_checkbox_conflict_offers_latest() {
     auto& h = form.handles;
     form.reject_next_apply_with_notices_source_change();
     check(bool(h.notices.toggle()), "X04 prepare checkbox draft");
-    check(h.apply.invoke().status == Status::invalid_value && h.notices.describe()->source_conflict &&
+    check(h.apply.invoke().status == Status::invalidValue && h.notices.describe()->sourceConflict &&
           *h.notices.draft() && !form.notices_applied() && h.notices_latest.describe()->enabled,
           "X04 assembled rejected apply exposes the checkbox conflict and latest action");
     test::FakeMeasure measure;
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll, h.notices.describe()->id);
     auto* box = frame.find(h.notices);
-    check(box && !box->description_lines.empty(), "X04 assembled checkbox draws conflict wording");
-    check(bool(h.notices_latest.invoke()) && !*h.notices.draft() && !h.notices.describe()->source_conflict,
+    check(box && !box->descriptionLines.empty(), "X04 assembled checkbox draws conflict wording");
+    check(bool(h.notices_latest.invoke()) && !*h.notices.draft() && !h.notices.describe()->sourceConflict,
           "X04 assembled latest action adopts the external checkbox value");
 }
 
@@ -1154,12 +1154,12 @@ void option_conflicts_are_visible_and_can_use_latest() {
     auto mode_frame = arrange(layout::component(h.mode), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
     auto region_frame = arrange(layout::component(h.region), form.ui, *appearance, measure, 400, 400, 1.f, scroll);
     auto mode = mode_frame.find(h.mode); auto region = region_frame.find(h.region);
-    check(h.mode.describe()->source_conflict && h.region.describe()->source_conflict && mode && region &&
-          !mode->description_lines.empty() && !region->description_lines.empty() &&
+    check(h.mode.describe()->sourceConflict && h.region.describe()->sourceConflict && mode && region &&
+          !mode->descriptionLines.empty() && !region->descriptionLines.empty() &&
           h.mode_latest.describe()->enabled && h.region_latest.describe()->enabled,
           "Conflicts preserve drafts, show notices and enable both latest actions");
     check(h.mode_latest.invoke() && h.region_latest.invoke() && *h.mode.draft() == OptionValue{"offline"} &&
-          *h.region.draft() == OptionValue{"south"} && !h.mode.describe()->source_conflict && !h.region.describe()->source_conflict,
+          *h.region.draft() == OptionValue{"south"} && !h.mode.describe()->sourceConflict && !h.region.describe()->sourceConflict,
           "Each latest action adopts its own source value");
 }
 
@@ -1167,7 +1167,7 @@ void initial_values_apply_and_reset() {
     edit_form::Form form(ids);
     auto& ui = form.ui;
     check(form.handles.name.describe()->value == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Initial draft, result and count");
-    form.handles.name.set_value( u"工作站 A");
+    form.handles.name.setValue( u"工作站 A");
     check(form.applied() == u"測試使用者" && form.handles.result.describe()->value.find(u"測試使用者") != std::u16string::npos,
           "Editing changes only the draft");
     check(form.handles.draft.describe()->value.find(u"工作站 A") != std::u16string::npos, "Current draft is displayed");
@@ -1177,11 +1177,11 @@ void initial_values_apply_and_reset() {
     form.handles.name.paste(u"，這是一段會超出欄位寬度的很長很長的名稱");
     test::FakeMeasure measure;
     arrange(form.page(), ui, *appearance, measure, 360, 240, 1.f, form.scroll, ids.apply);
-    check(detail::access(ui).text_offset(ids.name) > 0 && form.scroll.offset > 0, "Long draft and small window scroll the field and the page");
+    check(detail::access(ui).textOffset(ids.name) > 0 && form.scroll.offset > 0, "Long draft and small window scroll the field and the page");
     form.handles.disabled.invoke();
     check(bool(form.handles.reset.invoke()), "Reset works while the data area is disabled");
     check(form.handles.name.describe()->value == u"測試使用者" && form.applied() == u"測試使用者" && form.applies() == 0, "Reset restores initial values");
-    check(!form.handles.name.undo() && detail::access(ui).text_offset(ids.name) == 0 && form.scroll.offset == 0, "Reset clears history and display offsets");
+    check(!form.handles.name.undo() && detail::access(ui).textOffset(ids.name) == 0 && form.scroll.offset == 0, "Reset clears history and display offsets");
     check(form.handles.reset.describe()->focused && form.handles.name.describe()->enabled, "Focus stays on reset; the data area is enabled again");
     settle(form);
 }
@@ -1197,7 +1197,7 @@ void blank_name_error_follows_blur_and_apply() {
     check(name->invalid && name->error == u"請填寫顯示名稱" && form.handles.name_error.describe()->value == name->error, "Blur on a blank name shows its error");
     check(form.handles.name_error.describe()->target == ids.name, "The error is associated with the name field");
     auto result = form.handles.apply.invoke();
-    check(result.status == Status::invalid_value && form.handles.name.describe()->focused, "Invalid apply is rejected and focuses the name");
+    check(result.status == Status::invalidValue && form.handles.name.describe()->focused, "Invalid apply is rejected and focuses the name");
     check(form.applied() == u"測試使用者" && form.applies() == 0, "Invalid apply keeps the old result and count");
     form.handles.name.paste(u"有效名稱");
     check(!form.handles.name.describe()->invalid, "Fixing the name clears the error");
@@ -1245,16 +1245,16 @@ void read_only_and_disabled_fixtures_restrict_and_recover() {
     auto& ui = form.ui;
     form.handles.name.focus();
     form.handles.name.paste(u"!");
-    form.handles.read_only.invoke();
-    check(form.handles.name.describe()->read_only && form.handles.state.describe()->value.find(u"唯讀") != std::u16string::npos,
+    form.handles.readOnly.invoke();
+    check(form.handles.name.describe()->readOnly && form.handles.state.describe()->value.find(u"唯讀") != std::u16string::npos,
           "Read-only state has readable text, not just color");
     form.handles.name.focus();
-    check(form.handles.name.paste(u"x").status == Status::read_only && form.handles.name.undo().status == Status::read_only,
+    check(form.handles.name.paste(u"x").status == Status::readOnly && form.handles.name.undo().status == Status::readOnly,
           "Read-only name refuses input and undo");
     form.handles.disabled.invoke();
     check(form.handles.state.describe()->value.find(u"停用") != std::u16string::npos, "Disabled state has readable text");
     std::vector<Status> refused{form.handles.name.focus().status, detail::access(ui).pointer_down(ids.apply).status,
-                                form.handles.name.set_value( u"x").status, form.handles.apply.invoke().status};
+                                form.handles.name.setValue( u"x").status, form.handles.apply.invoke().status};
     check(refused == std::vector<Status>(4, Status::disabled) && form.applies() == 0, "Pointer, keyboard and semantic retries are refused");
     auto order = detail::access(ui).focus_order();
     check(std::find(order.begin(), order.end(), ids.normal) != order.end() && std::find(order.begin(), order.end(), ids.name) == order.end(),
@@ -1269,12 +1269,12 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     auto& ui = form.ui;
     std::vector<Id> seen;
     for (int i = 0; i < 15; ++i) { detail::access(ui).key_down(key(Key::tab)); seen.push_back(detail::access(ui).focused()); }
-    std::vector<Id> expected{ids.normal, ids.read_only, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.region, ids.volume, ids.offline_disabled, ids.region_empty, ids.apply, ids.normal};
+    std::vector<Id> expected{ids.normal, ids.readOnly, ids.disabled, ids.error, ids.long_text, ids.reset, ids.name, ids.notices, ids.mode, ids.region, ids.volume, ids.offline_disabled, ids.region_empty, ids.apply, ids.normal};
     check(seen == expected, "Tab reaches fixtures, name and apply, then wraps");
     detail::access(ui).key_down(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
     auto name = form.handles.name.describe();
-    check(name->kind == ComponentKind::text_field && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
+    check(name->kind == ComponentKind::textField && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
           "Name field answers identity, type, name and value");
     auto apply = form.handles.apply.describe();
     check(apply->kind == ComponentKind::button && apply->name == u"套用" && apply->focused, "Apply answers its name and focus");
@@ -1286,7 +1286,7 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
 
 void source_updates_offer_the_latest_value() {
     edit_form::Form form(ids);
-    form.handles.name.set_value( u"my draft");
+    form.handles.name.setValue( u"my draft");
     form.update_source(u"remote value");
     check(form.handles.name.describe()->value == u"my draft" && form.handles.state.describe()->value.find(u"\u4f86\u6e90\u5df2\u66f4\u65b0") != std::u16string::npos,
           "An external change retains the draft and displays a conflict");
@@ -1319,7 +1319,7 @@ void checkbox_and_radio_are_applied_together() {
 void v02_empty_single_and_navigation() {
     edit_form::Form form(ids, true);
     auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
-    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
+    check(bool(form.ui.setPresentation(density_settings)), "Behavior density accepted");
     form.handles.tabs.activate({"v02"});
     auto& page = *form.list;
     auto& h = page.handles;
@@ -1339,7 +1339,7 @@ void v02_empty_single_and_navigation() {
     const auto* item = frame.find(h.list);
     check(item && item->options.size() == 20, "Twenty V02 rows are arranged");
     auto row = item->options[2];
-    check(frame.option_at(*item, row.x + 3, row.y + row.h / 2) == 2, "T003 has a visible pointer target");
+    check(frame.optionAt(*item, row.x + 3, row.y + row.h / 2) == 2, "T003 has a visible pointer target");
     host.pointer_down(item->id, 2); host.pointer_up(item->id, 2);
     check(page.selection() == OptionValue{"T003"}, "Pointer selects T003");
     auto visible = [&](std::size_t index) {
@@ -1366,10 +1366,10 @@ void v02_identity_filter_and_delete() {
           "Reverse sorting retains the selected duplicate identity in the detail");
     h.sort.invoke();
     check(page.selection() == OptionValue{"T006"}, "Restoring sort preserves T006");
-    h.list.select({"T003"}); h.search.set_value(u"範本 20");
+    h.list.select({"T003"}); h.search.setValue(u"範本 20");
     check(!page.selection() && h.list.describe()->items.size() == 1 && h.list.describe()->items[0].value == OptionValue{"T020"},
           "Filtering T003 out clears selection and leaves T020");
-    h.search.set_value(u"");
+    h.search.setValue(u"");
     check(!page.selection() && h.list.describe()->items.size() == 20, "Clearing the filter does not restore selection");
     h.list.focus(); h.list.select({"T003"}); h.erase.invoke();
     const auto remaining = h.list.describe()->items;
@@ -1403,7 +1403,7 @@ void v02_disabled_and_filtered_neighbors() {
     check(frame.find(h.list) && !page.selection() && h.list.describe()->candidate == OptionValue{"T009"} &&
           h.list.select({"T008"}).status == Status::disabled && identities,
           "Disabling selected T008 clears it, moves to T009 and keeps every identity");
-    h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.set_value(u"範本 1");
+    h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.setValue(u"範本 1");
     check(!page.selection() && h.list.describe()->candidate == OptionValue{"T010"}, "Filtering recovers the next surviving identity T010");
 }
 
@@ -1411,7 +1411,7 @@ void pages_keep_independent_drafts_history_and_scroll() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
     test::FakeMeasure measure;
-    h.name.set_value(u"a very long draft that needs horizontal scrolling in a narrow field");
+    h.name.setValue(u"a very long draft that needs horizontal scrolling in a narrow field");
     h.name.focus(); h.name.select(66, 66);
     h.long_text.invoke();
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, ids.name);
@@ -1420,9 +1420,9 @@ void pages_keep_independent_drafts_history_and_scroll() {
     int saved_scroll = form.scroll.offset;
     check(offset > 0 && saved_scroll > 0, "V01 has horizontal and vertical offsets to preserve");
     check(bool(h.tabs.activate({"v02"})), "Open V02");
-    check(h.name.set_value(u"blocked").status == Status::hidden, "Hidden V01 cannot be edited");
+    check(h.name.setValue(u"blocked").status == Status::hidden, "Hidden V01 cannot be edited");
     auto& list = form.list->handles;
-    list.search.set_value(u"\u5171\u7528\u7bc4\u672c"); list.list.select({"T006"});
+    list.search.setValue(u"\u5171\u7528\u7bc4\u672c"); list.list.select({"T006"});
     check(bool(h.tabs.activate({"v01"})), "Return to V01");
     check(*h.name.draft() == u"a very long draft that needs horizontal scrolling in a narrow field", "V01 draft survives switch");
     check(form.applied() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V01 applied value survives switch");
@@ -1454,9 +1454,9 @@ void pages_keep_independent_drafts_history_and_scroll() {
 
 void tooltip_keyboard_delay_and_escape() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"50%"}).value.value();
-    auto other = ui.add_button({.id = "other", .label = u"Other"}).value.value();
-    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"50%"}).value.value();
+    auto other = ui.addButton({.id = "other", .label = u"Other"}).value.value();
+    auto tip = ui.addTooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
     check(source.describe()->description == u"Set progress to 50%", "The source exposes the tooltip as its semantic description");
     auto& host = detail::access(ui);
     host.tooltip_time(1000);
@@ -1476,8 +1476,8 @@ void tooltip_keyboard_delay_and_escape() {
 
 void tooltip_pointer_visit_can_restart_after_escape() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"50%"}).value.value();
-    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"50%"}).value.value();
+    auto tip = ui.addTooltip("form.title.pages.v03.half.tip", source, u"Set progress to 50%", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);
     host.tooltip_hover("source"); host.tooltip_time(100);
@@ -1494,8 +1494,8 @@ void tooltip_pointer_visit_can_restart_after_escape() {
 
 void tooltip_pointer_focus_ends_on_leave() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"50%"}).value.value();
-    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"50%"}).value.value();
+    auto tip = ui.addTooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true);
     host.tooltip_hover("source");
@@ -1511,8 +1511,8 @@ void tooltip_pointer_focus_ends_on_leave() {
 
 void tooltip_window_modal_and_source_lifetime() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"Source"}).value.value();
-    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"Source"}).value.value();
+    auto tip = ui.addTooltip("form.title.pages.v03.half.tip", source, u"Help", 100).value.value();
     auto& host = detail::access(ui);
     host.tooltip_time(0); host.window_active(true); force_focus_indicators(ui); source.focus(); host.tooltip_time(100);
     check(*tip.visible(), "Tooltip becomes visible");
@@ -1529,13 +1529,13 @@ void tooltip_window_modal_and_source_lifetime() {
     source.enable(false); host.tooltip_time(1400);
     check(!*tip.visible(), "Disabling the source cancels pending and visible tooltips");
     source.enable(true); source.focus(); host.tooltip_time(1450); source.remove(); host.tooltip_time(2000);
-    check(tip.visible().status == Status::not_found, "Removal invalidates the tooltip and its pending timer");
+    check(tip.visible().status == Status::notFound, "Removal invalidates the tooltip and its pending timer");
 }
 
 void tooltip_layout_is_readable_and_pointer_transparent() {
     Ui ui;
-    auto source = ui.add_button({.id = "source", .label = u"Source"}).value.value();
-    auto tip = ui.add_tooltip("form.title.pages.v03.half.tip", source, u"An explanation that wraps near a window edge", 0).value.value();
+    auto source = ui.addButton({.id = "source", .label = u"Source"}).value.value();
+    auto tip = ui.addTooltip("form.title.pages.v03.half.tip", source, u"An explanation that wraps near a window edge", 0).value.value();
     auto& host = detail::access(ui);
     host.window_active(true); force_focus_indicators(ui); source.focus();
     test::FakeMeasure measure; ScrollState scroll;
@@ -1569,15 +1569,15 @@ struct PaintRoleProbe : detail::ComponentPaint {
 #include "focus_visibility.hpp"
 void x04_scrollable_text_inventory() {
     Ui ui; force_focus_indicators(ui);
-    auto long_text = ui.add_label({.id="long", .value=std::u16string(4000, u'x')}).value.value();
-    auto short_text = ui.add_label({.id="short", .value=u"short"}).value.value();
-    auto action = ui.add_button({.id="action", .label=u"Action"}).value.value();
+    auto long_text = ui.addLabel({.id="long", .value=std::u16string(4000, u'x')}).value.value();
+    auto short_text = ui.addLabel({.id="short", .value=u"short"}).value.value();
+    auto action = ui.addButton({.id="action", .label=u"Action"}).value.value();
     ScrollState outer, long_scroll, short_scroll;
-    auto page = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 120),
-        layout::scroll_text(short_text, short_scroll, 120), layout::component(action)}));
+    auto page = layout::scroll(layout::column({layout::scrollText(long_text, long_scroll, 120),
+        layout::scrollText(short_text, short_scroll, 120), layout::component(action)}));
     test::FakeMeasure measure;
     auto frame = arrange(page, ui, *appearance, measure, 640, 480, 1.f, outer);
-    auto fits = layout::scroll(layout::column({layout::scroll_text(long_text, long_scroll, 10000)}));
+    auto fits = layout::scroll(layout::column({layout::scrollText(long_text, long_scroll, 10000)}));
     arrange(fits, ui, *appearance, measure, 640, 480, 1.f, outer);
     check(!x04::focus_applicable(*long_text.describe()), "X04 excludes the same text when it fits");
     frame = arrange(page, ui, *appearance, measure, 640, 480, 1.f, outer);
@@ -1591,7 +1591,7 @@ void x04_scrollable_text_inventory() {
         check(item && semantic->focused, "X04 focus sweep finds the focused placement");
         PaintRoleProbe paint(detail::access(ui), *item, *semantic, *appearance, 1.f, true);
         detail::component_type(item->kind).paint(paint);
-        check(paint.count(detail::PaintRole::focus_indicator) > 0, "X04 focus sweep observes the focus cue");
+        check(paint.count(detail::PaintRole::focusIndicator) > 0, "X04 focus sweep observes the focus cue");
         visited.push_back(semantic->id);
     }
     check(std::find(visited.begin(), visited.end(), "long") != visited.end(), "X04 includes overflowing text");
@@ -1622,11 +1622,11 @@ void draw_command_state_matrix() {
             if(applicable) check(x04::drive_error(form,entry), "Supported error setup succeeds");
         }
         if(state_index==4) {
-            applicable=semantic->enabled && (semantic->kind==ComponentKind::checkbox || semantic->kind==ComponentKind::radio_group || semantic->kind==ComponentKind::list || semantic->kind==ComponentKind::tabs);
+            applicable=semantic->enabled && (semantic->kind==ComponentKind::checkbox || semantic->kind==ComponentKind::radioGroup || semantic->kind==ComponentKind::list || semantic->kind==ComponentKind::tabs);
             if(applicable) check(x04::drive_selected(entry), "Supported selection setup succeeds");
         }
         if(state_index==5) {
-            applicable=semantic->kind==ComponentKind::text_field && semantic->enabled && !semantic->read_only;
+            applicable=semantic->kind==ComponentKind::textField && semantic->enabled && !semantic->readOnly;
             if(applicable) {
                 check(x04::focus(form.ui, entry.handle), "Composition target can focus");
                 check(bool(ui.composition_update(u"preedit",3)), "Composition setup succeeds");
@@ -1644,14 +1644,14 @@ void draw_command_state_matrix() {
                   command.type==Type::end_group, "DL02 command belongs to the supported set");
         }
         if(state_index==2) {
-            check(probe.count(detail::PaintRole::focus_indicator)>0,"DL03 focus cue");
+            check(probe.count(detail::PaintRole::focusIndicator)>0,"DL03 focus cue");
             bool within=std::any_of(probe.emitted.begin(),probe.emitted.end(),[&](const auto& mark) {
                 auto hit=intersect(mark.second,item->bounds);
-                return (static_cast<unsigned>(mark.first) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) && hit.w>0 && hit.h>0;
+                return (static_cast<unsigned>(mark.first) & static_cast<unsigned>(detail::PaintRole::focusIndicator)) && hit.w>0 && hit.h>0;
             });
             check(within,"DL03 focus cue intersects component bounds");
         }
-        if(state_index==2 && semantic->kind==ComponentKind::text_field && !semantic->read_only) check(probe.count(detail::PaintRole::caret)==1,"DL03 one caret");
+        if(state_index==2 && semantic->kind==ComponentKind::textField && !semantic->readOnly) check(probe.count(detail::PaintRole::caret)==1,"DL03 one caret");
         if(state_index==3 && semantic->invalid && !semantic->error.empty()) check(probe.count(detail::PaintRole::error_text)>0,"DL03 error text cue");
         if(state_index==5) check(probe.count(detail::PaintRole::composition)>0,"DL03 composition cue");
     }
@@ -1663,7 +1663,7 @@ void dark_focus_inventory() {
         edit_form::Form form(ids, true); auto entry = x04::inventory(form)[index];
         auto semantic = x04::describe(entry.handle);
         auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark();
-        check(bool(form.ui.set_presentation(settings)), "Dark theme accepted");
+        check(bool(form.ui.setPresentation(settings)), "Dark theme accepted");
         force_focus_indicators(form.ui);
         if (entry.page == "modal") {
             check(bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke()), "Focus modal opened");
@@ -1682,7 +1682,7 @@ void dark_focus_inventory() {
         auto accent = appearance->palette(ThemeVariant::dark()).accent;
         bool cue = std::any_of(paint.recording.list.commands.begin(), paint.recording.list.commands.end(), [&](const auto& c) {
             auto r = intersect(c.rect, item->clip);
-            return (static_cast<unsigned>(c.role) & static_cast<unsigned>(detail::PaintRole::focus_indicator)) && r.w > 0 && r.h > 0 &&
+            return (static_cast<unsigned>(c.role) & static_cast<unsigned>(detail::PaintRole::focusIndicator)) && r.w > 0 && r.h > 0 &&
                 c.color.r == accent.r && c.color.g == accent.g && c.color.b == accent.b;
         });
         check(cue, ("Dark focus indicator " + semantic->id).c_str());
@@ -1727,9 +1727,9 @@ struct ClippedPaintProbe : detail::ComponentPaint {
                       const Appearance& look, float scale, TextMeasure& metrics, const ComponentSnapshot& target)
         : ComponentPaint(state, item, owner, look, scale, true), measure(metrics), current(item.clip), associated(nullptr) {
         if (!target.target.empty()) {
-            if (target.label_kind == LabelKind::name) associated = &item.label_lines;
-            else if (target.label_kind == LabelKind::description) associated = &item.description_lines;
-            else if (target.label_kind == LabelKind::error) associated = &item.error_lines;
+            if (target.labelKind == LabelKind::name) associated = &item.labelLines;
+            else if (target.labelKind == LabelKind::description) associated = &item.descriptionLines;
+            else if (target.labelKind == LabelKind::error) associated = &item.errorLines;
         }
     }
     void mark(Rect r) { auto v = intersect(r, current); visible = visible || (v.w > 0 && v.h > 0); }
@@ -1739,7 +1739,7 @@ struct ClippedPaintProbe : detail::ComponentPaint {
     void text(std::u16string_view value, int pixels, int x, int y, Color) override {
         if (value.empty()) return;
         if (associated && std::none_of(associated->begin(), associated->end(), [&](const Line& line) { return line.text == value; })) return;
-        mark({x, y, static_cast<int>(std::ceil(measure.measure(value, pixels).width)), measure.line_height(pixels)});
+        mark({x, y, static_cast<int>(std::ceil(measure.measure(value, pixels).width)), measure.lineHeight(pixels)});
     }
 };
 void painted_states_agree_with_semantics() {
@@ -1766,18 +1766,18 @@ void painted_states_agree_with_semantics() {
         });
     };
     auto contains = [](const Observation& o, const std::u16string& text) { return o.text.find(text) != std::u16string::npos; };
-    const auto& wording = appearance->component_presentation();
+    const auto& wording = appearance->componentPresentation();
     const auto palette = appearance->palette();
 
     h.name.focus(); h.name.select(0, 2);
     check(has_color(observe(h.name), palette.selection), "X04 selected text has a selection highlight");
-    h.read_only.invoke();
-    auto read_only = observe(h.name);
-    check(h.name.describe()->read_only && contains(read_only, wording.read_only_suffix) &&
-          contains(read_only, h.name.describe()->value), "X04 read-only field wording and value agree");
+    h.readOnly.invoke();
+    auto readOnly = observe(h.name);
+    check(h.name.describe()->readOnly && contains(readOnly, wording.readOnlySuffix) &&
+          contains(readOnly, h.name.describe()->value), "X04 read-only field wording and value agree");
     h.disabled.invoke();
     auto disabled_name = observe(h.name);
-    check(!h.name.describe()->enabled && contains(disabled_name, wording.disabled_suffix) && has_color(disabled_name, palette.muted),
+    check(!h.name.describe()->enabled && contains(disabled_name, wording.disabledSuffix) && has_color(disabled_name, palette.muted),
           "X04 disabled field is identified and muted");
     auto disabled_button = observe(h.apply);
     auto disabled_box = observe(h.notices);
@@ -1787,26 +1787,26 @@ void painted_states_agree_with_semantics() {
     check(!h.apply.describe()->enabled && has_color(disabled_button, palette.muted) &&
           !h.notices.describe()->enabled && has_color(disabled_box, palette.muted) &&
           !h.mode.describe()->enabled && has_color(disabled_radio, palette.muted) &&
-          !h.region.describe()->enabled && contains(disabled_region, wording.disabled_suffix) && has_color(disabled_region, palette.muted) &&
-          !h.volume.describe()->enabled && contains(disabled_volume, wording.disabled_suffix) && has_color(disabled_volume, palette.muted),
+          !h.region.describe()->enabled && contains(disabled_region, wording.disabledSuffix) && has_color(disabled_region, palette.muted) &&
+          !h.volume.describe()->enabled && contains(disabled_volume, wording.disabledSuffix) && has_color(disabled_volume, palette.muted),
           "X04 disabled controls use their restricted presentation");
 
     h.normal.invoke(); h.error.invoke();
     auto error = observe(h.name);
     check(h.name.describe()->invalid && contains(error, h.name.describe()->error) && has_color(error, palette.error),
           "X04 field error text and error color agree with its semantics");
-    h.name.set_value(u"draft"); form.update_source(u"new source");
+    h.name.setValue(u"draft"); form.update_source(u"new source");
     h.mode.select({"focus"}); form.update_mode_source({"offline"});
     h.region.select({"central"}); form.update_region_source({"south"});
-    h.volume.set_value(55); form.update_volume_source(70);
-    check(h.name.describe()->source_conflict && contains(observe(h.state), u"來源已更新") &&
+    h.volume.setValue(55); form.update_volume_source(70);
+    check(h.name.describe()->sourceConflict && contains(observe(h.state), u"來源已更新") &&
           h.latest.describe()->enabled && contains(observe(h.latest), u"改用最新值"),
           "X04 field conflict notice and use-latest action are drawn");
-    check(h.mode.describe()->source_conflict && contains(observe(h.mode), wording.conflict_suffix) &&
+    check(h.mode.describe()->sourceConflict && contains(observe(h.mode), wording.conflictSuffix) &&
           h.mode_latest.describe()->enabled && contains(observe(h.mode_latest), u"改用最新值") &&
-          h.region.describe()->source_conflict && contains(observe(h.region), wording.conflict_suffix) &&
+          h.region.describe()->sourceConflict && contains(observe(h.region), wording.conflictSuffix) &&
           h.region_latest.describe()->enabled && contains(observe(h.region_latest), u"改用最新值") &&
-          h.volume.describe()->source_conflict && contains(observe(h.volume), wording.conflict_suffix) &&
+          h.volume.describe()->sourceConflict && contains(observe(h.volume), wording.conflictSuffix) &&
           h.volume_latest.describe()->enabled && contains(observe(h.volume_latest), u"改用最新值"),
           "X04 option and slider conflicts expose their notices and actions");
 
@@ -1819,7 +1819,7 @@ void painted_states_agree_with_semantics() {
     check(std::any_of(mode->items.begin(), mode->items.end(), [](const auto& o) { return o.selected; }) &&
           has_color(observe(h.mode), palette.accent), "X04 radio selection has an accent indicator");
     h.offline_disabled.invoke();
-    check(!h.mode.describe()->items[2].enabled && contains(observe(h.mode), wording.disabled_suffix),
+    check(!h.mode.describe()->items[2].enabled && contains(observe(h.mode), wording.disabledSuffix),
           "X04 disabled radio option is identified in the paint text");
     h.reset.invoke(); h.region_empty.invoke(); h.apply.invoke();
     check(h.region.describe()->invalid && !h.region.describe()->error.empty() &&
@@ -1831,13 +1831,13 @@ void painted_states_agree_with_semantics() {
     check(!form.list->handles.erase.describe()->enabled && has_color(observe(form.list->handles.erase), palette.muted),
           "X04 disabled list delete button is muted");
     form.list->handles.zero.invoke();
-    check(list.describe()->items.empty() && contains(observe(list), wording.no_items), "X04 empty list has visible empty wording");
+    check(list.describe()->items.empty() && contains(observe(list), wording.noItems), "X04 empty list has visible empty wording");
     form.list->handles.twenty.invoke(); form.list->handles.disable_eight.invoke();
-    check(!list.describe()->items[7].enabled && contains(observe(list), wording.disabled_suffix),
+    check(!list.describe()->items[7].enabled && contains(observe(list), wording.disabledSuffix),
           "X04 disabled list row has disabled wording");
     list.select({"T003"});
     check(list.describe()->items[2].selected && has_color(observe(list), palette.selection) &&
-          contains(observe(list), wording.selected_marker + list.describe()->items[2].label),
+          contains(observe(list), wording.selectedMarker + list.describe()->items[2].label),
           "X04 selected list row has a selection highlight");
     check(h.tabs.describe()->items[1].selected && has_color(observe(h.tabs), palette.selection),
           "X04 active tab has a selection highlight");
@@ -1869,12 +1869,12 @@ void hidden_and_clipped_components_are_not_visible_or_admitted() {
     auto second = frame();
     check(!h.name.describe()->visible && second.find(h.tabs) && h.tabs.describe()->visible,
           "X04 semantic visibility follows the active page");
-    check(!second.find(h.name) && !second.find(h.progress) && h.name.set_value(u"hidden").status == Status::hidden &&
+    check(!second.find(h.name) && !second.find(h.progress) && h.name.setValue(u"hidden").status == Status::hidden &&
           h.dialog_open.invoke().status == Status::hidden, "X04 V01 and V03 are absent and reject actions on V02");
     h.tabs.activate({"v03"});
     auto third = frame();
     check(!third.find(h.name) && !third.find(form.list->handles.list) &&
-          h.name.set_value(u"hidden").status == Status::hidden && form.list->handles.list.select({"T001"}).status == Status::hidden,
+          h.name.setValue(u"hidden").status == Status::hidden && form.list->handles.list.select({"T001"}).status == Status::hidden,
           "X04 V01 and V02 are absent and reject actions on V03");
     auto& state = detail::access(form.ui);
     std::vector<std::vector<Id>> page_items;
@@ -1919,7 +1919,7 @@ void x04_executing_inventory_at_each_size_and_scale() {
                 observed = semantic->visible && semantic->executing &&
                     std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::invoke) == semantic->verbs.end() &&
                     button->invoke().status == Status::busy && paint.drawn.find(semantic->name) != std::u16string::npos &&
-                    paint.drawn.find(appearance->component_presentation().executing_suffix) != std::u16string::npos;
+                    paint.drawn.find(appearance->componentPresentation().executingSuffix) != std::u16string::npos;
                 return Result{};
             }), (message + " bind or confirmation observer").c_str());
             check(bool(button->invoke()) && observed && !*button->executing(), (message + " callback").c_str());
@@ -1991,7 +1991,7 @@ void x04_error_inventory_at_each_size_and_scale(bool dark = false) {
         edit_form::Form inventory_form(ids, true);
         auto entries = x04::inventory(inventory_form);
         for (std::size_t index = 0; index < entries.size(); ++index) {
-            edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } auto entry = x04::inventory(form)[index];
+            edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.setPresentation(settings)), "Dark theme accepted"); } auto entry = x04::inventory(form)[index];
             auto semantic = x04::describe(entry.handle);
             if (!detail::component_type(semantic->kind).supports_state(detail::ComponentState::error)) continue;
             auto message = std::string("X04 error ") + semantic->id;
@@ -2006,7 +2006,7 @@ void x04_error_inventory_at_each_size_and_scale(bool dark = false) {
             PaintTextProbe paint(detail::access(form.ui), *item, *owner_semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
             if (semantic->kind == ComponentKind::tabs) {
-                check(paint.drawn.find(appearance->component_presentation().invalid_tab_marker) != std::u16string::npos &&
+                check(paint.drawn.find(appearance->componentPresentation().invalidTabMarker) != std::u16string::npos &&
                       std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto e = appearance->palette(form.ui.presentation().variant).text; return c.r == e.r && c.g == e.g && c.b == e.b; }),
                       (message + " tab cue").c_str());
             } else {
@@ -2061,16 +2061,16 @@ void x04_search_read_only_at_each_size_and_scale() {
         auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                              int(size.second * scale), scale, form.scroll, search.describe()->id);
         auto semantic = search.describe(); auto* item = frame.find(search);
-        check(item && semantic->visible && semantic->read_only && semantic->enabled &&
-              search.set_value(u"blocked").status == Status::read_only &&
-              detail::access(form.ui).text_input(u"x").status == Status::read_only, "X04 search read-only restriction");
+        check(item && semantic->visible && semantic->readOnly && semantic->enabled &&
+              search.setValue(u"blocked").status == Status::readOnly &&
+              detail::access(form.ui).text_input(u"x").status == Status::readOnly, "X04 search read-only restriction");
         PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
         detail::component_type(item->kind).paint(paint);
         check(paint.drawn.find(semantic->name) != std::u16string::npos &&
               paint.drawn.find(semantic->value) != std::u16string::npos &&
-              paint.drawn.find(appearance->component_presentation().read_only_suffix) != std::u16string::npos,
+              paint.drawn.find(appearance->componentPresentation().readOnlySuffix) != std::u16string::npos,
               "X04 search read-only paint");
-        check(x04::restore_search_read_only(form) && !search.describe()->read_only, "X04 search read-only recovery");
+        check(x04::restore_search_read_only(form) && !search.describe()->readOnly, "X04 search read-only recovery");
     }
 }
 
@@ -2080,7 +2080,7 @@ void x04_modal_inventory_at_each_size_and_scale() {
         check(x04::open_modal(form), "X04 open modal");
         auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                              int(size.second * scale), scale, form.scroll);
-        check(frame.modal && form.handles.progress_zero.invoke().status == Status::blocked_by_modal, "X04 modal blocks background");
+        check(frame.modal && form.handles.progress_zero.invoke().status == Status::blockedByModal, "X04 modal blocks background");
         for (const auto& entry : x04::inventory(form)) {
             if (entry.page != "modal") continue;
             auto semantic = x04::describe(entry.handle); auto* item = x04::placement(frame, entry.handle);
@@ -2091,7 +2091,7 @@ void x04_modal_inventory_at_each_size_and_scale() {
             for (const auto& expected : x04::normal_text(*semantic))
                 check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
         }
-        check(x04::close_modal(form) && !*form.handles.dialog.is_open(), "X04 close modal");
+        check(x04::close_modal(form) && !*form.handles.dialog.isOpen(), "X04 close modal");
     }
 }
 
@@ -2147,7 +2147,7 @@ void x04_normal_inventory_at_each_size_and_scale() {
 
 void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); } test::FakeMeasure measure; auto& state = detail::access(form.ui);
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.setPresentation(settings)), "Dark theme accepted"); } test::FakeMeasure measure; auto& state = detail::access(form.ui);
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
             auto baseline = x04::snapshot(form);
@@ -2155,7 +2155,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
             if (!detail::component_type(initial->kind).supports_state(detail::ComponentState::disabled)) continue;
             if (initial->kind == ComponentKind::tabs) {
                 auto tabs = std::get<TabsHandle>(entry.handle);
-                check(bool(tabs.activate({"v01"})) && bool(tabs.enable_page({"v02"}, false)) && bool(tabs.focus()), "X04 disable tab page");
+                check(bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus()), "X04 disable tab page");
                 auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                      int(size.second * scale), scale, form.scroll);
                 auto semantic = tabs.describe(); auto* item = frame.find(tabs);
@@ -2163,7 +2163,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                       "X04 disabled tab restriction");
                 PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
                 detail::component_type(item->kind).paint(paint);
-                check(paint.drawn.find(appearance->component_presentation().disabled_tab_marker) != std::u16string::npos,
+                check(paint.drawn.find(appearance->componentPresentation().disabledTabMarker) != std::u16string::npos,
                       "X04 disabled tab cue");
                 state.pointer_down(semantic->id, 1);
                 check(state.pointer_up(semantic->id, 1).status == Status::disabled && *tabs.active() == OptionValue{"v01"},
@@ -2171,7 +2171,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                 state.key_down({Key::right});
                 check(tabs.describe()->candidate == OptionValue{"v03"} && *tabs.active() == OptionValue{"v01"},
                       "X04 keyboard skips disabled tab");
-                check(bool(tabs.enable_page({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})),
+                check(bool(tabs.enablePage({"v02"}, true)) && bool(tabs.activate({"v02"})) && bool(tabs.activate({"v01"})),
                       "X04 disabled tab recovers");
                 check(x04::baseline_context(form) && x04::same_model(baseline, x04::snapshot(form)), "X04 disabled tab restores model");
                 continue;
@@ -2190,7 +2190,7 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                   (message + " restriction").c_str());
             PaintTextProbe paint(state, *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
-            check(paint.drawn.find(appearance->component_presentation().disabled_suffix) != std::u16string::npos &&
+            check(paint.drawn.find(appearance->componentPresentation().disabledSuffix) != std::u16string::npos &&
                   std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) { auto m = appearance->palette(form.ui.presentation().variant).muted; return c.r == m.r && c.g == m.g && c.b == m.b; }),
                   (message + " non-color cue").c_str());
             auto snapshot = x04::snapshot(form);
@@ -2200,9 +2200,9 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
             check(after->value == semantic->value && x04::same_model(snapshot, x04::snapshot(form)), (message + " keyboard").c_str());
             check(x04::set_enabled(entry.handle, true) && x04::focus(form.ui, entry.handle) &&
                   x04::set_enabled(entry.handle, initial->enabled), (message + " restore").c_str());
-            if (semantic->kind == ComponentKind::radio_group && initial->enabled) {
+            if (semantic->kind == ComponentKind::radioGroup && initial->enabled) {
                 auto radio = std::get<RadioGroupHandle>(entry.handle); auto previous = *radio.draft();
-                check(previous && bool(radio.select({"focus"})) && bool(radio.enable_option({"offline"}, false)) && bool(radio.focus()),
+                check(previous && bool(radio.select({"focus"})) && bool(radio.enableOption({"offline"}, false)) && bool(radio.focus()),
                       "X04 prepare disabled radio option");
                 auto option_frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale),
                                             int(size.second * scale), scale, form.scroll, initial->id);
@@ -2211,13 +2211,13 @@ void x04_disabled_inventory_at_each_size_and_scale(bool dark = false) {
                       "X04 disabled radio option rejects public selection");
                 PaintTextProbe option_paint(state, *option_item, *option_semantic, *appearance, scale, true);
                 detail::component_type(option_item->kind).paint(option_paint);
-                check(option_paint.drawn.find(option_semantic->items[2].label + appearance->component_presentation().disabled_suffix) != std::u16string::npos,
+                check(option_paint.drawn.find(option_semantic->items[2].label + appearance->componentPresentation().disabledSuffix) != std::u16string::npos,
                       "X04 disabled radio option has a text cue");
                 state.pointer_down(option_semantic->id, 2);
                 check(state.pointer_up(option_semantic->id, 2).status == Status::disabled, "X04 disabled radio option rejects pointer");
                 state.key_down({Key::right});
                 check(*radio.draft() == OptionValue{"focus"}, "X04 keyboard skips disabled radio option");
-                check(bool(radio.enable_option({"offline"}, true)) && bool(radio.select({"offline"})) && bool(radio.select(*previous)),
+                check(bool(radio.enableOption({"offline"}, true)) && bool(radio.select({"offline"})) && bool(radio.select(*previous)),
                       "X04 radio option recovers");
             }
             if (entry.page == "modal")
@@ -2245,10 +2245,10 @@ void x04_group_conflicts_at_each_size_and_scale() {
                                  int(size.second * scale), scale, form.scroll, semantic->id);
             auto* item = x04::placement(frame, entry.handle);
             semantic = x04::describe(entry.handle);
-            check(item && semantic->visible && semantic->source_conflict, (message + " field visibility").c_str());
+            check(item && semantic->visible && semantic->sourceConflict, (message + " field visibility").c_str());
             PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
-            check(paint.drawn.find(appearance->component_presentation().conflict_suffix) != std::u16string::npos &&
+            check(paint.drawn.find(appearance->componentPresentation().conflictSuffix) != std::u16string::npos &&
                   paint.drawn.find(semantic->name) != std::u16string::npos &&
                   (semantic->kind == ComponentKind::checkbox || semantic->value.empty() || paint.drawn.find(semantic->value) != std::u16string::npos) &&
                   (semantic->kind != ComponentKind::checkbox || (semantic->checked == true &&
@@ -2263,7 +2263,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
             PaintTextProbe action_paint(detail::access(form.ui), *action, *action_semantic, *appearance, scale, true);
             detail::component_type(action->kind).paint(action_paint);
             check(action_paint.drawn.find(action_semantic->name) != std::u16string::npos, (message + " latest paint").c_str());
-            check(bool(latest.invoke()) && !x04::describe(entry.handle)->source_conflict &&
+            check(bool(latest.invoke()) && !x04::describe(entry.handle)->sourceConflict &&
                   bool(form.handles.reset.invoke()) && x04::baseline_context(form), (message + " restore").c_str());
         }
     }
@@ -2271,7 +2271,7 @@ void x04_group_conflicts_at_each_size_and_scale() {
 
 void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
-        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.set_presentation(settings)), "Dark theme accepted"); }
+        edit_form::Form form(ids, true); if (dark) { auto settings = form.ui.presentation(); settings.variant = ThemeVariant::dark(); check(bool(form.ui.setPresentation(settings)), "Dark theme accepted"); }
         test::FakeMeasure measure;
         for (const auto& entry : x04::inventory(form)) {
             check(x04::baseline_context(form), "X04 restore baseline page and focus");
@@ -2290,7 +2290,7 @@ void x04_selected_inventory_at_each_size_and_scale(bool dark = false) {
             check(item && semantic->visible && x04::selected_semantics(*semantic), message.c_str());
             PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
             detail::component_type(item->kind).paint(paint);
-            const auto cue = semantic->kind == ComponentKind::checkbox || semantic->kind == ComponentKind::radio_group
+            const auto cue = semantic->kind == ComponentKind::checkbox || semantic->kind == ComponentKind::radioGroup
                 ? appearance->palette(form.ui.presentation().variant).accent : appearance->palette(form.ui.presentation().variant).selection;
             check(std::any_of(paint.colors.begin(), paint.colors.end(), [&](Color c) {
                 return c.r == cue.r && c.g == cue.g && c.b == cue.b;
@@ -2351,14 +2351,14 @@ void visible_text_agrees_with_semantics_on_each_page() {
                 value.erase(std::remove(value.begin(), value.end(), u'\n'), value.end());
                 return value.empty() || paint.drawn.find(value) != std::u16string::npos;
             };
-            if (item.kind == ComponentKind::label || item.kind == ComponentKind::text_field)
+            if (item.kind == ComponentKind::label || item.kind == ComponentKind::textField)
                 check(contains(semantic->value), "X04 label or field value is sent to paint");
-            if (item.kind == ComponentKind::text_field || item.kind == ComponentKind::button || item.kind == ComponentKind::checkbox ||
-                item.kind == ComponentKind::radio_group || item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
+            if (item.kind == ComponentKind::textField || item.kind == ComponentKind::button || item.kind == ComponentKind::checkbox ||
+                item.kind == ComponentKind::radioGroup || item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
                 check(contains(semantic->name), "X04 component name is sent to paint");
             if (item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
                 check(contains(semantic->value), "X04 value is sent to paint");
-            if (item.kind == ComponentKind::radio_group || item.kind == ComponentKind::list || item.kind == ComponentKind::tabs)
+            if (item.kind == ComponentKind::radioGroup || item.kind == ComponentKind::list || item.kind == ComponentKind::tabs)
                 for (const auto& option : semantic->items)
                     check(contains(option.label), "X04 option label is sent to paint");
         }
@@ -2376,7 +2376,7 @@ void d01_text_survives_scale_change() {
             return arrange(form.page(), form.ui, *appearance, measure, int(640 * scale), int(480 * scale),
                            scale, form.scroll, ids.name);
         };
-        h.name.set_value(u"ABCDE"); h.name.focus(); h.name.select(1, 3);
+        h.name.setValue(u"ABCDE"); h.name.focus(); h.name.select(1, 3);
         auto initial = draw(scales.first);
         check(initial.find(h.name), "D01 initial field is laid out");
         auto moved = draw(scales.second);
@@ -2384,10 +2384,10 @@ void d01_text_survives_scale_change() {
         auto* session = host.edit(ids.name);
         check(field && session && session->text == u"ABCDE" && session->selection.anchor == 1 &&
               session->selection.caret == 3 && h.name.describe()->focused, "D01 scale change preserves text, selection and focus");
-        int x = field->caret_x(2), y = field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2;
+        int x = field->caretX(2), y = field->bounds.y + field->textField.editor.y + field->textField.editor.h / 2;
         auto* hit = moved.hit(x, y);
-        check(hit && hit->id == ids.name && moved.text_offset(h.name, x) == 2, "D01 scaled field hits the expected caret position");
-        check(bool(host.pointer_down(hit->id)) && bool(host.select(hit->id, moved.text_offset(h.name, x), moved.text_offset(h.name, x))) &&
+        check(hit && hit->id == ids.name && moved.textOffset(h.name, x) == 2, "D01 scaled field hits the expected caret position");
+        check(bool(host.pointer_down(hit->id)) && bool(host.select(hit->id, moved.textOffset(h.name, x), moved.textOffset(h.name, x))) &&
               bool(host.pointer_up(hit->id)) && session->selection.anchor == 2 && session->selection.caret == 2,
               "D01 pointer placement selects the expected caret");
 
@@ -2396,13 +2396,13 @@ void d01_text_survives_scale_change() {
         draw(scales.first);
         moved = draw(scales.second);
         field = moved.find(h.name); session = host.edit(ids.name);
-        check(field && session && session->composing && session->preedit == u"xy" && session->preedit_caret == 1 &&
+        check(field && session && session->composing && session->preedit == u"xy" && session->preeditCaret == 1 &&
               session->selection.anchor == 1 && session->selection.caret == 3 && h.name.describe()->focused,
               "D01 composition and focus survive scale change");
-        int start = field->caret_x(session->begin());
-        int candidate = field->caret_x(session->visible_caret());
-        check(moved.text_offset(h.name, start) == 1 && moved.text_offset(h.name, candidate) == 2 && candidate > start &&
-              field->text_field.editor.h > 0 && field->bounds.y + field->text_field.editor.y >= 0,
+        int start = field->caretX(session->begin());
+        int candidate = field->caretX(session->visibleCaret());
+        check(moved.textOffset(h.name, start) == 1 && moved.textOffset(h.name, candidate) == 2 && candidate > start &&
+              field->textField.editor.h > 0 && field->bounds.y + field->textField.editor.y >= 0,
               "D01 scaled frame exposes composition and candidate caret geometry");
     }
 }
@@ -2468,8 +2468,8 @@ void popup_and_scroll_matrix() {
         auto tab = tabs->options.front();
         auto* outside_hit = outside_frame.hit(tab.x + tab.w / 2, tab.y + tab.h / 2);
         check(outside_hit && outside_hit->id == h.tabs.describe()->id && !outside_hit->popup, "X02 outside hit reaches the page tab");
-        host.close_popup(); host.pointer_down(outside_hit->id, outside_frame.option_at(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
-        host.pointer_up(outside_hit->id, outside_frame.option_at(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
+        host.close_popup(); host.pointer_down(outside_hit->id, outside_frame.optionAt(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
+        host.pointer_up(outside_hit->id, outside_frame.optionAt(*outside_hit, tab.x + tab.w / 2, tab.y + tab.h / 2));
         check(!h.region.describe()->expanded && h.tabs.describe()->focused && *h.region.draft() == OptionValue{"north"} &&
               *h.tabs.active() == OptionValue{"v01"}, "X02 outside click cancels and still activates its target");
 
@@ -2492,9 +2492,9 @@ void popup_and_scroll_matrix() {
         check(h.region.describe()->candidate == OptionValue{"south"}, "X02 scroll starts with an unconfirmed candidate");
         int before = form.scroll.offset;
         int destination = before < scroll_frame.maximum ? before + 1 : before - 1;
-        check(!scroll_frame.scroll_to(form.ui, form.scroll, before) && h.region.describe()->expanded,
+        check(!scroll_frame.scrollTo(form.ui, form.scroll, before) && h.region.describe()->expanded,
               "X02 a stationary viewport does not cancel the popup");
-        check(scroll_frame.scroll_to(form.ui, form.scroll, destination) && !h.region.describe()->expanded &&
+        check(scroll_frame.scrollTo(form.ui, form.scroll, destination) && !h.region.describe()->expanded &&
               !h.region.describe()->candidate && h.region.describe()->focused && *h.region.draft() == OptionValue{"north"},
               "X02 a moving viewport cancels the dropdown without changing focus or value");
         h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
@@ -2541,11 +2541,11 @@ void popup_and_scroll_matrix() {
                           << size.w << 'x' << size.h << ' ' << int(scale * 100) << "% with this assembled page\n";
                 continue;
             }
-            geometry.scroll_to(form.ui, form.scroll, movement->before); geometry = draw();
+            geometry.scrollTo(form.ui, form.scroll, movement->before); geometry = draw();
             h.region.open(); host.key_down({Key::down}); host.key_down({Key::down});
             check(h.region.describe()->expanded && h.region.describe()->candidate == OptionValue{"south"},
                   "X02 edge sample opens with an unconfirmed dropdown candidate");
-            check(geometry.scroll_to(form.ui, form.scroll, movement->after), "X02 edge sample moves the viewport");
+            check(geometry.scrollTo(form.ui, form.scroll, movement->after), "X02 edge sample moves the viewport");
             auto after = draw(); anchor = after.find(h.region);
             auto visible_area = intersect(anchor->bounds, anchor->clip);
             bool correct_edge = partial ? visible_area.h > 0 && visible_area.h < anchor->bounds.h : visible_area.h == 0;
@@ -2557,7 +2557,7 @@ void popup_and_scroll_matrix() {
         h.region.focus(); auto visible_frame = draw(dropdown_id);
         std::uint64_t tip_now = 0;
         host.tooltip_clock([&] { return tip_now; }); host.window_active(true);
-        auto region_tip = form.ui.add_tooltip("region.tip", h.region, u"Region help", 100).value.value();
+        auto region_tip = form.ui.addTooltip("region.tip", h.region, u"Region help", 100).value.value();
         tip_now = 100; host.tooltip_time(tip_now);
         auto* tip_anchor = visible_frame.find(h.region);
         int top_cutoff = tip_anchor->bounds.y + form.scroll.offset + tip_anchor->bounds.h - tip_anchor->clip.y;
@@ -2566,12 +2566,12 @@ void popup_and_scroll_matrix() {
                              bottom_cutoff >= 0 && bottom_cutoff <= visible_frame.maximum ? bottom_cutoff : -1;
         if (clipped_offset >= 0 && clipped_offset != form.scroll.offset) {
             int previous = form.scroll.offset;
-            check(*region_tip.visible() && visible_frame.scroll_to(form.ui, form.scroll, clipped_offset),
+            check(*region_tip.visible() && visible_frame.scrollTo(form.ui, form.scroll, clipped_offset),
                   "X02 start with a visible tooltip and scroll its source completely out");
             auto clipped_frame = draw(); tip_now += 200; host.tooltip_time(tip_now);
             check(!*region_tip.visible() && h.region.describe()->focused,
                   "X02 tooltip stays hidden while its focused source is fully clipped");
-            clipped_frame.scroll_to(form.ui, form.scroll, previous); draw();
+            clipped_frame.scrollTo(form.ui, form.scroll, previous); draw();
             tip_now += 99; host.tooltip_time(tip_now);
             check(!*region_tip.visible(), "X02 returning a clipped source starts a new dwell");
             ++tip_now; host.tooltip_time(tip_now);
@@ -2585,9 +2585,9 @@ void popup_and_scroll_matrix() {
         check(bool(list.focus()), "X02 focus list");
         host.key_down({Key::end});
         auto list_frame = draw(list.describe()->id);
-        auto* list_item = list_frame.find(list);
-        check(list_item && !list_item->options.empty() && form.list->list_scroll.offset > 0 &&
-              test::inside(list_item->options.back(), list_item->clip),
+        auto* listItem = list_frame.find(list);
+        check(listItem && !listItem->options.empty() && form.list->list_scroll.offset > 0 &&
+              test::inside(listItem->options.back(), listItem->clip),
               "X02 End scrolls nested list to the last visible row");
 
         check(bool(h.tabs.activate({"v03"})), "X02 open popup page");
@@ -2601,7 +2601,7 @@ void popup_and_scroll_matrix() {
         if (tooltip.maximum > 0) {
             int current = form.scroll.offset;
             int next = current < tooltip.maximum ? current + 1 : current - 1;
-            check(tooltip.scroll_to(form.ui, form.scroll, next) && !*h.progress_tip.visible() && h.progress_half.describe()->focused,
+            check(tooltip.scrollTo(form.ui, form.scroll, next) && !*h.progress_tip.visible() && h.progress_half.describe()->focused,
                   "X02 viewport movement hides the tooltip without moving focus");
             now += 499; host.tooltip_time(now);
             check(!*h.progress_tip.visible(), "X02 tooltip needs a fresh full dwell after scrolling");
@@ -2629,31 +2629,31 @@ void popup_and_scroll_matrix() {
             int next = current < before_modal.maximum ? current + 1 : current - 1;
             auto viewport = before_modal.regions.front().clip;
             int delta = next > current ? -1 : 1;
-            check(!before_modal.scroll_to(form.ui, form.scroll, next) &&
+            check(!before_modal.scrollTo(form.ui, form.scroll, next) &&
                   !before_modal.wheel(form.ui, viewport.x + 1, viewport.y + 1, delta) && form.scroll.offset == current,
                   "X02 a newly opened modal blocks scrolling through the preceding frame");
         }
         auto dialog = draw();
         auto* cancel = dialog.find(h.dialog_cancel);
         auto* dialog_hit = cancel ? dialog.hit(cancel->bounds.x + cancel->bounds.w / 2, cancel->bounds.y + cancel->bounds.h / 2) : nullptr;
-        check(dialog.modal && inside(dialog.modal_panel) && cancel && dialog_hit && dialog_hit->id == cancel->id && !*h.progress_tip.visible(),
+        check(dialog.modal && inside(dialog.modalPanel) && cancel && dialog_hit && dialog_hit->id == cancel->id && !*h.progress_tip.visible(),
               "X02 dialog bounds and hit are valid and tooltip closes");
         if (dialog.maximum > 0) {
             int current = form.scroll.offset;
             int next = current < dialog.maximum ? current + 1 : current - 1;
-            check(!dialog.scroll_to(form.ui, form.scroll, next) && form.scroll.offset == current,
+            check(!dialog.scrollTo(form.ui, form.scroll, next) && form.scroll.offset == current,
                   "X02 a modal blocks a movable background viewport");
         } else {
             std::cout << "X02 modal background scroll N/A: no overflow at " << size.w << 'x' << size.h << ' ' << int(scale * 100) << "%\n";
         }
         host.key_down({Key::escape});
-        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
+        check(!*h.dialog.isOpen() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
               "X02 Escape cancels the dialog and restores focus");
         h.dialog_open.invoke(); h.dialog_cancel.invoke();
-        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
+        check(!*h.dialog.isOpen() && h.dialog_open.describe()->focused && form.progress() == 50 && form.dialog_confirmations() == 0,
               "X02 Cancel restores focus and preserves progress");
         h.dialog_open.invoke(); h.dialog_confirm.invoke();
-        check(!*h.dialog.is_open() && h.dialog_open.describe()->focused && form.progress() == 0 && form.dialog_confirmations() == 1,
+        check(!*h.dialog.isOpen() && h.dialog_open.describe()->focused && form.progress() == 0 && form.dialog_confirmations() == 1,
               "X02 Confirm restores focus and changes progress once");
     }
 }
@@ -2668,14 +2668,14 @@ void repeated_v03_remove_reset_keeps_storage_bounded() {
     for (int i = 0; i < 1000; ++i) {
         check(bool(h.dialog_temporary.remove()) && bool(h.reset_v03.invoke()), "Remove and reset the V03 opener");
         check(host.storage_counts() == baseline && bool(h.dialog_temporary.describe()), "Reset has bounded component and page storage");
-        check(old.describe().status == Status::not_found, "Original opener remains stale");
+        check(old.describe().status == Status::notFound, "Original opener remains stale");
     }
 }
 
 void v03_reset_restores_the_temporary_source_and_keeps_other_pages() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
-    h.name.set_value(u"Retained V01 draft");
+    h.name.setValue(u"Retained V01 draft");
     h.tabs.activate({"v03"});
     auto old_source = h.dialog_temporary;
     h.dialog_temporary.invoke(); h.dialog_temporary.remove(); h.dialog_confirm.invoke();
@@ -2707,7 +2707,7 @@ void closed_dialog_members_are_hidden_and_reject_input() {
           "Closed dialog rejects focus, public operation and pointer as hidden");
     check(bool(h.progress_half.focus()), "Focus visible background after closing");
     host.key_down({Key::enter}); host.key_up(Key::enter);
-    check(form.dialog_confirmations() == 0 && !*h.dialog.is_open(), "Keyboard does not activate closed dialog");
+    check(form.dialog_confirmations() == 0 && !*h.dialog.isOpen(), "Keyboard does not activate closed dialog");
     check(bool(h.dialog_confirm.enable(false)) && h.dialog_confirm.invoke().status == Status::hidden,
           "Hidden takes precedence over a disabled dialog member");
 }
@@ -2730,7 +2730,7 @@ void dialog_cancel_preserves_progress() {
 void dialog_confines_input_and_confirms_once() {
     edit_form::Form form(ids, true);
     auto density_settings = form.ui.presentation(); density_settings.density = behavior_density;
-    check(bool(form.ui.set_presentation(density_settings)), "Behavior density accepted");
+    check(bool(form.ui.setPresentation(density_settings)), "Behavior density accepted");
     auto& h = form.handles;
     auto& host = detail::access(form.ui);
     test::FakeMeasure measure;
@@ -2740,10 +2740,10 @@ void dialog_confines_input_and_confirms_once() {
     const auto* cancel = frame.find(h.dialog_cancel);
     check(cancel && frame.hit(cancel->bounds.x + 2, cancel->bounds.y + 2) == cancel && !frame.hit(1, 1),
           "Dialog controls are above an input-blocking mask");
-    check(h.progress_full.invoke().status == Status::blocked_by_modal &&
-          h.tabs.activate({"v01"}).status == Status::blocked_by_modal && form.progress() == 50,
+    check(h.progress_full.invoke().status == Status::blockedByModal &&
+          h.tabs.activate({"v01"}).status == Status::blockedByModal && form.progress() == 50,
           "Background operations and page switching are blocked");
-    check(host.pointer_down(h.progress_full.describe()->id).status == Status::blocked_by_modal,
+    check(host.pointer_down(h.progress_full.describe()->id).status == Status::blockedByModal,
           "Background pointer input is blocked");
     host.key_down({Key::tab, true});
     check(h.dialog_confirm.describe()->focused, "Shift+Tab wraps within the dialog");
@@ -2765,7 +2765,7 @@ void dialog_escape_and_removed_opener() {
     check(bool(h.dialog_temporary.remove()), "Remove the temporary opener with the dialog fixture");
     host.key_down({Key::escape});
     check(form.progress() == 50 && form.dialog_confirmations() == 0 && h.dialog_open.describe()->focused &&
-          h.dialog_temporary.invoke().status == Status::not_found,
+          h.dialog_temporary.invoke().status == Status::notFound,
           "Escape cancels once and returns focus to the permanent fallback");
     check(bool(h.reset_v03.invoke()) && bool(h.dialog_temporary.invoke()) && h.dialog_cancel.describe()->focused,
           "Reset recreates the removed temporary opener");
@@ -2784,7 +2784,7 @@ void progress_displays_clamped_values_without_changing_the_model() {
     edit_form::Form form(ids, true);
     auto& h = form.handles;
     test::FakeMeasure measure;
-    h.name.set_value(u"kept draft");
+    h.name.setValue(u"kept draft");
     check(bool(h.tabs.activate({"v03"})), "Open V03");
     check(form.progress() == 50 && h.progress.describe()->value == u"50%", "Progress starts at 50%");
     const struct { ButtonHandle button; int source; int shown; std::u16string text; } cases[] = {
@@ -2797,14 +2797,14 @@ void progress_displays_clamped_values_without_changing_the_model() {
         auto semantic = h.progress.describe();
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll);
         const auto* p = frame.find(h.progress);
-        check(form.progress() == c.source && semantic->numeric_value == c.shown && semantic->value == c.text,
+        check(form.progress() == c.source && semantic->numericValue == c.shown && semantic->value == c.text,
               "Source stays unchanged while semantic value is clamped");
         check(p && !p->lines.empty() && p->lines.front().text.find(c.text) != std::u16string::npos &&
-              p->progress_fill.w == p->progress_track.w * c.shown / 100,
+              p->progressFill.w == p->progressTrack.w * c.shown / 100,
               "Rendered text and filled track agree");
     }
     h.tabs.activate({"v02"});
-    form.list->handles.search.set_value(u"\u5171\u7528\u7bc4\u672c");
+    form.list->handles.search.setValue(u"\u5171\u7528\u7bc4\u672c");
     form.list->handles.list.select({"T006"});
     h.tabs.activate({"v03"});
     check(form.progress() == 110 && h.progress.describe()->value == u"100%", "Progress survives page switches");
@@ -2822,26 +2822,26 @@ void progress_displays_clamped_values_without_changing_the_model() {
 void x04_name_conflict_is_drawn_at_field() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         edit_form::Form form(ids, true); auto& h = form.handles;
-        check(bool(x04::name_conflict.drive(form)) && h.name.describe()->source_conflict && h.latest.describe()->enabled,
+        check(bool(x04::name_conflict.drive(form)) && h.name.describe()->sourceConflict && h.latest.describe()->enabled,
               "An external source change retains a conflicting name draft and offers latest");
         test::FakeMeasure measure;
         auto frame = arrange(form.page(), form.ui, *appearance, measure, int(size.first * scale), int(size.second * scale), scale, form.scroll, h.name.describe()->id);
         auto* field = frame.find(h.name);
         std::u16string description, caption;
         if (field) {
-            for (const auto& line : field->description_lines) description += line.text;
-            for (const auto& line : field->label_lines) caption += line.text;
+            for (const auto& line : field->descriptionLines) description += line.text;
+            for (const auto& line : field->labelLines) caption += line.text;
         }
         auto semantic = h.name.describe();
-        auto cue = appearance->component_presentation().conflict_suffix;
-        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
-            h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
-            h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error && semantic->labels.size() == 3;
-        check(field && semantic->visible && semantic->enabled && !semantic->read_only && !semantic->invalid && associated &&
+        auto cue = appearance->componentPresentation().conflictSuffix;
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->labelKind == LabelKind::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->labelKind == LabelKind::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->labelKind == LabelKind::error && semantic->labels.size() == 3;
+        check(field && semantic->visible && semantic->enabled && !semantic->readOnly && !semantic->invalid && associated &&
               semantic->value == u"Draft" && caption.find(semantic->name) != std::u16string::npos &&
               description.find(semantic->description) != std::u16string::npos && !cue.empty() && description.find(cue) != std::u16string::npos,
               "The conflicting name field retains its value and associations and lays out the source-change cue");
-        check(bool(x04::name_conflict.restore(form)) && !h.name.describe()->source_conflict && *h.name.draft() == u"Latest",
+        check(bool(x04::name_conflict.restore(form)) && !h.name.describe()->sourceConflict && *h.name.draft() == u"Latest",
               "The latest action restores the field to the current source");
     }
 }
@@ -2856,20 +2856,20 @@ void x04_name_read_only_size_scale() {
         auto* field = frame.find(name); auto semantic = name.describe();
         std::u16string caption, description;
         if (field) {
-            for (const auto& line : field->label_lines) caption += line.text;
-            for (const auto& line : field->description_lines) description += line.text;
+            for (const auto& line : field->labelLines) caption += line.text;
+            for (const auto& line : field->descriptionLines) description += line.text;
         }
-        auto suffix = appearance->component_presentation().read_only_suffix;
+        auto suffix = appearance->componentPresentation().readOnlySuffix;
         auto& h = form.handles;
-        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
-            h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
-            h.name_error.describe()->target == semantic->id && h.name_error.describe()->label_kind == LabelKind::error && semantic->labels.size() == 3;
-        check(field && semantic->visible && semantic->enabled && semantic->read_only && !semantic->invalid && !semantic->source_conflict && associated &&
+        bool associated = h.name_label.describe()->target == semantic->id && h.name_label.describe()->labelKind == LabelKind::name &&
+            h.name_help.describe()->target == semantic->id && h.name_help.describe()->labelKind == LabelKind::description &&
+            h.name_error.describe()->target == semantic->id && h.name_error.describe()->labelKind == LabelKind::error && semantic->labels.size() == 3;
+        check(field && semantic->visible && semantic->enabled && semantic->readOnly && !semantic->invalid && !semantic->sourceConflict && associated &&
               semantic->value == *name.draft() && !suffix.empty() && description.find(semantic->description) != std::u16string::npos &&
               caption.find(semantic->name) != std::u16string::npos && caption.find(suffix) != std::u16string::npos &&
-              name.set_value(u"rejected").status == Status::read_only,
+              name.setValue(u"rejected").status == Status::readOnly,
               "X04 read-only semantic restriction and label cue agree at each core size and scale");
-        check(bool(x04::name_read_only.restore(form)) && !name.describe()->read_only,
+        check(bool(x04::name_read_only.restore(form)) && !name.describe()->readOnly,
               "X04 restore name after read-only state");
     }
 }
@@ -2877,7 +2877,7 @@ void x04_name_read_only_size_scale() {
 void both_appearances_give_same_results() {
     std::vector<std::vector<ComponentSnapshot>> runs;
     std::vector<std::vector<int>> outcomes;
-    for (const auto* each : {&web_appearance(), &material_appearance()}) {
+    for (const auto* each : {&webAppearance(), &materialAppearance()}) {
         edit_form::Form form(ids);
         auto& ui = form.ui;
         test::FakeMeasure measure;
@@ -2887,7 +2887,7 @@ void both_appearances_give_same_results() {
         step(form.handles.name.select(0, static_cast<unsigned>(form.handles.name.describe()->value.size())));
         step(form.handles.name.paste( u"Alpha\r\nBeta"));
         step(form.handles.apply.invoke());
-        step(form.handles.read_only.invoke());
+        step(form.handles.readOnly.invoke());
         step(form.handles.name.paste( u"x"));
         step(form.handles.disabled.invoke());
         step(form.handles.apply.invoke());
@@ -2898,14 +2898,14 @@ void both_appearances_give_same_results() {
         step(form.handles.apply.invoke());
         auto frame = arrange(form.page(), ui, *each, measure, 960, 720, 1.f, form.scroll);
         auto field = frame.find(form.handles.name);
-        check(field && !field->error_lines.empty() && field->label_lines.front().text == u"顯示名稱",
+        check(field && !field->errorLines.empty() && field->labelLines.front().text == u"顯示名稱",
               "Each appearance carries the name label and error with the field");
         std::vector<ComponentSnapshot> snapshot;
         const auto& h = form.handles;
         for (auto label : {h.title, h.intro, h.name_label, h.name_help, h.name_error, h.state, h.draft, h.result, h.count})
             snapshot.push_back(*label.describe());
         snapshot.push_back(*h.name.describe());
-        for (auto button : {h.normal, h.read_only, h.disabled, h.error, h.long_text, h.reset, h.apply, h.latest})
+        for (auto button : {h.normal, h.readOnly, h.disabled, h.error, h.long_text, h.reset, h.apply, h.latest})
             snapshot.push_back(*button.describe());
         ComponentSnapshot applied;
         applied.id = "applied";
@@ -2922,7 +2922,7 @@ void both_appearances_give_same_results() {
     for (std::size_t i = 0; i < runs[0].size(); ++i) {
         const auto &a = runs[0][i], &b = runs[1][i];
         check(a.id == b.id && a.value == b.value && a.error == b.error && a.focused == b.focused && a.enabled == b.enabled &&
-              a.read_only == b.read_only && a.labels == b.labels && a.verbs == b.verbs,
+              a.readOnly == b.readOnly && a.labels == b.labels && a.verbs == b.verbs,
               "Draft, result, errors, focus and history agree across appearances");
     }
 }
@@ -3057,15 +3057,15 @@ int main() {
         {"AC12 both appearances give same results", both_appearances_give_same_results},
     };
     int failed = 0;
-    for (const auto* each : {&web_appearance(), &material_appearance()}) {
+    for (const auto* each : {&webAppearance(), &materialAppearance()}) {
         appearance = each;
         ids = edit_form::default_ids();
-        failed |= test::run(each == &web_appearance() ? "edit_form (web, shipped IDs)" : "edit_form (material, shipped IDs)", cases);
+        failed |= test::run(each == &webAppearance() ? "edit_form (web, shipped IDs)" : "edit_form (material, shipped IDs)", cases);
         ids = alternate_ids();
-        failed |= test::run(each == &web_appearance() ? "edit_form (web, alternate IDs)" : "edit_form (material, alternate IDs)", cases);
+        failed |= test::run(each == &webAppearance() ? "edit_form (web, alternate IDs)" : "edit_form (material, alternate IDs)", cases);
     }
     behavior_density = Density::compact;
-    for (const auto* each : {&web_appearance(), &material_appearance()}) {
+    for (const auto* each : {&webAppearance(), &materialAppearance()}) {
         appearance = each; ids = edit_form::default_ids();
         const test::Case compact_cases[] = {
             {"DN03 F01", all_five_fields_apply_once},

@@ -79,27 +79,27 @@ int main() {
         queue.drain();
         if(delivered!=std::vector<std::string>{"font.catalog_unavailable","font.family_unavailable"}) return 39;
         std::size_t omitted=0, count=0;
-        lcars::detail::DiagnosticQueue bounded([&](const lcars::RenderDiagnostic& event) { omitted+=event.omitted_before; ++count; },nullptr);
+        lcars::detail::DiagnosticQueue bounded([&](const lcars::RenderDiagnostic& event) { omitted+=event.omittedBefore; ++count; },nullptr);
         for(int i=0;i<300;++i) bounded.push(first);
         bounded.drain();
         if(count!=256 || omitted!=44) return 42;
     }
-    const auto& catalog = lcars::system_font_catalog();
+    const auto& catalog = lcars::systemFontCatalog();
     std::cout << "Font families: " << catalog.families().size() << '\n';
     if (catalog.families().empty()) return 1;
     if (catalog.contains(u"Wingdings") || catalog.contains(u"Marlett")) return 6;
     for (std::size_t i = 1; i < catalog.families().size(); ++i) {
-        const auto& a = catalog.families()[i-1].display_name; const auto& b = catalog.families()[i].display_name;
+        const auto& a = catalog.families()[i-1].displayName; const auto& b = catalog.families()[i].displayName;
         if (CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, reinterpret_cast<const wchar_t*>(a.c_str()), -1,
                             reinterpret_cast<const wchar_t*>(b.c_str()), -1, nullptr, nullptr, 0) == CSTR_GREATER_THAN) return 49;
     }
     if (!lcars::detail::system_font_file(u"Microsoft JhengHei").path.empty() && !catalog.contains(u"Microsoft JhengHei")) return 50;
     lcars::PresentationSettings settings;
     auto resolved = catalog.resolve(settings);
-    if (resolved.requested != u"" || !resolved.requested_available || resolved.primary != u"Segoe UI") return 27;
-    settings.font_family = u"LcarsUI nonexistent font family";
+    if (resolved.requested != u"" || !resolved.requestedAvailable || resolved.primary != u"Segoe UI") return 27;
+    settings.fontFamily = u"LcarsUI nonexistent font family";
     resolved = catalog.resolve(settings);
-    if (resolved.requested_available || resolved.requested != settings.font_family || resolved.primary != u"Segoe UI") return 28;
+    if (resolved.requestedAvailable || resolved.requested != settings.fontFamily || resolved.primary != u"Segoe UI") return 28;
     FT_Library library = nullptr;
     if (FT_Init_FreeType(&library)) return 23;
     for (const auto& family : catalog.families()) if (!loadable(lcars::detail::system_font_file(family.key), library)) return 24;
@@ -206,10 +206,10 @@ int main() {
     without_fonts.shape(u"測試使用者", 18);
     if (std::count(events.begin(), events.end(), "text.glyph_missing") != 5) return 9;
     lcars::Ui ui;
-    auto field=ui.add_text_field({.id="font-test",.value=u"測試使用者"});
+    auto field=ui.addTextField({.id="font-test",.value=u"測試使用者"});
     if(!field) return 31;
-    if(!field->connect_source({[]{return std::u16string(u"測試使用者");}, [](std::function<void()>) { return std::function<void()>([]{}); }}) ||
-       !field->connect_confirmed([](const lcars::Change<lcars::TextFieldHandle>&) {return lcars::Result{};})) return 31;
+    if(!field->connectSource({[]{return std::u16string(u"測試使用者");}, [](std::function<void()>) { return std::function<void()>([]{}); }}) ||
+       !field->connectConfirmed([](const lcars::Change<lcars::TextFieldHandle>&) {return lcars::Result{};})) return 31;
     auto selection=field->select(5,5); auto insert=field->paste(u"字");
     if(!selection || !insert || field->describe()->value!=u"測試使用者字") {
         std::cerr << "editing status " << static_cast<int>(selection.status) << ' ' << static_cast<int>(insert.status) << "\n"; return 31;
@@ -263,7 +263,7 @@ int main() {
     auto bad=diagnostic_text.shape(u"A",18); bad.glyphs[0].id=0xffffffffu;
     diagnostic_text.draw(canvas,bad,0,30,{0,0,0});
     auto failure=std::find_if(detailed.begin(),detailed.end(),[](const auto& event) {return event.code=="text.glyph_load_failed";});
-    if(failure==detailed.end() || failure->native_code==0 || failure->native_message.find("glyph 4294967295")==std::string::npos || failure->native_message.find("face ")==std::string::npos) return 44;
+    if(failure==detailed.end() || failure->nativeCode==0 || failure->nativeMessage.find("glyph 4294967295")==std::string::npos || failure->nativeMessage.find("face ")==std::string::npos) return 44;
     events.clear();
     auto valid = failed_load.shape(u"A", 18);
     failed_load.test_bitmap_mode(99);
@@ -389,7 +389,7 @@ int main() {
         // Offsets: 漢 0, variation selector 1, 語 2, woman 3-4, joiner 5, laptop 6-7, 字 8, 體 9.
         const std::u16string line = u"漢︀語\U0001f469‍\U0001f4bb字體";
         const auto natural = measure.measure(line, 18);
-        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::per_character}) {
+        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::perCharacter}) {
             auto stretched = justify_line(measure, line, 18, natural, natural.width + 60.f, method);
             if (!stretched) { std::cerr << "justify: a line with characters to spread was not stretched\n"; return 90; }
             for (const auto& piece : stretched->segments)
@@ -400,7 +400,7 @@ int main() {
         // Mixed text, every method: the content ends flush at the target width (within a pixel).
         const std::u16string mixed = u"Hello world 中文 test, 12345 繁體";
         const auto mixed_run = measure.measure(mixed, 18);
-        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::spaces, lcars::JustifyMethod::per_character}) {
+        for (auto method : {lcars::JustifyMethod::automatic, lcars::JustifyMethod::spaces, lcars::JustifyMethod::perCharacter}) {
             auto stretched = justify_line(measure, mixed, 18, mixed_run, mixed_run.width + 40.f, method);
             if (!stretched || std::abs(stretched->run.width - (mixed_run.width + 40.f)) > 2.f) { std::cerr << "justify: mixed line not flush\n"; return 93; }
         }
@@ -415,14 +415,14 @@ int main() {
             ShapedMeasure serif_measure(serif);
             const std::u16string word = u"office fi";
             const auto word_run = serif_measure.measure(word, 24);
-            auto stretched = justify_line(serif_measure, word, 24, word_run, word_run.width + 30.f, lcars::JustifyMethod::per_character);
+            auto stretched = justify_line(serif_measure, word, 24, word_run, word_run.width + 30.f, lcars::JustifyMethod::perCharacter);
             if (!stretched) return 94;
             for (const auto& piece : stretched->segments)
                 if (serif.shape(word.substr(piece.begin, piece.end - piece.begin), 24).glyphs.size() > piece.end - piece.begin) return 95;
             if (stretched->segments.size() < 8) return 96;
             // The line shaped with ligatures off has a cluster per letter (the natural run has fewer: ffi, fi), so the
             // pieces come from one run and keep the font's kerning.
-            if (serif_measure.measure_apart(word, 24, lcars::FontStyle{}).stops.size() != word.size() + 1 || word_run.stops.size() >= word.size() + 1) return 97;
+            if (serif_measure.measureApart(word, 24, lcars::FontStyle{}).stops.size() != word.size() + 1 || word_run.stops.size() >= word.size() + 1) return 97;
             ligature_tested = true;
             break;
         }

@@ -94,8 +94,8 @@ public:
     explicit ShapedMeasure(Text& text) : text_(text) {}
     TextRun measure(std::u16string_view text, int pixels) override;
     TextRun measure(std::u16string_view text, int pixels, FontStyle style) override;
-    TextRun measure_apart(std::u16string_view text, int pixels, FontStyle style) override;
-    int line_height(int pixels) override { return (pixels * 3 + 1) / 2; }
+    TextRun measureApart(std::u16string_view text, int pixels, FontStyle style) override;
+    int lineHeight(int pixels) override { return (pixels * 3 + 1) / 2; }
     static int baseline(int pixels) { return pixels * 23 / 20; }  // from the top of a line box
 private:
     Text& text_;

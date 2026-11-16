@@ -163,12 +163,12 @@ struct Renderer::Impl {
         auto& self=*static_cast<const Impl*>(user);
         if (!self.sink) return;
         try {
-            RenderDiagnostic event; event.backend=u"OpenGL"; event.native_code=id;
-            event.native_message.assign(message, length > 0 ? static_cast<std::size_t>(length) : 0);
+            RenderDiagnostic event; event.backend=u"OpenGL"; event.nativeCode=id;
+            event.nativeMessage.assign(message, length > 0 ? static_cast<std::size_t>(length) : 0);
             event.severity=severity==GL_DEBUG_SEVERITY_HIGH ? DiagnosticSeverity::error : severity==GL_DEBUG_SEVERITY_MEDIUM ? DiagnosticSeverity::warning : DiagnosticSeverity::info;
-            event.kind=type==GL_DEBUG_TYPE_ERROR ? DiagnosticKind::api_misuse : type==GL_DEBUG_TYPE_PERFORMANCE ? DiagnosticKind::performance : DiagnosticKind::other;
-            event.component_id=self.current_group;
-            event.backend_detail="OpenGL:"+std::to_string(source)+":"+std::to_string(type)+":"+std::to_string(id);
+            event.kind=type==GL_DEBUG_TYPE_ERROR ? DiagnosticKind::apiMisuse : type==GL_DEBUG_TYPE_PERFORMANCE ? DiagnosticKind::performance : DiagnosticKind::other;
+            event.componentId=self.current_group;
+            event.backendDetail="OpenGL:"+std::to_string(source)+":"+std::to_string(type)+":"+std::to_string(id);
             self.sink(std::move(event));
         } catch (...) {}
     }
@@ -185,9 +185,9 @@ struct Renderer::Impl {
             auto vendor = reinterpret_cast<const char*>(get_string(GL_RENDERER));
             std::string actual = std::string(version ? version : "unknown") + " / " + (vendor ? vendor : "unknown");
             auto to16=[](const std::string& v) { return utf16_from_utf8(v); };
-            if (hooks && hooks->fail_context_33) throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
+            if (hooks && hooks->fail_context_33) throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
             Create create = nullptr;
-            try { create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB")); } catch (...) { throw StartupError{{StartupFailureKind::context_version,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}}; }
+            try { create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB")); } catch (...) { throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}}; }
             using Extensions=const char*(WINAPI*)(HDC);
             auto extproc=wglGetProcAddress("wglGetExtensionsStringARB");
             auto ext=extproc ? reinterpret_cast<Extensions>(extproc)(dc) : nullptr;
@@ -205,7 +205,7 @@ struct Renderer::Impl {
             context=create(dc,nullptr,attributes.data());
             if (!context) {
                 int major=0, minor=0; if (version) std::sscanf(version,"%d.%d",&major,&minor);
-                auto kind=(major<3 || (major==3 && minor<3)) ? StartupFailureKind::context_version : StartupFailureKind::context_creation;
+                auto kind=(major<3 || (major==3 && minor<3)) ? StartupFailureKind::contextVersion : StartupFailureKind::contextCreation;
                 throw StartupError{{kind,u"OpenGL 3.3 core",to16(actual),u"Unable to create OpenGL 3.3 core context"}};
             }
             require(wglMakeCurrent(nullptr,nullptr)!=FALSE,"WGL detach failed");
@@ -220,7 +220,7 @@ struct Renderer::Impl {
                 reinterpret_cast<SwapInterval>(interval)(1);
             auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.GetString(key)); return to16(p ? p : ""); };
             caps.version=string16(GL_VERSION); caps.vendor=string16(GL_VENDOR); caps.renderer=string16(GL_RENDERER);
-            caps.debug_context=debug_enabled;
+            caps.debugContext=debug_enabled;
             if (debug_enabled && !(hooks && hooks->hide_khr_debug)) {
                 using GetStringi=PFNGLGETSTRINGIPROC;
                 auto get_string_i=reinterpret_cast<GetStringi>(symbol("glGetStringi"));
@@ -233,7 +233,7 @@ struct Renderer::Impl {
                         push_group=reinterpret_cast<PFNGLPUSHDEBUGGROUPPROC>(symbol("glPushDebugGroup"));
                         pop_group=reinterpret_cast<PFNGLPOPDEBUGGROUPPROC>(symbol("glPopDebugGroup"));
                         gl.Enable(GL_DEBUG_OUTPUT); gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-                        debug_callback(receive,this); caps.debug_messages=true;
+                        debug_callback(receive,this); caps.debugMessages=true;
                     } catch (...) { debug_callback=nullptr; push_group=nullptr; pop_group=nullptr; }
                 }
             }
@@ -241,14 +241,14 @@ struct Renderer::Impl {
                 auto proc=wglGetProcAddress("glGetGraphicsResetStatusARB");
                 if (proc && proc != reinterpret_cast<PROC>(1) && proc != reinterpret_cast<PROC>(2) && proc != reinterpret_cast<PROC>(3) && proc != reinterpret_cast<PROC>(-1)) reset_status=reinterpret_cast<PFNGLGETGRAPHICSRESETSTATUSPROC>(proc);
             }
-            caps.reset_detection=reset_status!=nullptr;
+            caps.resetDetection=reset_status!=nullptr;
             scene=std::make_unique<Scene>(gl);
             try { scene->init(hooks ? hooks->fragment_shader_override : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
             if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
         } catch (const StartupError&) { release(); throw; }
           catch (const std::exception& e) {
             std::string message=e.what(); release();
-            throw StartupError{{StartupFailureKind::context_creation,{}, {},utf16_from_utf8(message)}};
+            throw StartupError{{StartupFailureKind::contextCreation,{}, {},utf16_from_utf8(message)}};
         } catch (...) { release(); throw; }
     }
     void release(){if(context && dc)wglMakeCurrent(dc,context);if(debug_callback)debug_callback(nullptr,nullptr);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
@@ -353,18 +353,18 @@ struct Renderer::Impl {
         }
         ++frames;
         if (simulate_lost) hooks->context_lost_at_frame=0;
-        if (hooks && hooks->reset_at_frame==frames) { hooks->reset_at_frame=0; throw FrameError{{RendererFailureKind::device_reset,0x8253,u"Graphics reset"}}; }
-        if (reset_status) { auto reset=reset_status(); if (reset!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::device_reset,reset,u"Graphics reset"}}; }
-        if (error==context_lost) throw FrameError{{RendererFailureKind::device_reset,context_lost,u"Graphics reset"},std::move(errors)};
+        if (hooks && hooks->reset_at_frame==frames) { hooks->reset_at_frame=0; throw FrameError{{RendererFailureKind::deviceReset,0x8253,u"Graphics reset"}}; }
+        if (reset_status) { auto reset=reset_status(); if (reset!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::deviceReset,reset,u"Graphics reset"}}; }
+        if (error==context_lost) throw FrameError{{RendererFailureKind::deviceReset,context_lost,u"Graphics reset"},std::move(errors)};
         if (hooks && hooks->gl_error_at_frame==frames) { first=hooks->injected_error; errors.push_back(first); hooks->gl_error_at_frame=0; }
-        if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frame_error,first,u"OpenGL frame failed"},std::move(errors)};
+        if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frameError,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
 Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
 Renderer::~Renderer()=default;
 RenderDiagnostic frame_diagnostic(unsigned code) {
     RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
-    diagnostic.kind=DiagnosticKind::other; diagnostic.native_code=code; diagnostic.native_message="OpenGL frame error";
+    diagnostic.kind=DiagnosticKind::other; diagnostic.nativeCode=code; diagnostic.nativeMessage="OpenGL frame error";
     return diagnostic;
 }
 void Renderer::restore_atlas(const std::vector<const AtlasPage*>& pages) {
@@ -383,7 +383,7 @@ double Renderer::draw(const DrawList& list,int width,int height,bool measure,boo
     impl_->execute(list,width,height,offscreen);
     if(measure) gl.EndQuery(GL_TIME_ELAPSED);
     if(submission_ms) *submission_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
-    if(!offscreen && !SwapBuffers(impl_->dc)) throw FrameError{{RendererFailureKind::present_failed,GetLastError(),u"SwapBuffers failed"}};
+    if(!offscreen && !SwapBuffers(impl_->dc)) throw FrameError{{RendererFailureKind::presentFailed,GetLastError(),u"SwapBuffers failed"}};
     if(presented) *presented=std::chrono::steady_clock::now();
     if(measure){gl.GetQueryObjectui64v(query,GL_QUERY_RESULT,&ns); gl.DeleteQueries(1,&query);}
     return double(ns)/1000000.0;

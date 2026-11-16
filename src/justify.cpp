@@ -43,16 +43,16 @@ bool safe_cut(std::u16string_view text, std::size_t offset) {
     return true;
 }
 bool is_space(char32_t c) { return c == u' '; }
-// The line shaped once for letters that will be drawn apart: optional ligatures off, kerning on (TextMeasure::measure_apart).
+// The line shaped once for letters that will be drawn apart: optional ligatures off, kerning on (TextMeasure::measureApart).
 // Rich lines are measured run by run in each run's own face and joined, as the layout does for the natural run.
 TextRun measure_line_apart(TextMeasure& measure, std::u16string_view text, int pixels, const std::vector<TextFieldLine::Piece>* styles) {
-    if (!styles || styles->empty()) return measure.measure_apart(text, pixels, FontStyle{});
+    if (!styles || styles->empty()) return measure.measureApart(text, pixels, FontStyle{});
     TextRun joined;
     joined.stops.push_back({0, 0.f});
     float x = 0;
     for (const auto& run : *styles) {
         if (run.end <= run.begin || run.end > text.size()) continue;
-        const auto part = measure.measure_apart(text.substr(run.begin, run.end - run.begin), pixels, FontStyle{run.style.bold, run.style.italic});
+        const auto part = measure.measureApart(text.substr(run.begin, run.end - run.begin), pixels, FontStyle{run.style.bold, run.style.italic});
         for (const auto& [offset, position] : part.stops)
             if (offset > 0) joined.stops.push_back({run.begin + offset, x + position});
         x += part.width;
@@ -80,8 +80,8 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
     // character. A per-character line takes them from a run shaped with ligatures off (an ffi ligature is one cluster
     // of the natural run, but its letters must be separate pieces); that run keeps the font's kerning, so the added
     // space lands on top of it.
-    const TextRun apart = method == JustifyMethod::per_character ? measure_line_apart(measure, text, pixels, styles) : TextRun{};
-    const TextRun& shaped = method == JustifyMethod::per_character ? apart : natural;
+    const TextRun apart = method == JustifyMethod::perCharacter ? measure_line_apart(measure, text, pixels, styles) : TextRun{};
+    const TextRun& shaped = method == JustifyMethod::perCharacter ? apart : natural;
     std::vector<unsigned> cuts;
     for (const auto& [offset, x] : shaped.stops) {
         (void)x;
@@ -98,7 +98,7 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
         switch (method) {
         case JustifyMethod::automatic: gap = is_blank(a) || (!is_blank(b) && (is_wide_character(a) || is_wide_character(b))); break;
         case JustifyMethod::spaces: gap = is_space(a); break;
-        case JustifyMethod::per_character: gap = true; break;
+        case JustifyMethod::perCharacter: gap = true; break;
         }
         if (gap) gaps.push_back(cuts[j]);
     }
@@ -115,7 +115,7 @@ std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view 
     std::sort(pieces.begin(), pieces.end());
     pieces.erase(std::unique(pieces.begin(), pieces.end()), pieces.end());
     auto is_gap = [&](unsigned offset) { return std::binary_search(gaps.begin(), gaps.end(), offset); };
-    // Piece widths come from the one measured run (kerning included): the natural run, or the ligature-free one for per_character.
+    // Piece widths come from the one measured run (kerning included): the natural run, or the ligature-free one for perCharacter.
     float content = 0;
     std::vector<float> widths;
     for (std::size_t k = 0; k + 1 < pieces.size(); ++k) {

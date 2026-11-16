@@ -43,11 +43,11 @@ struct ComponentLayout {
     int width;
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
-    int vertical_height = 0; // physical pixels given by layout::vertical_text; 0 = columns never wrap
+    int verticalHeight = 0; // physical pixels given by layout::verticalText; 0 = columns never wrap
     // The appearance's sizes and texts for the density in force now.
     ComponentPresentation presentation() const;
 };
-enum class PaintRole : unsigned { content = 0, focus_indicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32, hover = 64 };
+enum class PaintRole : unsigned { content = 0, focusIndicator = 1, caret = 2, selection = 4, composition = 8, error_text = 16, error_indicator = 32, hover = 64 };
 constexpr PaintRole operator|(PaintRole a, PaintRole b) {
     return static_cast<PaintRole>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
 }
@@ -90,7 +90,7 @@ public:
     // A thin frame: `edge` under `role`, then `fill`. Returns the shape inside the band for hover and content.
     RingShape frame(Rect outer, int radius, int width, Color edge, Color fill, PaintRole role = PaintRole::content);
     // The focus ring around `outer`, drawn from the ring thickness and radius: the focus color (the error color
-    // when `invalid`) over the band and `fill` inside, both marked focus_indicator. Draw it before the content it frames.
+    // when `invalid`) over the band and `fill` inside, both marked focusIndicator. Draw it before the content it frames.
     RingShape focus_ring(Rect outer, int own_radius, Color fill, bool invalid = false);
     virtual void role(PaintRole) {}
     // Translucent fill: the color at alpha (0-255) over what is already drawn. Hosts blend it. The default
@@ -106,7 +106,7 @@ public:
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
     // One piece of vertical text in its cell (see VerticalForm). The default draws it as horizontal text at the
     // cell's corner; backends that can rotate and center glyphs override it.
-    virtual void vertical_text(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }
+    virtual void verticalText(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }
     // The same in a bold and/or italic face. A painter that has no such faces draws the text plain.
     virtual void styled_text(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) { (void)style; text(value, pixels, x, y, color); }
 private:
@@ -114,7 +114,7 @@ private:
 };
 // Type-level applicability, independent of any instance's current semantic state.
 // Modal and tooltip content are declared by page membership, not by component kind.
-enum class ComponentState { normal, disabled, read_only, selected, candidate, error, conflict, executing };
+enum class ComponentState { normal, disabled, readOnly, selected, candidate, error, conflict, executing };
 // What a pointer press armed, handed back to the type when the button is released over the same component.
 struct PointerRelease {
     std::string id;                                        // the armed and released component
@@ -157,10 +157,10 @@ public:
     // Alignment, justification and spacing; distribute is for labels only (a field respread at every key would be unusable).
     virtual bool supports_text_flow() const { return false; }
     virtual bool admits_distribute() const { return false; }
-    // Component::rich is for multi-line fields of such a type, Component::writing_mode vertical for labels.
+    // Component::rich is for multi-line fields of such a type, Component::writingMode vertical for labels.
     virtual bool supports_rich_text() const { return false; }
     virtual bool supports_vertical_writing() const { return false; }
-    // Ui::set_error is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
+    // Ui::setError is refused for a type that reports no errors of its own; a focusable control of such a type needs a name.
     virtual bool accepts_error() const { return true; }
     // Ui::bind_text is for a type whose text the application can supply on demand.
     virtual bool accepts_text_provider() const { return false; }
@@ -211,9 +211,9 @@ public:
     // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
     virtual bool has_builtin_menu() const { return false; }
     virtual void builtin_menu_entries(const UiState&, const Component&, bool /*clipboard_text*/, std::vector<UiState::MenuEntry>&) const {}
-    virtual Result run_builtin_menu(UiState&, const std::string&, std::string_view) const { return {Status::not_found, u"沒有這個選單項目"}; }
+    virtual Result run_builtin_menu(UiState&, const std::string&, std::string_view) const { return {Status::notFound, u"沒有這個選單項目"}; }
     virtual std::optional<OptionValue> menu_cursor(const UiState&, const Component&) const { return std::nullopt; }
-    virtual Result check_menu_item(const UiState&, const Component&, const OptionValue&) const { return {Status::invalid_value, u"只有清單可以指定項目"}; }
+    virtual Result check_menu_item(const UiState&, const Component&, const OptionValue&) const { return {Status::invalidValue, u"只有清單可以指定項目"}; }
     virtual void menu_row_chosen(UiState&, const std::string&, const OptionValue&) const {}
     virtual std::optional<Query<OptionValue>> menu_row(const UiState&, const Component&, std::size_t /*option*/) const { return std::nullopt; }
     virtual void arrange(ComponentLayout&) const = 0;
@@ -238,11 +238,11 @@ const ComponentType& component_type(ComponentKind kind);
 const ComponentType* find_component_type(ComponentKind kind);
 // The focus ring's thickness in physical pixels for these settings. Layout reserves at least this much room
 // around whatever a ring frames, whether or not the component is focused, so focus never moves anything.
-int focus_ring_width(const UiState& ui, const Appearance& appearance, float scale);
+int focusRingWidth(const UiState& ui, const Appearance& appearance, float scale);
 // Text flow (#80), in physical pixels. A row is what one display line occupies: the font's line height
 // times the line spacing (never less than the line height). The paragraph gap is the extra space after
 // a paragraph ended by an LF, scaled from DIP, never rounded up to a pixel when it is 0.
-int text_row(int line_height, double line_spacing);
+int text_row(int lineHeight, double lineSpacing);
 int paragraph_gap(const ComponentConfig& control, float scale);
 // The alignment to draw now (#84): the control's own, except that the user's "justified text as left"
 // setting turns justify and distribute into left. Reads of the property itself stay unchanged.

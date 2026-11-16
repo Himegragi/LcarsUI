@@ -124,7 +124,7 @@ try {
             'Core' { 'lcars::Ui ui;' }
             'AppearanceWeb' { '(void)lcars::web_appearance();' }
             'AppearanceMaterial' { '(void)lcars::material_appearance();' }
-            'Desktop' { '(void)lcars::third_party_notices();' }
+            'Desktop' { '(void)lcars::thirdPartyNotices();' }
             'Diagnostics' { 'lcars::Diagnostics diagnostics; (void)diagnostics.recent();' }
             default { '' }
         }

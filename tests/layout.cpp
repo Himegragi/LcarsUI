@@ -8,28 +8,28 @@ using test::check;
 using test::FakeMeasure;
 
 namespace {
-layout::Node host_control(Ui& ui, std::string_view id, int text_size = 0) {
-    return layout::component(detail::access(ui).layout_handle(id), text_size);
+layout::Node host_control(Ui& ui, std::string_view id, int textSize = 0) {
+    return layout::component(detail::access(ui).layout_handle(id), textSize);
 }
 struct AlternatePresentation final : Appearance {
-    const Appearance& base = web_appearance();
+    const Appearance& base = webAppearance();
     std::string_view name() const override { return "alternate"; }
     Palette palette() const override { return base.palette(); }
     int radius() const override { return base.radius(); }
-    TextFieldLayout arrange_text_field(int w, const TextFieldHeights& text, float scale) const override { return base.arrange_text_field(w, text, scale); }
-    int button_height(int line, float scale) const override { return base.button_height(line, scale); }
-    int button_padding(float scale) const override { return base.button_padding(scale); }
+    TextFieldLayout arrangeTextField(int w, const TextFieldHeights& text, float scale) const override { return base.arrangeTextField(w, text, scale); }
+    int buttonHeight(int line, float scale) const override { return base.buttonHeight(line, scale); }
+    int buttonPadding(float scale) const override { return base.buttonPadding(scale); }
     ComponentPresentation presentation = [] {
         ComponentPresentation value;
-        value.disabled_suffix = u" [off]";
-        value.radio_label_offset = 42;
+        value.disabledSuffix = u" [off]";
+        value.radioLabelOffset = 42;
         return value;
     }();
-    const ComponentPresentation& component_presentation() const override { return presentation; }
+    const ComponentPresentation& componentPresentation() const override { return presentation; }
 };
 void appearance_controls_component_words_and_geometry() {
     Ui ui;
-    auto radio = ui.add_radio_group({.id = "radio", .label = u"Mode"},
+    auto radio = ui.addRadioGroup({.id = "radio", .label = u"Mode"},
                                   {{{"a"}, u"Alpha", false}}).value.value();
     FakeMeasure measure; ScrollState scroll;
     AlternatePresentation alternate;
@@ -43,7 +43,7 @@ void registered_component_reaches_layout_hit_and_input() {
     constexpr auto test_kind = static_cast<ComponentKind>(100);
     TestComponent component;
     detail::ScopedComponentType registration(test_kind, component);
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
         Ui ui; detail::access(ui).seed_test_controls({{test_kind, {.id = "probe", .value = u"Test component"}}});
         auto& host = detail::access(ui);
         int activations = 0;
@@ -60,19 +60,19 @@ void registered_component_reaches_layout_hit_and_input() {
 }
 void layout_rejects_foreign_or_expired_handles() {
     Ui first, second;
-    auto first_button = first.add_button({.id = "same"}).value.value();
-    auto second_button = second.add_button({.id = "same"}).value.value();
+    auto first_button = first.addButton({.id = "same"}).value.value();
+    auto second_button = second.addButton({.id = "same"}).value.value();
     FakeMeasure measure; ScrollState scroll;
-    auto frame = arrange(layout::component(first_button), first, web_appearance(), measure, 200, 100, 1.f, scroll);
+    auto frame = arrange(layout::component(first_button), first, webAppearance(), measure, 200, 100, 1.f, scroll);
     check(frame.find(first_button) && !frame.find(second_button), "Placement uses component identity, not its string ID");
     bool rejected = false;
-    try { arrange(layout::component(second_button), first, web_appearance(), measure, 200, 100, 1.f, scroll); }
+    try { arrange(layout::component(second_button), first, webAppearance(), measure, 200, 100, 1.f, scroll); }
     catch (const std::invalid_argument&) { rejected = true; }
     check(rejected, "A foreign component cannot enter another tree's layout");
     layout::Node expired;
-    { Ui temporary; expired = layout::component(temporary.add_button({.id = "gone"}).value.value()); }
+    { Ui temporary; expired = layout::component(temporary.addButton({.id = "gone"}).value.value()); }
     rejected = false;
-    try { arrange(expired, first, web_appearance(), measure, 200, 100, 1.f, scroll); }
+    try { arrange(expired, first, webAppearance(), measure, 200, 100, 1.f, scroll); }
     catch (const std::invalid_argument&) { rejected = true; }
     check(rejected, "An expired component cannot enter a layout");
 }
@@ -86,7 +86,7 @@ void long_label_wraps_and_pushes_following_controls_down() {
     auto page = layout::column({host_control(ui, "intro"), host_control(ui, "apply")}, 12);
     FakeMeasure measure;
     ScrollState scroll;
-    auto frame = arrange(page, ui, web_appearance(), measure, 200, 600, 1.f, scroll);
+    auto frame = arrange(page, ui, webAppearance(), measure, 200, 600, 1.f, scroll);
     auto intro = detail::find_placement(frame, "intro");
     auto apply = detail::find_placement(frame, "apply");
     check(intro && apply, "Both controls are placed");
@@ -108,10 +108,10 @@ void latin_words_wrap_at_spaces() {
 }
 
 void disabled_button_cue_fits_narrow_bounds() {
-    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         Ui ui;
-        auto button = ui.add_button({.id = "button", .label = u"A long control name", .enabled = false}).value.value();
-        auto next = ui.add_label({.id = "next", .value = u"Next"}).value.value();
+        auto button = ui.addButton({.id = "button", .label = u"A long control name", .enabled = false}).value.value();
+        auto next = ui.addLabel({.id = "next", .value = u"Next"}).value.value();
         FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::column({layout::component(button), layout::component(next)}, 8), ui, *look, measure, 120, 400, 1.f, scroll);
         auto* item = frame.find(button); auto* following = frame.find(next);
@@ -122,7 +122,7 @@ void disabled_button_cue_fits_narrow_bounds() {
             check(intersect(line.bounds, item->bounds) == line.bounds, "Each disabled button line stays inside its bounds");
         }
         check(text.find(u"A long control name") != std::u16string::npos &&
-              text.find(look->component_presentation().disabled_suffix) != std::u16string::npos &&
+              text.find(look->componentPresentation().disabledSuffix) != std::u16string::npos &&
               following->bounds.y >= item->bounds.y + item->bounds.h + 8,
               "Name and disabled cue fit without covering the following control");
     }
@@ -132,19 +132,19 @@ void command_kinds_are_placed_like_buttons() {
     Ui ui; detail::access(ui).seed_test_controls({{ComponentKind::button, {.id = "tips", .label = u"啟用提示"}}, {ComponentKind::button, {.id = "next", .label = u"下一頁"}}});
     FakeMeasure measure;
     ScrollState scroll;
-    auto frame = arrange(layout::column({host_control(ui, "tips"), host_control(ui, "next")}), ui, web_appearance(), measure, 400, 300, 1.f, scroll);
+    auto frame = arrange(layout::column({host_control(ui, "tips"), host_control(ui, "next")}), ui, webAppearance(), measure, 400, 300, 1.f, scroll);
     auto tips = detail::find_placement(frame, "tips"), next = detail::find_placement(frame, "next");
     check(tips && next && tips->lines.size() == 1 && tips->lines[0].text == u"啟用提示" && next->lines[0].text == u"下一頁",
           "Toggle and navigation carry their titles instead of being treated as text fields");
 }
 
 std::vector<detail::Component> field_controls() {
-    return {{ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .label_kind = LabelKind::name}},
-            {ComponentKind::text_field, {.id = "name", .value = u"測試使用者"}},
-            {ComponentKind::label, {.id = "name.error", .target = "name", .label_kind = LabelKind::error}},
+    return {{ComponentKind::label, {.id = "name.label", .value = u"顯示名稱", .target = "name", .labelKind = LabelKind::name}},
+            {ComponentKind::textField, {.id = "name", .value = u"測試使用者"}},
+            {ComponentKind::label, {.id = "name.error", .target = "name", .labelKind = LabelKind::error}},
             {ComponentKind::button, {.id = "apply", .label = u"套用"}}};
 }
-const Appearance* appearances[] = {&web_appearance(), &material_appearance()};
+const Appearance* appearances[] = {&webAppearance(), &materialAppearance()};
 bool inside(Rect inner, Rect outer) {
     return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
 }
@@ -156,13 +156,13 @@ void field_roles_stay_with_their_field_in_both_appearances() {
         FakeMeasure measure;
         ScrollState scroll;
         auto before = arrange(page, ui, *appearance, measure, 240, 600, 1.f, scroll);
-        detail::access(ui).set_error("name", u"名稱不能空白，也不能只有空格或全形空白字元");
+        detail::access(ui).setError("name", u"名稱不能空白，也不能只有空格或全形空白字元");
         auto after = arrange(page, ui, *appearance, measure, 240, 600, 1.f, scroll);
         auto field = detail::find_placement(after, "name");
         auto apply = detail::find_placement(after, "apply");
-        check(field->label_lines.size() == 1 && field->label_lines[0].text == u"顯示名稱", "Name label is carried by its field");
-        check(detail::find_placement(before, "name")->error_lines.empty() && field->error_lines.size() >= 2, "Error appears and wraps over lines");
-        for (const auto& line : field->error_lines)
+        check(field->labelLines.size() == 1 && field->labelLines[0].text == u"顯示名稱", "Name label is carried by its field");
+        check(detail::find_placement(before, "name")->errorLines.empty() && field->errorLines.size() >= 2, "Error appears and wraps over lines");
+        for (const auto& line : field->errorLines)
             check(inside(line.bounds, field->bounds), "Every error line stays inside its field");
         check(apply->bounds.y >= field->bounds.y + field->bounds.h && apply->bounds.y > detail::find_placement(before, "apply")->bounds.y,
               "Re-measured error pushes the next control down");
@@ -204,20 +204,20 @@ void scrolling_reveals_focus_and_clips_hits() {
     Ui ui; detail::access(ui).seed_test_controls(page_controls());
     FakeMeasure measure;
     ScrollState scroll;
-    auto frame = arrange(page_layout(ui), ui, web_appearance(), measure, 640, 480, 1.f, scroll);
+    auto frame = arrange(page_layout(ui), ui, webAppearance(), measure, 640, 480, 1.f, scroll);
     check(frame.maximum > 0 && frame.thumb.h > 0, "Overflowing content gets a scroll range and a thumb");
     auto hidden = detail::find_placement(frame, "reset")->bounds;
     check(hidden.y >= frame.viewport.y + frame.viewport.h, "Reset starts outside the viewport");
     check(frame.hit(hidden.x + 2, hidden.y + 2) == nullptr, "Nothing outside the viewport can be hit");
-    frame = arrange(page_layout(ui), ui, web_appearance(), measure, 640, 480, 1.f, scroll, "reset");
+    frame = arrange(page_layout(ui), ui, webAppearance(), measure, 640, 480, 1.f, scroll, "reset");
     auto shown = detail::find_placement(frame, "reset")->bounds;
     check(shown.y >= 0 && shown.y + shown.h == 480 && frame.offset > 0, "Revealing reset scrolls just enough to show all of it");
     auto hit = frame.hit(shown.x + 2, shown.y + 2);
     check(hit && hit->id == "reset", "Hit testing uses the scrolled positions");
     scroll.offset = 1 << 20;
-    frame = arrange(page_layout(ui), ui, web_appearance(), measure, 640, 480, 1.f, scroll);
+    frame = arrange(page_layout(ui), ui, webAppearance(), measure, 640, 480, 1.f, scroll);
     check(frame.offset == frame.maximum && scroll.offset == frame.maximum, "Wheel overshoot is clamped before placement");
-    check(frame.offset_for_thumb(frame.track.y) == 0 && frame.offset_for_thumb(frame.track.y + frame.track.h) == frame.maximum,
+    check(frame.offsetForThumb(frame.track.y) == 0 && frame.offsetForThumb(frame.track.y + frame.track.h) == frame.maximum,
           "The scrollbar thumb maps onto the whole range");
 }
 
@@ -225,11 +225,11 @@ void resize_after_deep_scroll_settles_in_the_first_frame() {
     Ui ui; detail::access(ui).seed_test_controls(page_controls());
     FakeMeasure measure;
     ScrollState scroll;
-    arrange(page_layout(ui), ui, web_appearance(), measure, 640, 480, 1.f, scroll);
+    arrange(page_layout(ui), ui, webAppearance(), measure, 640, 480, 1.f, scroll);
     scroll.offset = 1 << 20;
-    arrange(page_layout(ui), ui, web_appearance(), measure, 640, 480, 1.f, scroll);
-    auto first = arrange(page_layout(ui), ui, web_appearance(), measure, 960, 900, 1.f, scroll);
-    auto second = arrange(page_layout(ui), ui, web_appearance(), measure, 960, 900, 1.f, scroll);
+    arrange(page_layout(ui), ui, webAppearance(), measure, 640, 480, 1.f, scroll);
+    auto first = arrange(page_layout(ui), ui, webAppearance(), measure, 960, 900, 1.f, scroll);
+    auto second = arrange(page_layout(ui), ui, webAppearance(), measure, 960, 900, 1.f, scroll);
     check(first.offset == second.offset && first.offset <= first.maximum, "Scroll offset is settled before the first frame");
     check(first.items.size() == second.items.size(), "Same items in both frames");
     for (std::size_t i = 0; i < first.items.size(); ++i)
@@ -241,96 +241,96 @@ void resize_after_deep_scroll_settles_in_the_first_frame() {
 
 void pointer_hits_map_to_the_painted_caret_positions() {
     for (float scale : {1.f, 1.5f}) {
-        Ui ui; detail::access(ui).seed_test_controls({{ComponentKind::text_field, {.id = "name", .value = u"Ab中\U00020000文"}}});
+        Ui ui; detail::access(ui).seed_test_controls({{ComponentKind::textField, {.id = "name", .value = u"Ab中\U00020000文"}}});
         FakeMeasure measure;
         ScrollState scroll;
-        auto frame = arrange(layout::column({host_control(ui, "name")}), ui, material_appearance(), measure, 400, 200, scale, scroll);
+        auto frame = arrange(layout::column({host_control(ui, "name")}), ui, materialAppearance(), measure, 400, 200, scale, scroll);
         auto field = detail::find_placement(frame, "name");
-        int origin = field->bounds.x + field->text_field.editor.x;
+        int origin = field->bounds.x + field->textField.editor.x;
         for (auto [offset, x] : field->run.stops) {
             int painted = origin + static_cast<int>(x - field->offset);
             check(detail::placement_text_offset(frame, "name", painted) == offset, "Pointer at a painted caret returns that caret");
         }
-        check(detail::placement_text_offset(frame, "name", origin + static_cast<int>(field->run.x(3) + field->text_size * 0.4f)) == 3,
+        check(detail::placement_text_offset(frame, "name", origin + static_cast<int>(field->run.x(3) + field->textSize * 0.4f)) == 3,
               "A pointer inside the left part of the surrogate pair snaps to its start");
-        check(field->text_size == static_cast<int>(16 * scale + 0.5f), "Text size follows the render scale");
+        check(field->textSize == static_cast<int>(16 * scale + 0.5f), "Text size follows the render scale");
     }
 }
 
 void long_text_keeps_caret_visible_and_reset_clears_offset() {
     Ui ui;
-    auto name_field = ui.add_text_field({.id = "name", .value = std::u16string(60, u'A')}).value.value();
-    ui.add_button({.id = "apply"}).value.value();
-    name_field.connect_source({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
-    name_field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
+    auto name_field = ui.addTextField({.id = "name", .value = std::u16string(60, u'A')}).value.value();
+    ui.addButton({.id = "apply"}).value.value();
+    name_field.connectSource({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
+    name_field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     FakeMeasure measure;
     ScrollState scroll;
     auto page = layout::column({host_control(ui, "name"), host_control(ui, "apply")});
     detail::access(ui).focus("name");
     detail::access(ui).select("name", 60, 60);
     detail::access(ui).text_input(u"Z");
-    auto frame = arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
+    auto frame = arrange(page, ui, webAppearance(), measure, 300, 200, 1.f, scroll);
     auto field = detail::find_placement(frame, "name");
     float caret = field->run.x(61) - field->offset;
-    check(field->offset > 0 && caret >= 0 && caret <= field->text_field.editor.w, "Caret at the end stays inside the editor");
+    check(field->offset > 0 && caret >= 0 && caret <= field->textField.editor.w, "Caret at the end stays inside the editor");
     detail::access(ui).focus("apply");
-    arrange(page, ui, web_appearance(), measure, 300, 200, 1.f, scroll);
-    check(detail::access(ui).text_offset("name") > 0, "Leaving the field keeps its display offset");
+    arrange(page, ui, webAppearance(), measure, 300, 200, 1.f, scroll);
+    check(detail::access(ui).textOffset("name") > 0, "Leaving the field keeps its display offset");
     detail::access(ui).replace_text("name", u"測試使用者");
-    check(detail::access(ui).text_offset("name") == 0 && detail::access(ui).undo("name").status == Status::empty_history, "Owner reset clears offset and history");
+    check(detail::access(ui).textOffset("name") == 0 && detail::access(ui).undo("name").status == Status::emptyHistory, "Owner reset clears offset and history");
 }
 }
 
 void radio_options_share_geometry_with_pointer_input() {
-    for (auto* look : {&web_appearance(), &material_appearance()}) {
+    for (auto* look : {&webAppearance(), &materialAppearance()}) {
         std::optional<OptionValue> model;
         Ui ui;
-        auto group = ui.add_radio_group({.id = "mode", .label = u"Mode"},
+        auto group = ui.addRadioGroup({.id = "mode", .label = u"Mode"},
             {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}, {{"offline"}, u"Offline", false}}).value.value();
-        group.connect_source({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
-        group.connect_immediate([&](const Change<RadioGroupHandle>& c) { model = c.value; return Result{}; });
+        group.connectSource({[&] { return model; }, [](std::function<void()>) { return [] {}; }});
+        group.connectImmediate([&](const Change<RadioGroupHandle>& c) { model = c.value; return Result{}; });
         FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::component(group), ui, *look, measure, 320, 240, 1.f, scroll);
         auto item = frame.find(group);
         check(item && item->options.size() == 3, "All options have independently placed hit targets");
         auto rect = item->options[1];
         auto& host = detail::access(ui);
-        host.pointer_down(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
-        host.pointer_up(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        host.pointer_down(item->id, frame.optionAt(*item, rect.x + 2, rect.y + 2));
+        host.pointer_up(item->id, frame.optionAt(*item, rect.x + 2, rect.y + 2));
         check(model == OptionValue{"focus"}, "Clicking the second painted option selects it");
         rect = item->options[2];
-        host.pointer_down(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
-        host.pointer_up(item->id, frame.option_at(*item, rect.x + 2, rect.y + 2));
+        host.pointer_down(item->id, frame.optionAt(*item, rect.x + 2, rect.y + 2));
+        host.pointer_up(item->id, frame.optionAt(*item, rect.x + 2, rect.y + 2));
         check(model == OptionValue{"focus"}, "Clicking a disabled option leaves the selection unchanged");
     }
 }
 
 void slider_track_and_drag_share_geometry() {
-    for (const auto* appearance : {&web_appearance(), &material_appearance()}) {
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
         Ui ui;
-        auto slider = ui.add_slider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
-        slider.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
-        slider.connect_confirmed([](const Change<SliderHandle>&) { return Result{}; });
+        auto slider = ui.addSlider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
+        slider.connectSource({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
+        slider.connectConfirmed([](const Change<SliderHandle>&) { return Result{}; });
         test::FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::component(slider), ui, *appearance, measure, 400, 200, 1.f, scroll);
         const auto* item = frame.find(slider);
-        check(item && item->slider_track.w > 0 && frame.hit(item->slider_track.x, item->slider_track.y)->id == "volume", "The drawn track is a pointer target");
+        check(item && item->sliderTrack.w > 0 && frame.hit(item->sliderTrack.x, item->sliderTrack.y)->id == "volume", "The drawn track is a pointer target");
         detail::access(ui).pointer_down(item->id);
-        detail::access(ui).slider_pointer_down(item->id, item->slider_track.x, item->slider_track);
+        detail::access(ui).slider_pointer_down(item->id, item->sliderTrack.x, item->sliderTrack);
         check(*slider.draft() == 0, "Track start reaches minimum");
-        detail::access(ui).slider_pointer(item->id, item->slider_track.x + item->slider_track.w);
+        detail::access(ui).slider_pointer(item->id, item->sliderTrack.x + item->sliderTrack.w);
         check(*slider.draft() == 100, "Dragging to the track end reaches maximum");
     }
 }
 
 void dropdown_popup_overlaps_and_uses_topmost_hit() {
-    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         Ui ui;
-        auto field = ui.add_dropdown({.id = "region", .label = u"Region"},
+        auto field = ui.addDropdown({.id = "region", .label = u"Region"},
             {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-        auto behind = ui.add_button({.id = "behind", .label = u"Behind"}).value.value();
-        field.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-        field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
+        auto behind = ui.addButton({.id = "behind", .label = u"Behind"}).value.value();
+        field.connectSource({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+        field.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
         field.open();
         FakeMeasure measure; ScrollState scroll;
         auto page = layout::column({layout::component(field), layout::component(behind)}, 0);
@@ -338,7 +338,7 @@ void dropdown_popup_overlaps_and_uses_topmost_hit() {
         check(frame.overlays.size() == 1 && frame.overlays[0].options.size() == 2, "Popup has two shared overlay targets");
         auto row = frame.overlays[0].options[0];
         auto hit = frame.hit(row.x + 2, row.y + 2);
-        check(hit && hit->popup && hit->id == "region" && frame.option_at(*hit, row.x + 2, row.y + 2) == 0,
+        check(hit && hit->popup && hit->id == "region" && frame.optionAt(*hit, row.x + 2, row.y + 2) == 0,
               "Popup is hit above the underlying control");
         check(row.x >= 0 && row.y >= 0 && row.x + row.w <= 240 && row.y + row.h <= 160, "Popup fits the window");
     }
@@ -346,35 +346,35 @@ void dropdown_popup_overlaps_and_uses_topmost_hit() {
 
 void dropdown_states_are_readable_without_color() {
     Ui ui;
-    auto field = ui.add_dropdown({.id = "region", .label = u"Region"}, {}).value.value();
-    field.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
-    field.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
+    auto field = ui.addDropdown({.id = "region", .label = u"Region"}, {}).value.value();
+    field.connectSource({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
+    field.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
     FakeMeasure measure; ScrollState scroll;
     field.open();
-    auto frame = arrange(layout::component(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    auto frame = arrange(layout::component(field), ui, webAppearance(), measure, 200, 160, 1.f, scroll);
     check(frame.find(field) && frame.find(field)->lines.size() >= 2 && !frame.overlays.empty() && !frame.overlays[0].lines.empty() &&
           frame.find(field)->lines[1].text == u"\u672a\u9078\u53d6" && frame.overlays[0].lines[0].text == u"\u6c92\u6709\u53ef\u7528\u9078\u9805", "Empty dropdown explains its state in text");
     field.enable(false);
-    frame = arrange(layout::component(field), ui, web_appearance(), measure, 200, 160, 1.f, scroll);
+    frame = arrange(layout::component(field), ui, webAppearance(), measure, 200, 160, 1.f, scroll);
     check(frame.find(field)->lines[0].text.find(u"\u505c\u7528") != std::u16string::npos, "Disabled dropdown is labeled in text");
 }
 
 void stack_and_popup_edges_follow_paint_order() {
-    for (auto* look : {&web_appearance(), &material_appearance()}) {
+    for (auto* look : {&webAppearance(), &materialAppearance()}) {
         for (float scale : {1.f, 1.5f}) {
             Ui ui;
-            auto lower = ui.add_button({.id = "lower", .label = u"Lower"}).value.value();
-            auto upper = ui.add_button({.id = "upper", .label = u"Upper"}).value.value();
+            auto lower = ui.addButton({.id = "lower", .label = u"Lower"}).value.value();
+            auto upper = ui.addButton({.id = "upper", .label = u"Upper"}).value.value();
             FakeMeasure measure; ScrollState scroll;
             auto stacked = arrange(layout::stack({layout::component(lower), layout::component(upper)}), ui, *look, measure, 200, 180, scale, scroll);
             auto p = stacked.find(upper);
             check(p && stacked.hit(p->bounds.x + 2, p->bounds.y + 2)->id == "upper", "Later stack child wins overlapping hits");
             Ui other;
-            auto filler = other.add_label({.id = "filler", .value = u"One\nTwo\nThree\nFour"}).value.value();
-            auto dropdown = other.add_dropdown({.id = "region", .label = u"Region"},
+            auto filler = other.addLabel({.id = "filler", .value = u"One\nTwo\nThree\nFour"}).value.value();
+            auto dropdown = other.addDropdown({.id = "region", .label = u"Region"},
                 {{{"north"}, u"North"}, {{"central"}, u"Central"}, {{"south"}, u"South"}}).value.value();
-            dropdown.connect_source({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
-            dropdown.connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; });
+            dropdown.connectSource({[] { return std::optional<OptionValue>{OptionValue{"north"}}; }, [](std::function<void()>) { return [] {}; }});
+            dropdown.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
             dropdown.open();
             auto page = layout::scroll(layout::column({layout::component(filler), layout::component(dropdown)}, 0));
             auto frame = arrange(page, other, *look, measure, static_cast<int>(240 * scale), static_cast<int>(180 * scale), scale, scroll, "region");
@@ -386,18 +386,18 @@ void stack_and_popup_edges_follow_paint_order() {
 }
 
 void cross_page_error_is_revealed_in_first_frame() {
-    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         Ui ui;
-        auto current = ui.add_text_field({.id = "current"}).value.value();
-        auto remote = ui.add_text_field({.id = "remote"}).value.value();
-        auto filler = ui.add_label({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10"}).value.value();
-        auto submit = ui.add_button({.id = "apply"}).value.value();
+        auto current = ui.addTextField({.id = "current"}).value.value();
+        auto remote = ui.addTextField({.id = "remote"}).value.value();
+        auto filler = ui.addLabel({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10"}).value.value();
+        auto submit = ui.addButton({.id = "apply"}).value.value();
         auto source = Source<std::u16string>{[] { return std::u16string(u"value"); }, [](std::function<void()>) { return [] {}; }};
-        current.connect_source(source); remote.connect_source(source);
-        auto tabs = ui.add_tabs({.id = "tabs"}, {
+        current.connectSource(source); remote.connectSource(source);
+        auto tabs = ui.addTabs({.id = "tabs"}, {
             {{"one"}, u"One", true, {current, submit}}, {{"two"}, u"Two", true, {filler, remote}}}).value.value();
-        ui.connect_confirmation(submit, {remote, current}, [=](const auto&) {
-            return ConfirmationResult{{Status::invalid_value, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
+        ui.connectConfirmation(submit, {remote, current}, [=](const auto&) {
+            return ConfirmationResult{{Status::invalidValue, u"Invalid"}, {{current, u"Current error"}, {remote, u"Remote error"}}};
         });
         auto root = layout::pinned(layout::component(tabs), layout::scroll(layout::column({layout::component(current), layout::component(submit), layout::component(filler), layout::component(remote)})));
         submit.invoke();
@@ -413,11 +413,11 @@ void cross_page_error_is_revealed_in_first_frame() {
 
 void inactive_page_members_do_not_paint_or_hit() {
     Ui ui;
-    auto first = ui.add_button({.id = "one", .label = u"One"}).value.value();
-    auto second = ui.add_button({.id = "two", .label = u"Two"}).value.value();
-    auto tabs = ui.add_tabs({.id = "tabs"}, {{{"one"}, u"One", true, {first}}, {{"two"}, u"Two", true, {second}}}).value.value();
+    auto first = ui.addButton({.id = "one", .label = u"One"}).value.value();
+    auto second = ui.addButton({.id = "two", .label = u"Two"}).value.value();
+    auto tabs = ui.addTabs({.id = "tabs"}, {{{"one"}, u"One", true, {first}}, {{"two"}, u"Two", true, {second}}}).value.value();
     auto root = layout::column({layout::component(tabs), layout::component(first), layout::component(second)});
-    for (const auto* look : {&web_appearance(), &material_appearance()}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) {
         FakeMeasure measure; ScrollState scroll;
         second.enable(false);
         auto frame = arrange(root, ui, *look, measure, 400, 300, 1.f, scroll);
@@ -434,29 +434,29 @@ void list_reveals_the_keyboard_row_and_clips_hits() {
     for (const auto* look : appearances) {
         Ui ui; std::vector<OptionItem> items;
         for (int i = 1; i <= 100; ++i) items.push_back({{std::to_string(i)}, u"Row"});
-        auto list = ui.add_list({.id = "list"}, std::move(items)).value.value();
+        auto list = ui.addList({.id = "list"}, std::move(items)).value.value();
         std::optional<OptionValue> selected;
-        list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-        list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
+        list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+        list.connectImmediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         FakeMeasure measure; ScrollState scroll;
         auto page = layout::scroll(layout::component(list));
         auto frame = arrange(page, ui, *look, measure, 640, 480, 1.f, scroll, "list");
         auto item = frame.find(list);
         check(item && item->options.size() == 100 && inside(item->options.back(), frame.viewport), "End reveals the whole last row");
-        check(!frame.option_at(*item, item->options.front().x + 2, item->options.front().y + 2), "Clipped rows cannot be hit");
+        check(!frame.optionAt(*item, item->options.front().x + 2, item->options.front().y + 2), "Clipped rows cannot be hit");
     }
 }
 void nested_scroll_reveals_the_list_target() {
     for (const auto* look : appearances) {
         Ui ui;
-        auto filler = ui.add_label({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12"}).value.value();
+        auto filler = ui.addLabel({.id = "filler", .value = u"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12"}).value.value();
         std::vector<OptionItem> options;
         for (int i = 1; i <= 100; ++i) options.push_back({{std::to_string(i)}, u"Row"});
-        auto list = ui.add_list({.id = "list"}, std::move(options)).value.value();
+        auto list = ui.addList({.id = "list"}, std::move(options)).value.value();
         std::optional<OptionValue> selected;
-        list.connect_source({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
-        list.connect_immediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
+        list.connectSource({[&] { return selected; }, [](std::function<void()>) { return [] {}; }});
+        list.connectImmediate([&](const Change<ListHandle>& change) { selected = change.value; return Result{}; });
         list.focus(); detail::access(ui).key_down({.key = Key::end});
         ScrollState outer, inner; FakeMeasure measure;
         auto page = layout::scroll(layout::column({layout::component(filler), layout::scroll(layout::component(list), inner, 140)}));
@@ -465,16 +465,16 @@ void nested_scroll_reveals_the_list_target() {
         check(item && item->options.size() == 100 && inside(item->options.back(), item->clip) &&
               outer.offset > 0 && inner.offset > 0 && selected == OptionValue{"100"},
               "End reveals the whole last row through inner and outer viewports on the first frame");
-        check(item && !frame.option_at(*item, item->options.front().x + 2, item->options.front().y + 2),
+        check(item && !frame.optionAt(*item, item->options.front().x + 2, item->options.front().y + 2),
               "Rows outside the combined clip cannot be hit");
     }
 }
 void assembled_layout_handles_long_text_and_larger_type() {
     for (const auto* look : appearances) for (int font : {16, 24}) {
         Ui ui;
-        auto left = ui.add_label({.id = "left", .value = u"很長的說明文字會在狹窄空間中重新換行並保留間距"}).value.value();
-        auto right = ui.add_label({.id = "right", .value = u"右側標籤"}).value.value();
-        auto below = ui.add_label({.id = "below", .value = u"下方結果"}).value.value();
+        auto left = ui.addLabel({.id = "left", .value = u"很長的說明文字會在狹窄空間中重新換行並保留間距"}).value.value();
+        auto right = ui.addLabel({.id = "right", .value = u"右側標籤"}).value.value();
+        auto below = ui.addLabel({.id = "below", .value = u"下方結果"}).value.value();
         auto page = layout::column({layout::row({layout::component(left, font), layout::component(right, font)}, 12),
                                     layout::grid({layout::component(below, font)}, 160)}, 14, 8);
         FakeMeasure measure; ScrollState scroll;
@@ -487,11 +487,11 @@ void assembled_layout_handles_long_text_and_larger_type() {
 
 void multiple_dialog_layout() {
     Ui ui;
-    auto background = ui.add_button({.id="background"}).value.value();
-    auto one = ui.add_button({.id="one"}).value.value();
-    auto two = ui.add_button({.id="two"}).value.value();
-    auto first = ui.add_dialog("first", {one}, one, background, [](bool) {}).value.value();
-    auto second = ui.add_dialog("second", {two}, two, background, [](bool) {}).value.value();
+    auto background = ui.addButton({.id="background"}).value.value();
+    auto one = ui.addButton({.id="one"}).value.value();
+    auto two = ui.addButton({.id="two"}).value.value();
+    auto first = ui.addDialog("first", {one}, one, background, [](bool) {}).value.value();
+    auto second = ui.addDialog("second", {two}, two, background, [](bool) {}).value.value();
     std::vector<DialogLayout> dialogs{{first, layout::component(one)}, {second, layout::component(two)}};
     auto root = layout::modal(layout::component(background), std::move(dialogs));
     FakeMeasure measure; ScrollState scroll;
@@ -503,31 +503,31 @@ void multiple_dialog_layout() {
 }
 
 void modal_long_dropdown() {
-    Ui ui; auto background=ui.add_button({.id="background"}).value.value();
+    Ui ui; auto background=ui.addButton({.id="background"}).value.value();
     std::vector<OptionItem> choices;
     for (int i=0; i<150; ++i) choices.push_back({{std::to_string(i)}, u"item"});
-    auto dropdown=ui.add_dropdown({.id="modal.dropdown"},choices).value.value();
-    dropdown.connect_source({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
-    dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
-    auto dialog=ui.add_dialog("dialog",{dropdown},dropdown,background,[](bool) {}).value.value();
+    auto dropdown=ui.addDropdown({.id="modal.dropdown"},choices).value.value();
+    dropdown.connectSource({[] { return std::optional<OptionValue>{{"0"}}; }, [](auto) { return [] {}; }});
+    dropdown.connectImmediate([](const Change<DropdownHandle>&) { return Result{}; });
+    auto dialog=ui.addDialog("dialog",{dropdown},dropdown,background,[](bool) {}).value.value();
     auto root=layout::modal(layout::component(background),layout::component(dropdown),dialog);
     dialog.open(); dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
-    auto frame=arrange(root,ui,web_appearance(),measure,640,480,1,scroll);
-    auto popup=std::find_if(frame.overlays.begin(),frame.overlays.end(),[](const auto& p) { return p.dropdown_panel; });
+    auto frame=arrange(root,ui,webAppearance(),measure,640,480,1,scroll);
+    auto popup=std::find_if(frame.overlays.begin(),frame.overlays.end(),[](const auto& p) { return p.dropdownPanel; });
     test::check(popup!=frame.overlays.end(), "dialog dropdown has panel");
     test::check(frame.wheel(ui,popup->bounds.x+2,popup->bounds.y+2,-80), "dialog panel scrolls");
     detail::access(ui).key_down({.key=Key::escape});
-    test::check(*dialog.is_open() && !dropdown.describe()->expanded, "Escape closes panel before dialog");
+    test::check(*dialog.isOpen() && !dropdown.describe()->expanded, "Escape closes panel before dialog");
 }
 void long_dropdown_viewport() {
-    for (const auto* look : {&web_appearance(), &material_appearance()}) for (int size : {16, 28}) {
+    for (const auto* look : {&webAppearance(), &materialAppearance()}) for (int size : {16, 28}) {
         Ui ui;
-        if (size == 28) { PresentationSettings settings; settings.text_size=28; settings.density=Density::compact; ui.set_presentation(settings); }
+        if (size == 28) { PresentationSettings settings; settings.textSize=28; settings.density=Density::compact; ui.setPresentation(settings); }
         std::vector<OptionItem> choices;
         for (int i=0; i<150; ++i) { auto value=std::to_string(i); choices.push_back({{value}, std::u16string(value.begin(),value.end())}); }
-        auto dropdown=ui.add_dropdown({.id="long"}, choices).value.value();
-        dropdown.connect_source({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});
-        dropdown.connect_immediate([](const Change<DropdownHandle>&) { return Result{}; });
+        auto dropdown=ui.addDropdown({.id="long"}, choices).value.value();
+        dropdown.connectSource({[] { return std::optional<OptionValue>{{"149"}}; }, [](auto) { return [] {}; }});
+        dropdown.connectImmediate([](const Change<DropdownHandle>&) { return Result{}; });
         dropdown.open(); test::FakeMeasure measure; ScrollState scroll;
         auto frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(frame.overlays.size()==1 && frame.overlays[0].options.size()<=12, "long popup lays out only visible rows");
@@ -562,7 +562,7 @@ void long_dropdown_viewport() {
             if (i) test::check(popup.options[i-1].y+popup.options[i-1].h<=row.y, "dropdown rows do not overlap");
             int x=row.x+2, y=row.y+row.h/2;
             if (!popup.clip.contains(x,y)) continue;
-            auto logical=frame.option_at(popup,x,y);
+            auto logical=frame.optionAt(popup,x,y);
             auto semantic=logical ? ui.semantics().get({"long",OptionValue{std::to_string(*logical)}}) : Query<NodeSnapshot>{};
             test::check(semantic && semantic->name==popup.lines[i].text, "each visible row hit matches its painted label");
         }
@@ -570,13 +570,13 @@ void long_dropdown_viewport() {
         frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(dropdown.describe()->expanded && dropdown.draft()->value().id=="149", "wheel preserves popup and value");
         auto region=frame.regions.back();
-        test::check(frame.scroll_to(ui,*region.state,region.offset_for_thumb(region.track.y+region.track.h-region.thumb.h)), "drag scrollbar to end");
+        test::check(frame.scrollTo(ui,*region.state,region.offsetForThumb(region.track.y+region.track.h-region.thumb.h)), "drag scrollbar to end");
         frame=arrange(layout::component(dropdown),ui,*look,measure,640,480,1,scroll);
         test::check(ui.semantics().get({"long",OptionValue{"149"}})->visible && dropdown.describe()->expanded, "drag reveals last without closing");
         auto row=frame.overlays[0].options[2];
         auto painted_label=frame.overlays[0].lines[2].text;
         int x=row.x+2,y=row.y+row.h/2;
-        auto index=frame.option_at(frame.overlays[0],x,y);
+        auto index=frame.optionAt(frame.overlays[0],x,y);
         test::check(index && *index>0, "scrolled hit uses logical option index");
         test::check(bool(state.pointer_down("long",index)) && bool(state.pointer_up("long",index)), "select scrolled option");
         auto selected=dropdown.draft()->value().id;

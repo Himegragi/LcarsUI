@@ -136,8 +136,8 @@ struct Text::Impl {
     std::function<FontFile(std::u16string_view)> lookup;
     std::function<void(const RenderDiagnostic&)> receiver;
     void report(std::string_view code,std::string message={},std::int64_t native=0) {
-        RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.native_code=native;
-        event.native_message=std::move(message); event.kind=DiagnosticKind::resource;
+        RenderDiagnostic event; event.backend=u"FreeType"; event.code=code; event.nativeCode=native;
+        event.nativeMessage=std::move(message); event.kind=DiagnosticKind::resource;
         event.severity=code=="text.glyph_missing"?DiagnosticSeverity::info:DiagnosticSeverity::warning;
         receiver(event);
     }
@@ -367,7 +367,7 @@ TextLayout Text::shape_vertical(std::u16string_view value,VerticalForm form,int 
         return parts;
     };
     switch(form) {
-    case VerticalForm::point: case VerticalForm::middle_dot:
+    case VerticalForm::point: case VerticalForm::middleDot:
         centered(horizontal_parts(shape(value,size),{}));
         break;
     case VerticalForm::line:
@@ -490,7 +490,7 @@ static TextRun run_of(const TextLayout& layout) {
     return run;
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape(text, pixels, style)); }
-TextRun ShapedMeasure::measure_apart(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape_apart(text, pixels, style)); }
+TextRun ShapedMeasure::measureApart(std::u16string_view text, int pixels, FontStyle style) { return run_of(text_.shape_apart(text, pixels, style)); }
 void Text::label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color){
     auto old=canvas.clip;
     int x=std::max(old.x,rect.x),y=std::max(old.y,rect.y);

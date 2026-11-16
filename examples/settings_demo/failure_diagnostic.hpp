@@ -25,15 +25,15 @@ inline lcars::RenderDiagnostic failure_diagnostic(const lcars::RendererFailure& 
     lcars::RenderDiagnostic d;
     d.backend = u"OpenGL";
     d.severity = lcars::DiagnosticSeverity::error;
-    d.kind = failure.kind == lcars::RendererFailureKind::device_reset ? lcars::DiagnosticKind::device_reset : lcars::DiagnosticKind::other;
+    d.kind = failure.kind == lcars::RendererFailureKind::deviceReset ? lcars::DiagnosticKind::deviceReset : lcars::DiagnosticKind::other;
     switch (failure.kind) {
-    case lcars::RendererFailureKind::frame_error: d.code = "renderer_failed.frame_error"; break;
-    case lcars::RendererFailureKind::device_reset: d.code = "renderer_failed.device_reset"; break;
-    case lcars::RendererFailureKind::present_failed: d.code = "renderer_failed.present_failed"; break;
-    case lcars::RendererFailureKind::resource_failed: d.code = "renderer_failed.resource_failed"; break;
+    case lcars::RendererFailureKind::frameError: d.code = "renderer_failed.frame_error"; break;
+    case lcars::RendererFailureKind::deviceReset: d.code = "renderer_failed.device_reset"; break;
+    case lcars::RendererFailureKind::presentFailed: d.code = "renderer_failed.present_failed"; break;
+    case lcars::RendererFailureKind::resourceFailed: d.code = "renderer_failed.resource_failed"; break;
     }
-    d.native_code = failure.native_code;
-    d.native_message = failure_utf8(failure.message);
+    d.nativeCode = failure.nativeCode;
+    d.nativeMessage = failure_utf8(failure.message);
     return d;
 }
 }

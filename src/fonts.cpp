@@ -111,7 +111,7 @@ const Snapshot& snapshot() {
         if(eligible && !dwface->IsSymbolFont() && listed.insert(key).second) { auto display=name_of(names.Get(),L"zh-tw",false); out.families.push_back({key,display.empty()?key:display}); }
     }
     std::sort(out.families.begin(),out.families.end(),[](const auto& a,const auto& b) {
-        return CompareStringEx(LOCALE_NAME_USER_DEFAULT,NORM_IGNORECASE,reinterpret_cast<const wchar_t*>(a.display_name.c_str()),-1,reinterpret_cast<const wchar_t*>(b.display_name.c_str()),-1,nullptr,nullptr,0)==CSTR_LESS_THAN;
+        return CompareStringEx(LOCALE_NAME_USER_DEFAULT,NORM_IGNORECASE,reinterpret_cast<const wchar_t*>(a.displayName.c_str()),-1,reinterpret_cast<const wchar_t*>(b.displayName.c_str()),-1,nullptr,nullptr,0)==CSTR_LESS_THAN;
     });
     return out;
  }(); return value;
@@ -122,14 +122,14 @@ bool FontCatalog::contains(std::u16string_view key) const noexcept {
 }
 FontResolution FontCatalog::resolve(const PresentationSettings& settings) const {
     FontResolution result;
-    result.requested=settings.font_family;
-    result.requested_available=settings.font_family.empty() || contains(settings.font_family);
+    result.requested=settings.fontFamily;
+    result.requestedAvailable=settings.fontFamily.empty() || contains(settings.fontFamily);
     const auto& valid=snapshot().valid;
     auto append=[&](std::u16string_view name) {
         if(valid.count(std::u16string(name)) && std::find(result.fallback.begin(),result.fallback.end(),name)==result.fallback.end())
             result.fallback.emplace_back(name);
     };
-    if(result.requested_available && !settings.font_family.empty()) append(settings.font_family);
+    if(result.requestedAvailable && !settings.fontFamily.empty()) append(settings.fontFamily);
     for(auto name:{u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"}) append(name);
     if(!result.fallback.empty()) { result.primary=result.fallback.front(); result.fallback.erase(result.fallback.begin()); }
     return result;
@@ -168,7 +168,7 @@ FontFile system_font_file(std::u16string_view family) {
  return std::filesystem::exists(path,error)?FontFile{path,0}:FontFile{};
 }
 }
-const FontCatalog& system_font_catalog() {
+const FontCatalog& systemFontCatalog() {
  static const FontCatalog catalog=[] { FontCatalog result; result.families_=snapshot().families; return result; }(); return catalog;
 }
 }

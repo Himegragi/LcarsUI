@@ -14,7 +14,7 @@
 using namespace lcars;
 using test::check;
 namespace {
-const Appearance* const builtins[] = {&web_appearance(), &material_appearance()};
+const Appearance* const builtins[] = {&webAppearance(), &materialAppearance()};
 const ThemeVariant variants[] = {ThemeVariant::light(), ThemeVariant::dark()};
 
 struct RoleProbe : detail::ComponentPaint {
@@ -55,24 +55,24 @@ struct Page {
     Ui ui;
     std::vector<ComponentHandle> handles;
     Page() {
-        auto text = ui.add_text_field({.id = "text", .label = u"Name"}).value.value();
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-        auto box = ui.add_checkbox({.id = "box", .label = u"Box"}).value.value();
-        auto radio = ui.add_radio_group({.id = "radio", .label = u"Mode"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
-        auto slider = ui.add_slider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
-        auto empty = ui.add_progress({.id = "progress_empty", .label = u"Loading"}).value.value();
-        auto valued = ui.add_progress({.id = "progress_value", .label = u"Copying"}).value.value();
-        valued.connect_source({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
-        auto button = ui.add_button({.id = "button", .label = u"Go"}).value.value();
-        auto nav = ui.add_navigation_list({.id = "nav"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
+        auto text = ui.addTextField({.id = "text", .label = u"Name"}).value.value();
+        auto dropdown = ui.addDropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
+        auto box = ui.addCheckbox({.id = "box", .label = u"Box"}).value.value();
+        auto radio = ui.addRadioGroup({.id = "radio", .label = u"Mode"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
+        auto slider = ui.addSlider({.id = "slider", .label = u"Volume"}, {0, 100, 5}).value.value();
+        auto empty = ui.addProgress({.id = "progress_empty", .label = u"Loading"}).value.value();
+        auto valued = ui.addProgress({.id = "progress_value", .label = u"Copying"}).value.value();
+        valued.connectSource({[] { return 40; }, [](std::function<void()>) { return [] {}; }});
+        auto button = ui.addButton({.id = "button", .label = u"Go"}).value.value();
+        auto nav = ui.addNavigationList({.id = "nav"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
         // #79 multi-line field: 8 lines in a 2-line box, so it paints its own scrollbar thumb.
-        auto note = ui.add_text_field({.id = "note", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
+        auto note = ui.addTextField({.id = "note", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visibleLines = 2}).value.value();
         // #80: aligned single-line fields (short text, so the alignment shift applies) and aligned multi-line ones
         // (8 lines in a 2-line box, with line and paragraph spacing, so a thumb is drawn and rows are taller).
-        auto text_center = ui.add_text_field({.id = "text_center", .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
-        auto text_right = ui.add_text_field({.id = "text_right", .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
-        auto note_center = ui.add_text_field({.id = "note_center", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
-        auto note_right = ui.add_text_field({.id = "note_right", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
+        auto text_center = ui.addTextField({.id = "text_center", .label = u"Name", .value = u"ab", .textAlign = TextAlign::center, .lineSpacing = 1.5}).value.value();
+        auto text_right = ui.addTextField({.id = "text_right", .label = u"Name", .value = u"ab", .textAlign = TextAlign::right, .lineSpacing = 2.0}).value.value();
+        auto note_center = ui.addTextField({.id = "note_center", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visibleLines = 2, .textAlign = TextAlign::center, .lineSpacing = 1.5, .paragraphSpacing = 8}).value.value();
+        auto note_right = ui.addTextField({.id = "note_right", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visibleLines = 2, .textAlign = TextAlign::right, .lineSpacing = 1.2, .paragraphSpacing = 4}).value.value();
         handles = {text, dropdown, box, radio, slider, empty, valued, button, nav, note, text_center, text_right, note_center, note_right};
     }
     Frame frame(const Appearance& appearance) {
@@ -95,7 +95,7 @@ void sweep(Check&& per_subject) {
         for (const auto& variant : variants) {
             Page page;
             auto settings = page.ui.presentation(); settings.variant = variant;
-            check(bool(page.ui.set_presentation(settings)), "dark/light accepted");
+            check(bool(page.ui.setPresentation(settings)), "dark/light accepted");
             auto frame = page.frame(*appearance);
             auto palette = appearance->palette(variant);
             for (const auto& subject : subjects) {
@@ -130,7 +130,7 @@ void disabled_controls_draw_the_light_border_instead_of_the_outline() {
         if (s.outlined) check(probe.has(p.border), (label + ": disabled edge is border").c_str());
         if (s.thumbs) check(probe.count(p.border) >= 1 + s.thumbs, (label + ": disabled box/underline and thumb are border").c_str());
         // A disabled edge is lighter than the enabled outline on the same surface.
-        if (s.outlined) check(contrast_ratio(p.border, p.surface) < contrast_ratio(p.outline, p.surface), (label + ": disabled lighter").c_str());
+        if (s.outlined) check(contrastRatio(p.border, p.surface) < contrastRatio(p.outline, p.surface), (label + ": disabled lighter").c_str());
     });
 }
 
@@ -139,7 +139,7 @@ void focus_and_error_edges_keep_their_colors() {
         if (s.id != "text" && s.id != "dropdown" && s.id != "note" && s.id.rfind("text_", 0) != 0 && s.id.rfind("note_", 0) != 0) return;
         auto focused = sem; focused.enabled = true; focused.focused = true; focused.invalid = false;
         auto on_focus = paint(page, a, item, focused);
-        check(on_focus.has(p.accent, detail::PaintRole::focus_indicator) && on_focus.count(p.outline) == s.thumbs, (label + ": focus edge is accent").c_str());
+        check(on_focus.has(p.accent, detail::PaintRole::focusIndicator) && on_focus.count(p.outline) == s.thumbs, (label + ": focus edge is accent").c_str());
         auto invalid = sem; invalid.enabled = true; invalid.focused = false; invalid.invalid = true;
         auto on_error = paint(page, a, item, invalid);
         check(on_error.has(p.error, detail::PaintRole::error_indicator) && on_error.count(p.outline) == s.thumbs, (label + ": error edge is error").c_str());
@@ -168,17 +168,17 @@ void aligned_fields_follow_the_focus_indicator_rule() {
             auto sem = state.describe(id);
             check(item != frame.items.end() && sem, "aligned field arranged");
             auto probe = [&](ComponentSnapshot s) { RoleProbe r(state, *item, s, *a, 1.f, true); detail::component_type(s.kind).paint(r); return r; };
-            auto focused = *sem; focused.enabled = true; focused.read_only = false; focused.focused = true; focused.invalid = false;
+            auto focused = *sem; focused.enabled = true; focused.readOnly = false; focused.focused = true; focused.invalid = false;
             auto editable = probe(focused);
-            check(editable.has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": editable focused field shows the focus edge without keyboard input").c_str());
-            auto read_only = focused; read_only.read_only = true;
-            auto quiet = probe(read_only);
-            check(!quiet.has(p.accent, detail::PaintRole::focus_indicator) && quiet.has(p.outline), (std::string(id) + ": read-only focused field hides it until keyboard input, edge stays outline").c_str());
+            check(editable.has(p.accent, detail::PaintRole::focusIndicator), (std::string(id) + ": editable focused field shows the focus edge without keyboard input").c_str());
+            auto readOnly = focused; readOnly.readOnly = true;
+            auto quiet = probe(readOnly);
+            check(!quiet.has(p.accent, detail::PaintRole::focusIndicator) && quiet.has(p.outline), (std::string(id) + ": read-only focused field hides it until keyboard input, edge stays outline").c_str());
             state.set_system_keyboard_cues(true);
-            check(probe(read_only).has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": read-only focused field shows it with keyboard cues").c_str());
+            check(probe(readOnly).has(p.accent, detail::PaintRole::focusIndicator), (std::string(id) + ": read-only focused field shows it with keyboard cues").c_str());
             state.set_system_keyboard_cues(false);
             auto unfocused = focused; unfocused.focused = false;
-            check(!probe(unfocused).has(p.accent, detail::PaintRole::focus_indicator), (std::string(id) + ": unfocused field has no focus edge").c_str());
+            check(!probe(unfocused).has(p.accent, detail::PaintRole::focusIndicator), (std::string(id) + ": unfocused field has no focus edge").c_str());
         }
     }
 }
@@ -199,7 +199,7 @@ void progress_track_follows_whether_a_value_is_shown() {
     for (const auto* a : builtins)
         for (const auto& variant : variants) {
             Page page;
-            auto settings = page.ui.presentation(); settings.variant = variant; page.ui.set_presentation(settings);
+            auto settings = page.ui.presentation(); settings.variant = variant; page.ui.setPresentation(settings);
             auto frame = page.frame(*a);
             auto p = a->palette(variant);
             for (const auto* id : {"progress_empty", "progress_value"}) {
@@ -218,18 +218,18 @@ void progress_track_follows_whether_a_value_is_shown() {
 void an_override_of_outline_reaches_the_painted_edges() {
     Page page;
     const Color custom{40, 40, 40};
-    check(bool(page.ui.set_palette_overrides({{"Minimal Web", ThemeVariant::light(), "outline", custom}})), "outline override accepted");
-    auto frame = page.frame(web_appearance());
-    auto palette = *page.ui.effective_palette(web_appearance(), ThemeVariant::light());
+    check(bool(page.ui.setPaletteOverrides({{"Minimal Web", ThemeVariant::light(), "outline", custom}})), "outline override accepted");
+    auto frame = page.frame(webAppearance());
+    auto palette = *page.ui.effectivePalette(webAppearance(), ThemeVariant::light());
     check(palette.outline == custom, "effective palette carries the override");
     for (const auto& subject : subjects) {
         if (!subject.outlined) continue;
         auto item = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& i) { return i.id == subject.id; });
         auto sem = detail::access(page.ui).describe(subject.id);
         check(item != frame.items.end() && sem, "subject arranged");
-        check(paint(page, web_appearance(), *item, *sem).has(custom), (subject.id + ": paints the overridden outline").c_str());
+        check(paint(page, webAppearance(), *item, *sem).has(custom), (subject.id + ": paints the overridden outline").c_str());
     }
-    check(!web_appearance().palette().outline.r || web_appearance().palette().outline != custom, "built-in value is untouched");
+    check(!webAppearance().palette().outline.r || webAppearance().palette().outline != custom, "built-in value is untouched");
 }
 }
 int main() {

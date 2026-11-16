@@ -16,8 +16,8 @@ class Material final : public Appearance {
     }
     int radius() const override { return 16; }
     // Filled surface carrying the label inside, underline indicator, supporting text below.
-    TextFieldLayout arrange_text_field(int width, const TextFieldHeights& text, float scale) const override { return arrange_text_field(width, text, scale, Density::standard); }
-    TextFieldLayout arrange_text_field(int width, const TextFieldHeights& text, float scale, Density density) const override {
+    TextFieldLayout arrangeTextField(int width, const TextFieldHeights& text, float scale) const override { return arrangeTextField(width, text, scale, Density::standard); }
+    TextFieldLayout arrangeTextField(int width, const TextFieldHeights& text, float scale, Density density) const override {
         bool compact = density == Density::compact;
         auto d = [&](int v) { return static_cast<int>(std::lround(v * scale)); };
         TextFieldLayout f;
@@ -33,12 +33,12 @@ class Material final : public Appearance {
         f.height = y;
         return f;
     }
-    int button_height(int line_height, float scale) const override { return line_height + static_cast<int>(std::lround(20 * scale)); }
-    int button_padding(float scale) const override { return static_cast<int>(std::lround(24 * scale)); }
-    int button_height(int line_height, float scale, Density density) const override { return line_height + static_cast<int>(std::lround((density == Density::compact ? 10 : 20) * scale)); }
-    int button_padding(float scale, Density density) const override { return static_cast<int>(std::lround((density == Density::compact ? 16 : 24) * scale)); }
+    int buttonHeight(int lineHeight, float scale) const override { return lineHeight + static_cast<int>(std::lround(20 * scale)); }
+    int buttonPadding(float scale) const override { return static_cast<int>(std::lround(24 * scale)); }
+    int buttonHeight(int lineHeight, float scale, Density density) const override { return lineHeight + static_cast<int>(std::lround((density == Density::compact ? 10 : 20) * scale)); }
+    int buttonPadding(float scale, Density density) const override { return static_cast<int>(std::lround((density == Density::compact ? 16 : 24) * scale)); }
 };
 }
-const Appearance& material_appearance() { static Material skin; return skin; }
-namespace { const bool registered = detail::register_builtin_appearance(material_appearance()); }
+const Appearance& materialAppearance() { static Material skin; return skin; }
+namespace { const bool registered = detail::registerBuiltinAppearance(materialAppearance()); }
 }
