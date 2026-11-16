@@ -3,10 +3,12 @@
 #include "lcars/layout.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
+#include "constant_source.hpp"
 #include <tuple>
 #include <type_traits>
 using namespace lcars;
 using test::check;
+using test::constantSource;
 
 namespace {
 static_assert(std::is_same_v<decltype(ComponentSnapshot::writingMode), std::optional<WritingMode>>);
@@ -24,9 +26,6 @@ Query<ComponentSnapshot> describe(const ComponentHandle& handle) {
         else return {Status::notFound, {}, {}};
     }, handle);
 }
-template <class T> Source<T> source(T value) {
-    return {[value] { return value; }, [](std::function<void()>) { return [] {}; }};
-}
 struct Subject { std::string id; ComponentHandle handle; };
 // One public, assembled inventory, including single/multi-line and rich text and attached labels.
 // Drivers change a state once, then run the same checks over every applicable component kind.
@@ -42,12 +41,12 @@ struct World {
         auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
         auto textConfig = config("text"); textConfig.readOnly = readOnly;
         auto text = keep(ui.addTextField(textConfig).value.value());
-        text.connectSource(source(std::u16string(u"Single")));
+        text.connectSource(constantSource(std::u16string(u"Single")));
         text.connectConfirmed([](const auto&) { return Result{}; });
         auto multiConfig = config("multi"); multiConfig.multiline = true; multiConfig.visibleLines = 2;
         multiConfig.rich = true; multiConfig.readOnly = readOnly;
         multi = keep(ui.addTextField(multiConfig).value.value());
-        multi.connectRichSource(source(RichText{u"a\nb\nc\nd\ne\nf", {{0, 1, true}}}));
+        multi.connectRichSource(constantSource(RichText{u"a\nb\nc\nd\ne\nf", {{0, 1, true}}}));
         multi.connectRichConfirmed([](const auto&) { return Result{}; });
         button = keep(ui.addButton(config("button")).value.value());
         button.bind([] { return Result{}; });
@@ -56,21 +55,21 @@ struct World {
         labelConfig.justifyMethod = JustifyMethod::spaces; labelConfig.lineSpacing = 1.5; labelConfig.paragraphSpacing = 4;
         keep(ui.addLabel(labelConfig).value.value());
         auto box = keep(ui.addCheckbox(config("checkbox")).value.value());
-        box.connectSource(source(true)); box.connectConfirmed([](const auto&) { return Result{}; });
+        box.connectSource(constantSource(true)); box.connectConfirmed([](const auto&) { return Result{}; });
         const std::vector<OptionItem> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Disabled", false}};
         auto radio = keep(ui.addRadioGroup(config("radio"), options).value.value());
-        radio.connectSource(source(std::optional{OptionValue{"a"}})); radio.connectConfirmed([](const auto&) { return Result{}; });
+        radio.connectSource(constantSource(std::optional{OptionValue{"a"}})); radio.connectConfirmed([](const auto&) { return Result{}; });
         auto sliderConfig = config("slider"); sliderConfig.readOnly = readOnly;
         auto slider = keep(ui.addSlider(sliderConfig, {-5, 15, 5}).value.value());
-        slider.connectSource(source(5)); slider.connectConfirmed([](const auto&) { return Result{}; });
+        slider.connectSource(constantSource(5)); slider.connectConfirmed([](const auto&) { return Result{}; });
         auto dropdown = keep(ui.addDropdown(config("dropdown"), options).value.value());
-        dropdown.connectSource(source(std::optional{OptionValue{"a"}})); dropdown.connectConfirmed([](const auto&) { return Result{}; });
+        dropdown.connectSource(constantSource(std::optional{OptionValue{"a"}})); dropdown.connectConfirmed([](const auto&) { return Result{}; });
         auto listConfig = config("list"); listConfig.readOnly = readOnly;
         auto list = keep(ui.addList(listConfig, options).value.value());
-        list.connectSource(source(std::optional{OptionValue{"a"}})); list.connectImmediate([](const auto&) { return Result{}; });
+        list.connectSource(constantSource(std::optional{OptionValue{"a"}})); list.connectImmediate([](const auto&) { return Result{}; });
         const std::vector<TabPage> pages = {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Disabled", false, {}}};
         keep(ui.addTabs(config("tabs"), pages).value.value());
-        auto progress = keep(ui.addProgress(config("progress")).value.value()); progress.connectSource(source(42));
+        auto progress = keep(ui.addProgress(config("progress")).value.value()); progress.connectSource(constantSource(42));
         keep(ui.addNavigationList(config("navigation"), pages, {"a"}).value.value());
         for (auto role : {LabelKind::name, LabelKind::description, LabelKind::error}) {
             auto label = config("text.label." + std::to_string(static_cast<int>(role)));
@@ -155,7 +154,7 @@ void contextMenuOpen() {
 void attachedErrorVisible() {
     Ui ui;
     auto box = ui.addCheckbox({.id = "box", .label = u"Check"}).value.value();
-    box.connectSource(source(false));
+    box.connectSource(constantSource(false));
     box.connectConfirmed([](const auto&) { return Result{Status::invalidValue, u"Error"}; });
     auto error = ui.addLabel({.id = "box.error", .target = "box", .labelKind = LabelKind::error}).value.value();
     check(bool(box.toggle()) && box.confirm().status == Status::invalidValue, "attached error: rejected confirmation creates an error");

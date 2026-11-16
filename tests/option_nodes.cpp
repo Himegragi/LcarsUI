@@ -4,8 +4,10 @@
 #include "check.hpp"
 #include "fake_measure.hpp"
 #include "option_properties.hpp"
+#include "constant_source.hpp"
 using namespace lcars;
 using test::check;
+using test::constantSource;
 
 namespace {
 using OptionHandle = std::variant<RadioGroupHandle, ListHandle, DropdownHandle, TabsHandle, NavigationListHandle>;
@@ -17,9 +19,6 @@ struct Subject {
     ComponentHandle component() const { return std::visit([](auto h) -> ComponentHandle { return h; }, handle); }
     ComponentSnapshot describe() const { return std::visit([](auto h) { return *h.describe(); }, handle); }
 };
-template <class T> Source<T> source(T value) {
-    return {[value] { return value; }, [](std::function<void()>) { return [] {}; }};
-}
 struct World {
     Ui ui;
     test::FakeMeasure measure;
@@ -31,13 +30,13 @@ struct World {
         const std::vector<TabPage> pages = {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", secondEnabled, {}}};
         auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
         auto radio = ui.addRadioGroup(config("radio"), items).value.value();
-        radio.connectSource(source(std::optional{OptionValue{"a"}}));
+        radio.connectSource(constantSource(std::optional{OptionValue{"a"}}));
         radio.connectConfirmed([](const auto&) { return Result{}; }); keep(radio);
         auto list = ui.addList(config("list"), items).value.value();
-        list.connectSource(source(std::optional{OptionValue{"a"}}));
+        list.connectSource(constantSource(std::optional{OptionValue{"a"}}));
         list.connectImmediate([](const auto&) { return Result{}; }); keep(list);
         auto dropdown = ui.addDropdown(config("dropdown"), items).value.value();
-        dropdown.connectSource(source(std::optional{OptionValue{"a"}}));
+        dropdown.connectSource(constantSource(std::optional{OptionValue{"a"}}));
         dropdown.connectConfirmed([](const auto&) { return Result{}; }); keep(dropdown);
         keep(ui.addTabs(config("tabs"), pages).value.value());
         keep(ui.addNavigationList(config("navigation"), pages, {"a"}).value.value());
