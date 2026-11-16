@@ -14,18 +14,8 @@ static_assert(std::is_same_v<decltype(ComponentSnapshot::vertical_digits), std::
 static_assert(std::is_same_v<decltype(ComponentSnapshot::range), std::optional<SliderRange>>);
 static_assert(std::is_same_v<decltype(ComponentSnapshot::scroll), std::optional<TextFieldScroll>>);
 
-// #102 can replace this predicate with CommonState equality without changing any state driver.
 bool same_common_fields(const ComponentSnapshot& a, const NodeSnapshot& b) {
-    auto fields = [](const auto& s) {
-        return std::tie(s.name, s.value, s.description, s.error, s.enabled, s.read_only, s.focusable,
-                        s.focused, s.invalid, s.executing, s.visible, s.expanded, s.checked,
-                        s.numeric_value, s.writing_mode, s.vertical_digits, s.scroll, s.text_align,
-                        s.justify_method, s.line_spacing, s.paragraph_spacing, s.rich);
-    };
-    const auto range = [](const auto& s) {
-        return s.range ? std::optional{std::tuple{s.range->minimum, s.range->maximum, s.range->step}} : std::nullopt;
-    };
-    return fields(a) == fields(b) && range(a) == range(b) && a.verbs == b.verbs;
+    return static_cast<const CommonState&>(a) == static_cast<const CommonState&>(b);
 }
 
 Query<ComponentSnapshot> describe(const ComponentHandle& handle) {

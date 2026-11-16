@@ -144,32 +144,39 @@ struct SliderRange { int minimum, maximum, step; bool operator==(const SliderRan
 // Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
 struct TextFieldScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextFieldScroll&) const = default; };
 struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; bool operator==(const OptionSnapshot&) const = default; };
-// Semantic snapshot from a handle or a host-side adapter.
-struct ComponentSnapshot {
-    std::string id;
-    ComponentKind kind = ComponentKind::label;
+// Owning common part of a component or semantic node snapshot; not a complete snapshot by itself.
+struct CommonState {
     std::u16string name, value, description, error;
-    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
+    // enabled is this component or node's own setting, including on items; parent restrictions affect verbs separately.
+    // focused means keyboard input goes here now; an open context menu takes it away from its component.
+    bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false;
     bool visible = false; // positive on-screen area in the latest arranged frame, and not hidden
-    bool multiline = false;     // text fields: created multi-line
     bool rich = false;          // text fields: created with ComponentConfig::rich
     std::optional<TextFieldScroll> scroll; // multi-line text fields: configured height and latest arranged display lines
     TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. The property as set, even while the user's "justified text as left" setting shows it left-aligned
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
-    std::vector<OptionSnapshot> items;  // every option of a radio group, dropdown or list, every page of tabs or a navigation list, in order
     std::optional<SliderRange> range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox
     bool expanded = false;
+    std::vector<Verb> verbs; // actions currently admitted for this component or node; hover is never listed
+    std::optional<WritingMode> writing_mode;  // labels only
+    std::optional<int> vertical_digits;       // labels only
+    bool operator==(const CommonState&) const = default;
+};
+// Semantic snapshot from a handle or a host-side adapter.
+struct ComponentSnapshot : CommonState {
+    std::string id;
+    ComponentKind kind = ComponentKind::label;
+    bool source_conflict = false;
+    bool multiline = false;     // text fields: created multi-line
+    std::vector<OptionSnapshot> items;  // every option of a radio group, dropdown or list, every page of tabs or a navigation list, in order
     std::optional<OptionValue> candidate;
     std::string target;
     LabelKind label_kind = LabelKind::plain;
     std::vector<std::string> labels;  // labels whose target is this component, in declaration order
-    std::vector<Verb> verbs; // component-level actions currently admitted; the same list as the semantic node
-    std::optional<WritingMode> writing_mode;  // labels only
-    std::optional<int> vertical_digits;       // labels only
     bool operator==(const ComponentSnapshot&) const = default;
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.

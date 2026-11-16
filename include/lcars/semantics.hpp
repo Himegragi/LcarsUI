@@ -36,30 +36,16 @@ public:
 private:
     std::function<void()> disconnect_;
 };
-struct NodeSnapshot {
+struct NodeSnapshot : CommonState {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
-    std::u16string name, value, description, error, accelerator_key, access_key;
-    bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
-    // enabled is this node's own setting, including on items; parent restrictions affect verbs separately.
-    // focused means keyboard input goes here now; an open context menu takes it away from its component.
-    bool hidden = false, visible = false, blocked_by_modal = false;
-    // visible means positive on-screen area in the latest arranged frame, and not hidden.
+    std::u16string accelerator_key, access_key;
+    bool selected = false;
+    bool hidden = false, blocked_by_modal = false;
     bool selection_required = false;
-    std::optional<bool> checked;
-    std::optional<SliderRange> range; std::optional<int> numeric_value;
     std::optional<Rect> bounds;
-    std::optional<WritingMode> writing_mode;  // labels only
-    std::optional<int> vertical_digits;       // labels only
     std::vector<NodeRef> labelled_by, described_by;
-    std::vector<Verb> verbs;
     std::optional<Selection> text_selection;
-    std::optional<TextFieldScroll> scroll;  // multi-line text fields
-    TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. As set: the user's "justified text as left" setting does not change it
-    JustifyMethod justify_method = JustifyMethod::automatic;
-    double line_spacing = 1.0;
-    int paragraph_spacing = 0;
-    bool rich = false;                 // text fields created with ComponentConfig::rich
     std::vector<StyleSpan> styles;     // rich text fields: the styled runs of value, in normal form
     std::optional<TextStyle> typing_style;  // rich text fields: the style the next typed text takes
     std::optional<WordSegmentation> word_segmentation, word_segmentation_in_use;  // text fields: as set, and what works now
