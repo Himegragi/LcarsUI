@@ -140,10 +140,10 @@ enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, 
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 // One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
 struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
-struct SliderRange { int minimum, maximum, step; };
+struct SliderRange { int minimum, maximum, step; bool operator==(const SliderRange&) const = default; };
 // Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
 struct TextFieldScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextFieldScroll&) const = default; };
-struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
+struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; bool operator==(const OptionSnapshot&) const = default; };
 // Semantic snapshot from a handle or a host-side adapter.
 struct ComponentSnapshot {
     std::string id;
@@ -170,6 +170,7 @@ struct ComponentSnapshot {
     std::vector<Verb> verbs; // component-level actions currently admitted; the same list as the semantic node
     std::optional<WritingMode> writing_mode;  // labels only
     std::optional<int> vertical_digits;       // labels only
+    bool operator==(const ComponentSnapshot&) const = default;
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
 // menu is the application/menu key (VK_APPS); Shift+F10 arrives as f10 with shift; alt is a lone Alt press.

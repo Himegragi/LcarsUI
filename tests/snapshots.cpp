@@ -246,11 +246,20 @@ void dropdown_open() {
         check(dropdown->describe()->expanded, "dropdown_open: expanded state reached");
     }
 }
+void component_equality() {
+    Ui ui;
+    const auto list = ui.add_list({.id = "list", .label = u"List"}, {{{"a"}, u"Alpha"}}).value.value();
+    const auto original = *list.describe();
+    auto changed = original;
+    check(original == changed, "component equality: a copied snapshot is equal");
+    changed.items.front().label = u"Changed";
+    check(!(original == changed), "component equality: items are part of the whole snapshot");
+}
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", read_only}, {"context_menu_open", context_menu_open},
                               {"attached_error_visible", attached_error_visible}, {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal},
                               {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen},
-                              {"errors", errors}, {"dropdown_open", dropdown_open}};
+                              {"errors", errors}, {"dropdown_open", dropdown_open}, {"component_equality", component_equality}};
     return test::run("snapshots", cases);
 }
