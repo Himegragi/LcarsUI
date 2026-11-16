@@ -337,6 +337,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 
 | Change | Idle-desktop runs |
 | --- | --- |
+| PR #108 retained frames after component removal | `-Only clipboard,ime,dpi`; real wheel, Shift-wheel, horizontal wheel and thumb/track drag while a text field, scrolling label or dropdown is removed before repaint. CTest `removals` covers pending/committed removal and ID reuse through public handles and frames; host drag routing also retains the source instance across repaint. |
 | #105 camelCase C++ names (0.4.0) | none beyond CTest: host, UIA adapter and layout edits are renames only, including semantic property-event keys; `public_names` rejects new snake_case declarations, the installed consumer rejects old names, and all `demo_render_compare` artifacts stay byte-identical |
 | #72 focus indicator | `-Only dpi` (R08 real-window focus); toggle the Windows keyboard-cues setting once to see `WM_SETTINGCHANGE` re-read it; right press on empty space and a lone Alt with real input |
 | #73 slider drag interface | `-Only perf` (the report-only `slider-drag-text-size` plus PM01-PM05), `-Only dpi` |

@@ -1057,16 +1057,18 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             // An open dialog blocks the page's scrollbars but not its own.
             const bool popupHit = hit && detail::componentType(hit->kind).opensPopup() && hit->popup;
             for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
+                if (detail::access(ui_).retiredComponent(it->component)) continue;
                 if (frame_.modal && !popupHit && !it->modalContent) continue;
                 if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
-                if (hit && hit->dropdownPanel && it->state != &detail::access(ui_).dropdownScroll(hit->id)) continue;
+                if (hit && hit->dropdownPanel && it->component != hit->component) continue;
                 // Track click centers the thumb on the pointer; dragging then moves its top.
                 // A sideways-scrolling label has a horizontal bar: its thumb is dragged by x.
                 int along = it->horizontal ? x : y;
                 dragOffset_ = it->thumb.contains(x, y) ? (it->horizontal ? it->thumb.x : it->thumb.y)
                                                         : along - (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
                 dragScroll_ = it->state;
-                frame_.scrollTo(ui_, *dragScroll_, it->offsetForThumb(dragOffset_));
+                dragComponent_ = it->component;
+                frame_.scrollTo(ui_, *it, it->offsetForThumb(dragOffset_));
                 drag_ = Drag::thumb; dragOrigin_ = along;
                 if (!touch) detail::access(ui_).hoverCapture({});  // the thumb is not a component: keep what is hovered
                 SetCapture(window_);
@@ -1123,8 +1125,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
             auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
-                [this](const ScrollRegion& item) { return item.state == dragScroll_; });
-            if (region != frame_.regions.end()) frame_.scrollTo(ui_, *dragScroll_, region->offsetForThumb(dragOffset_ + ((region->horizontal ? x : y) - dragOrigin_)));
+                [this](const ScrollRegion& item) { return item.state == dragScroll_ && item.component == dragComponent_; });
+            if (region != frame_.regions.end()) frame_.scrollTo(ui_, *region, region->offsetForThumb(dragOffset_ + ((region->horizontal ? x : y) - dragOrigin_)));
             followComposition();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -1151,7 +1153,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             detail::access(ui_).pointerUp(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.optionAt(*hit, x, y) : std::nullopt);
         }
         if (drag_ == Drag::text) detail::access(ui_).endTextDrag();
-        drag_ = Drag::none; dragScroll_ = nullptr;
+        drag_ = Drag::none; dragScroll_ = nullptr; dragComponent_ = {};
         KillTimer(window_, dragScrollTimer);
         if (GetCapture() == window_) ReleaseCapture();
         detail::access(ui_).hoverRelease();

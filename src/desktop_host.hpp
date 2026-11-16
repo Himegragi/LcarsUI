@@ -158,6 +158,7 @@ private:
     enum class Drag { none, text, thumb, slider } drag_ = Drag::none;
     int dragOrigin_ = 0, dragOffset_ = 0;
     ScrollState* dragScroll_ = nullptr;
+    ComponentHandle dragComponent_;
     char16_t pendingHigh_ = 0;
     bool swallowLeft_ = false, swallowRight_ = false;  // a press that only closed a menu: its release is dropped too
     bool menuSysSwallow_ = false, dropSpaceChar_ = false;

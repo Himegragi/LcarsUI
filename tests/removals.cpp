@@ -266,6 +266,113 @@ void dialogReferencesCannotBeRemoved() {
         check(bool(dialog.value->open()) && remove(member).status == Status::invalidValue, "Open dialog membership is protected too");
     }
 }
+void retainedFramesRejectRemovedScrollRegions() {
+    enum class View { textField, verticalLabel, dropdown, list, scrollingLabel, contextMenu };
+    enum class Removal { pending, committed, reusedId };
+    for (auto view : {View::textField, View::verticalLabel, View::dropdown, View::list, View::scrollingLabel, View::contextMenu}) {
+        for (auto removal : {Removal::pending, Removal::committed, Removal::reusedId}) {
+            Ui ui;
+            test::FakeMeasure measure;
+            ScrollState pageScroll, componentScroll;
+            auto create = [&]() -> ComponentHandle {
+                if (view == View::textField)
+                    return *ui.addTextField({.id = "scrolling", .value = u"one\ntwo\nthree\nfour\nfive\nsix", .multiline = true, .visibleLines = 2});
+                if (view == View::verticalLabel)
+                    return *ui.addLabel({.id = "scrolling", .value = std::u16string(100, u'\u4e00'), .writingMode = WritingMode::vertical});
+                if (view == View::scrollingLabel)
+                    return *ui.addLabel({.id = "scrolling", .value = std::u16string(500, u'x')});
+                if (view == View::contextMenu) {
+                    auto button = *ui.addButton({.id = "scrolling", .label = u"Menu target"});
+                    std::vector<MenuItem> items;
+                    for (int i = 0; i < 30; ++i) items.push_back({.id = "app.item" + std::to_string(i), .label = u"Command"});
+                    check(bool(ui.addContextMenu(button, items, MenuMode::replace)) &&
+                          bool(ui.openContextMenu(button, MenuPosition{0, 0})), "The scrolling context menu opens");
+                    return button;
+                }
+                std::vector<OptionItem> items;
+                for (int i = 0; i < 30; ++i) items.push_back({{std::to_string(i)}, u"Option"});
+                if (view == View::list) return *ui.addList({.id = "scrolling"}, items);
+                auto dropdown = *ui.addDropdown({.id = "scrolling", .label = u"Dropdown"}, items);
+                dropdown.connectSource({[] { return std::optional<OptionValue>{{"0"}}; }, [](std::function<void()>) { return [] {}; }});
+                dropdown.connectConfirmed([](const auto&) { return Result{}; });
+                check(bool(dropdown.open()), "The scrolling dropdown opens");
+                return dropdown;
+            };
+            auto handle = create();
+            auto filler = *ui.addLabel({.id = "filler", .value = std::u16string(1000, u'x')});
+            auto root = [&](const ComponentHandle& h) {
+                auto content = layout::component(h);
+                if (view == View::verticalLabel) content = layout::verticalText(std::get<LabelHandle>(h), 100);
+                if (view == View::scrollingLabel) content = layout::scrollText(std::get<LabelHandle>(h), componentScroll, 100);
+                if (view == View::list) content = layout::scroll(std::move(content), componentScroll, 100);
+                return layout::scroll(layout::column({std::move(content), layout::component(filler)}));
+            };
+            auto frame = arrange(root(handle), ui, webAppearance(), measure, 160, 220, 1, pageScroll);
+            auto inner = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const auto& r) { return r.state != &pageScroll; });
+            const bool menu = view == View::contextMenu;
+            check(menu ? frame.menuPanel() && frame.menuPanel()->menuMaximum > 0 : inner != frame.regions.end() && inner->maximum > 0,
+                  "The component has an overflowing viewport");
+            const Rect clip = menu ? frame.menuPanel()->bounds : inner->clip;
+            const int x = clip.x + 1, y = clip.y + 1;
+            check(frame.wheel(ui, x, y, -24), "The live region handles wheel input");
+            auto rejectInput = [&] {
+                std::optional<Frame> replacementFrame;
+                ComponentHandle replacement;
+                if (removal == Removal::reusedId) {
+                    replacement = create();
+                    replacementFrame = arrange(root(replacement), ui, webAppearance(), measure, 160, 220, 1, pageScroll);
+                }
+                const auto before = ui.semantics().get({"scrolling"});
+                const int beforeComponent = componentScroll.offset;
+                std::vector<int> replacementOffsets;
+                if (replacementFrame) for (const auto& r : replacementFrame->regions) replacementOffsets.push_back(r.state->offset);
+                check(!frame.wheel(ui, x, y, -24), "A retired viewport does not handle wheel input, even after id reuse");
+                check(!frame.hwheel(ui, x, y, -24), "A retired viewport does not handle horizontal wheel input");
+                check(!frame.wheel(ui, x, y, -24, true), "A retired viewport does not handle Shift-wheel input");
+                if (!menu) {
+                    check(!frame.scrollTo(ui, *inner, inner->offsetForThumb(inner->horizontal ? inner->track.x : inner->track.y)),
+                          "A retained thumb drag never accesses retired scroll state");
+                    check(!frame.scrollTo(ui, *inner, inner->maximum), "A retained track click never accesses retired scroll state");
+                }
+                if (view == View::textField) {
+                    const int selectX = clip.x + 12, selectY = clip.y + clip.h + 1;
+                    check(!frame.selectTo(ui, std::get<TextFieldHandle>(handle), selectX, selectY), "Retired selection and autoscroll are ignored");
+                    if (replacementFrame) {
+                        check(!frame.find(std::get<TextFieldHandle>(replacement)), "An old frame cannot find a replacement's placement");
+                        check(!frame.selectTo(ui, std::get<TextFieldHandle>(replacement), selectX, selectY), "Old geometry cannot select in a replacement");
+                    }
+                }
+                check(pageScroll.offset == 0 && componentScroll.offset == beforeComponent, "Retired viewport input leaves other scrolling unchanged");
+                const auto after = ui.semantics().get({"scrolling"});
+                check(before.status == after.status && (!before || *before == *after), "Retired viewport input never changes a replacement");
+                if (replacementFrame) {
+                    std::size_t i = 0;
+                    for (const auto& r : replacementFrame->regions)
+                        check(r.state->offset == replacementOffsets[i++], "The replacement viewport never scrolls through the old frame");
+                    if (menu) {
+                        auto afterFrame = arrange(root(replacement), ui, webAppearance(), measure, 160, 220, 1, pageScroll);
+                        check(afterFrame.menuPanel()->menuRows.front().bounds == replacementFrame->menuPanel()->menuRows.front().bounds,
+                              "The replacement context menu never scrolls through the old frame");
+                    }
+                }
+            };
+            if (removal == Removal::pending) {
+                auto trigger = *ui.addButton({.id = "trigger", .label = u"Remove"});
+                std::exception_ptr failure;
+                trigger.bind([&] {
+                    try { check(bool(remove(handle)), "Removal is accepted inside a callback"); rejectInput(); }
+                    catch (...) { failure = std::current_exception(); }
+                    return Result{};
+                });
+                check(bool(trigger.invoke()), "Pending removal input returns safely");
+                if (failure) std::rethrow_exception(failure);
+            } else {
+                check(bool(remove(handle)), "Removal commits before input reaches the retained frame");
+                rejectInput();
+            }
+        }
+    }
+}
 }
 int main() {
     const test::Case cases[] = {
@@ -274,6 +381,7 @@ int main() {
         {"#104 composing field removal", removalDiscardsCompositionAndSkipsBlur},
         {"#104 name label and orphan removal", nameLabelsFallBackAndOrphansReassociate},
         {"#104 dialog removal protection", dialogReferencesCannotBeRemoved},
+        {"#104 retained frame removal", retainedFramesRejectRemovedScrollRegions},
     };
     return test::run("removals", cases);
 }

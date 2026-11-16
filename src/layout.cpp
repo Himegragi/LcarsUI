@@ -212,38 +212,44 @@ const Placement* detail::findPlacement(const Frame& frame, std::string_view id) 
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const Placement& p) { return p.id == id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
+namespace {
+const Placement* findInstance(const Frame& frame, const ComponentHandle& handle, std::string_view id) {
+    const auto* placement = detail::findPlacement(frame, id);
+    return placement && placement->component == handle ? placement : nullptr;
+}
+}
 const Placement* Frame::find(const TextFieldHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ButtonHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const LabelHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const CheckboxHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const RadioGroupHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const SliderHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ProgressHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const DropdownHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const TabsHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const NavigationListHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ListHandle& handle) const {
-    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? detail::findPlacement(*this, handle.id_) : nullptr;
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 std::optional<std::size_t> Frame::optionAt(const Placement& item, int x, int y) const {
     if (!item.clip.contains(x, y)) return std::nullopt;
@@ -326,19 +332,29 @@ int ScrollRegion::offsetForThumb(int thumbPosition) const {
     return std::clamp(static_cast<int>(std::lround(double(thumbPosition - track.y) * maximum / travel)), 0, maximum);
 }
 bool Frame::scrollTo(Ui& ui, ScrollState& state, int offset) const {
-    auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
-    bool popupScroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) { return p.dropdownPanel && &owner.dropdownScroll(p.id) == &state; });
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
-    if (region == regions.end()) return false;
+    return region != regions.end() && scrollTo(ui, *region, offset);
+}
+bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int offset) const {
+    auto& owner = detail::access(ui);
+    if (ownerState != &owner || !region.state || owner.retiredComponent(region.component)) return false;
+    if (std::none_of(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return &r == &region; })) return false;
+    const bool popupScroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) {
+        return p.dropdownPanel && p.component == region.component;
+    });
+    if (popupScroll) {
+        auto id = owner.layoutId(region.component);
+        if (!id || !owner.popupOpen(*id)) return false;
+    }
     // An open dialog blocks the page behind it, but scrolls its own content.
-    if ((modal || owner.modal()) && !popupScroll && !region->modalContent) return false;
-    int next = std::clamp(offset, 0, region->maximum);
+    if ((modal || owner.modal()) && !popupScroll && !region.modalContent) return false;
+    auto& state = *region.state;
+    int next = std::clamp(offset, 0, region.maximum);
     if (next == state.offset) return false;
-    if (!region->textField.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
-        int step = std::max(1, region->step), lines = (next + step / 2) / step, current = state.offset / step;
+    if (!region.textField.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
+        int step = std::max(1, region.step), lines = (next + step / 2) / step, current = state.offset / step;
         if (lines == current) lines += next > state.offset ? 1 : -1;
-        if (!owner.scrollLinesTo(region->textField, static_cast<unsigned>(std::clamp(lines, 0, region->maximum / step)))) return false;
+        if (!owner.scrollLinesTo(region.textField, static_cast<unsigned>(std::clamp(lines, 0, region.maximum / step)))) return false;
         owner.scrolled();
         return true;
     }
@@ -352,6 +368,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
     if (ownerState != &owner) return false;
     // An open context menu owns the wheel: it scrolls itself and never the page behind it.
     if (const auto* menu = menuPanel()) {
+        if (owner.retiredComponent(menu->component)) return false;
         auto* state = owner.menuScroll();
         if (!state || !menu->bounds.contains(x, y)) return false;
         int next = std::clamp(state->offset - delta, 0, menu->menuMaximum);
@@ -363,6 +380,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
     // A popup owns its own wheel input; it must not scroll the background beneath it.
     for (auto it = overlays.rbegin(); it != overlays.rend() && !sidewaysOnly; ++it) {
         if (!it->dropdownPanel || it->tooltip || !it->bounds.contains(x, y) || !it->clip.contains(x, y)) continue;
+        if (owner.retiredComponent(it->component)) return false;
         const auto& type = detail::componentType(it->kind);
         if (type.opensPopup()) {
             auto current = detail::access(ui).describe(it->id);
@@ -375,7 +393,8 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
     const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->clip.contains(x, y) || (blocked && !it->modalContent) || (sidewaysOnly && !it->horizontal)) continue;
-        if (scrollTo(ui, *it->state, it->state->offset - delta)) return true;
+        if (owner.retiredComponent(it->component)) return false;
+        if (it->state && scrollTo(ui, *it, it->state->offset - delta)) return true;
     }
     return false;
 }
@@ -386,13 +405,14 @@ bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
     const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->horizontal || !it->clip.contains(x, y) || (blocked && !it->modalContent)) continue;
-        if (scrollTo(ui, *it->state, it->state->offset - delta)) return true;
+        if (owner.retiredComponent(it->component)) return false;
+        if (it->state && scrollTo(ui, *it, it->state->offset - delta)) return true;
     }
     return false;
 }
 bool Frame::selectTo(Ui& ui, const TextFieldHandle& handle, int x, int y) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
+    if (ownerState != &owner || owner.retiredComponent(handle)) return false;
     const auto* p = find(handle);
     auto* session = p ? owner.edit(p->id) : nullptr;
     if (!p || !session) return false;
@@ -472,6 +492,7 @@ struct Arranger {
         if (!control) throw std::invalid_argument("Layout names an unknown control");
         Placement p;
         p.id = control->id; p.kind = control->kind;
+        p.component = node.component;
         p.textSize = pixels(node.textSize);
         detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
         context.verticalHeight = d(node.verticalHeight);
@@ -513,6 +534,7 @@ struct Arranger {
                 p.clip = p.bounds; p.clipped = true;
                 if (!measuring && p.columnLayout.maximum > 0) {
                     ScrollRegion region; region.state = &ui.verticalScroll(p.id); region.horizontal = true;
+                    region.component = p.component;
                     region.viewport = region.clip = p.bounds;
                     region.extent = p.columnLayout.extent; region.maximum = p.columnLayout.maximum; region.offset = p.columnLayout.offset;
                     region.track = p.columnLayout.track; region.thumb = p.columnLayout.thumb;
@@ -627,6 +649,7 @@ struct Arranger {
         const auto& v = p.view;
         ScrollRegion region;
         region.state = &ui.lineScroll(p.id);
+        region.component = p.component;
         region.textField = p.id; region.step = v.rowHeight; region.modalContent = inModal;
         region.viewport = region.clip = {v.text.x, v.text.y, v.track.x + v.track.w - v.text.x, v.text.h};
         region.track = v.track; region.thumb = v.thumb;
@@ -652,6 +675,7 @@ struct Arranger {
         ScrollRegion region; region.state = &state; region.viewport = region.clip = r;
         region.extent = content;
         region.maximum = std::max(0, content - r.h);
+        if (child.kind == Node::Kind::component && placed.size() == 1) region.component = placed.front().component;
         if (node.scrollableText && placed.size() == 1) {  // one Up/Down step is one row, line spacing included
             const auto* label = ui.find(placed.front().id);
             ui.setScrollableText(placed.front().id, state, region.maximum,
@@ -775,6 +799,7 @@ void placeMenu(Frame& frame, detail::UiState& state, const Appearance& appearanc
     else y = std::clamp(below, 0, std::max(0, height - h));
     Placement popup;
     popup.id = menuNodeId(view->target); popup.kind = target ? target->kind : ComponentKind::label;
+    popup.component = state.layoutHandle(view->target);
     popup.menu = popup.popup = true;
     popup.textSize = pixels; popup.menuPad = padX;
     popup.bounds = {x, y, w, h}; popup.clip = {0, 0, width, height}; popup.clipped = true;
@@ -847,6 +872,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
             continue;
         }
         Placement popup; popup.id = source.id; popup.kind = source.kind; popup.popup = true; popup.dropdownPanel = true;
+        popup.component = source.component;
         popup.textSize = source.textSize; popup.clip = window;
         int row = std::max(static_cast<int>(std::lround(24 * scale)), measure.lineHeight(popup.textSize) + static_cast<int>(std::lround(appearance.componentPresentation(ui.presentation().density).gap * scale)));
         int h = std::min(height, row * std::max(1, std::min(10, static_cast<int>(s->items.size()))));
@@ -884,6 +910,7 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
         }
         if (maximum) {
             ScrollRegion region; region.state=&state; region.viewport=region.clip=popup.bounds;
+            region.component = source.component;
             region.track={x+w-bar,y,bar,h}; region.extent=extent; region.maximum=maximum; region.offset=state.offset;
             int thumb=std::min(h,std::max(static_cast<int>(std::lround(24*scale)),h*h/extent));
             region.thumb={region.track.x,y+(h-thumb)*state.offset/maximum,bar,thumb};

@@ -207,6 +207,7 @@ struct Placement {
     // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line text field a caret scrolled
     // out of view is held on the nearest visible row, which is where an input method anchors its window.
     Rect caretRect(unsigned offset) const;
+    ComponentHandle component; // source instance; also retained by dropdown and context-menu overlays
 };
 struct ScrollRegion {
     ScrollState* state = nullptr;
@@ -220,6 +221,7 @@ struct ScrollRegion {
     bool horizontal = false;
     // The offset for a dragged thumb: its top (vertical regions) or its left edge (horizontal regions).
     int offsetForThumb(int thumbPosition) const;
+    ComponentHandle component; // empty for application-owned page/container scrolling
 };
 struct Frame {
     std::vector<Placement> items;
@@ -247,6 +249,8 @@ struct Frame {
     std::optional<std::string> menuItemAt(int x, int y) const;  // id of the row under the point (separators included)
     // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
     bool scrollTo(Ui& ui, ScrollState& state, int offset) const;
+    // Use a region from this frame without dereferencing its possibly retired component's state.
+    bool scrollTo(Ui& ui, const ScrollRegion& region, int offset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
     // With sidewaysOnly (Shift held), only sideways-scrolling labels take the step; a vertical wheel step down
     // on a vertical-writing label moves toward the end of the text.
