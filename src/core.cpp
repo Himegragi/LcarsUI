@@ -2173,10 +2173,21 @@ std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) 
         if (!s.description.empty()) s.description += u"\n";
         s.description += tip->second.text;
     }
-    if (!s.focusable || renderer_failed_) return s;
-    s.operations.push_back(Operation::focus);
-    component_type(control->kind).describe_operations(*this, *control, s);
+    s.verbs = snapshot_verbs(*control, s);
     return s;
+}
+std::vector<Verb> detail::UiState::snapshot_verbs(const Component& control, const ComponentSnapshot& s, bool item) const {
+    std::vector<Verb> verbs;
+    if (!s.enabled || available(control.id, true).status == Status::hidden || (modal_ && control.page != "dialog")) return verbs;
+    const auto& type = component_type(control.kind);
+    std::vector<Admission> admissions;
+    if (s.focusable && !renderer_failed_) {
+        admissions.push_back(Admission::focus);
+        type.describe_admissions(*this, control, s, admissions);
+    }
+    type.verbs({*this, control, s, admissions, item}, verbs);
+    if (!item && type.confirm_pending(*this, control) && !s.read_only) verbs.push_back(Verb::confirm);
+    return verbs;
 }
 std::u16string detail::UiState::text(std::string_view id) const {
     const auto* control = find(id);
@@ -3444,6 +3455,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.range; n.numeric_value = s.numeric_value;
     n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; n.scroll = s.scroll; n.rich = s.rich;
+    n.verbs = s.verbs;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
@@ -3461,11 +3473,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
-    }
-    if (n.enabled && !n.hidden && !n.blocked_by_modal) {
-        const auto& type = detail::component_type(c->kind);
-        type.verbs({u, *c, s, n, ref.item.has_value()}, n.verbs);
-        if (!ref.item && type.confirm_pending(u, *c) && !n.read_only) n.verbs.push_back(Verb::confirm);
+        n.verbs = it->enabled ? u.snapshot_verbs(*c, s, true) : std::vector<Verb>{};
     }
     return {Status::ok, {}, n};
 }

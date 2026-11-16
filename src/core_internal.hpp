@@ -189,6 +189,7 @@ public:
     std::map<Id, Id, std::less<>> tooltip_ids_;
     std::vector<std::string> diagnostics_;
     std::optional<ComponentSnapshot> describe(std::string_view id) const;
+    std::vector<Verb> snapshot_verbs(const Component&, const ComponentSnapshot&, bool item = false) const;
     void semantic_frame(const Frame& frame);
     std::string semantic_page(std::string_view id) const;
     bool confirmation_group_contains(std::string_view button, std::string_view field) const {

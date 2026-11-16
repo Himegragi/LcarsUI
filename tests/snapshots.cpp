@@ -25,7 +25,7 @@ bool same_common_fields(const ComponentSnapshot& a, const NodeSnapshot& b) {
     const auto range = [](const auto& s) {
         return s.range ? std::optional{std::tuple{s.range->minimum, s.range->maximum, s.range->step}} : std::nullopt;
     };
-    return fields(a) == fields(b) && range(a) == range(b);
+    return fields(a) == fields(b) && range(a) == range(b) && a.verbs == b.verbs;
 }
 
 void normal() {

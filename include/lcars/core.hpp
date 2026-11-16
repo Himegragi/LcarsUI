@@ -127,8 +127,16 @@ struct NamedColor {
     Color light, dark;
     bool operator==(const NamedColor&) const = default;
 };
-// Public operations a component currently admits; restricted ones are omitted, not just flagged.
-enum class Operation { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
+// set_text_align takes a TextAlign, set_justify_method a JustifyMethod, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
+// set_writing_mode takes a WritingMode and set_vertical_digits an int (0-3); labels only.
+// context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
+// MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
+// hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
+// typed Ui::simulate_hover would be, and is never listed in NodeSnapshot::verbs (hover is not an operation of the node).
+// select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
+// set_word_segmentation takes a WordSegmentation. All are text fields only.
+enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
+                  set_word_segmentation, select_word, select_paragraph, double_click, triple_click, set_justify_method };
 struct OptionValue { std::string id; bool operator==(const OptionValue&) const = default; };
 // One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
 struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
@@ -159,7 +167,7 @@ struct ComponentSnapshot {
     std::string target;
     LabelKind label_kind = LabelKind::plain;
     std::vector<std::string> labels;  // labels whose target is this component, in declaration order
-    std::vector<Operation> operations;
+    std::vector<Verb> verbs; // component-level actions currently admitted; the same list as the semantic node
     std::optional<WritingMode> writing_mode;  // labels only
     std::optional<int> vertical_digits;       // labels only
 };

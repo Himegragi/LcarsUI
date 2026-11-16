@@ -1917,7 +1917,7 @@ void x04_executing_inventory_at_each_size_and_scale() {
                 PaintTextProbe paint(detail::access(form.ui), *item, *semantic, *appearance, scale, true);
                 detail::component_type(item->kind).paint(paint);
                 observed = semantic->visible && semantic->executing &&
-                    std::find(semantic->operations.begin(), semantic->operations.end(), Operation::activate) == semantic->operations.end() &&
+                    std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::invoke) == semantic->verbs.end() &&
                     button->invoke().status == Status::busy && paint.drawn.find(semantic->name) != std::u16string::npos &&
                     paint.drawn.find(appearance->component_presentation().executing_suffix) != std::u16string::npos;
                 return Result{};
@@ -2922,7 +2922,7 @@ void both_appearances_give_same_results() {
     for (std::size_t i = 0; i < runs[0].size(); ++i) {
         const auto &a = runs[0][i], &b = runs[1][i];
         check(a.id == b.id && a.value == b.value && a.error == b.error && a.focused == b.focused && a.enabled == b.enabled &&
-              a.read_only == b.read_only && a.labels == b.labels && a.operations == b.operations,
+              a.read_only == b.read_only && a.labels == b.labels && a.verbs == b.verbs,
               "Draft, result, errors, focus and history agree across appearances");
     }
 }
