@@ -122,8 +122,8 @@ try {
         $header = if ($component -eq 'Desktop') { 'desktop.hpp' } elseif ($component -eq 'Diagnostics') { 'diagnostics.hpp' } elseif ($component -like 'Appearance*') { 'appearance.hpp' } else { 'core.hpp' }
         $call = switch ($component) {
             'Core' { 'lcars::Ui ui;' }
-            'AppearanceWeb' { '(void)lcars::web_appearance();' }
-            'AppearanceMaterial' { '(void)lcars::material_appearance();' }
+            'AppearanceWeb' { '(void)lcars::webAppearance();' }
+            'AppearanceMaterial' { '(void)lcars::materialAppearance();' }
             'Desktop' { '(void)lcars::thirdPartyNotices();' }
             'Diagnostics' { 'lcars::Diagnostics diagnostics; (void)diagnostics.recent();' }
             default { '' }
