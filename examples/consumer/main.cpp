@@ -5,8 +5,8 @@
 #include "lcars/version.hpp"
 #include "handle_kinds.hpp"
 static_assert(lcars::framework_version == LCARS_PACKAGE_VERSION);
-static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 3 && LCARS_VERSION_PATCH == 0);
-static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 3 && lcars::framework_version_patch == 0);
+static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 4 && LCARS_VERSION_PATCH == 0);
+static_assert(lcars::framework_version_major == 0 && lcars::framework_version_minor == 4 && lcars::framework_version_patch == 0);
 static_assert(!std::is_constructible_v<lcars::SemanticTree, lcars::detail::UiState&>);
 #include <concepts>
 #include <cstdio>
@@ -139,6 +139,27 @@ static_assert(std::same_as<decltype(std::declval<lcars::Ui&>().context_menu()), 
 static_assert(std::same_as<decltype(std::declval<lcars::ContextMenuHandle&>().items()), lcars::Query<std::vector<lcars::MenuItemSnapshot>>>);
 static_assert(std::same_as<decltype(std::declval<lcars::SemanticTree&>().get(lcars::NodeRef{})), lcars::Query<lcars::NodeSnapshot>>);
 static_assert(std::same_as<decltype(std::declval<lcars::TextFieldHandle&>().describe()), lcars::Query<lcars::ComponentSnapshot>>);
+// #101 keeps two snapshots, with one public action vocabulary and matching field shapes.
+static_assert(!std::same_as<lcars::ComponentSnapshot, lcars::NodeSnapshot>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::verbs), std::vector<lcars::Verb>>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::verbs), decltype(lcars::NodeSnapshot::verbs)>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::range), std::optional<lcars::SliderRange>>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::scroll), std::optional<lcars::TextFieldScroll>>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::writing_mode), std::optional<lcars::WritingMode>>);
+static_assert(std::same_as<decltype(lcars::ComponentSnapshot::vertical_digits), std::optional<int>>);
+template <class T> concept HasOperations = requires(T s) { s.operations; };
+template <class T> concept HasSliderRange = requires(T s) { s.slider_range; };
+template <class T> concept HasOldScroll = requires(T s) { s.visible_lines; } || requires(T s) { s.scroll_line; } || requires(T s) { s.line_count; };
+template <class T> concept HasBounds = requires(T s) { s.bounds; };
+template <class T> concept HasInstance = requires(T s) { s.instance; };
+template <class T> concept HasLabels = requires(T s) { s.labels; };
+template <class T> concept HasLabelledBy = requires(T s) { s.labelled_by; };
+static_assert(!HasOperations<lcars::ComponentSnapshot> && !HasSliderRange<lcars::ComponentSnapshot> && !HasOldScroll<lcars::ComponentSnapshot>);
+static_assert(!HasBounds<lcars::ComponentSnapshot> && !HasInstance<lcars::ComponentSnapshot> && !HasLabelledBy<lcars::ComponentSnapshot>);
+static_assert(HasLabels<lcars::ComponentSnapshot> && !HasLabels<lcars::NodeSnapshot> && HasLabelledBy<lcars::NodeSnapshot>);
+namespace removed_in_0_4 { struct Name {}; }
+using Operation = removed_in_0_4::Name;
+namespace lcars::consumer_probe { static_assert(std::same_as<Operation, ::removed_in_0_4::Name>); }
 // A layout node's kind is a Node::Kind, and the node that places one component is made by layout::component.
 static_assert(std::same_as<decltype(lcars::layout::Node::kind), lcars::layout::Node::Kind>);
 static_assert(std::same_as<decltype(lcars::layout::component(lcars::ComponentHandle{})), lcars::layout::Node>);

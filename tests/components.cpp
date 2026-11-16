@@ -389,7 +389,7 @@ void over_limit_edit_is_rejected_whole() {
     check(refused, "Initial text must respect the field limit");
 }
 
-bool has(const std::vector<Operation>& actions, Operation operation) {
+bool has(const std::vector<Verb>& actions, Verb operation) {
     return std::find(actions.begin(), actions.end(), operation) != actions.end();
 }
 
@@ -406,16 +406,19 @@ void owner_hears_focus_moves_and_semantics_list_actions() {
     detail::access(ui).key_down(press(Key::tab));
     check((moves == std::vector<std::pair<Id, Id>>{{"", "name"}, {"name", "apply"}}), "Owner hears each focus move once");
     check(detail::access(ui).describe("name")->error == u"必填", "Owner can validate on blur");
-    auto field = detail::access(ui).describe("name")->operations;
-    check(has(field, Operation::focus) && has(field, Operation::edit) && has(field, Operation::paste) && has(field, Operation::undo) &&
-          !has(field, Operation::redo) && !has(field, Operation::activate), "Editable field lists what it can do now");
+    auto field = detail::access(ui).describe("name")->verbs;
+    check(has(field, Verb::focus) && has(field, Verb::set_value) && has(field, Verb::paste) && has(field, Verb::undo) &&
+          !has(field, Verb::redo) && !has(field, Verb::invoke), "Editable field lists what it can do now");
     detail::access(ui).set_read_only("name", true);
-    field = detail::access(ui).describe("name")->operations;
-    check(has(field, Operation::select) && has(field, Operation::copy) && !has(field, Operation::edit) && !has(field, Operation::undo),
+    field = detail::access(ui).describe("name")->verbs;
+    check(has(field, Verb::select) && has(field, Verb::copy) && !has(field, Verb::set_value) && !has(field, Verb::undo),
           "Read-only field lists only viewing actions");
-    check((detail::access(ui).describe("apply")->operations == std::vector<Operation>{Operation::focus, Operation::activate}), "Button can focus and activate");
+    check((detail::access(ui).describe("apply")->verbs == std::vector<Verb>{Verb::focus}), "An unbound button only offers focus");
+    std::get<ButtonHandle>(detail::access(ui).layout_handle("apply")).bind([] { return Result{}; });
+    check(has(detail::access(ui).describe("apply")->verbs, Verb::invoke), "A bound button offers invoke");
     detail::access(ui).enable("apply", false);
-    check(detail::access(ui).describe("apply")->operations.empty() && detail::access(ui).describe("note")->operations.empty(), "Disabled controls and labels offer nothing");
+    check(detail::access(ui).describe("apply")->verbs.empty() &&
+          has(detail::access(ui).describe("note")->verbs, Verb::set_text_align), "Disabled buttons offer nothing; labels offer their configuration verbs");
     int count = 0;
     detail::access(ui).bind_text("note", [&] { return u"套用 " + std::u16string(1, char16_t(u'0' + count)) + u" 次"; });
     count = 2;
@@ -503,7 +506,7 @@ void unconnected_text_rejects_edits() {
     auto field = ui.add_text_field({.id = "unconnected", .value = u"initial"}).value.value();
     auto snapshot = field.describe();
     check(field.set_value(u"changed").status == Status::invalid_value && snapshot->value == u"initial" &&
-          !has(snapshot->operations, Operation::edit), "An unconnected field rejects edits and does not advertise editing");
+          !has(snapshot->verbs, Verb::set_value), "An unconnected field rejects edits and does not advertise editing");
 }
 
 void handles_expire_with_their_component_tree() {
@@ -881,14 +884,15 @@ void unconnected_selection_controls_do_not_advertise_writes() {
     Ui ui;
     auto box = ui.add_checkbox({.id = "box"}).value.value();
     auto radio = ui.add_radio_group({.id = "radio"}, {{{"a"}, u"A"}}).value.value();
-    auto has = [](const ComponentSnapshot& s, Operation op) { return std::find(s.operations.begin(), s.operations.end(), op) != s.operations.end(); };
-    check(!has(*box.describe(), Operation::activate) && !has(*radio.describe(), Operation::select),
+    auto has = [](const ComponentSnapshot& s, Verb op) { return std::find(s.verbs.begin(), s.verbs.end(), op) != s.verbs.end(); };
+    check(!has(*box.describe(), Verb::toggle) && ui.semantics().get({"radio", OptionValue{"a"}})->verbs.empty(),
           "Unconnected controls do not advertise unavailable modifications");
     box.connect_source({[] { return false; }, [](std::function<void()>) { return [] {}; }});
     radio.connect_source({[] { return std::optional<OptionValue>{}; }, [](std::function<void()>) { return [] {}; }});
     box.connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; });
     radio.connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; });
-    check(has(*box.describe(), Operation::activate) && has(*radio.describe(), Operation::select),
+    check(has(*box.describe(), Verb::toggle) &&
+          ui.semantics().get({"radio", OptionValue{"a"}})->verbs == std::vector<Verb>{Verb::select},
           "Connected editable controls advertise their available modifications");
 }
 
@@ -956,7 +960,7 @@ void progress_source_is_read_only_and_disconnects() {
             changed = std::move(cb); return [&] { changed = {}; };
         }})), "Progress accepts a read-only numeric source");
         auto s = saved.describe();
-        check(s->read_only && !s->focusable && s->operations.empty() && s->value == u"0%" && source == -10,
+        check(s->read_only && !s->focusable && s->verbs.empty() && s->value == u"0%" && source == -10,
               "Progress semantics are read-only and do not alter the out-of-range source");
         source = 110; changed();
         check(saved.describe()->value == u"100%" && source == 110, "A notified value updates the display without a write");

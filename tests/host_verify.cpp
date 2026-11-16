@@ -2698,7 +2698,7 @@ void x04_executing_matrix(const Appearance& appearance, Report& report) {
                         if (intersect(draw.bounds, intersect(draw.clip, item->bounds)).w == draw.bounds.w) ink += draw.text;
                     }
                     observed = item && semantic->visible && semantic->executing && button->invoke().status == Status::busy &&
-                        std::find(semantic->operations.begin(), semantic->operations.end(), Operation::activate) == semantic->operations.end() &&
+                        std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::invoke) == semantic->verbs.end() &&
                         ink.find(semantic->name) != std::u16string::npos &&
                         ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
                     return Result{};
@@ -3154,7 +3154,7 @@ void x04_name_read_only_matrix(const Appearance& appearance, Report& report) {
             for (const auto& event : f.host.paint_observations())
                 if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text) ink += event.text;
             bool restricted = name.set_value(u"rejected").status == Status::read_only &&
-                std::find(semantic->operations.begin(), semantic->operations.end(), Operation::edit) == semantic->operations.end();
+                std::find(semantic->verbs.begin(), semantic->verbs.end(), Verb::set_value) == semantic->verbs.end();
             auto& h = f.form.handles;
             bool associations = h.name_label.describe()->target == semantic->id && h.name_label.describe()->label_kind == LabelKind::name &&
                 h.name_help.describe()->target == semantic->id && h.name_help.describe()->label_kind == LabelKind::description &&
@@ -3305,7 +3305,7 @@ void semantic_raster_samples(const Appearance& appearance, Report& report, const
             if (event.owner == semantic->id && event.visible && event.type == detail::PaintObservation::Type::text)
                 executing_ink += event.text;
         executing_painted = semantic->executing &&
-            std::none_of(semantic->operations.begin(), semantic->operations.end(), [](Operation op) { return op == Operation::activate; }) &&
+            std::none_of(semantic->verbs.begin(), semantic->verbs.end(), [](Verb op) { return op == Verb::invoke; }) &&
             executing_ink.find(semantic->name) != std::u16string::npos &&
             executing_ink.find(appearance.component_presentation().executing_suffix) != std::u16string::npos;
         return Result{};
@@ -3592,7 +3592,7 @@ bool ime_session(const Appearance& appearance, Report& report, std::ofstream& ev
         live.tap(VK_ESCAPE);
         live.wait(200);
         if (session->composing) { live.tap(VK_ESCAPE); live.wait(200); }
-        bool redo_kept = !session->composing && detail::access(ui).text(ids.name) == u"測試使用者" && detail::access(live.form.ui).describe(ids.name)->operations.back() == Operation::redo;
+        bool redo_kept = !session->composing && detail::access(ui).text(ids.name) == u"測試使用者" && ([](const auto& s) { return std::find(s.verbs.begin(), s.verbs.end(), Verb::redo) != s.verbs.end(); })(*detail::access(live.form.ui).describe(ids.name));
         record("E01-cancel", redo_kept, "Escape cancels the composition; committed text and the redo position survive");
 
         // Switch pages through the real tab during an active Microsoft Bopomofo composition.

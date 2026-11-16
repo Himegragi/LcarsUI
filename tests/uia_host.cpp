@@ -147,6 +147,10 @@ int wmain(int argc, wchar_t** argv) {
         }
         auto disabled = form.ui.add_button({.id = "fixture.real_disabled", .label = u"Disabled"}).value.value();
         disabled.enable(false);
+        for (bool enabled : {false, true}) {
+            auto button = form.ui.add_button({.id = enabled ? "fixture.mode_enabled" : "fixture.mode_disabled", .label = u"Radio availability"}).value.value();
+            button.bind([&form, enabled] { return form.handles.mode.enable(enabled); });
+        }
         auto write = form.ui.add_button({.id = "fixture.name_write", .label = u"Write name"}).value.value();
         write.bind([&form] { return form.handles.name.set_value(u"UIA test"); });
         auto invalid = form.ui.add_button({.id = "fixture.name_invalid", .label = u"Invalid name"}).value.value();

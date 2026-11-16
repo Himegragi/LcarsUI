@@ -5,16 +5,6 @@
 namespace lcars {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
 enum class Role { text_field, button, label, checkbox, radio_group, radio_option, slider, dropdown, dropdown_option, list, list_item, tabs, tab_item, progress, dialog, tooltip, menu, menu_item, menu_separator };
-// set_text_align takes a TextAlign, set_justify_method a JustifyMethod, set_line_spacing a double, set_paragraph_spacing an int (DIP); labels and text fields.
-// set_writing_mode takes a WritingMode and set_vertical_digits an int (0-3); labels only.
-// context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
-// MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
-// hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
-// typed Ui::simulate_hover would be, and is never listed in NodeSnapshot::verbs (hover is not an operation of the node).
-// select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
-// set_word_segmentation takes a WordSegmentation. All are text fields only.
-enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
-                  set_word_segmentation, select_word, select_paragraph, double_click, triple_click, set_justify_method };
 // The text units a semantic query can ask for: what a double click selects and what a triple click selects.
 enum class TextUnitKind { word, paragraph };
 // Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::set_style).
@@ -46,14 +36,15 @@ public:
 private:
     std::function<void()> disconnect_;
 };
-// Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
-struct TextFieldScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextFieldScroll&) const = default; };
 struct NodeSnapshot {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
     std::u16string name, value, description, error, accelerator_key, access_key;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
+    // enabled is this node's own setting, including on items; parent restrictions affect verbs separately.
+    // focused means keyboard input goes here now; an open context menu takes it away from its component.
     bool hidden = false, visible = false, blocked_by_modal = false;
+    // visible means positive on-screen area in the latest arranged frame, and not hidden.
     bool selection_required = false;
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;

@@ -6,7 +6,7 @@
 // ComponentKind is the key of the registry (and public data), nothing more. The type's own behavior is one class in
 // component_type.cpp, registered in types(), that overrides what it needs: arrange and paint; name and role; the keys it
 // takes (handles_key, key_down) and its press and release (pointer_down, pointer_up); its part of the semantic tree
-// (describe, describe_operations, describe_node, verbs, perform); and the host, layout and menu questions at the end of
+// (describe, describe_admissions, describe_node, verbs, perform); and the host, layout and menu questions at the end of
 // ComponentType. The defaults describe a type with nothing special. ScopedComponentType registers a test-only type the
 // same way. The type receives each component as a detail::Component: the application's ComponentConfig plus its
 // ComponentKind.
@@ -121,14 +121,16 @@ struct PointerRelease {
     std::optional<std::size_t> pressed_option, option;     // the row under the press and under the release
     std::optional<OptionValue> pressed_value;              // the row's value when the press recorded one
 };
-// What a type needs to say which verbs one semantic node offers; the node is enabled, visible and not behind a modal.
+enum class Admission { focus, activate, select, copy, edit, cut, paste, undo, redo, scroll, style };
+// Internal admission categories never cross the public snapshot boundary.
+// What a type needs to say which verbs one semantic node offers; the component and item are enabled, not hidden and not behind a modal.
 struct VerbContext {
     const UiState& ui;
     const Component& control;
     const ComponentSnapshot& semantics;
-    const NodeSnapshot& node;
+    const std::vector<Admission>& admissions;
     bool item;                                             // the node is one item of the control
-    bool admits(Operation operation) const;                // semantics.operations holds it
+    bool admits(Admission admission) const;
 };
 // One semantic verb arriving at a type. invalid_argument() is the common answer for a verb whose argument does not fit.
 struct PerformContext {
@@ -173,9 +175,9 @@ public:
     // The release over the armed component; the default invokes the component's action.
     virtual Result pointer_up(UiState&, const PointerRelease&) const;
     // ---- ComponentSnapshot.
-    // Fills the type's part of the control's description (values, options, conflicts) and, afterwards, the operations it admits.
+    // Fills the type's part of the control's description (values, options, conflicts) and, afterwards, its internal admission categories.
     virtual void describe(const UiState&, const Component&, ComponentSnapshot&) const {}
-    virtual void describe_operations(const UiState&, const Component&, ComponentSnapshot&) const {}
+    virtual void describe_admissions(const UiState&, const Component&, const ComponentSnapshot&, std::vector<Admission>&) const {}
     // The text the control shows when it is not the control's own value (nullopt: control.value).
     virtual std::optional<std::u16string> display_text(const UiState&, const Component&) const { return std::nullopt; }
     // The type's own node properties (accelerators, selection, writing mode, text selection...).

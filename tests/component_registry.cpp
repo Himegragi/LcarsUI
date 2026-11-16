@@ -1,5 +1,5 @@
 // Component types are told apart only by what the registry says about them (#93). This suite pins what a built-in
-// type does today (key policy, semantic roles, verbs and operations, debug names) through public seams, and runs a
+// type does today (key policy, semantic roles, verbs, debug names) through public seams, and runs a
 // registered test-only type through the same dispatch points. `--print` writes the observed tables instead of checking them.
 #include "lcars/core.hpp"
 #include "lcars/semantics.hpp"
@@ -103,32 +103,24 @@ std::string name_of(Verb verb) {
         {Verb::triple_click, "triple_click"}, {Verb::set_justify_method, "set_justify_method"}};
     return name_in(names, verb);
 }
-std::string name_of(Operation op) {
-    static const Named<Operation> names[] = {
-        {Operation::focus, "focus"}, {Operation::activate, "activate"}, {Operation::select, "select"}, {Operation::copy, "copy"},
-        {Operation::edit, "edit"}, {Operation::cut, "cut"}, {Operation::paste, "paste"}, {Operation::undo, "undo"}, {Operation::redo, "redo"},
-        {Operation::scroll, "scroll"}, {Operation::style, "style"}};
-    return name_in(names, op);
-}
-std::string describe_node(const NodeSnapshot& node, const ComponentSnapshot* semantics) {
+std::string describe_node(const NodeSnapshot& node) {
     std::ostringstream out;
     out << name_of(node.role) << (node.selection_required ? " selection_required" : "") << " verbs=";
     for (auto verb : node.verbs) out << name_of(verb) << ',';
-    if (semantics) { out << " ops="; for (auto op : semantics->operations) out << name_of(op) << ','; }
     return out.str();
 }
 
-// The semantic layer of every built-in type: role, verbs and operations, for the container and its first item.
+// The semantic layer of every built-in type: role, verbs, for the container and its first item.
 std::vector<std::string> semantic_table(bool confirmed) {
     Everything all(confirmed);
     std::vector<std::string> lines;
     for (const auto& [name, handle] : all.components) {
         auto node = all.ui.semantics().get({name});
         auto semantics = detail::access(all.ui).describe(name);
-        lines.push_back(std::string(name) + ": " + (node ? describe_node(*node, semantics ? &*semantics : nullptr) : "none"));
+        lines.push_back(std::string(name) + ": " + (node ? describe_node(*node) : "none"));
         if (semantics && !semantics->items.empty()) {
             auto item = all.ui.semantics().get({name, semantics->items[0].value});
-            lines.push_back(std::string(name) + "[0]: " + (item ? describe_node(*item, nullptr) : "none"));
+            lines.push_back(std::string(name) + "[0]: " + (item ? describe_node(*item) : "none"));
         }
     }
     return lines;
@@ -182,21 +174,21 @@ const std::vector<std::string> golden_keys = {
     "navigation_list: up down home end",
     "dropdown(open): enter space left right up down home end ctrl+left"};
 const std::vector<std::string> golden_semantics = {
-    "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click, ops=focus,select,copy,edit,cut,paste,",
-    "button: button verbs=focus,invoke, ops=focus,activate,",
-    "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing, ops=",
-    "checkbox: checkbox verbs=focus,toggle, ops=focus,activate,",
-    "radio: radio_group verbs=focus, ops=focus,select,",
+    "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click,",
+    "button: button verbs=focus,invoke,",
+    "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,",
+    "checkbox: checkbox verbs=focus,toggle,",
+    "radio: radio_group verbs=focus,",
     "radio[0]: radio_option verbs=select,",
-    "slider: slider verbs=focus,set_value, ops=focus,edit,",
-    "dropdown: dropdown verbs=focus,open,cancel, ops=focus,select,",
+    "slider: slider verbs=focus,set_value,",
+    "dropdown: dropdown verbs=focus,open,cancel,",
     "dropdown[0]: dropdown_option verbs=select,",
-    "list: list verbs=focus, ops=focus,select,",
+    "list: list verbs=focus,",
     "list[0]: list_item verbs=select,focus,",
-    "tabs: tabs selection_required verbs=focus, ops=focus,activate,",
+    "tabs: tabs selection_required verbs=focus,",
     "tabs[0]: tab_item selection_required verbs=select,",
-    "progress: progress verbs= ops=",
-    "navigation_list: list selection_required verbs=focus, ops=focus,",
+    "progress: progress verbs=",
+    "navigation_list: list selection_required verbs=focus,",
     "navigation_list[0]: list_item selection_required verbs=select,"};
 // With a confirmed write instead of an immediate one, the five types that take a write timing also list the confirm verb (after
 // their other verbs); every other row is what the immediate table says.
@@ -205,7 +197,7 @@ std::vector<std::string> confirmed_from(const std::vector<std::string>& immediat
     std::vector<std::string> rows;
     for (auto row : immediate) {
         for (const char* name : confirming)
-            if (row.starts_with(std::string(name) + ": ")) { row.insert(row.find(" ops="), "confirm,"); break; }
+            if (row.starts_with(std::string(name) + ": ")) { row.insert(row.size(), "confirm,"); break; }
         rows.push_back(std::move(row));
     }
     return rows;
@@ -245,10 +237,10 @@ public:
     Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
         ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};
     }
-    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
-    void describe_operations(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.operations.push_back(Operation::edit); }
+    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.range = SliderRange{0, 10, 1}; }
     void verbs(const detail::VerbContext& context, std::vector<Verb>& out) const override {
-        if (!context.item && context.admits(Operation::edit)) out.push_back(Verb::set_value);
+        ComponentType::verbs(context, out);
+        if (!context.item) out.push_back(Verb::set_value);
     }
     std::optional<Result> perform(const detail::PerformContext& context) const override {
         if (context.verb != Verb::set_value) return std::nullopt;
@@ -264,14 +256,13 @@ void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
     Ui ui; auto& host = detail::access(ui);
     host.seed_test_controls({{stepper_kind, {.id = "stepper", .label = u"Stepper"}}});
     check(detail::component_type(stepper_kind).name() == "stepper", "the type names itself");
-    // ComponentSnapshot: its role, its description, its operations and the verbs it offers.
+    // ComponentSnapshot: its role, its description, the verbs it offers.
     auto node = ui.semantics().get({"stepper"});
     check(node && node->role == Role::slider && node->numeric_value == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
     check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::set_value) != node->verbs.end(), "the type's verb is offered");
-    // The operations are the type's own, read from the description (not inferred from a verb): focus comes with any focusable
-    // control, the type adds edit, and nothing else is admitted.
+    // The type extends the shared focus verb with its own set_value verb.
     const auto described = host.describe("stepper");
-    check(described && described->operations == std::vector<Operation>{Operation::focus, Operation::edit}, "the operations come from the type");
+    check(described && described->verbs == std::vector<Verb>{Verb::focus, Verb::set_value}, "the verbs come from the type");
     check(bool(ui.semantics().perform({"stepper"}, Verb::set_value, 9)) && stepper.value == 9 && ui.semantics().get({"stepper"})->numeric_value == 9, "the type performs its verb");
     check(ui.semantics().perform({"stepper"}, Verb::set_value, std::u16string(u"nine")).status == Status::invalid_value, "a wrong argument is the common answer");
     // Keys: it takes Up and Down, and leaves Left to the application's shortcut.

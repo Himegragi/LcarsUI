@@ -61,6 +61,26 @@ clock.connect_source({[&] { return now_text(); }, subscribe_to_clock});  // a no
 
 Every handle kind (`TextFieldHandle`, `ButtonHandle`, ..., `DialogHandle`, `TooltipHandle`, `ContextMenuHandle`) compares with `==` against handles of its own kind: two handles are equal when they control the same thing now. Two default-constructed handles are equal and differ from every real one; a button removed and created again under the same id gives a different handle (the old one keeps answering `not_found`); the same id in another `Ui` is a different handle; a context menu attached again to a recreated target is the same handle, since the old handle controls the new attachment. Comparing handles of two kinds (`TextFieldHandle == CheckboxHandle`) does not compile, and `ComponentHandle` and `ConfirmField` compare through their alternatives. Handles have no hash.
 
+## Component and semantic snapshots
+
+`handle.describe()` returns a `ComponentSnapshot` for application code; `ui.semantics().get(ref)` returns a
+`NodeSnapshot` for accessibility, tests and AI operations. Both are copies of the state at query time. Their common
+fields have the same meaning and values for a component, including the component-level `verbs` (`Verb` is the only
+public action vocabulary). Items stay in `ComponentSnapshot::items` and in semantic child nodes identified by
+`{component id, option value}`. Application-only fields such as `source_conflict`, `candidate` and `labels` stay in
+the component snapshot; bounds, instance identity and label relationships stay in the node snapshot.
+
+- `visible` means there is positive on-screen area after the latest arrangement and the component is not hidden.
+  Both snapshots use the same clipped bounds, including attached label lines. Before the first arrangement it is false.
+- A label's `name` and `value` both contain its displayed text. `focused` means keyboard input goes there now;
+  while a context menu is open, components report false.
+- An item's `enabled` is its own setting. Parent restrictions determine whether its `verbs` offers `select`;
+  the UIA adapter combines parent and item availability for `IsEnabled`.
+- `writing_mode` and `vertical_digits` are optional and present only on labels. Sliders expose `range`.
+  Multi-line fields expose one optional `TextFieldScroll` as `scroll`, with `first_line`, `visible_lines` and `line_count`.
+
+The `snapshots` CTest compares every common field and item state across all built-in kinds, with one driver per state.
+
 ## Multi-line text fields
 
 Public names distinguish writable fields (`Change<Field, Value>`, `ConfirmField`, `ConfirmFieldChange`,
@@ -132,7 +152,7 @@ auto value = note.rich_value();                                      // Query<Ri
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
 - **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::write_rich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `write_rich` / `read_rich` carries plain text only.
 - **History and data connections.** One style application is one undo entry. Rich fields connect with `connect_rich_source` / `connect_rich_immediate` / `connect_rich_confirmed` (the plain `connect_*` answer `not_supported`, and these answer `not_supported` on a plain field); a confirmation group takes them through `Ui::connect_confirmation` (a `Change<TextFieldHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `use_latest`, `reset_to_source`).
-- **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls (`Operation::style`); property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
+- **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typing_style`; `Verb::set_style` (`StyleEdit{begin, end, change}`), `Verb::set_typing_style` (`TextStyle`) and `Verb::set_value` with a `RichText`, all admitted like the typed calls and listed in snapshot `verbs`; property event `styles`; `SemanticTree::text_color(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
 Out of scope: rich labels and single-line rich fields, per-run alignment, size or font family, strikethrough, super/subscript, links, lists, images, RTF / HTML / Markdown input or output, a built-in toolbar or context menu, free RGB colors.
 
@@ -319,6 +339,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #96 public names follow the glossary; `add_x` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `add_x` at run time, and `demo_render_compare` stays byte-identical |
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 | #100 field and text-field public names | none: host and layout edits are pure renames, and the unused appearance method is removed; the consumer checks the new names and rejects the old ones, with all existing CTests and `demo_render_compare` retained |
+| #101 aligned component and semantic snapshots (0.4.0) | `-Only uia,axe,demo-uia`: the UIA adapter combines item and parent `IsEnabled` and propagates parent availability events; `snapshots` is the core twin. No `desktop_host.cpp` or layout change. Check right-click and keyboard menus once with real input; component `focused` is false while the menu owns input. |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
@@ -337,7 +358,7 @@ Then in your project:
 ```cmake
 cmake_minimum_required(VERSION 3.25)
 project(StationApp LANGUAGES CXX)
-find_package(LcarsUI 0.3 REQUIRED COMPONENTS Desktop AppearanceWeb)
+find_package(LcarsUI 0.4 REQUIRED COMPONENTS Desktop AppearanceWeb)
 add_executable(station_app main.cpp)
 target_link_libraries(station_app PRIVATE LcarsUI::Desktop LcarsUI::AppearanceWeb)
 install(FILES "${LcarsUI_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)

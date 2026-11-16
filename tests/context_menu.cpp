@@ -143,7 +143,7 @@ void built_in_items_match_their_shortcuts() {
         check(a.handle.draft().value.value() == b.handle.draft().value.value(), "same field text");
         check(menu_clipboard.content == key_clipboard.content, "the same clipboard content");
         auto sa = *core(by_menu).describe("f"), sb = *core(by_key).describe("f");
-        check(sa.operations == sb.operations, "the same undo history (undo and redo operations)");
+        check(sa.verbs == sb.verbs, "the same undo history (undo and redo operations)");
         auto selection_a = by_menu.semantics().get({"f"})->text_selection, selection_b = by_key.semantics().get({"f"})->text_selection;
         check(selection_a && selection_b && selection_a->anchor == selection_b->anchor && selection_a->caret == selection_b->caret, "the same selection");
         check(selection_a && selection_a->anchor == c.anchor && selection_a->caret == c.caret, (std::string(c.item) + ": the selection after the operation").c_str());

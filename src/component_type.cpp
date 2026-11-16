@@ -273,6 +273,9 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 }
 class Label final : public ComponentType {
 public:
+    void describe(const UiState&, const Component& c, ComponentSnapshot& s) const override {
+        s.name = s.value; s.writing_mode = c.writing_mode; s.vertical_digits = c.vertical_digits;
+    }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
         if (c.label_kind == LabelKind::error) {
@@ -285,9 +288,6 @@ public:
         return std::nullopt;
     }
     bool accepts_text_provider() const override { return true; }
-    void describe_node(const UiState&, const Component&, const ComponentSnapshot& s, const NodeRef&, NodeSnapshot& n) const override {
-        n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits;
-    }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { out.push_back(Verb::set_writing_mode); out.push_back(Verb::set_vertical_digits); }
         ComponentType::verbs(c, out);
@@ -470,34 +470,34 @@ public:
         return std::nullopt;
     }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
-        s.multiline = c.multiline; s.visible_lines = c.multiline ? c.visible_lines : 0;
+        s.multiline = c.multiline;
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
         const auto& field = it->second;
         if (c.multiline) {
             const auto& m = field.multi;
-            s.scroll_line = m.pending_first.value_or(m.first);
-            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
+            s.scroll = TextFieldScroll{m.pending_first.value_or(m.first), c.visible_lines,
+                                  m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0};
         }
         s.source_conflict = field.connected && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
         s.rich = field.rich;
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
-        if (c.multiline) s.operations.push_back(Operation::scroll);
-        s.operations.insert(s.operations.end(), {Operation::select, Operation::copy});
+        if (c.multiline) out.push_back(Admission::scroll);
+        out.insert(out.end(), {Admission::select, Admission::copy});
         const auto& field = it->second;
         if (text_editable(c, field)) {
-            s.operations.insert(s.operations.end(), {Operation::edit, Operation::cut, Operation::paste});
-            if (field.rich) s.operations.push_back(Operation::style);
-            if (!field.past.empty()) s.operations.push_back(Operation::undo);
-            if (!field.future.empty()) s.operations.push_back(Operation::redo);
+            out.insert(out.end(), {Admission::edit, Admission::cut, Admission::paste});
+            if (field.rich) out.push_back(Admission::style);
+            if (!field.past.empty()) out.push_back(Admission::undo);
+            if (!field.future.empty()) out.push_back(Admission::redo);
         }
     }
-    void describe_node(const UiState& ui, const Component& c, const ComponentSnapshot& s, const NodeRef& ref, NodeSnapshot& n) const override {
+    void describe_node(const UiState& ui, const Component& c, const ComponentSnapshot&, const NodeRef& ref, NodeSnapshot& n) const override {
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
@@ -507,7 +507,6 @@ public:
             n.rich = true; n.styles = field.spans;
             n.typing_style = UiState::Internals::insertion_style(ui, field, field.session.begin(), field.session.end());
         }
-        if (s.multiline && !ref.item) n.scroll = TextFieldScroll{s.scroll_line, s.visible_lines, s.line_count};
         if (!ref.item) {
             n.word_segmentation = field.segmentation;
             n.word_segmentation_in_use = segmentation_in_use(field.segmentation, UiState::Internals::dictionary(ui));
@@ -517,19 +516,19 @@ public:
         ComponentType::verbs(c, out);
         if (c.item) return;
         auto add = [&](Verb verb, bool condition) { if (condition) out.push_back(verb); };
-        add(Verb::set_value, c.admits(Operation::edit));
-        add(Verb::select, c.admits(Operation::select));
-        add(Verb::undo, c.admits(Operation::undo));
-        add(Verb::redo, c.admits(Operation::redo));
-        add(Verb::copy, c.admits(Operation::copy));
-        add(Verb::cut, c.admits(Operation::cut));
-        add(Verb::paste, c.admits(Operation::paste));
-        add(Verb::scroll, c.semantics.multiline && c.admits(Operation::scroll));
+        add(Verb::set_value, c.admits(Admission::edit));
+        add(Verb::select, c.admits(Admission::select));
+        add(Verb::undo, c.admits(Admission::undo));
+        add(Verb::redo, c.admits(Admission::redo));
+        add(Verb::copy, c.admits(Admission::copy));
+        add(Verb::cut, c.admits(Admission::cut));
+        add(Verb::paste, c.admits(Admission::paste));
+        add(Verb::scroll, c.semantics.multiline && c.admits(Admission::scroll));
         flow_verbs(c, out);
-        add(Verb::set_style, c.admits(Operation::style));
-        add(Verb::set_typing_style, c.admits(Operation::style));
+        add(Verb::set_style, c.admits(Admission::style));
+        add(Verb::set_typing_style, c.admits(Admission::style));
         for (auto word_verb : {Verb::set_word_segmentation, Verb::select_word, Verb::select_paragraph, Verb::double_click, Verb::triple_click})
-            add(word_verb, c.admits(Operation::select));
+            add(word_verb, c.admits(Admission::select));
     }
     bool confirm_pending(const UiState& ui, const Component& c) const override { return has_confirmed_write(UiState::Internals::edits(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -856,7 +855,7 @@ protected:
 class Button final : public Command {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::executing}); }
-    void describe_operations(const UiState&, const Component&, ComponentSnapshot& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_admissions(const UiState&, const Component&, const ComponentSnapshot& s, std::vector<Admission>& out) const override { if (!s.executing) out.push_back(Admission::activate); }
     void describe_node(const UiState& ui, const Component& c, const ComponentSnapshot&, const NodeRef& ref, NodeSnapshot& n) const override {
         if (ref.item) return;
         for (const auto& binding : UiState::Internals::shortcuts(ui)) {
@@ -887,7 +886,7 @@ public:
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         ComponentType::verbs(c, out);
-        if (!c.item && c.ui.has_action(c.control.id) && c.admits(Operation::activate)) out.push_back(Verb::invoke);
+        if (!c.item && c.ui.has_action(c.control.id) && c.admits(Admission::activate)) out.push_back(Verb::invoke);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.verb == Verb::invoke) return c.ui.invoke(c.ref.id);
@@ -914,14 +913,14 @@ public:
             s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot& s, std::vector<Admission>& out) const override {
         auto& bools = UiState::Internals::bools(ui);
         auto it = bools.find(c.id);
-        if (!s.executing && (it == bools.end() || it->second.writable())) s.operations.push_back(Operation::activate);
+        if (!s.executing && (it == bools.end() || it->second.writable())) out.push_back(Admission::activate);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         ComponentType::verbs(c, out);
-        if (!c.item && c.admits(Operation::activate)) out.push_back(Verb::toggle);
+        if (!c.item && c.admits(Admission::activate)) out.push_back(Verb::toggle);
     }
     bool confirm_pending(const UiState& ui, const Component& c) const override { return has_confirmed_write(UiState::Internals::bools(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -977,16 +976,16 @@ public:
             if (selected) s.value = option.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
         auto& radios = UiState::Internals::radios(ui);
         auto it = radios.find(c.id);
         if (it == radios.end()) return;
         const auto& f = it->second;
         if (f.writable() && std::any_of(f.options.begin(), f.options.end(), [](const auto& option) { return option.enabled; }))
-            s.operations.push_back(Operation::select);
+            out.push_back(Admission::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
-        if (c.item) { if (c.admits(Operation::select)) out.push_back(Verb::select); }
+        if (c.item) { if (c.admits(Admission::select)) out.push_back(Verb::select); }
         else ComponentType::verbs(c, out);
     }
     bool confirm_pending(const UiState& ui, const Component& c) const override { return has_confirmed_write(UiState::Internals::radios(ui), c); }
@@ -1116,18 +1115,18 @@ public:
             if (selected) s.value = item.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
         auto& lists = UiState::Internals::lists(ui);
         auto it = lists.find(c.id);
         if (it == lists.end()) return;
         const auto& f = it->second;
         if (!c.read_only && f.source.read && f.immediate &&
-            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) s.operations.push_back(Operation::select);
+            std::any_of(f.items.begin(), f.items.end(), [](const auto& item) { return item.enabled; })) out.push_back(Admission::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
-        if (c.admits(Operation::select)) out.push_back(Verb::select);
-        if (c.admits(Operation::focus)) out.push_back(Verb::focus);
+        if (c.admits(Admission::select)) out.push_back(Verb::select);
+        if (c.admits(Admission::focus)) out.push_back(Verb::focus);
         if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -1234,15 +1233,15 @@ public:
             if (selected) s.value = option.label;
         }
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
         auto& dropdowns = UiState::Internals::dropdowns(ui);
         auto it = dropdowns.find(c.id);
-        if (it != dropdowns.end() && it->second.writable()) s.operations.push_back(Operation::select);
+        if (it != dropdowns.end() && it->second.writable()) out.push_back(Admission::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
-        if (c.item) { if (c.admits(Operation::select)) out.push_back(Verb::select); return; }
+        if (c.item) { if (c.admits(Admission::select)) out.push_back(Verb::select); return; }
         ComponentType::verbs(c, out);
-        if (c.admits(Operation::select)) { out.push_back(Verb::open); out.push_back(Verb::cancel); }
+        if (c.admits(Admission::select)) { out.push_back(Verb::open); out.push_back(Verb::cancel); }
     }
     bool confirm_pending(const UiState& ui, const Component& c) const override { return has_confirmed_write(UiState::Internals::dropdowns(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -1360,16 +1359,16 @@ public:
         auto it = numerics.find(c.id);
         if (it == numerics.end()) return;
         s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
-        s.slider_range = it->second.range; s.numeric_value = it->second.value;
+        s.range = it->second.range; s.numeric_value = it->second.value;
     }
-    void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
         auto& numerics = UiState::Internals::numerics(ui);
         auto it = numerics.find(c.id);
-        if (it != numerics.end() && !c.read_only && it->second.writable()) s.operations.push_back(Operation::edit);
+        if (it != numerics.end() && !c.read_only && it->second.writable()) out.push_back(Admission::edit);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         ComponentType::verbs(c, out);
-        if (!c.item && c.admits(Operation::edit)) out.push_back(Verb::set_value);
+        if (!c.item && c.admits(Admission::edit)) out.push_back(Verb::set_value);
     }
     bool confirm_pending(const UiState& ui, const Component& c) const override { return has_confirmed_write(UiState::Internals::numerics(ui), c); }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -1414,8 +1413,8 @@ public:
         paint_errors(c, item.error_lines, item.text_size, palette.error);
         auto track = item.slider_track; int thickness = scaled(c.scale, c.presentation().focus);
         c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.outline : palette.border);
-        if (c.semantics.slider_range && c.semantics.numeric_value) {
-            const auto range = *c.semantics.slider_range;
+        if (c.semantics.range && c.semantics.numeric_value) {
+            const auto range = *c.semantics.range;
             double ratio = (static_cast<double>(*c.semantics.numeric_value) - range.minimum) /
                            (static_cast<double>(range.maximum) - range.minimum);
             int x = track.x + static_cast<int>(std::lround(track.w * ratio));
@@ -1501,11 +1500,11 @@ class Tabs final : public ComponentType {
 public:
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate, S::error}); }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override { describe_pages(ui, c, s); }
-    void describe_operations(const UiState&, const Component&, ComponentSnapshot& s) const override { if (!s.executing) s.operations.push_back(Operation::activate); }
+    void describe_admissions(const UiState&, const Component&, const ComponentSnapshot& s, std::vector<Admission>& out) const override { if (!s.executing) out.push_back(Admission::activate); }
     void describe_node(const UiState&, const Component&, const ComponentSnapshot&, const NodeRef&, NodeSnapshot& n) const override { n.selection_required = true; }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
-        if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);
+        if (c.admits(Admission::focus) || c.admits(Admission::select)) out.push_back(Verb::select);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.ref.item && c.verb == Verb::select) return std::get<TabsHandle>(c.ui.layout_handle(c.ref.id)).activate(*c.ref.item);
@@ -1592,7 +1591,7 @@ public:
     void describe_node(const UiState&, const Component&, const ComponentSnapshot&, const NodeRef&, NodeSnapshot& n) const override { n.selection_required = true; }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
-        if (c.admits(Operation::focus) || c.admits(Operation::select)) out.push_back(Verb::select);
+        if (c.admits(Admission::focus) || c.admits(Admission::select)) out.push_back(Verb::select);
         if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
@@ -1738,14 +1737,14 @@ void command_pointer_down(UiState& ui) {
     UiState::OperationScope operation(&ui);
     ui.arm_pointer(ui.focused());
 }
-bool VerbContext::admits(Operation operation) const {
-    return std::find(semantics.operations.begin(), semantics.operations.end(), operation) != semantics.operations.end();
+bool VerbContext::admits(Admission admission) const {
+    return std::find(admissions.begin(), admissions.end(), admission) != admissions.end();
 }
 Result ComponentType::pointer_up(UiState& ui, const PointerRelease& release) const { return ui.invoke(release.id); }
 void ComponentType::verbs(const VerbContext& c, std::vector<Verb>& out) const {
     if (c.item) return;
     if (c.ui.has_menu(c.control) && !c.ui.renderer_failed()) out.push_back(Verb::context_menu);
-    if (c.admits(Operation::focus)) out.push_back(Verb::focus);
+    if (c.admits(Admission::focus)) out.push_back(Verb::focus);
 }
 const ComponentType* find_component_type(ComponentKind kind) {
     auto test = test_types().find(kind);

@@ -156,7 +156,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
         check(f.kind==(reset?RendererFailureKind::device_reset:RendererFailureKind::frame_error), "failure kind");
         check(renderer_failure_preserves_draft(form.handles.name,u"workstation A"), "failed edit preserves draft");
         check(access(form.ui).edit(form.ids().name)->selection.anchor==selection.anchor && access(form.ui).edit(form.ids().name)->selection.caret==selection.caret, "selection preserved");
-        check(form.handles.name.describe()->operations.empty(), "failed operations omitted");
+        check(renderer_failure_omits_interactive_verbs(*form.handles.name.describe()), "failed focus, editing and selection verbs omitted");
         check(form.handles.dialog.open().status==Status::renderer_failed, "dialog blocked");
         check(host.rebuild_renderer().status==Status::failed && host.renderer_failed(), "RF07 failed rebuild");
     });
