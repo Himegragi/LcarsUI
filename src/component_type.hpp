@@ -18,7 +18,7 @@
 //     UiState::add_x with its kind check, which registers the component and its state;
 //   - its state: a field struct and map in UiState (core_internal.hpp) with an accessor in UiState::Internals
 //     (defined in component_type.cpp), and, when the state holds a source subscription, a line in the UiState destructor's
-//     disconnect loop;
+//     disconnect loop, and a retire() override that releases its state and source subscription at removal;
 //   - a Role in include/lcars/semantics.hpp and its UIA mapping, only if no existing Role fits.
 // A type that is created as data (UiState constructor, UiState::seed_test_controls) needs none of this but its ComponentKind
 // value (a test type takes one no built-in has), named in each detail::Component it is given: the class and its

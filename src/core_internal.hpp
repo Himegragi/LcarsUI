@@ -48,7 +48,7 @@ public:
     static constexpr std::u16string_view ui_gone = u"UI no longer exists";
     static constexpr std::u16string_view gone_without_text = u"";
     // The one liveness preamble of every typed handle operation (#94). The body runs inside this Ui's operation scope; a
-    // handle whose lifetime has ended (its Ui is gone, its button removed, a tooltip's source removed) runs nothing and
+    // handle whose lifetime has ended (its Ui is gone, its component removed, a tooltip's source removed) runs nothing and
     // answers not_found with `gone`. R is the operation's own return type (Result or a Query). A typed handle operation
     // is written as `return detail::UiState::operate(*this, [&]() -> Result { ... });`.
     template <class Handle, class Body, class R = std::invoke_result_t<Body&>>
@@ -712,9 +712,8 @@ private:
     std::map<Id, ScrollState, std::less<>> vertical_scrolls_;
     std::function<void(const Id&, const Id&)> focus_moved_;
     std::function<void()> before_focus_;
-    // A bound label's read, and the cancellation of its source's subscription (empty for a read function alone). A label
-    // cannot be removed (only ButtonHandle::remove schedules a removal): a subscription ends when its source is replaced
-    // or with ~UiState.
+    // A bound label's read, and the cancellation of its source subscription (empty for a read function alone).
+    // A subscription ends on replacement, at the component's removal safe point, or with ~UiState.
     struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
     std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, renderer_failed_ = false;
