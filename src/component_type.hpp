@@ -192,6 +192,8 @@ public:
     // ---- What the layout, the host and the context menu ask a type.
     // A control supplied as data (the UiState constructor, the test seam) is registered with the state that goes with it.
     virtual void adopt(UiState&, const Component&) const {}
+    // At the removal safe point, release this type's per-instance state and source subscription.
+    virtual void retire(UiState&, const Id&) const {}
     // The type opens a popup that holds its items (a dropdown): the popup owns the wheel and a press outside it closes it, its
     // items show no bounds while it is closed and start no tooltip.
     virtual bool opens_popup() const { return false; }

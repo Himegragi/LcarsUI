@@ -11,6 +11,12 @@ namespace lcars::detail {
 // The per-type state and the engines a component type reaches into. UiState only declares this class, so nothing outside
 // this file can use it: the maps, and the helpers of the engines the types share with the rest of the state.
 struct UiState::Internals {
+    template <class Map> static void retire(UiState& ui, Map& fields, const Id& id) {
+        auto entry = fields.extract(id);
+        if (!entry.empty() && entry.mapped().disconnect) {
+            try { entry.mapped().disconnect(); } catch (...) { ui.stopped_ = true; }
+        }
+    }
     template <class U> static auto& edits(U& ui) { return ui.edits_; }
     template <class U> static auto& bools(U& ui) { return ui.bools_; }
     template <class U> static auto& radios(U& ui) { return ui.radios_; }
@@ -273,6 +279,7 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 }
 class Label final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::providers(ui), id); }
     void describe(const UiState&, const Component& c, ComponentSnapshot& s) const override {
         s.name = s.value; s.writing_mode = c.writing_mode; s.vertical_digits = c.vertical_digits;
     }
@@ -405,6 +412,7 @@ public:
 };
 class Text final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::edits(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::read_only, S::error, S::conflict}); }
     void adopt(UiState& ui, const Component& c) const override {
         if (!valid_text_control(c)) throw std::invalid_argument("Invalid initial text");
@@ -900,6 +908,7 @@ public:
 };
 class Checkbox final : public Command {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::bools(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
         auto& bools = UiState::Internals::bools(ui);
@@ -964,6 +973,7 @@ protected:
 };
 class RadioGroup final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::radios(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::error, S::conflict}); }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& radios = UiState::Internals::radios(ui);
@@ -1070,6 +1080,7 @@ public:
 };
 class List final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::lists(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::selected, S::candidate}); }
     bool has_row_cursor() const override { return true; }
     // A list row's own anchor for a keyboard-opened menu.
@@ -1218,6 +1229,7 @@ public:
 };
 class Dropdown final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::dropdowns(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::candidate, S::error, S::conflict}); }
     bool opens_popup() const override { return true; }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
@@ -1348,6 +1360,7 @@ public:
 };
 class Slider final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::numerics(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal, S::disabled, S::error, S::conflict}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
         auto& numerics = UiState::Internals::numerics(ui);
@@ -1457,6 +1470,7 @@ public:
 };
 class Progress final : public ComponentType {
 public:
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::progresses(ui), id); }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& progresses = UiState::Internals::progresses(ui);

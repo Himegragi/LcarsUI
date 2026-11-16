@@ -55,7 +55,10 @@ public:
     static R operate(const Handle& handle, Body&& body, std::u16string_view gone = component_gone) {
         const bool alive = !handle.lifetime_.expired();
         OperationScope operation(alive ? handle.ui_ : nullptr);
-        if (!alive) {
+        bool pending = false;
+        if constexpr (std::is_constructible_v<ComponentHandle, Handle>)
+            pending = alive && std::this_thread::get_id() == handle.ui_->owner_ && handle.ui_->removal_pending(handle.id_);
+        if (!alive || pending) {
             R answer;
             answer.status = Status::not_found;
             answer.message = std::u16string(gone);
@@ -146,13 +149,12 @@ public:
     Result confirm(const Id& id);
     ComponentHandle layout_handle(std::string_view id);
     std::optional<Id> layout_id(const ComponentHandle& handle) const;
-    bool retired_button(const ComponentHandle& handle) const;
+    bool retired_component(const ComponentHandle& handle) const;
     // What registered component types (src/component_type.cpp) use to act on the state around them.
     // The typed handle of a component of the given handle type; a type's own handle() returns it.
     template <class Handle> ComponentHandle typed_handle(const Component& control) {
         OperationScope operation(this);
-        if constexpr (std::is_same_v<Handle, ButtonHandle>) return Handle(this, button_lifetimes_.at(control.id), control.id);
-        else return Handle(this, lifetime_, control.id);
+        return Handle(this, component_lifetimes_.at(control.id), control.id);
     }
     // A pointer press arms its component with the row under the press (and that row's value); the release over the
     // same component then reaches pointer_up of its type. A key press arms the component for the release of Space.
@@ -179,7 +181,7 @@ public:
         for (const auto& [id, tabs] : tabs_)
             for (const auto& page : tabs.pages) members += page.members.size();
         return {controls_.size(), page_members_.size(), members, actions_.size(), errors_.size(),
-                tooltips_.size(), button_lifetimes_.size(), confirmation_buttons_.size(),
+                tooltips_.size(), component_lifetimes_.size(), confirmation_buttons_.size(),
                 confirmation_members_.size(), pending_removals_.size()};
     }
     const Component* find(std::string_view id) const;
@@ -628,7 +630,11 @@ private:
     void bool_source_changed(const Id& id);
     std::map<Id, Action, std::less<>> actions_;
     std::set<Id, std::less<>> confirmation_buttons_;
-    std::map<Id, std::shared_ptr<void>, std::less<>> button_lifetimes_;
+    std::map<Id, std::shared_ptr<void>, std::less<>> component_lifetimes_;
+    std::shared_ptr<void> component_lifetime(const Id& id) {
+        return component_lifetimes_.try_emplace(id, std::make_shared<int>(0)).first->second;
+    }
+    Result remove_component(const Id& id);
     std::map<Id, std::vector<Id>, std::less<>> confirmation_members_;
     std::vector<Id> pending_removals_;
     Id retiring_;

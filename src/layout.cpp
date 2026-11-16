@@ -476,7 +476,7 @@ struct Arranger {
         switch (node.kind) {
         case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
-            if (!id && ui.retired_button(node.component)) return 0;
+            if (!id && ui.retired_component(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             bool previous = measuring; measuring = true;
             int result = build(node, width).bounds.h;
@@ -497,7 +497,7 @@ struct Arranger {
         switch (node.kind) {
         case Node::Kind::component: {
             auto id = ui.layout_id(node.component);
-            if (!id && ui.retired_button(node.component)) return 0;
+            if (!id && ui.retired_component(node.component)) return 0;
             if (id && ui.available(*id).status == Status::hidden) return 0;
             auto p = build(node, r.w);
             translate(p, r.x, r.y);
